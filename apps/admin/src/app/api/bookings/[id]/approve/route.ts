@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { getAppointmentById, updateAppointmentStatus } from '@/lib/booking-prisma'
+import { getAppointmentById, updateAppointmentStatus } from '@/lib/booking-client'
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
@@ -16,8 +16,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 
   try {
-    // 1. Read appointment from Booking DB
-    const appointment = getAppointmentById(params.id) as any
+    // 1. Read appointment from Booking DB via internal API
+    const appointment = await getAppointmentById(params.id)
     if (!appointment) {
       return NextResponse.json({ error: '預約不存在' }, { status: 404 })
     }
@@ -56,8 +56,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       },
     })
 
-    // 4. Update appointment status in Booking DB
-    updateAppointmentStatus(params.id, 'confirmed')
+    // 4. Update appointment status in Booking DB via internal API
+    await updateAppointmentStatus(params.id, 'confirmed')
 
     return NextResponse.json({ success: true, sessionId: newSession.id })
   } catch (e: any) {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { getAppointmentById, updateAppointmentStatus } from '@/lib/booking-prisma'
+import { getAppointmentById, updateAppointmentStatus } from '@/lib/booking-client'
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions)
@@ -12,7 +12,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const { reason } = await req.json()
 
   try {
-    const appointment = getAppointmentById(params.id) as any
+    const appointment = await getAppointmentById(params.id)
     if (!appointment) {
       return NextResponse.json({ error: '預約不存在' }, { status: 404 })
     }
@@ -20,7 +20,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       return NextResponse.json({ error: '此預約已處理' }, { status: 400 })
     }
 
-    updateAppointmentStatus(params.id, 'rejected', reason)
+    await updateAppointmentStatus(params.id, 'rejected', reason)
 
     return NextResponse.json({ success: true })
   } catch (e: any) {
