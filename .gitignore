@@ -1,0 +1,14 @@
+node_modules/
+.next/
+dist/
+*.db
+*.db-journal
+.env
+.env.local
+.env.production
+.turbo/
+.vercel/
+coverage/
+*.xlsx
+PLAN.md
+**/generated/prisma/
