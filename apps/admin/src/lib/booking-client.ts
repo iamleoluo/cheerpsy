@@ -1,31 +1,52 @@
 /**
  * Client for calling the Booking app's internal API.
  *
- * In production (Railway), uses private network: booking.railway.internal
- * In development, uses localhost:3000
+ * Tries BOOKING_INTERNAL_URL first (private network on Railway),
+ * falls back to BOOKING_PUBLIC_URL if private network fails.
+ * In development, uses localhost:3000.
  */
 
-const BASE =
-  process.env.BOOKING_INTERNAL_URL ||
-  (process.env.NODE_ENV === 'production'
-    ? 'http://booking.railway.internal:8080'
-    : 'http://localhost:3000')
+const PRIVATE_URL = process.env.BOOKING_INTERNAL_URL || ''
+const PUBLIC_URL = process.env.BOOKING_PUBLIC_URL || ''
+const DEV_URL = 'http://localhost:3000'
+
+function getBaseUrls(): string[] {
+  if (process.env.NODE_ENV !== 'production') return [DEV_URL]
+  const urls: string[] = []
+  if (PRIVATE_URL) urls.push(PRIVATE_URL)
+  if (PUBLIC_URL) urls.push(PUBLIC_URL)
+  return urls.length > 0 ? urls : [DEV_URL]
+}
 
 async function call<T>(action: string, data?: unknown): Promise<T> {
-  const res = await fetch(`${BASE}/api/internal`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-internal-secret': process.env.INTERNAL_API_SECRET || '',
-    },
-    body: JSON.stringify({ action, data }),
-    cache: 'no-store',
-  })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`Booking API ${action} failed (${res.status}): ${text}`)
+  const urls = getBaseUrls()
+  let lastError: Error | null = null
+
+  for (const base of urls) {
+    try {
+      const res = await fetch(`${base}/api/internal`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-internal-secret': process.env.INTERNAL_API_SECRET || '',
+        },
+        body: JSON.stringify({ action, data }),
+        cache: 'no-store',
+        signal: AbortSignal.timeout(5000),
+      })
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(`Booking API ${action} failed (${res.status}): ${text}`)
+      }
+      return res.json() as Promise<T>
+    } catch (e: any) {
+      lastError = e
+      // If private URL failed, try next (public) URL
+      continue
+    }
   }
-  return res.json() as Promise<T>
+
+  throw lastError || new Error(`Booking API ${action} failed: no URLs configured`)
 }
 
 export function getAllAppointments(status?: string) {
