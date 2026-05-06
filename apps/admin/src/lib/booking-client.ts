@@ -8,7 +8,7 @@
 const BASE =
   process.env.BOOKING_INTERNAL_URL ||
   (process.env.NODE_ENV === 'production'
-    ? 'http://booking.railway.internal:3000'
+    ? 'http://booking.railway.internal:8080'
     : 'http://localhost:3000')
 
 async function call<T>(action: string, data?: unknown): Promise<T> {
