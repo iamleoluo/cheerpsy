@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
-import { clientFetch } from "@/lib/client-api";
+import { clientFetch, exportCsv } from "@/lib/client-api";
 
 interface ReportData {
   year: number;
@@ -100,6 +100,12 @@ export default function ReportsPage() {
             className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
           >
             {loading ? "產生中..." : "產生報表"}
+          </button>
+          <button
+            onClick={() => exportCsv(`/export/ledger?year=${year}&month=${month}`, token, `ledger_${year}_${month}.csv`)}
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
+          >
+            匯出 CSV
           </button>
         </div>
       </div>

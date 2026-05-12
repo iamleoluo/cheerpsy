@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
-import { clientFetch } from "@/lib/client-api";
+import { clientFetch, exportCsv } from "@/lib/client-api";
 
 interface SessionRecord {
   id: number;
@@ -20,23 +20,34 @@ interface SessionRecord {
   clinic_share: number;
   payment_status: string;
   funding_source: string | null;
+  claim_number: string | null;
+  receipt_number: string | null;
   locked_at: string | null;
 }
 
-const paymentLabels: Record<string, string> = {
+const selfPayLabels: Record<string, string> = {
   unpaid: "未收款",
   paid: "已收款",
-  pending_claim: "待請款",
+};
+
+const institutionLabels: Record<string, string> = {
+  unpaid: "未請款",
   claiming: "請款中",
-  reconciled: "已核銷",
+  claimed: "已請款",
 };
 
 const paymentColors: Record<string, string> = {
   unpaid: "bg-red-100 text-red-700",
   paid: "bg-green-100 text-green-700",
-  pending_claim: "bg-yellow-100 text-yellow-700",
   claiming: "bg-blue-100 text-blue-700",
-  reconciled: "bg-green-100 text-green-700",
+  claimed: "bg-green-100 text-green-700",
+};
+
+const allFilterLabels: Record<string, string> = {
+  unpaid: "未收款/未請款",
+  paid: "已收款",
+  claiming: "請款中",
+  claimed: "已請款",
 };
 
 const sessionTypeLabels: Record<string, string> = {
@@ -44,6 +55,13 @@ const sessionTypeLabels: Record<string, string> = {
   online: "線上",
   home_visit: "到宅",
 };
+
+function getPaymentLabel(status: string, funding: string | null): string {
+  if (funding === "institution") {
+    return institutionLabels[status] ?? status;
+  }
+  return selfPayLabels[status] ?? status;
+}
 
 export default function LedgerPage() {
   const { data: session } = useSession();
@@ -56,6 +74,12 @@ export default function LedgerPage() {
   const [settling, setSettling] = useState(false);
   const [settleDate, setSettleDate] = useState("");
   const [settleResult, setSettleResult] = useState("");
+
+  const [inputModal, setInputModal] = useState<{
+    recordId: number;
+    type: "claiming" | "claimed";
+  } | null>(null);
+  const [inputValue, setInputValue] = useState("");
 
   const fetchRecords = useCallback(async () => {
     if (!token) return;
@@ -99,13 +123,34 @@ export default function LedgerPage() {
     }
   };
 
-  const handlePayment = async (id: number, newStatus: string) => {
+  const handleSelfPayCollect = async (id: number) => {
     if (!token) return;
     try {
       await clientFetch(`/ledger/${id}/payment`, token, {
         method: "PUT",
-        body: JSON.stringify({ payment_status: newStatus }),
+        body: JSON.stringify({ payment_status: "paid" }),
       });
+      fetchRecords();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
+  const handleInputSubmit = async () => {
+    if (!inputModal || !token || !inputValue.trim()) return;
+    const body: any = { payment_status: inputModal.type };
+    if (inputModal.type === "claiming") {
+      body.claim_number = inputValue.trim();
+    } else {
+      body.receipt_number = inputValue.trim();
+    }
+    try {
+      await clientFetch(`/ledger/${inputModal.recordId}/payment`, token, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      });
+      setInputModal(null);
+      setInputValue("");
       fetchRecords();
     } catch (e: any) {
       alert(e.message);
@@ -132,24 +177,34 @@ export default function LedgerPage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">諮商流水帳</h1>
-        {userRole === "admin" && (
-          <div className="flex items-center gap-2">
-            <input
-              type="date"
-              value={settleDate}
-              onChange={(e) => setSettleDate(e.target.value)}
-              className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
-              placeholder="日結日期"
-            />
+        <div className="flex items-center gap-2">
+          {userRole !== "therapist" && (
             <button
-              onClick={handleSettle}
-              disabled={settling}
-              className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+              onClick={() => exportCsv("/export/ledger", token, "ledger.csv")}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
             >
-              {settling ? "日結中..." : "執行日結"}
+              匯出 CSV
             </button>
-          </div>
-        )}
+          )}
+          {userRole === "admin" && (
+            <>
+              <input
+                type="date"
+                value={settleDate}
+                onChange={(e) => setSettleDate(e.target.value)}
+                className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                placeholder="日結日期"
+              />
+              <button
+                onClick={handleSettle}
+                disabled={settling}
+                className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+              >
+                {settling ? "日結中..." : "執行日結"}
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {settleResult && (
@@ -165,7 +220,7 @@ export default function LedgerPage() {
           className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
         >
           <option value="">全部狀態</option>
-          {Object.entries(paymentLabels).map(([k, v]) => (
+          {Object.entries(allFilterLabels).map(([k, v]) => (
             <option key={k} value={k}>
               {v}
             </option>
@@ -192,19 +247,20 @@ export default function LedgerPage() {
               <th className="px-4 py-3">金額</th>
               <th className="px-4 py-3">來源</th>
               <th className="px-4 py-3">收款狀態</th>
+              <th className="px-4 py-3">單號</th>
               <th className="px-4 py-3">操作</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
             {loading ? (
               <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-gray-400">
+                <td colSpan={10} className="px-4 py-8 text-center text-gray-400">
                   載入中...
                 </td>
               </tr>
             ) : records.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-gray-400">
+                <td colSpan={10} className="px-4 py-8 text-center text-gray-400">
                   尚無流水帳資料（請先執行日結）
                 </td>
               </tr>
@@ -234,39 +290,60 @@ export default function LedgerPage() {
                     <span
                       className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${paymentColors[r.payment_status] ?? "bg-gray-100"}`}
                     >
-                      {paymentLabels[r.payment_status] ?? r.payment_status}
+                      {getPaymentLabel(r.payment_status, r.funding_source)}
                     </span>
                     {r.locked_at && (
                       <span className="ml-1 text-xs text-gray-400">🔒</span>
                     )}
                   </td>
+                  <td className="px-4 py-3 text-xs text-gray-500">
+                    {r.claim_number && (
+                      <div>請款: {r.claim_number}</div>
+                    )}
+                    {r.receipt_number && (
+                      <div>收據: {r.receipt_number}</div>
+                    )}
+                    {!r.claim_number && !r.receipt_number && "-"}
+                  </td>
                   <td className="px-4 py-3">
                     {!r.locked_at && userRole !== "therapist" && (
                       <div className="flex gap-2">
-                        {r.payment_status === "unpaid" && (
-                          <button
-                            onClick={() => handlePayment(r.id, "paid")}
-                            className="text-xs text-green-600 hover:underline"
-                          >
-                            收款
-                          </button>
-                        )}
-                        {r.payment_status === "pending_claim" && (
-                          <button
-                            onClick={() => handlePayment(r.id, "claiming")}
-                            className="text-xs text-blue-600 hover:underline"
-                          >
-                            請款
-                          </button>
-                        )}
-                        {r.payment_status === "claiming" && (
-                          <button
-                            onClick={() => handlePayment(r.id, "reconciled")}
-                            className="text-xs text-green-600 hover:underline"
-                          >
-                            核銷
-                          </button>
-                        )}
+                        {/* 自費: unpaid → paid */}
+                        {r.funding_source !== "institution" &&
+                          r.payment_status === "unpaid" && (
+                            <button
+                              onClick={() => handleSelfPayCollect(r.id)}
+                              className="text-xs text-green-600 hover:underline"
+                            >
+                              收款
+                            </button>
+                          )}
+                        {/* 機構: unpaid → claiming (輸入請款單號) */}
+                        {r.funding_source === "institution" &&
+                          r.payment_status === "unpaid" && (
+                            <button
+                              onClick={() => {
+                                setInputModal({ recordId: r.id, type: "claiming" });
+                                setInputValue("");
+                              }}
+                              className="text-xs text-blue-600 hover:underline"
+                            >
+                              請款
+                            </button>
+                          )}
+                        {/* 機構: claiming → claimed (輸入到款收據) */}
+                        {r.funding_source === "institution" &&
+                          r.payment_status === "claiming" && (
+                            <button
+                              onClick={() => {
+                                setInputModal({ recordId: r.id, type: "claimed" });
+                                setInputValue("");
+                              }}
+                              className="text-xs text-green-600 hover:underline"
+                            >
+                              到款
+                            </button>
+                          )}
                         <button
                           onClick={() => handleLock(r.id)}
                           className="text-xs text-gray-500 hover:underline"
@@ -282,6 +359,49 @@ export default function LedgerPage() {
           </tbody>
         </table>
       </div>
+
+      {inputModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-96 rounded-xl bg-white p-6 shadow-xl">
+            <h3 className="mb-4 text-lg font-semibold">
+              {inputModal.type === "claiming" ? "輸入請款單號" : "輸入到款收據/單號"}
+            </h3>
+            <input
+              type="text"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              placeholder={
+                inputModal.type === "claiming"
+                  ? "請輸入請款單號..."
+                  : "請輸入到款收據或單號..."
+              }
+              className="mb-4 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-primary-500 focus:outline-none"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleInputSubmit();
+              }}
+            />
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setInputModal(null);
+                  setInputValue("");
+                }}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleInputSubmit}
+                disabled={!inputValue.trim()}
+                className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+              >
+                確認
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

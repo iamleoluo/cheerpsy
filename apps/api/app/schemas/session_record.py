@@ -5,10 +5,10 @@ from pydantic import BaseModel
 
 class SessionRecordResponse(BaseModel):
     id: int
-    appointment_id: int
+    appointment_id: int | None = None
     appointment_number: str | None = None
     session_date: date
-    case_id: int
+    case_id: int | None = None
     case_name: str | None = None
     therapist_id: int
     therapist_name: str | None = None
@@ -20,6 +20,8 @@ class SessionRecordResponse(BaseModel):
     clinic_share: float
     payment_status: str
     funding_source: str | None = None
+    claim_number: str | None = None
+    receipt_number: str | None = None
     locked_at: datetime | None = None
 
     model_config = {"from_attributes": True}
@@ -27,6 +29,8 @@ class SessionRecordResponse(BaseModel):
 
 class SessionRecordUpdatePayment(BaseModel):
     payment_status: str
+    claim_number: str | None = None
+    receipt_number: str | None = None
 
 
 class SettlementRequest(BaseModel):

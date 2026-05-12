@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import RequireRole, get_current_user
 from app.database import get_db
+from app.models.case import Case
 from app.models.session_record import SessionRecord
 from app.models.user import User
 from app.schemas.session_record import (
@@ -18,10 +19,10 @@ from app.services.settlement import run_daily_settlement
 router = APIRouter(prefix="/ledger", tags=["ledger"])
 
 
-def _to_response(r: SessionRecord) -> SessionRecordResponse:
+def _to_response(r: SessionRecord, db: Session) -> SessionRecordResponse:
     appt = r.appointment
-    case = appt.case if appt else None
-    therapist = appt.therapist if appt else None
+    case = appt.case if appt else (db.query(Case).filter(Case.id == r.case_id).first() if r.case_id else None)
+    therapist = appt.therapist if appt else db.query(User).filter(User.id == r.therapist_id).first()
     return SessionRecordResponse(
         id=r.id,
         appointment_id=r.appointment_id,
@@ -39,6 +40,8 @@ def _to_response(r: SessionRecord) -> SessionRecordResponse:
         clinic_share=round(float(r.amount) * 0.3, 2),
         payment_status=r.payment_status,
         funding_source=case.funding_source if case else None,
+        claim_number=r.claim_number,
+        receipt_number=r.receipt_number,
         locked_at=r.locked_at,
     )
 
@@ -58,7 +61,7 @@ def list_records(
     if payment_status:
         query = query.filter(SessionRecord.payment_status == payment_status)
     records = query.order_by(SessionRecord.session_date.desc()).limit(200).all()
-    return [_to_response(r) for r in records]
+    return [_to_response(r, db) for r in records]
 
 
 @router.get("/{record_id}", response_model=SessionRecordResponse)
@@ -72,7 +75,7 @@ def get_record(
         raise HTTPException(status_code=404, detail="Record not found")
     if user.role == "therapist" and r.therapist_id != user.id:
         raise HTTPException(status_code=403, detail="Access denied")
-    return _to_response(r)
+    return _to_response(r, db)
 
 
 @router.put("/{record_id}/payment", response_model=SessionRecordResponse)
@@ -87,10 +90,37 @@ def update_payment_status(
         raise HTTPException(status_code=404, detail="Record not found")
     if r.locked_at:
         raise HTTPException(status_code=400, detail="Record is locked")
+
+    case = r.appointment.case if r.appointment else (
+        db.query(Case).filter(Case.id == r.case_id).first() if r.case_id else None
+    )
+    funding = case.funding_source if case else "self_pay"
+
+    SELF_PAY_TRANSITIONS = {"unpaid": ["paid"]}
+    INSTITUTION_TRANSITIONS = {"unpaid": ["claiming"], "claiming": ["claimed"]}
+
+    transitions = SELF_PAY_TRANSITIONS if funding == "self_pay" else INSTITUTION_TRANSITIONS
+    allowed = transitions.get(r.payment_status, [])
+    if body.payment_status not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot change from '{r.payment_status}' to '{body.payment_status}'",
+        )
+
+    if body.payment_status == "claiming":
+        if not body.claim_number or not body.claim_number.strip():
+            raise HTTPException(status_code=400, detail="請款單號為必填")
+        r.claim_number = body.claim_number.strip()
+
+    if body.payment_status == "claimed":
+        if not body.receipt_number or not body.receipt_number.strip():
+            raise HTTPException(status_code=400, detail="到款收據/單號為必填")
+        r.receipt_number = body.receipt_number.strip()
+
     r.payment_status = body.payment_status
     db.commit()
     db.refresh(r)
-    return _to_response(r)
+    return _to_response(r, db)
 
 
 @router.put("/{record_id}/lock", response_model=SessionRecordResponse)
@@ -107,7 +137,7 @@ def lock_record(
     r.locked_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(r)
-    return _to_response(r)
+    return _to_response(r, db)
 
 
 @router.post("/settle", response_model=SettlementResponse)

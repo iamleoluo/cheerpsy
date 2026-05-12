@@ -49,7 +49,7 @@ def _to_response(a: Appointment) -> AppointmentResponse:
         therapist_id=a.therapist_id,
         therapist_name=a.therapist.name if a.therapist else None,
         room_id=a.room_id,
-        room_name=None,
+        room_name=a.room.name if a.room else None,
         session_type=a.session_type,
         start_time=start,
         end_time=end,

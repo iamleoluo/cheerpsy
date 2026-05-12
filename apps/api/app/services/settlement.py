@@ -37,12 +37,6 @@ def run_daily_settlement(db: Session, target_date: date | None = None) -> dict:
 
         appt.status = "executed"
 
-        funding = appt.case.funding_source if appt.case else "self_pay"
-        if funding == "self_pay":
-            payment_status = "unpaid"
-        else:
-            payment_status = "pending_claim"
-
         record = SessionRecord(
             appointment_id=appt.id,
             session_date=target_date,
@@ -52,7 +46,7 @@ def run_daily_settlement(db: Session, target_date: date | None = None) -> dict:
             room_id=appt.room_id,
             fee_category="counseling",
             amount=appt.amount,
-            payment_status=payment_status,
+            payment_status="unpaid",
         )
         db.add(record)
         executed += 1

@@ -9,10 +9,11 @@ const navItems = [
   { href: "/appointments", label: "預約管理", icon: "📅" },
   { href: "/rooms", label: "空間預約", icon: "🏢" },
   { href: "/ledger", label: "諮商流水帳", icon: "📒" },
-  { href: "/finance", label: "財務核銷", icon: "💰" },
-  { href: "/petty-cash", label: "零用金", icon: "🪙" },
-  { href: "/reports", label: "月報表", icon: "📈" },
-];
+  { href: "/finance", label: "財務核銷", icon: "💰", roles: ["admin", "accountant"] },
+  { href: "/petty-cash", label: "零用金", icon: "🪙", roles: ["admin", "accountant"] },
+  { href: "/reports", label: "月報表", icon: "📈", roles: ["admin", "accountant"] },
+  { href: "/institutions", label: "機構管理", icon: "🏛️", roles: ["admin"] },
+] as const;
 
 export function Sidebar({ userName, userRole }: { userName: string; userRole: string }) {
   const pathname = usePathname();
@@ -31,7 +32,7 @@ export function Sidebar({ userName, userRole }: { userName: string; userRole: st
       </div>
 
       <nav className="flex-1 overflow-y-auto px-2 py-4">
-        {navItems.map((item) => {
+        {navItems.filter((item) => !("roles" in item) || item.roles.includes(userRole)).map((item) => {
           const active = pathname.startsWith(item.href);
           return (
             <Link

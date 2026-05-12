@@ -1,4 +1,5 @@
 from app.models.user import User
+from app.models.institution import Institution
 from app.models.case import Case
 from app.models.room import Room
 from app.models.appointment import Appointment
@@ -11,6 +12,7 @@ from app.models.reminder_log import ReminderLog
 
 __all__ = [
     "User",
+    "Institution",
     "Case",
     "Room",
     "Appointment",

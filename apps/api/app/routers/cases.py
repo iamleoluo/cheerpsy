@@ -14,14 +14,22 @@ router = APIRouter(prefix="/cases", tags=["cases"])
 def _to_response(c: Case) -> CaseResponse:
     return CaseResponse(
         id=c.id,
+        case_code=c.case_code,
         name=c.name,
         birth_date=c.birth_date,
         gender=c.gender,
         phone=c.phone,
+        phone_home=c.phone_home,
+        address=c.address,
         emergency_contact=c.emergency_contact,
+        emergency_phone=c.emergency_phone,
+        emergency_phone2=c.emergency_phone2,
         initial_visit_date=c.initial_visit_date,
         funding_source=c.funding_source,
-        institution_name=c.institution_name,
+        institution_id=c.institution_id,
+        institution_name=c.institution.name if c.institution else None,
+        referral_source=c.referral_source,
+        session_location=c.session_location,
         therapist_id=c.therapist_id,
         therapist_name=c.therapist.name if c.therapist else None,
         status=c.status,
@@ -78,7 +86,7 @@ def create_case(
         emergency_contact=body.emergency_contact,
         initial_visit_date=body.initial_visit_date,
         funding_source=body.funding_source,
-        institution_name=body.institution_name,
+        institution_id=body.institution_id if body.funding_source == "institution" else None,
         therapist_id=body.therapist_id if user.role != "therapist" else user.id,
         notes=body.notes,
     )
@@ -104,6 +112,8 @@ def update_case(
     update_data = body.model_dump(exclude_unset=True)
     for key, val in update_data.items():
         setattr(c, key, val)
+    if c.funding_source == "self_pay":
+        c.institution_id = None
     db.commit()
     db.refresh(c)
     return _to_response(c)

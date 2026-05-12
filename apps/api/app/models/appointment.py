@@ -22,6 +22,7 @@ class Appointment(Base):
 
     case = relationship("Case", back_populates="appointments")
     therapist = relationship("User", back_populates="appointments")
+    room = relationship("Room")
     session_record = relationship("SessionRecord", back_populates="appointment", uselist=False)
     invoice = relationship("Invoice", back_populates="appointment", uselist=False)
     reminders = relationship("ReminderLog", back_populates="appointment")

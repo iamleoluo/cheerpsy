@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
-import { clientFetch } from "@/lib/client-api";
+import { clientFetch, exportCsv } from "@/lib/client-api";
 
 interface CaseItem {
   id: number;
@@ -13,6 +13,7 @@ interface CaseItem {
   emergency_contact: string | null;
   initial_visit_date: string | null;
   funding_source: string;
+  institution_id: number | null;
   institution_name: string | null;
   therapist_id: number;
   therapist_name: string | null;
@@ -25,6 +26,12 @@ interface Therapist {
   name: string;
   email: string;
   role: string;
+}
+
+interface InstitutionItem {
+  id: number;
+  name: string;
+  is_active: boolean;
 }
 
 const statusLabels: Record<string, string> = {
@@ -55,6 +62,7 @@ export default function CasesPage() {
 
   const [cases, setCases] = useState<CaseItem[]>([]);
   const [therapists, setTherapists] = useState<Therapist[]>([]);
+  const [institutions, setInstitutions] = useState<InstitutionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -89,10 +97,21 @@ export default function CasesPage() {
     }
   }, [token]);
 
+  const fetchInstitutions = useCallback(async () => {
+    if (!token) return;
+    try {
+      const data = await clientFetch("/institutions", token);
+      setInstitutions(data);
+    } catch {
+      // institutions endpoint may not exist yet
+    }
+  }, [token]);
+
   useEffect(() => {
     fetchCases();
     fetchTherapists();
-  }, [fetchCases, fetchTherapists]);
+    fetchInstitutions();
+  }, [fetchCases, fetchTherapists, fetchInstitutions]);
 
   if (!token) return <p>Loading...</p>;
 
@@ -100,15 +119,25 @@ export default function CasesPage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">個案管理</h1>
-        <button
-          onClick={() => {
-            setEditingCase(null);
-            setShowForm(true);
-          }}
-          className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
-        >
-          + 新增個案
-        </button>
+        <div className="flex items-center gap-2">
+          {userRole !== "therapist" && (
+            <button
+              onClick={() => exportCsv("/export/cases", token, "cases.csv")}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
+            >
+              匯出 CSV
+            </button>
+          )}
+          <button
+            onClick={() => {
+              setEditingCase(null);
+              setShowForm(true);
+            }}
+            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+          >
+            + 新增個案
+          </button>
+        </div>
       </div>
 
       <div className="mb-4 flex gap-3">
@@ -177,7 +206,7 @@ export default function CasesPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    {c.gender === "M" ? "男" : c.gender === "F" ? "女" : c.gender ?? "-"}
+                    {c.gender === "male" ? "男" : c.gender === "female" ? "女" : c.gender ?? "-"}
                   </td>
                   <td className="px-4 py-3">{c.phone ?? "-"}</td>
                   <td className="px-4 py-3">
@@ -209,6 +238,7 @@ export default function CasesPage() {
         <CaseForm
           token={token}
           therapists={therapists}
+          institutions={institutions}
           editingCase={editingCase}
           userRole={userRole}
           onClose={() => {
@@ -229,6 +259,7 @@ export default function CasesPage() {
 function CaseForm({
   token,
   therapists,
+  institutions,
   editingCase,
   userRole,
   onClose,
@@ -236,6 +267,7 @@ function CaseForm({
 }: {
   token: string;
   therapists: Therapist[];
+  institutions: InstitutionItem[];
   editingCase: CaseItem | null;
   userRole: string;
   onClose: () => void;
@@ -249,7 +281,7 @@ function CaseForm({
     birth_date: editingCase?.birth_date ?? "",
     initial_visit_date: editingCase?.initial_visit_date ?? "",
     funding_source: editingCase?.funding_source ?? "self_pay",
-    institution_name: editingCase?.institution_name ?? "",
+    institution_id: editingCase?.institution_id?.toString() ?? "",
     therapist_id: editingCase?.therapist_id?.toString() ?? "",
     national_id: "",
     status: editingCase?.status ?? "initial",
@@ -271,7 +303,9 @@ function CaseForm({
         birth_date: form.birth_date || null,
         initial_visit_date: form.initial_visit_date || null,
         funding_source: form.funding_source,
-        institution_name: form.institution_name || null,
+        institution_id: form.funding_source === "institution" && form.institution_id
+          ? parseInt(form.institution_id)
+          : null,
         therapist_id: parseInt(form.therapist_id),
         notes: form.notes || null,
       };
@@ -334,8 +368,8 @@ function CaseForm({
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
               >
                 <option value="">未填寫</option>
-                <option value="M">男</option>
-                <option value="F">女</option>
+                <option value="male">男</option>
+                <option value="female">女</option>
               </select>
             </label>
           </div>
@@ -417,11 +451,18 @@ function CaseForm({
                 <span className="mb-1 block text-xs text-gray-500">
                   機構名稱
                 </span>
-                <input
-                  value={form.institution_name}
-                  onChange={(e) => setField("institution_name", e.target.value)}
+                <select
+                  value={form.institution_id}
+                  onChange={(e) => setField("institution_id", e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
-                />
+                >
+                  <option value="">請選擇機構</option>
+                  {institutions.map((inst) => (
+                    <option key={inst.id} value={inst.id}>
+                      {inst.name}
+                    </option>
+                  ))}
+                </select>
               </label>
             )}
           </div>

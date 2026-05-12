@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
-import { clientFetch } from "@/lib/client-api";
+import { clientFetch, exportCsv } from "@/lib/client-api";
 
 interface InvoiceItem {
   id: number;
@@ -90,14 +90,24 @@ export default function FinancePage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">財務核銷</h1>
-        {userRole !== "therapist" && (
-          <button
-            onClick={() => setShowCreate(true)}
-            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
-          >
-            + 開立收據
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {userRole !== "therapist" && (
+            <button
+              onClick={() => exportCsv("/export/invoices", token, "invoices.csv")}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
+            >
+              匯出 CSV
+            </button>
+          )}
+          {userRole !== "therapist" && (
+            <button
+              onClick={() => setShowCreate(true)}
+              className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+            >
+              + 開立收據
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="mb-4">

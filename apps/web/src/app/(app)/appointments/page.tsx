@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
-import { clientFetch } from "@/lib/client-api";
+import { clientFetch, exportCsv } from "@/lib/client-api";
+import RoomMiniCalendar from "@/components/room-mini-calendar";
 
 interface Appointment {
   id: number;
@@ -70,6 +71,7 @@ function formatDateTime(iso: string | null) {
 export default function AppointmentsPage() {
   const { data: session } = useSession();
   const token = (session?.user as any)?.accessToken;
+  const userRole = (session?.user as any)?.role;
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -120,6 +122,14 @@ export default function AppointmentsPage() {
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">預約管理</h1>
         <div className="flex gap-2">
+          {userRole !== "therapist" && (
+            <button
+              onClick={() => exportCsv("/export/appointments", token, "appointments.csv")}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
+            >
+              匯出 CSV
+            </button>
+          )}
           <button
             onClick={() => setShowBatchForm(true)}
             className="rounded-lg border border-primary-600 px-4 py-2 text-sm font-medium text-primary-600 hover:bg-primary-50"
@@ -165,6 +175,7 @@ export default function AppointmentsPage() {
               <th className="px-4 py-3">心理師</th>
               <th className="px-4 py-3">時間</th>
               <th className="px-4 py-3">類型</th>
+              <th className="px-4 py-3">空間</th>
               <th className="px-4 py-3">金額</th>
               <th className="px-4 py-3">狀態</th>
               <th className="px-4 py-3">操作</th>
@@ -173,13 +184,13 @@ export default function AppointmentsPage() {
           <tbody className="divide-y divide-gray-200">
             {loading ? (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-gray-400">
+                <td colSpan={9} className="px-4 py-8 text-center text-gray-400">
                   載入中...
                 </td>
               </tr>
             ) : appointments.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-gray-400">
+                <td colSpan={9} className="px-4 py-8 text-center text-gray-400">
                   尚無預約資料
                 </td>
               </tr>
@@ -198,6 +209,7 @@ export default function AppointmentsPage() {
                   <td className="px-4 py-3">
                     {sessionTypeLabels[a.session_type] ?? a.session_type}
                   </td>
+                  <td className="px-4 py-3">{a.room_name ?? "-"}</td>
                   <td className="px-4 py-3">
                     ${a.amount.toLocaleString()}
                     <div className="text-xs text-gray-400">
@@ -311,141 +323,161 @@ function AppointmentForm({
     }
   };
 
+  const selectedRoom = rooms.find((r) => String(r.id) === form.room_id);
+  const showCalendar = form.session_type === "in_person" && selectedRoom;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
-        <h2 className="mb-4 text-lg font-bold">新增預約</h2>
+      <div
+        className={`flex rounded-xl bg-white shadow-xl transition-all ${
+          showCalendar ? "w-full max-w-4xl" : "w-full max-w-md"
+        }`}
+      >
+        <div className={`p-6 ${showCalendar ? "w-1/2 border-r border-gray-200" : "w-full"}`}>
+          <h2 className="mb-4 text-lg font-bold">新增預約</h2>
 
-        {error && (
-          <div className="mb-3 rounded-lg bg-red-50 p-2 text-sm text-red-600">
-            {error}
-          </div>
-        )}
+          {error && (
+            <div className="mb-3 rounded-lg bg-red-50 p-2 text-sm text-red-600">
+              {error}
+            </div>
+          )}
 
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <label className="block">
-            <span className="mb-1 block text-xs text-gray-500">
-              個案 <span className="text-red-500">*</span>
-            </span>
-            <select
-              required
-              value={form.case_id}
-              onChange={(e) => setField("case_id", e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            >
-              <option value="">請選擇</option>
-              {cases.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="block">
-            <span className="mb-1 block text-xs text-gray-500">諮商類型</span>
-            <select
-              value={form.session_type}
-              onChange={(e) => setField("session_type", e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            >
-              <option value="in_person">現場</option>
-              <option value="online">線上</option>
-              <option value="home_visit">到宅</option>
-            </select>
-          </label>
-
-          {form.session_type === "in_person" && (
+          <form onSubmit={handleSubmit} className="space-y-3">
             <label className="block">
               <span className="mb-1 block text-xs text-gray-500">
-                空間 <span className="text-red-500">*</span>
+                個案 <span className="text-red-500">*</span>
               </span>
               <select
-                required={form.session_type === "in_person"}
-                value={form.room_id}
-                onChange={(e) => setField("room_id", e.target.value)}
+                required
+                value={form.case_id}
+                onChange={(e) => setField("case_id", e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
               >
                 <option value="">請選擇</option>
-                {rooms.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name} ({r.room_code})
+                {cases.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
                   </option>
                 ))}
               </select>
             </label>
-          )}
 
-          <label className="block">
-            <span className="mb-1 block text-xs text-gray-500">
-              日期 <span className="text-red-500">*</span>
-            </span>
-            <input
-              required
-              type="date"
-              value={form.start_date}
-              onChange={(e) => setField("start_date", e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            />
-          </label>
+            <label className="block">
+              <span className="mb-1 block text-xs text-gray-500">諮商類型</span>
+              <select
+                value={form.session_type}
+                onChange={(e) => setField("session_type", e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              >
+                <option value="in_person">現場</option>
+                <option value="online">線上</option>
+                <option value="home_visit">到宅</option>
+              </select>
+            </label>
 
-          <div className="grid grid-cols-2 gap-3">
+            {form.session_type === "in_person" && (
+              <label className="block">
+                <span className="mb-1 block text-xs text-gray-500">
+                  空間 <span className="text-red-500">*</span>
+                </span>
+                <select
+                  required={form.session_type === "in_person"}
+                  value={form.room_id}
+                  onChange={(e) => setField("room_id", e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                >
+                  <option value="">請選擇</option>
+                  {rooms.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name} ({r.room_code})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
             <label className="block">
               <span className="mb-1 block text-xs text-gray-500">
-                開始時間
+                日期 <span className="text-red-500">*</span>
               </span>
               <input
                 required
-                type="time"
-                value={form.start_time}
-                onChange={(e) => setField("start_time", e.target.value)}
+                type="date"
+                value={form.start_date}
+                onChange={(e) => setField("start_date", e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
               />
             </label>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="mb-1 block text-xs text-gray-500">
+                  開始時間
+                </span>
+                <input
+                  required
+                  type="time"
+                  value={form.start_time}
+                  onChange={(e) => setField("start_time", e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs text-gray-500">
+                  結束時間
+                </span>
+                <input
+                  required
+                  type="time"
+                  value={form.end_time}
+                  onChange={(e) => setField("end_time", e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </label>
+            </div>
+
             <label className="block">
               <span className="mb-1 block text-xs text-gray-500">
-                結束時間
+                金額 <span className="text-red-500">*</span>
               </span>
               <input
                 required
-                type="time"
-                value={form.end_time}
-                onChange={(e) => setField("end_time", e.target.value)}
+                type="number"
+                value={form.amount}
+                onChange={(e) => setField("amount", e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
               />
             </label>
-          </div>
 
-          <label className="block">
-            <span className="mb-1 block text-xs text-gray-500">
-              金額 <span className="text-red-500">*</span>
-            </span>
-            <input
-              required
-              type="number"
-              value={form.amount}
-              onChange={(e) => setField("amount", e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
+              >
+                取消
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+              >
+                {saving ? "儲存中..." : "儲存"}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        {showCalendar && (
+          <div className="w-1/2 p-4">
+            <RoomMiniCalendar
+              token={token}
+              roomId={selectedRoom.id}
+              roomName={selectedRoom.name}
+              focusDate={form.start_date || undefined}
             />
-          </label>
-
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
-            >
-              取消
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
-            >
-              {saving ? "儲存中..." : "儲存"}
-            </button>
           </div>
-        </form>
+        )}
       </div>
     </div>
   );
@@ -520,153 +552,174 @@ function BatchForm({
     }
   };
 
+  const selectedRoom = rooms.find((r) => String(r.id) === form.room_id);
+  const showCalendar = form.session_type === "in_person" && selectedRoom;
+  const firstSlotDate = slots.find((s) => s.date)?.date;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
-        <h2 className="mb-4 text-lg font-bold">批次預約</h2>
+      <div
+        className={`flex rounded-xl bg-white shadow-xl transition-all ${
+          showCalendar ? "w-full max-w-5xl" : "w-full max-w-lg"
+        }`}
+      >
+        <div className={`p-6 ${showCalendar ? "w-1/2 border-r border-gray-200" : "w-full"}`}>
+          <h2 className="mb-4 text-lg font-bold">批次預約</h2>
 
-        {error && (
-          <div className="mb-3 rounded-lg bg-red-50 p-2 text-sm text-red-600">
-            {error}
-          </div>
-        )}
+          {error && (
+            <div className="mb-3 rounded-lg bg-red-50 p-2 text-sm text-red-600">
+              {error}
+            </div>
+          )}
 
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <label className="block">
-            <span className="mb-1 block text-xs text-gray-500">
-              個案 <span className="text-red-500">*</span>
-            </span>
-            <select
-              required
-              value={form.case_id}
-              onChange={(e) => setField("case_id", e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            >
-              <option value="">請選擇</option>
-              {cases.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <div className="grid grid-cols-2 gap-3">
+          <form onSubmit={handleSubmit} className="space-y-3">
             <label className="block">
               <span className="mb-1 block text-xs text-gray-500">
-                諮商類型
+                個案 <span className="text-red-500">*</span>
               </span>
               <select
-                value={form.session_type}
-                onChange={(e) => setField("session_type", e.target.value)}
+                required
+                value={form.case_id}
+                onChange={(e) => setField("case_id", e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
               >
-                <option value="in_person">現場</option>
-                <option value="online">線上</option>
-                <option value="home_visit">到宅</option>
+                <option value="">請選擇</option>
+                {cases.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
               </select>
             </label>
-            {form.session_type === "in_person" && (
+
+            <div className="grid grid-cols-2 gap-3">
               <label className="block">
-                <span className="mb-1 block text-xs text-gray-500">空間</span>
+                <span className="mb-1 block text-xs text-gray-500">
+                  諮商類型
+                </span>
                 <select
-                  value={form.room_id}
-                  onChange={(e) => setField("room_id", e.target.value)}
+                  value={form.session_type}
+                  onChange={(e) => setField("session_type", e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                 >
-                  <option value="">請選擇</option>
-                  {rooms.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name} ({r.room_code})
-                    </option>
-                  ))}
+                  <option value="in_person">現場</option>
+                  <option value="online">線上</option>
+                  <option value="home_visit">到宅</option>
                 </select>
               </label>
-            )}
-          </div>
+              {form.session_type === "in_person" && (
+                <label className="block">
+                  <span className="mb-1 block text-xs text-gray-500">空間</span>
+                  <select
+                    value={form.room_id}
+                    onChange={(e) => setField("room_id", e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  >
+                    <option value="">請選擇</option>
+                    {rooms.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name} ({r.room_code})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
 
-          <label className="block">
-            <span className="mb-1 block text-xs text-gray-500">
-              預設金額 <span className="text-red-500">*</span>
-            </span>
-            <input
-              required
-              type="number"
-              value={form.amount}
-              onChange={(e) => setField("amount", e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            />
-          </label>
-
-          <div>
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-xs font-medium text-gray-500">
-                時段 ({slots.length})
+            <label className="block">
+              <span className="mb-1 block text-xs text-gray-500">
+                預設金額 <span className="text-red-500">*</span>
               </span>
+              <input
+                required
+                type="number"
+                value={form.amount}
+                onChange={(e) => setField("amount", e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              />
+            </label>
+
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs font-medium text-gray-500">
+                  時段 ({slots.length})
+                </span>
+                <button
+                  type="button"
+                  onClick={addSlot}
+                  className="text-xs text-primary-600 hover:underline"
+                >
+                  + 新增時段
+                </button>
+              </div>
+              <div className="max-h-48 space-y-2 overflow-y-auto">
+                {slots.map((slot, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <input
+                      required
+                      type="date"
+                      value={slot.date}
+                      onChange={(e) => updateSlot(i, "date", e.target.value)}
+                      className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                    />
+                    <input
+                      required
+                      type="time"
+                      value={slot.start}
+                      onChange={(e) => updateSlot(i, "start", e.target.value)}
+                      className="w-24 rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                    />
+                    <span className="text-gray-400">~</span>
+                    <input
+                      required
+                      type="time"
+                      value={slot.end}
+                      onChange={(e) => updateSlot(i, "end", e.target.value)}
+                      className="w-24 rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                    />
+                    {slots.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeSlot(i)}
+                        className="text-red-400 hover:text-red-600"
+                      >
+                        x
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
-                onClick={addSlot}
-                className="text-xs text-primary-600 hover:underline"
+                onClick={onClose}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
               >
-                + 新增時段
+                取消
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+              >
+                {saving ? "建立中..." : `建立 ${slots.length} 筆預約`}
               </button>
             </div>
-            <div className="max-h-48 space-y-2 overflow-y-auto">
-              {slots.map((slot, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <input
-                    required
-                    type="date"
-                    value={slot.date}
-                    onChange={(e) => updateSlot(i, "date", e.target.value)}
-                    className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
-                  />
-                  <input
-                    required
-                    type="time"
-                    value={slot.start}
-                    onChange={(e) => updateSlot(i, "start", e.target.value)}
-                    className="w-24 rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
-                  />
-                  <span className="text-gray-400">~</span>
-                  <input
-                    required
-                    type="time"
-                    value={slot.end}
-                    onChange={(e) => updateSlot(i, "end", e.target.value)}
-                    className="w-24 rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
-                  />
-                  {slots.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => removeSlot(i)}
-                      className="text-red-400 hover:text-red-600"
-                    >
-                      x
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+          </form>
+        </div>
 
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
-            >
-              取消
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
-            >
-              {saving ? "建立中..." : `建立 ${slots.length} 筆預約`}
-            </button>
+        {showCalendar && (
+          <div className="w-1/2 p-4">
+            <RoomMiniCalendar
+              token={token}
+              roomId={selectedRoom.id}
+              roomName={selectedRoom.name}
+              focusDate={firstSlotDate || undefined}
+            />
           </div>
-        </form>
+        )}
       </div>
     </div>
   );
