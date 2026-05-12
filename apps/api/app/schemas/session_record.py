@@ -38,6 +38,14 @@ class SessionRecordUpdatePayment(BaseModel):
     receipt_number: str | None = None
 
 
+class SessionRecordDirectEdit(BaseModel):
+    payment_status: str
+    payment_method: str | None = None
+    payment_note: str | None = None
+    claim_number: str | None = None
+    receipt_number: str | None = None
+
+
 class SettlementRequest(BaseModel):
     target_date: date | None = None
     date_from: date | None = None

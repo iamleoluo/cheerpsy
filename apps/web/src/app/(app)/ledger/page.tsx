@@ -71,9 +71,13 @@ export default function LedgerPage() {
   const token = (session?.user as any)?.accessToken;
   const userRole = (session?.user as any)?.role;
 
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
   const [records, setRecords] = useState<SessionRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("");
+  const [filterMonth, setFilterMonth] = useState(currentMonth);
   const [settling, setSettling] = useState(false);
   const [settleDateFrom, setSettleDateFrom] = useState("");
   const [settleDateTo, setSettleDateTo] = useState("");
@@ -90,12 +94,20 @@ export default function LedgerPage() {
   const [unlockModal, setUnlockModal] = useState<number | null>(null);
   const [unlockReason, setUnlockReason] = useState("");
 
+  const [editModal, setEditModal] = useState<SessionRecord | null>(null);
+  const [editStatus, setEditStatus] = useState("");
+  const [editMethod, setEditMethod] = useState<"cash" | "transfer" | "">("cash");
+  const [editNote, setEditNote] = useState("");
+  const [editClaim, setEditClaim] = useState("");
+  const [editReceipt, setEditReceipt] = useState("");
+
   const fetchRecords = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     try {
       const params = new URLSearchParams();
       if (filter) params.set("payment_status", filter);
+      if (filterMonth) params.set("month", filterMonth);
       const qs = params.toString();
       const data = await clientFetch(`/ledger${qs ? `?${qs}` : ""}`, token);
       setRecords(data);
@@ -104,7 +116,7 @@ export default function LedgerPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, filter]);
+  }, [token, filter, filterMonth]);
 
   useEffect(() => {
     fetchRecords();
@@ -207,6 +219,35 @@ export default function LedgerPage() {
     }
   };
 
+  const openEditModal = (r: SessionRecord) => {
+    setEditModal(r);
+    setEditStatus(r.payment_status);
+    setEditMethod((r.payment_method as any) || "cash");
+    setEditNote(r.payment_note ?? "");
+    setEditClaim(r.claim_number ?? "");
+    setEditReceipt(r.receipt_number ?? "");
+  };
+
+  const handleDirectEdit = async () => {
+    if (!editModal || !token) return;
+    try {
+      await clientFetch(`/ledger/${editModal.id}/edit`, token, {
+        method: "PUT",
+        body: JSON.stringify({
+          payment_status: editStatus,
+          payment_method: editMethod || null,
+          payment_note: editNote.trim() || null,
+          claim_number: editClaim.trim() || null,
+          receipt_number: editReceipt.trim() || null,
+        }),
+      });
+      setEditModal(null);
+      fetchRecords();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
   if (!token) return <p>Loading...</p>;
 
   const totalAmount = records.reduce((s, r) => s + r.amount, 0);
@@ -265,18 +306,26 @@ export default function LedgerPage() {
       )}
 
       <div className="mb-4 flex items-center justify-between">
-        <select
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-        >
-          <option value="">全部狀態</option>
-          {Object.entries(allFilterLabels).map(([k, v]) => (
-            <option key={k} value={k}>
-              {v}
-            </option>
-          ))}
-        </select>
+        <div className="flex items-center gap-2">
+          <input
+            type="month"
+            value={filterMonth}
+            onChange={(e) => setFilterMonth(e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          />
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          >
+            <option value="">全部狀態</option>
+            {Object.entries(allFilterLabels).map(([k, v]) => (
+              <option key={k} value={k}>
+                {v}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="flex gap-4 text-sm text-gray-500">
           <span>
             合計: <strong className="text-gray-900">${totalAmount.toLocaleString()}</strong>
@@ -363,7 +412,7 @@ export default function LedgerPage() {
                   </td>
                   <td className="px-4 py-3">
                     {!r.locked_at && userRole !== "therapist" && (
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         {r.funding_source !== "institution" &&
                           r.payment_status === "unpaid" && (
                             <button onClick={() => { setCollectModal(r.id); setCollectMethod("cash"); setCollectNote(""); }} className="text-xs text-green-600 hover:underline">收款</button>
@@ -376,7 +425,8 @@ export default function LedgerPage() {
                           r.payment_status === "claiming" && (
                             <button onClick={() => { setInputModal({ recordId: r.id, type: "claimed" }); setInputValue(""); }} className="text-xs text-green-600 hover:underline">到款</button>
                           )}
-                        <button onClick={() => handleLock(r.id)} className="text-xs text-gray-500 hover:underline">鎖定</button>
+                        <button onClick={() => openEditModal(r)} className="text-xs text-gray-500 hover:underline">編輯</button>
+                        <button onClick={() => handleLock(r.id)} className="text-xs text-gray-400 hover:underline">鎖定</button>
                       </div>
                     )}
                     {r.locked_at && userRole === "admin" && (
@@ -509,6 +559,63 @@ export default function LedgerPage() {
             <div className="mt-4 flex justify-end gap-2">
               <button onClick={() => { setUnlockModal(null); setUnlockReason(""); }} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">取消</button>
               <button onClick={handleUnlock} disabled={!unlockReason.trim()} className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50">確認解鎖</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {editModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <h3 className="mb-4 text-lg font-semibold">編輯收款資訊</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">收款狀態</label>
+                <select
+                  value={editStatus}
+                  onChange={(e) => setEditStatus(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                >
+                  <option value="unpaid">{editModal.funding_source === "institution" ? "待請款" : "未收款"}</option>
+                  {editModal.funding_source !== "institution" && <option value="paid">已收款</option>}
+                  {editModal.funding_source === "institution" && <option value="claiming">請款中</option>}
+                  {editModal.funding_source === "institution" && <option value="claimed">已核銷</option>}
+                </select>
+              </div>
+              {editModal.funding_source !== "institution" && (
+                <>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">收款方式</label>
+                    <div className="flex gap-4">
+                      {(["cash", "transfer"] as const).map((m) => (
+                        <label key={m} className="flex items-center gap-1.5 text-sm">
+                          <input type="radio" checked={editMethod === m} onChange={() => setEditMethod(m)} />
+                          {m === "cash" ? "現金" : "匯款"}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">收款備註</label>
+                    <input type="text" value={editNote} onChange={(e) => setEditNote(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="如帳戶末五碼..." />
+                  </div>
+                </>
+              )}
+              {editModal.funding_source === "institution" && (
+                <>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">請款單號</label>
+                    <input type="text" value={editClaim} onChange={(e) => setEditClaim(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="請款單號..." />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">到款收據/單號</label>
+                    <input type="text" value={editReceipt} onChange={(e) => setEditReceipt(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="到款收據或單號..." />
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button onClick={() => setEditModal(null)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">取消</button>
+              <button onClick={handleDirectEdit} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700">儲存</button>
             </div>
           </div>
         </div>

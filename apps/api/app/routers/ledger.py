@@ -11,6 +11,7 @@ from app.models.case import Case
 from app.models.session_record import SessionRecord
 from app.models.user import User
 from app.schemas.session_record import (
+    SessionRecordDirectEdit,
     SessionRecordResponse,
     SessionRecordUpdatePayment,
     SettlementRequest,
@@ -65,11 +66,14 @@ def _to_response(r: SessionRecord, db: Session) -> SessionRecordResponse:
 
 @router.get("", response_model=list[SessionRecordResponse])
 def list_records(
-    payment_status: str | None = Query(None, alias="payment_status"),
-    therapist_id: int | None = None,
+    payment_status: str | None = Query(None),
+    therapist_id: int | None = Query(None),
+    month: str | None = Query(None, description="YYYY-MM"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    from datetime import date
+    import calendar
     query = db.query(SessionRecord)
     if user.role == "therapist":
         query = query.filter(SessionRecord.therapist_id == user.id)
@@ -77,7 +81,19 @@ def list_records(
         query = query.filter(SessionRecord.therapist_id == therapist_id)
     if payment_status:
         query = query.filter(SessionRecord.payment_status == payment_status)
-    records = query.order_by(SessionRecord.session_date.desc()).limit(200).all()
+    if month:
+        try:
+            year, mon = int(month[:4]), int(month[5:7])
+            last_day = calendar.monthrange(year, mon)[1]
+            query = query.filter(
+                SessionRecord.session_date >= date(year, mon, 1),
+                SessionRecord.session_date <= date(year, mon, last_day),
+            )
+        except (ValueError, IndexError):
+            pass
+    limit = None if month else 200
+    q = query.order_by(SessionRecord.session_date.desc())
+    records = (q.all() if limit is None else q.limit(limit).all())
     return [_to_response(r, db) for r in records]
 
 
@@ -191,6 +207,48 @@ def unlock_record(
     old_locked = r.locked_at.isoformat() if r.locked_at else None
     r.locked_at = None
     _write_audit(db, "session_records", r.id, "UPDATE", user.id, {"locked_at": old_locked}, {"locked_at": None}, reason=body.reason)
+    db.commit()
+    db.refresh(r)
+    return _to_response(r, db)
+
+
+@router.put("/{record_id}/edit", response_model=SessionRecordResponse)
+def direct_edit_record(
+    record_id: int,
+    body: SessionRecordDirectEdit,
+    user: User = Depends(RequireRole(["admin", "accountant"])),
+    db: Session = Depends(get_db),
+):
+    r = db.query(SessionRecord).filter(SessionRecord.id == record_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Record not found")
+    if r.locked_at:
+        raise HTTPException(status_code=400, detail="Record is locked")
+
+    valid_statuses = {"unpaid", "paid", "claiming", "claimed"}
+    if body.payment_status not in valid_statuses:
+        raise HTTPException(status_code=400, detail="Invalid payment status")
+
+    before = {
+        "payment_status": r.payment_status,
+        "payment_method": r.payment_method,
+        "payment_note": r.payment_note,
+        "claim_number": r.claim_number,
+        "receipt_number": r.receipt_number,
+    }
+    r.payment_status = body.payment_status
+    r.payment_method = body.payment_method
+    r.payment_note = body.payment_note.strip() if body.payment_note else None
+    r.claim_number = body.claim_number.strip() if body.claim_number else None
+    r.receipt_number = body.receipt_number.strip() if body.receipt_number else None
+    after = {
+        "payment_status": r.payment_status,
+        "payment_method": r.payment_method,
+        "payment_note": r.payment_note,
+        "claim_number": r.claim_number,
+        "receipt_number": r.receipt_number,
+    }
+    _write_audit(db, "session_records", r.id, "UPDATE", user.id, before, after)
     db.commit()
     db.refresh(r)
     return _to_response(r, db)
