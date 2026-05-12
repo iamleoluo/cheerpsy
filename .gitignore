@@ -1,14 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+*.egg
+
+# Node.js
 node_modules/
 .next/
 dist/
-*.db
-*.db-journal
+
+# Environment
 .env
 .env.local
 .env.production
-.turbo/
-.vercel/
-coverage/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data
+*.db
+*.db-journal
 *.xlsx
-PLAN.md
-**/generated/prisma/
+
+# Docker
+pgdata/
+
+# Misc
+coverage/
+*.log
