@@ -17,6 +17,8 @@ class SessionRecord(Base):
     fee_category = Column(String(20), nullable=False, default="counseling")
     amount = Column(Numeric(10, 2), nullable=False)
     payment_status = Column(String(20), nullable=False, default="unpaid")
+    payment_method = Column(String(20), nullable=True)  # cash, transfer
+    payment_note = Column(String(200), nullable=True)  # e.g. bank account last 5 digits
     claim_number = Column(String(100), nullable=True)
     receipt_number = Column(String(100), nullable=True)
     locked_at = Column(DateTime(timezone=True), nullable=True)

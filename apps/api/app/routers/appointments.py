@@ -73,7 +73,7 @@ def list_appointments(
     db: Session = Depends(get_db),
 ):
     query = db.query(Appointment)
-    if user.role == "therapist":
+    if user.role == "therapist" and not room_id:
         query = query.filter(Appointment.therapist_id == user.id)
     if status_filter:
         query = query.filter(Appointment.status == status_filter)

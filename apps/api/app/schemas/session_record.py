@@ -20,6 +20,9 @@ class SessionRecordResponse(BaseModel):
     clinic_share: float
     payment_status: str
     funding_source: str | None = None
+    institution_name: str | None = None
+    payment_method: str | None = None
+    payment_note: str | None = None
     claim_number: str | None = None
     receipt_number: str | None = None
     locked_at: datetime | None = None
@@ -29,6 +32,8 @@ class SessionRecordResponse(BaseModel):
 
 class SessionRecordUpdatePayment(BaseModel):
     payment_status: str
+    payment_method: str | None = None
+    payment_note: str | None = None
     claim_number: str | None = None
     receipt_number: str | None = None
 

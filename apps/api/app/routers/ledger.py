@@ -1,10 +1,12 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import RequireRole, get_current_user
 from app.database import get_db
+from app.models.audit_log import AuditLog
 from app.models.case import Case
 from app.models.session_record import SessionRecord
 from app.models.user import User
@@ -15,6 +17,18 @@ from app.schemas.session_record import (
     SettlementResponse,
 )
 from app.services.settlement import run_daily_settlement
+
+
+def _write_audit(db: Session, table: str, record_id: int, op: str, user_id: int, before: dict | None, after: dict | None, reason: str | None = None):
+    db.add(AuditLog(
+        table_name=table,
+        record_id=record_id,
+        operation=op,
+        changed_by=user_id,
+        before_data=before,
+        after_data=after,
+        reason=reason,
+    ))
 
 router = APIRouter(prefix="/ledger", tags=["ledger"])
 
@@ -40,6 +54,9 @@ def _to_response(r: SessionRecord, db: Session) -> SessionRecordResponse:
         clinic_share=round(float(r.amount) * 0.3, 2),
         payment_status=r.payment_status,
         funding_source=case.funding_source if case else None,
+        institution_name=case.institution.name if case and case.institution else None,
+        payment_method=r.payment_method,
+        payment_note=r.payment_note,
         claim_number=r.claim_number,
         receipt_number=r.receipt_number,
         locked_at=r.locked_at,
@@ -107,6 +124,17 @@ def update_payment_status(
             detail=f"Cannot change from '{r.payment_status}' to '{body.payment_status}'",
         )
 
+    if body.payment_status == "paid":
+        if not body.payment_method or body.payment_method not in ("cash", "transfer"):
+            raise HTTPException(status_code=400, detail="請選擇收款方式（現金或匯款）")
+        r.payment_method = body.payment_method
+        if body.payment_method == "transfer":
+            if not body.payment_note or not body.payment_note.strip():
+                raise HTTPException(status_code=400, detail="匯款資訊為必填（如帳戶末五碼）")
+            r.payment_note = body.payment_note.strip()
+        else:
+            r.payment_note = body.payment_note.strip() if body.payment_note else None
+
     if body.payment_status == "claiming":
         if not body.claim_number or not body.claim_number.strip():
             raise HTTPException(status_code=400, detail="請款單號為必填")
@@ -117,7 +145,10 @@ def update_payment_status(
             raise HTTPException(status_code=400, detail="到款收據/單號為必填")
         r.receipt_number = body.receipt_number.strip()
 
+    before = {"payment_status": r.payment_status, "payment_method": r.payment_method, "claim_number": r.claim_number, "receipt_number": r.receipt_number}
     r.payment_status = body.payment_status
+    after = {"payment_status": r.payment_status, "payment_method": r.payment_method, "claim_number": r.claim_number, "receipt_number": r.receipt_number}
+    _write_audit(db, "session_records", r.id, "UPDATE", user.id, before, after)
     db.commit()
     db.refresh(r)
     return _to_response(r, db)
@@ -135,6 +166,31 @@ def lock_record(
     if r.locked_at:
         raise HTTPException(status_code=400, detail="Already locked")
     r.locked_at = datetime.now(timezone.utc)
+    _write_audit(db, "session_records", r.id, "UPDATE", user.id, {"locked_at": None}, {"locked_at": r.locked_at.isoformat()})
+    db.commit()
+    db.refresh(r)
+    return _to_response(r, db)
+
+
+class UnlockRequest(BaseModel):
+    reason: str
+
+
+@router.put("/{record_id}/unlock", response_model=SessionRecordResponse)
+def unlock_record(
+    record_id: int,
+    body: UnlockRequest,
+    user: User = Depends(RequireRole(["admin"])),
+    db: Session = Depends(get_db),
+):
+    r = db.query(SessionRecord).filter(SessionRecord.id == record_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Record not found")
+    if not r.locked_at:
+        raise HTTPException(status_code=400, detail="Record is not locked")
+    old_locked = r.locked_at.isoformat() if r.locked_at else None
+    r.locked_at = None
+    _write_audit(db, "session_records", r.id, "UPDATE", user.id, {"locked_at": old_locked}, {"locked_at": None}, reason=body.reason)
     db.commit()
     db.refresh(r)
     return _to_response(r, db)

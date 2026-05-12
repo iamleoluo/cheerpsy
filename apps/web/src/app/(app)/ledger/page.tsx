@@ -20,6 +20,9 @@ interface SessionRecord {
   clinic_share: number;
   payment_status: string;
   funding_source: string | null;
+  institution_name: string | null;
+  payment_method: string | null;
+  payment_note: string | null;
   claim_number: string | null;
   receipt_number: string | null;
   locked_at: string | null;
@@ -80,6 +83,11 @@ export default function LedgerPage() {
     type: "claiming" | "claimed";
   } | null>(null);
   const [inputValue, setInputValue] = useState("");
+  const [collectModal, setCollectModal] = useState<number | null>(null);
+  const [collectMethod, setCollectMethod] = useState<"cash" | "transfer">("cash");
+  const [collectNote, setCollectNote] = useState("");
+  const [unlockModal, setUnlockModal] = useState<number | null>(null);
+  const [unlockReason, setUnlockReason] = useState("");
 
   const fetchRecords = useCallback(async () => {
     if (!token) return;
@@ -123,13 +131,24 @@ export default function LedgerPage() {
     }
   };
 
-  const handleSelfPayCollect = async (id: number) => {
-    if (!token) return;
+  const handleSelfPayCollect = async () => {
+    if (!collectModal || !token) return;
+    if (collectMethod === "transfer" && !collectNote.trim()) {
+      alert("匯款資訊為必填（如帳戶末五碼）");
+      return;
+    }
     try {
-      await clientFetch(`/ledger/${id}/payment`, token, {
+      await clientFetch(`/ledger/${collectModal}/payment`, token, {
         method: "PUT",
-        body: JSON.stringify({ payment_status: "paid" }),
+        body: JSON.stringify({
+          payment_status: "paid",
+          payment_method: collectMethod,
+          payment_note: collectNote.trim() || null,
+        }),
       });
+      setCollectModal(null);
+      setCollectMethod("cash");
+      setCollectNote("");
       fetchRecords();
     } catch (e: any) {
       alert(e.message);
@@ -167,6 +186,21 @@ export default function LedgerPage() {
     }
   };
 
+  const handleUnlock = async () => {
+    if (!unlockModal || !token || !unlockReason.trim()) return;
+    try {
+      await clientFetch(`/ledger/${unlockModal}/unlock`, token, {
+        method: "PUT",
+        body: JSON.stringify({ reason: unlockReason.trim() }),
+      });
+      setUnlockModal(null);
+      setUnlockReason("");
+      fetchRecords();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
   if (!token) return <p>Loading...</p>;
 
   const totalAmount = records.reduce((s, r) => s + r.amount, 0);
@@ -178,6 +212,13 @@ export default function LedgerPage() {
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">諮商流水帳</h1>
         <div className="flex items-center gap-2">
+          <button
+            onClick={fetchRecords}
+            disabled={loading}
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+          >
+            {loading ? "更新中..." : "更新"}
+          </button>
           {userRole !== "therapist" && (
             <button
               onClick={() => exportCsv("/export/ledger", token, "ledger.csv")}
@@ -247,7 +288,7 @@ export default function LedgerPage() {
               <th className="px-4 py-3">金額</th>
               <th className="px-4 py-3">來源</th>
               <th className="px-4 py-3">收款狀態</th>
-              <th className="px-4 py-3">單號</th>
+              <th className="px-4 py-3">收款/單號資訊</th>
               <th className="px-4 py-3">操作</th>
             </tr>
           </thead>
@@ -284,7 +325,9 @@ export default function LedgerPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-xs">
-                    {r.funding_source === "institution" ? "機構" : "自費"}
+                    {r.funding_source === "institution"
+                      ? `機構${r.institution_name ? `(${r.institution_name})` : ""}`
+                      : "自費"}
                   </td>
                   <td className="px-4 py-3">
                     <span
@@ -297,60 +340,42 @@ export default function LedgerPage() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-500">
+                    {r.payment_method && (
+                      <div>{r.payment_method === "cash" ? "現金" : "匯款"}{r.payment_note ? ` — ${r.payment_note}` : ""}</div>
+                    )}
                     {r.claim_number && (
                       <div>請款: {r.claim_number}</div>
                     )}
                     {r.receipt_number && (
                       <div>收據: {r.receipt_number}</div>
                     )}
-                    {!r.claim_number && !r.receipt_number && "-"}
+                    {!r.payment_method && !r.claim_number && !r.receipt_number && "-"}
                   </td>
                   <td className="px-4 py-3">
                     {!r.locked_at && userRole !== "therapist" && (
                       <div className="flex gap-2">
-                        {/* 自費: unpaid → paid */}
                         {r.funding_source !== "institution" &&
                           r.payment_status === "unpaid" && (
-                            <button
-                              onClick={() => handleSelfPayCollect(r.id)}
-                              className="text-xs text-green-600 hover:underline"
-                            >
-                              收款
-                            </button>
+                            <button onClick={() => { setCollectModal(r.id); setCollectMethod("cash"); setCollectNote(""); }} className="text-xs text-green-600 hover:underline">收款</button>
                           )}
-                        {/* 機構: unpaid → claiming (輸入請款單號) */}
                         {r.funding_source === "institution" &&
                           r.payment_status === "unpaid" && (
-                            <button
-                              onClick={() => {
-                                setInputModal({ recordId: r.id, type: "claiming" });
-                                setInputValue("");
-                              }}
-                              className="text-xs text-blue-600 hover:underline"
-                            >
-                              請款
-                            </button>
+                            <button onClick={() => { setInputModal({ recordId: r.id, type: "claiming" }); setInputValue(""); }} className="text-xs text-blue-600 hover:underline">請款</button>
                           )}
-                        {/* 機構: claiming → claimed (輸入到款收據) */}
                         {r.funding_source === "institution" &&
                           r.payment_status === "claiming" && (
-                            <button
-                              onClick={() => {
-                                setInputModal({ recordId: r.id, type: "claimed" });
-                                setInputValue("");
-                              }}
-                              className="text-xs text-green-600 hover:underline"
-                            >
-                              到款
-                            </button>
+                            <button onClick={() => { setInputModal({ recordId: r.id, type: "claimed" }); setInputValue(""); }} className="text-xs text-green-600 hover:underline">到款</button>
                           )}
-                        <button
-                          onClick={() => handleLock(r.id)}
-                          className="text-xs text-gray-500 hover:underline"
-                        >
-                          鎖定
-                        </button>
+                        <button onClick={() => handleLock(r.id)} className="text-xs text-gray-500 hover:underline">鎖定</button>
                       </div>
+                    )}
+                    {r.locked_at && userRole === "admin" && (
+                      <button
+                        onClick={() => { setUnlockModal(r.id); setUnlockReason(""); }}
+                        className="text-xs text-amber-600 hover:underline"
+                      >
+                        解鎖
+                      </button>
                     )}
                   </td>
                 </tr>
@@ -370,34 +395,110 @@ export default function LedgerPage() {
               type="text"
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
-              placeholder={
-                inputModal.type === "claiming"
-                  ? "請輸入請款單號..."
-                  : "請輸入到款收據或單號..."
-              }
+              placeholder={inputModal.type === "claiming" ? "請輸入請款單號..." : "請輸入到款收據或單號..."}
               className="mb-4 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-primary-500 focus:outline-none"
               autoFocus
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleInputSubmit();
-              }}
+              onKeyDown={(e) => { if (e.key === "Enter") handleInputSubmit(); }}
             />
             <div className="flex justify-end gap-3">
+              <button onClick={() => { setInputModal(null); setInputValue(""); }} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">取消</button>
+              <button onClick={handleInputSubmit} disabled={!inputValue.trim()} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">確認</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {collectModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-96 rounded-xl bg-white p-6 shadow-xl">
+            <h3 className="mb-4 text-lg font-semibold">自費收款</h3>
+            <div className="mb-4">
+              <span className="mb-2 block text-sm font-medium text-gray-700">收款方式</span>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="collectMethod"
+                    checked={collectMethod === "cash"}
+                    onChange={() => setCollectMethod("cash")}
+                    className="accent-primary-600"
+                  />
+                  現金
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="collectMethod"
+                    checked={collectMethod === "transfer"}
+                    onChange={() => setCollectMethod("transfer")}
+                    className="accent-primary-600"
+                  />
+                  匯款
+                </label>
+              </div>
+            </div>
+            {collectMethod === "transfer" && (
+              <div className="mb-4">
+                <label className="block">
+                  <span className="mb-1 block text-xs text-gray-500">匯款資訊（如帳戶末五碼）*</span>
+                  <input
+                    type="text"
+                    value={collectNote}
+                    onChange={(e) => setCollectNote(e.target.value)}
+                    placeholder="請輸入匯款資訊..."
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-primary-500 focus:outline-none"
+                    autoFocus
+                  />
+                </label>
+              </div>
+            )}
+            {collectMethod === "cash" && (
+              <div className="mb-4">
+                <label className="block">
+                  <span className="mb-1 block text-xs text-gray-500">備註（選填）</span>
+                  <input
+                    type="text"
+                    value={collectNote}
+                    onChange={(e) => setCollectNote(e.target.value)}
+                    placeholder="備註..."
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-primary-500 focus:outline-none"
+                  />
+                </label>
+              </div>
+            )}
+            <div className="flex justify-end gap-3">
+              <button onClick={() => { setCollectModal(null); setCollectMethod("cash"); setCollectNote(""); }} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">取消</button>
               <button
-                onClick={() => {
-                  setInputModal(null);
-                  setInputValue("");
-                }}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
+                onClick={handleSelfPayCollect}
+                disabled={collectMethod === "transfer" && !collectNote.trim()}
+                className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
               >
-                取消
+                確認收款
               </button>
-              <button
-                onClick={handleInputSubmit}
-                disabled={!inputValue.trim()}
-                className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
-              >
-                確認
-              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {unlockModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
+            <h3 className="mb-4 text-lg font-semibold">解鎖帳務紀錄</h3>
+            <p className="mb-3 text-sm text-gray-500">解鎖後可再次修改此筆帳務。此操作會記錄在稽核日誌中。</p>
+            <label className="block">
+              <span className="mb-1 block text-xs text-gray-500">解鎖原因 *</span>
+              <textarea
+                value={unlockReason}
+                onChange={(e) => setUnlockReason(e.target.value)}
+                rows={3}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                placeholder="請說明解鎖原因..."
+                autoFocus
+              />
+            </label>
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => { setUnlockModal(null); setUnlockReason(""); }} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">取消</button>
+              <button onClick={handleUnlock} disabled={!unlockReason.trim()} className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50">確認解鎖</button>
             </div>
           </div>
         </div>

@@ -8,10 +8,13 @@ const navItems = [
   { href: "/cases", label: "個案管理", icon: "👤" },
   { href: "/appointments", label: "預約管理", icon: "📅" },
   { href: "/rooms", label: "空間預約", icon: "🏢" },
+  { href: "/reminders", label: "預約提醒", icon: "📞" },
   { href: "/ledger", label: "諮商流水帳", icon: "📒" },
-  { href: "/finance", label: "財務核銷", icon: "💰", roles: ["admin", "accountant"] },
+  { href: "/reconciliation", label: "財務核銷", icon: "💰", roles: ["admin", "accountant"] },
+  { href: "/payouts", label: "心理師酬勞", icon: "💳", roles: ["admin", "accountant"] },
   { href: "/petty-cash", label: "零用金", icon: "🪙", roles: ["admin", "accountant"] },
   { href: "/reports", label: "月報表", icon: "📈", roles: ["admin", "accountant"] },
+  { href: "/churn", label: "流失預警", icon: "⚠️", roles: ["admin", "accountant"] },
   { href: "/institutions", label: "機構管理", icon: "🏛️", roles: ["admin"] },
 ] as const;
 
@@ -32,7 +35,7 @@ export function Sidebar({ userName, userRole }: { userName: string; userRole: st
       </div>
 
       <nav className="flex-1 overflow-y-auto px-2 py-4">
-        {navItems.filter((item) => !("roles" in item) || item.roles.includes(userRole)).map((item) => {
+        {navItems.filter((item) => !("roles" in item) || (item.roles as readonly string[]).includes(userRole)).map((item) => {
           const active = pathname.startsWith(item.href);
           return (
             <Link

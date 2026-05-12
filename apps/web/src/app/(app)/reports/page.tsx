@@ -17,6 +17,26 @@ interface ReportData {
     petty_cash_total: number;
     net_clinic_income: number;
   };
+  session_type_breakdown: Record<string, { count: number; revenue: number }>;
+  funding_breakdown: {
+    self_pay_revenue: number;
+    institution_revenue: number;
+    institution_unpaid: number;
+  };
+  pnl: {
+    gross_revenue: number;
+    therapist_cost: number;
+    clinic_gross: number;
+    petty_cash_expense: number;
+    net_income: number;
+    cancelled_loss: number;
+  };
+  kpi: {
+    cancel_rate: number;
+    continuation_rate: number;
+    active_therapists: number;
+    unique_cases: number;
+  };
   therapist_summary: {
     therapist_id: number;
     therapist_name: string;
@@ -26,11 +46,7 @@ interface ReportData {
     clinic_share: number;
   }[];
   petty_cash_by_category: Record<string, number>;
-  appointment_stats: {
-    booked: number;
-    cancelled: number;
-    executed: number;
-  };
+  appointment_stats: { booked: number; cancelled: number; executed: number };
 }
 
 const categoryLabels: Record<string, string> = {
@@ -39,6 +55,12 @@ const categoryLabels: Record<string, string> = {
   electricity: "電費",
   water: "水費",
   other: "其他",
+};
+
+const sessionTypeLabels: Record<string, string> = {
+  in_person: "現場諮商",
+  online: "線上諮商",
+  home_visit: "到宅服務",
 };
 
 export default function ReportsPage() {
@@ -57,10 +79,7 @@ export default function ReportsPage() {
     setLoading(true);
     setError("");
     try {
-      const data = await clientFetch(
-        `/reports/monthly?year=${year}&month=${month}`,
-        token,
-      );
+      const data = await clientFetch(`/reports/monthly?year=${year}&month=${month}`, token);
       setReport(data);
     } catch (e: any) {
       setError(e.message);
@@ -76,43 +95,22 @@ export default function ReportsPage() {
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">月報表</h1>
         <div className="flex items-center gap-2">
-          <select
-            value={year}
-            onChange={(e) => setYear(parseInt(e.target.value))}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          >
-            {[2025, 2026, 2027].map((y) => (
-              <option key={y} value={y}>{y}</option>
-            ))}
+          <select value={year} onChange={(e) => setYear(parseInt(e.target.value))} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            {[2025, 2026, 2027].map((y) => <option key={y} value={y}>{y}</option>)}
           </select>
-          <select
-            value={month}
-            onChange={(e) => setMonth(parseInt(e.target.value))}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          >
-            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-              <option key={m} value={m}>{m} 月</option>
-            ))}
+          <select value={month} onChange={(e) => setMonth(parseInt(e.target.value))} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => <option key={m} value={m}>{m} 月</option>)}
           </select>
-          <button
-            onClick={fetchReport}
-            disabled={loading}
-            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
-          >
+          <button onClick={fetchReport} disabled={loading} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">
             {loading ? "產生中..." : "產生報表"}
           </button>
-          <button
-            onClick={() => exportCsv(`/export/ledger?year=${year}&month=${month}`, token, `ledger_${year}_${month}.csv`)}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
-          >
+          <button onClick={() => exportCsv(`/export/ledger?year=${year}&month=${month}`, token, `ledger_${year}_${month}.csv`)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50">
             匯出 CSV
           </button>
         </div>
       </div>
 
-      {error && (
-        <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</div>
-      )}
+      {error && <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</div>}
 
       {!report ? (
         <div className="rounded-lg border border-dashed border-gray-300 p-16 text-center text-gray-400">
@@ -120,7 +118,7 @@ export default function ReportsPage() {
         </div>
       ) : (
         <div className="space-y-6">
-          {/* Summary Cards */}
+          {/* Revenue Cards */}
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             <StatCard label="總營收" value={`$${report.summary.total_revenue.toLocaleString()}`} />
             <StatCard label="諮商次數" value={report.summary.session_count.toString()} />
@@ -129,10 +127,73 @@ export default function ReportsPage() {
           </div>
 
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-            <StatCard label="已收款" value={report.summary.paid_count.toString()} color="green" />
-            <StatCard label="未收款" value={report.summary.unpaid_count.toString()} color="red" />
+            <StatCard label="已收/請款" value={report.summary.paid_count.toString()} color="green" />
+            <StatCard label="未收/請款" value={report.summary.unpaid_count.toString()} color="red" />
             <StatCard label="零用金支出" value={`$${report.summary.petty_cash_total.toLocaleString()}`} />
             <StatCard label="取消預約" value={report.appointment_stats.cancelled.toString()} color="gray" />
+          </div>
+
+          {/* P&L Summary */}
+          <div>
+            <h2 className="mb-3 text-lg font-semibold">損益摘要</h2>
+            <div className="rounded-lg border border-gray-200 bg-white p-4">
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+                <PnlRow label="總營收" value={report.pnl.gross_revenue} />
+                <PnlRow label="心理師成本 (70%)" value={-report.pnl.therapist_cost} negative />
+                <PnlRow label="診所毛利 (30%)" value={report.pnl.clinic_gross} />
+                <PnlRow label="零用金支出" value={report.pnl.petty_cash_expense} negative={report.pnl.petty_cash_expense < 0} />
+                <PnlRow label="淨收入" value={report.pnl.net_income} bold />
+                <PnlRow label="取消損失" value={-report.pnl.cancelled_loss} negative />
+              </div>
+            </div>
+          </div>
+
+          {/* KPI + Session Type + Funding */}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div>
+              <h2 className="mb-3 text-lg font-semibold">KPI 指標</h2>
+              <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-4">
+                <KpiRow label="取消率" value={`${report.kpi.cancel_rate}%`} warn={report.kpi.cancel_rate > 15} />
+                <KpiRow label="續診率" value={`${report.kpi.continuation_rate}%`} />
+                <KpiRow label="活躍心理師" value={`${report.kpi.active_therapists} 位`} />
+                <KpiRow label="本月個案數" value={`${report.kpi.unique_cases} 位`} />
+              </div>
+            </div>
+
+            <div>
+              <h2 className="mb-3 text-lg font-semibold">諮商類型分布</h2>
+              <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-4">
+                {Object.entries(report.session_type_breakdown).map(([type, data]) => (
+                  <div key={type} className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">{sessionTypeLabels[type] ?? type}</span>
+                    <span className="text-sm font-medium">
+                      {data.count} 次 · ${data.revenue.toLocaleString()}
+                    </span>
+                  </div>
+                ))}
+                {Object.keys(report.session_type_breakdown).length === 0 && (
+                  <p className="text-sm text-gray-400">無資料</p>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <h2 className="mb-3 text-lg font-semibold">金流來源分析</h2>
+              <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">自費收入</span>
+                  <span className="text-sm font-medium">${report.funding_breakdown.self_pay_revenue.toLocaleString()}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">機構收入</span>
+                  <span className="text-sm font-medium">${report.funding_breakdown.institution_revenue.toLocaleString()}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-red-600">機構待請款</span>
+                  <span className="text-sm font-medium text-red-600">${report.funding_breakdown.institution_unpaid.toLocaleString()}</span>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Therapist Summary */}
@@ -171,9 +232,7 @@ export default function ReportsPage() {
               <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                 {Object.entries(report.petty_cash_by_category).map(([cat, amt]) => (
                   <div key={cat} className="rounded-lg border border-gray-200 p-3">
-                    <div className="text-xs text-gray-500">
-                      {categoryLabels[cat] ?? cat}
-                    </div>
+                    <div className="text-xs text-gray-500">{categoryLabels[cat] ?? cat}</div>
                     <div className="text-lg font-bold">${amt.toLocaleString()}</div>
                   </div>
                 ))}
@@ -186,27 +245,32 @@ export default function ReportsPage() {
   );
 }
 
-function StatCard({
-  label,
-  value,
-  color,
-}: {
-  label: string;
-  value: string;
-  color?: string;
-}) {
-  const colorClass =
-    color === "green"
-      ? "text-green-600"
-      : color === "red"
-        ? "text-red-600"
-        : color === "gray"
-          ? "text-gray-500"
-          : "text-gray-900";
+function StatCard({ label, value, color }: { label: string; value: string; color?: string }) {
+  const colorClass = color === "green" ? "text-green-600" : color === "red" ? "text-red-600" : color === "gray" ? "text-gray-500" : "text-gray-900";
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-4">
       <div className="text-xs text-gray-500">{label}</div>
       <div className={`mt-1 text-xl font-bold ${colorClass}`}>{value}</div>
+    </div>
+  );
+}
+
+function PnlRow({ label, value, negative, bold }: { label: string; value: number; negative?: boolean; bold?: boolean }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className={`text-sm ${bold ? "font-semibold" : "text-gray-600"}`}>{label}</span>
+      <span className={`text-sm ${bold ? "font-bold text-gray-900" : ""} ${negative ? "text-red-600" : ""}`}>
+        {value < 0 ? "-" : ""}${Math.abs(value).toLocaleString()}
+      </span>
+    </div>
+  );
+}
+
+function KpiRow({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-sm text-gray-600">{label}</span>
+      <span className={`text-sm font-medium ${warn ? "text-red-600" : "text-gray-900"}`}>{value}</span>
     </div>
   );
 }
