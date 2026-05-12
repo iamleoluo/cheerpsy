@@ -41,7 +41,6 @@ export default function PayoutsPage() {
   const [payouts, setPayouts] = useState<Payout[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
-  const [genMonth, setGenMonth] = useState(filterMonth);
   const [detailModal, setDetailModal] = useState<{ payoutId: number; name: string } | null>(null);
   const [details, setDetails] = useState<PayoutSession[]>([]);
 
@@ -64,15 +63,14 @@ export default function PayoutsPage() {
   }, [fetchPayouts]);
 
   const handleGenerate = async () => {
-    if (!token || !genMonth) return;
+    if (!token || !filterMonth) return;
     setGenerating(true);
     try {
       const result = await clientFetch("/payouts/generate", token, {
         method: "POST",
-        body: JSON.stringify({ payout_month: genMonth }),
+        body: JSON.stringify({ payout_month: filterMonth }),
       });
       alert(`${result.month} 酬勞已產生，共 ${result.payouts_created} 位心理師`);
-      setFilterMonth(genMonth);
       fetchPayouts();
     } catch (e: any) {
       alert(e.message);
@@ -127,12 +125,6 @@ export default function PayoutsPage() {
           />
           {userRole === "admin" && (
             <>
-              <input
-                type="month"
-                value={genMonth}
-                onChange={(e) => setGenMonth(e.target.value)}
-                className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
               <button
                 onClick={handleGenerate}
                 disabled={generating}
