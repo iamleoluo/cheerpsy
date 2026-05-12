@@ -212,13 +212,6 @@ export default function LedgerPage() {
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">諮商流水帳</h1>
         <div className="flex items-center gap-2">
-          <button
-            onClick={fetchRecords}
-            disabled={loading}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
-          >
-            {loading ? "更新中..." : "更新"}
-          </button>
           {userRole !== "therapist" && (
             <button
               onClick={() => exportCsv("/export/ledger", token, "ledger.csv")}
