@@ -16,6 +16,7 @@ const navItems = [
   { href: "/reports", label: "月報表", icon: "📈", roles: ["admin", "accountant"] },
   { href: "/churn", label: "流失預警", icon: "⚠️", roles: ["admin", "accountant"] },
   { href: "/institutions", label: "機構管理", icon: "🏛️", roles: ["admin"] },
+  { href: "/guide", label: "使用簡介", icon: "📖" },
 ] as const;
 
 export function Sidebar({ userName, userRole }: { userName: string; userRole: string }) {
