@@ -222,13 +222,15 @@ export default function LedgerPage() {
           )}
           {userRole === "admin" && (
             <>
-              <input
-                type="date"
-                value={settleDate}
-                onChange={(e) => setSettleDate(e.target.value)}
-                className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
-                placeholder="日結日期"
-              />
+              <div className="flex flex-col items-end gap-0.5">
+                <input
+                  type="date"
+                  value={settleDate}
+                  onChange={(e) => setSettleDate(e.target.value)}
+                  className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                />
+                <span className="text-xs text-gray-400">補跑指定日期，留空則結算昨日</span>
+              </div>
               <button
                 onClick={handleSettle}
                 disabled={settling}
