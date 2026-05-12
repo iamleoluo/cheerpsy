@@ -234,7 +234,7 @@ export default function LedgerPage() {
                 disabled={settling}
                 className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
               >
-                {settling ? "日結中..." : "執行日結"}
+                {settling ? "日結中..." : "執行日結（每日查看請點擊確保資料更新）"}
               </button>
             </>
           )}
