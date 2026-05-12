@@ -14,6 +14,7 @@ ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 RUN npm run build
+RUN mkdir -p /app/public
 
 FROM base AS runner
 WORKDIR /app
