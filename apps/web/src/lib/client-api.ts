@@ -13,7 +13,10 @@ export async function clientFetch(
   const res = await fetch(`${API_URL}${path}`, { ...init, headers });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail ?? `API error ${res.status}`);
+    const detail = Array.isArray(body.detail)
+      ? body.detail.map((e: any) => e.msg ?? JSON.stringify(e)).join("; ")
+      : body.detail;
+    throw new Error(detail ?? `API error ${res.status}`);
   }
   if (res.status === 204) return null;
   return res.json();
