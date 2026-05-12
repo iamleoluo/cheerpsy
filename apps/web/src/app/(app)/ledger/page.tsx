@@ -75,7 +75,8 @@ export default function LedgerPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("");
   const [settling, setSettling] = useState(false);
-  const [settleDate, setSettleDate] = useState("");
+  const [settleDateFrom, setSettleDateFrom] = useState("");
+  const [settleDateTo, setSettleDateTo] = useState("");
   const [settleResult, setSettleResult] = useState("");
 
   const [inputModal, setInputModal] = useState<{
@@ -115,7 +116,12 @@ export default function LedgerPage() {
     setSettleResult("");
     try {
       const body: any = {};
-      if (settleDate) body.target_date = settleDate;
+      if (settleDateFrom && settleDateTo) {
+        body.date_from = settleDateFrom;
+        body.date_to = settleDateTo;
+      } else if (settleDateFrom) {
+        body.target_date = settleDateFrom;
+      }
       const result = await clientFetch("/ledger/settle", token, {
         method: "POST",
         body: JSON.stringify(body),
@@ -223,13 +229,22 @@ export default function LedgerPage() {
           {userRole === "admin" && (
             <>
               <div className="flex flex-col items-end gap-0.5">
-                <input
-                  type="date"
-                  value={settleDate}
-                  onChange={(e) => setSettleDate(e.target.value)}
-                  className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
-                />
-                <span className="text-xs text-gray-400">補跑指定日期，留空則結算昨日</span>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="date"
+                    value={settleDateFrom}
+                    onChange={(e) => setSettleDateFrom(e.target.value)}
+                    className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                  />
+                  <span className="text-xs text-gray-400">～</span>
+                  <input
+                    type="date"
+                    value={settleDateTo}
+                    onChange={(e) => setSettleDateTo(e.target.value)}
+                    className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                  />
+                </div>
+                <span className="text-xs text-gray-400">補跑日期區間，留空則結算昨日</span>
               </div>
               <button
                 onClick={handleSettle}

@@ -202,5 +202,16 @@ def trigger_settlement(
     user: User = Depends(RequireRole(["admin"])),
     db: Session = Depends(get_db),
 ):
+    from datetime import timedelta
+    if body.date_from and body.date_to:
+        total_executed = 0
+        total_skipped = 0
+        d = body.date_from
+        while d <= body.date_to:
+            r = run_daily_settlement(db, d)
+            total_executed += r["executed"]
+            total_skipped += r["skipped"]
+            d += timedelta(days=1)
+        return {"date": f"{body.date_from} ~ {body.date_to}", "executed": total_executed, "skipped": total_skipped}
     result = run_daily_settlement(db, body.target_date)
     return result

@@ -40,6 +40,8 @@ class SessionRecordUpdatePayment(BaseModel):
 
 class SettlementRequest(BaseModel):
     target_date: date | None = None
+    date_from: date | None = None
+    date_to: date | None = None
 
 
 class SettlementResponse(BaseModel):
