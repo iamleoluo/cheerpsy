@@ -9,6 +9,7 @@ from app.models.therapist_payout import TherapistPayout, PayoutDetail
 from app.models.petty_cash import PettyCash
 from app.models.audit_log import AuditLog
 from app.models.reminder_log import ReminderLog
+from app.models.invitation import Invitation
 
 __all__ = [
     "User",
@@ -23,4 +24,5 @@ __all__ = [
     "PettyCash",
     "AuditLog",
     "ReminderLog",
+    "Invitation",
 ]

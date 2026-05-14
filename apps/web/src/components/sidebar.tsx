@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { signOut } from "next-auth/react";
 
 const navItems = [
   { href: "/dashboard", label: "儀表板", icon: "📊" },
@@ -16,6 +17,7 @@ const navItems = [
   { href: "/reports", label: "月報表", icon: "📈", roles: ["admin", "accountant"] },
   { href: "/churn", label: "流失預警", icon: "⚠️", roles: ["admin", "accountant"] },
   { href: "/institutions", label: "機構管理", icon: "🏛️", roles: ["admin"] },
+  { href: "/admin/users", label: "帳號管理", icon: "🔑", roles: ["admin"] },
   { href: "/guide", label: "使用簡介", icon: "📖" },
 ] as const;
 
@@ -56,8 +58,19 @@ export function Sidebar({ userName, userRole }: { userName: string; userRole: st
       </nav>
 
       <div className="border-t border-gray-200 px-4 py-3">
-        <p className="text-sm font-medium">{userName}</p>
-        <p className="text-xs text-gray-500">{roleLabel[userRole] ?? userRole}</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium">{userName}</p>
+            <p className="text-xs text-gray-500">{roleLabel[userRole] ?? userRole}</p>
+          </div>
+          <button
+            onClick={() => signOut({ callbackUrl: "/login" })}
+            className="rounded-lg px-2 py-1 text-xs text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            title="登出"
+          >
+            登出
+          </button>
+        </div>
       </div>
     </aside>
   );

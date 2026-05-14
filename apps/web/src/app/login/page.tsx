@@ -80,6 +80,12 @@ export default function LoginPage() {
             {loading ? "登入中..." : "登入"}
           </button>
         </form>
+
+        <div className="mt-4 flex justify-center gap-3 text-xs text-gray-400">
+          <a href="/register" className="hover:text-primary-600">首次註冊</a>
+          <span>|</span>
+          <a href="/reset-password" className="hover:text-primary-600">忘記密碼</a>
+        </div>
       </div>
     </div>
   );

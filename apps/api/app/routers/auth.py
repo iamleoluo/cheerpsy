@@ -1,15 +1,29 @@
+import secrets
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import RequireRole, get_current_user
 from app.auth.jwt import create_access_token
-from app.auth.password import verify_password
+from app.auth.password import hash_password, verify_password
 from app.database import get_db
+from app.models.invitation import Invitation
 from app.models.user import User
 from app.schemas.auth import LoginRequest, TokenResponse, UserResponse
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+INVITE_EXPIRY_HOURS = 72
+
+
+def _generate_key() -> str:
+    parts = [secrets.token_hex(2).upper() for _ in range(3)]
+    return f"CHEER-{parts[0]}-{parts[1]}-{parts[2]}"
+
+
+# ── Login ──────────────────────────────────────────────
 
 @router.post("/login", response_model=TokenResponse)
 def login(body: LoginRequest, db: Session = Depends(get_db)):
@@ -28,13 +42,197 @@ def get_me(user: User = Depends(get_current_user)):
 
 
 @router.get("/therapists", response_model=list[UserResponse])
-def list_therapists(
-    user: User = Depends(get_current_user),
+def list_therapists(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return db.query(User).filter(User.role == "therapist", User.is_active == True).order_by(User.name).all()
+
+
+# ── User management (admin) ───────────────────────────
+
+class UserListResponse(BaseModel):
+    id: int
+    email: str
+    name: str
+    role: str
+    therapist_code: str | None = None
+    is_active: bool
+    model_config = {"from_attributes": True}
+
+
+@router.get("/users", response_model=list[UserListResponse])
+def list_users(user: User = Depends(RequireRole(["admin"])), db: Session = Depends(get_db)):
+    return db.query(User).order_by(User.role, User.name).all()
+
+
+@router.put("/users/{user_id}/toggle")
+def toggle_user(user_id: int, user: User = Depends(RequireRole(["admin"])), db: Session = Depends(get_db)):
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.id == user.id:
+        raise HTTPException(status_code=400, detail="Cannot deactivate yourself")
+    target.is_active = not target.is_active
+    db.commit()
+    return {"id": target.id, "is_active": target.is_active}
+
+
+# ── Invitations (admin) ───────────────────────────────
+
+class CreateInviteRequest(BaseModel):
+    name: str
+    role: str  # therapist | accountant | admin
+    therapist_code: str | None = None
+
+
+class InvitationResponse(BaseModel):
+    id: int
+    invite_key: str
+    type: str
+    name: str
+    role: str | None = None
+    therapist_code: str | None = None
+    target_user_id: int | None = None
+    created_at: datetime
+    expires_at: datetime
+    used_at: datetime | None = None
+    model_config = {"from_attributes": True}
+
+
+@router.post("/invitations", response_model=InvitationResponse)
+def create_invitation(
+    body: CreateInviteRequest,
+    user: User = Depends(RequireRole(["admin"])),
     db: Session = Depends(get_db),
 ):
-    return (
-        db.query(User)
-        .filter(User.role == "therapist", User.is_active == True)
-        .order_by(User.name)
-        .all()
+    if body.role not in ("therapist", "accountant", "admin"):
+        raise HTTPException(status_code=400, detail="Invalid role")
+    if body.role == "therapist" and not body.therapist_code:
+        raise HTTPException(status_code=400, detail="Therapist code required")
+    if body.therapist_code:
+        existing = db.query(User).filter(User.therapist_code == body.therapist_code).first()
+        if existing:
+            raise HTTPException(status_code=400, detail=f"Therapist code '{body.therapist_code}' already in use")
+
+    inv = Invitation(
+        invite_key=_generate_key(),
+        type="invite",
+        name=body.name,
+        role=body.role,
+        therapist_code=body.therapist_code,
+        created_by=user.id,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=INVITE_EXPIRY_HOURS),
     )
+    db.add(inv)
+    db.commit()
+    db.refresh(inv)
+    return inv
+
+
+@router.get("/invitations", response_model=list[InvitationResponse])
+def list_invitations(user: User = Depends(RequireRole(["admin"])), db: Session = Depends(get_db)):
+    return db.query(Invitation).order_by(Invitation.created_at.desc()).all()
+
+
+@router.post("/reset-key/{user_id}", response_model=InvitationResponse)
+def create_reset_key(
+    user_id: int,
+    user: User = Depends(RequireRole(["admin"])),
+    db: Session = Depends(get_db),
+):
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    inv = Invitation(
+        invite_key=_generate_key(),
+        type="reset",
+        name=target.name,
+        target_user_id=target.id,
+        created_by=user.id,
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=INVITE_EXPIRY_HOURS),
+    )
+    db.add(inv)
+    db.commit()
+    db.refresh(inv)
+    return inv
+
+
+# ── Public: verify key / register / reset ──────────────
+
+class InviteVerifyResponse(BaseModel):
+    name: str
+    role: str | None = None
+    type: str
+
+
+@router.get("/invite/{key}", response_model=InviteVerifyResponse)
+def verify_invite(key: str, db: Session = Depends(get_db)):
+    inv = db.query(Invitation).filter(Invitation.invite_key == key).first()
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invalid key")
+    if inv.used_at:
+        raise HTTPException(status_code=400, detail="Key already used")
+    if inv.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Key expired")
+    return InviteVerifyResponse(name=inv.name, role=inv.role, type=inv.type)
+
+
+class RegisterRequest(BaseModel):
+    invite_key: str
+    email: str
+    password: str
+
+
+@router.post("/register")
+def register(body: RegisterRequest, db: Session = Depends(get_db)):
+    inv = db.query(Invitation).filter(Invitation.invite_key == body.invite_key).first()
+    if not inv or inv.used_at or inv.type != "invite":
+        raise HTTPException(status_code=400, detail="Invalid or expired invitation key")
+    if inv.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Invitation key expired")
+
+    existing = db.query(User).filter(User.email == body.email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    if len(body.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    new_user = User(
+        email=body.email,
+        password_hash=hash_password(body.password),
+        name=inv.name,
+        role=inv.role,
+        therapist_code=inv.therapist_code,
+        is_active=True,
+    )
+    db.add(new_user)
+    db.flush()
+    inv.used_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"message": "Account created", "name": inv.name}
+
+
+class ResetPasswordRequest(BaseModel):
+    invite_key: str
+    password: str
+
+
+@router.post("/reset-password")
+def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
+    inv = db.query(Invitation).filter(Invitation.invite_key == body.invite_key).first()
+    if not inv or inv.used_at or inv.type != "reset":
+        raise HTTPException(status_code=400, detail="Invalid or expired reset key")
+    if inv.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Reset key expired")
+
+    target = db.query(User).filter(User.id == inv.target_user_id).first()
+    if not target:
+        raise HTTPException(status_code=400, detail="User not found")
+
+    if len(body.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    target.password_hash = hash_password(body.password)
+    inv.used_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"message": "Password updated", "name": target.name}
