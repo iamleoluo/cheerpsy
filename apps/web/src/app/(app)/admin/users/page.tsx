@@ -242,12 +242,38 @@ export default function AdminUsersPage() {
                   <option value="admin">管理員</option>
                 </select>
               </div>
-              {invRole === "therapist" && (
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-500">心理師代號 *</label>
-                  <input type="text" value={invCode} onChange={(e) => setInvCode(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" placeholder="例如 T018" />
-                </div>
-              )}
+              {invRole === "therapist" && (() => {
+                const allCodes = users.filter((u) => u.therapist_code).map((u) => ({ code: u.therapist_code!, name: u.name, active: u.is_active }));
+                const reusable = allCodes.filter((c) => !c.active);
+                const usedSet = new Set(allCodes.filter((c) => c.active).map((c) => c.code));
+                let nextCode = "";
+                for (let i = 1; i <= 999; i++) {
+                  const candidate = `T${String(i).padStart(3, "0")}`;
+                  if (!allCodes.some((c) => c.code === candidate)) { nextCode = candidate; break; }
+                }
+                return (
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">心理師代號 *</label>
+                    <input type="text" value={invCode} onChange={(e) => setInvCode(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" placeholder="例如 T018" />
+                    <div className="mt-2 space-y-1">
+                      {nextCode && (
+                        <button type="button" onClick={() => setInvCode(nextCode)} className="rounded bg-primary-50 px-2 py-0.5 text-xs text-primary-600 hover:bg-primary-100">
+                          自動：{nextCode}（新代號）
+                        </button>
+                      )}
+                      {reusable.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {reusable.map((c) => (
+                            <button key={c.code} type="button" onClick={() => setInvCode(c.code)} className={`rounded px-2 py-0.5 text-xs ${invCode === c.code ? "bg-amber-200 text-amber-800" : "bg-amber-50 text-amber-600 hover:bg-amber-100"}`}>
+                              {c.code}（原 {c.name}，已停用）
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
             <div className="mt-5 flex justify-end gap-2">
               <button onClick={() => { setShowInvite(false); setInvName(""); setInvRole("therapist"); setInvCode(""); }} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">取消</button>
