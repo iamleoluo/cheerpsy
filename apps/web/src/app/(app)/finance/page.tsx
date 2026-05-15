@@ -3,6 +3,45 @@
 import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch, exportCsv } from "@/lib/client-api";
+import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
+
+const helpContent: HelpContent = {
+  title: "財務管理",
+  overview: "包含兩個子模組：心理師酬勞月結（依各人抽成比例自動計算）和零用金管理（診所日常支出記帳）。",
+  sections: [
+    {
+      heading: "心理師酬勞月結",
+      type: "steps",
+      items: [
+        "點「心理師酬勞」頁籤",
+        "選擇年月",
+        "點「產生月結」，系統依各心理師抽成比例計算本月應付金額",
+        "確認各心理師金額無誤後，完成匯款",
+        "點「標記已付款」，可匯出明細 CSV 作為薪資憑證",
+      ],
+    },
+    {
+      heading: "零用金管理",
+      type: "steps",
+      items: [
+        "點「零用金」頁籤",
+        "每筆支出點「＋新增支出」",
+        "填入日期、金額、品項（如：打掃費、文具）",
+        "系統即時更新零用金餘額",
+        "補款時記錄補款金額，水位恢復",
+      ],
+    },
+    {
+      heading: "管理員提示",
+      type: "notes",
+      items: [
+        "各心理師抽成比例在「系統管理→帳號管理」設定，預設 70%",
+        "月結計算基礎：當月所有已收款或請款中的諮商記錄",
+        "若調整了抽成比例，系統使用諮商發生當下的比例快照（commission_rate_used）",
+      ],
+    },
+  ],
+};
 
 /* ───── main page ───── */
 
@@ -11,12 +50,19 @@ export default function FinancePage() {
   const token = (session?.user as any)?.accessToken;
   const userRole = (session?.user as any)?.role;
   const [tab, setTab] = useState<"invoices" | "payouts" | "petty">("invoices");
+  const [helpOpen, setHelpOpen] = useState(false);
 
   if (!token) return <p>Loading...</p>;
 
   return (
     <div>
-      <h1 className="mb-4 text-2xl font-bold">財務管理</h1>
+      <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} content={helpContent} />
+      <div className="mb-4 flex items-center justify-between">
+        <h1 className="text-2xl font-bold">財務管理</h1>
+        <button onClick={() => setHelpOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700">
+          <span>ℹ️</span> 說明
+        </button>
+      </div>
 
       <div className="mb-4 flex gap-1 border-b border-gray-200">
         {(

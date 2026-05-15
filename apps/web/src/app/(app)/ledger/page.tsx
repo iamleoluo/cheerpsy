@@ -3,6 +3,63 @@
 import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch, exportCsv } from "@/lib/client-api";
+import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
+
+const helpContent: HelpContent = {
+  title: "日結帳冊",
+  overview: "由系統在 T+1 自動寫入的諮商財務台帳，無需手動輸入諮商記錄。行政需要做的是：確認收款狀態、填入收款資訊、最後鎖定。",
+  sections: [
+    {
+      heading: "執行日結",
+      type: "steps",
+      items: [
+        "每日進入日結帳冊，點「執行日結（每日查看請點擊確保資料更新）」",
+        "系統自動將前一日未取消的預約寫入帳冊",
+        "若需補跑歷史日期，可填入日期區間後執行",
+        "確認新增筆數無誤",
+      ],
+    },
+    {
+      heading: "自費收款",
+      type: "steps",
+      items: [
+        "找到待收款的自費紀錄",
+        "點「收款」按鈕",
+        "選付款方式：現金 / 匯款",
+        "匯款需填入帳戶末 5 碼作為憑據",
+        "確認後狀態變為「已收款」",
+      ],
+    },
+    {
+      heading: "機構請款",
+      type: "steps",
+      items: [
+        "找到待請款的機構紀錄，點「請款」",
+        "填入請款單號（請款單據上的編號）",
+        "狀態變為「請款中」",
+        "款項到帳後點「到款」，填入匯款單號或收據號",
+        "狀態更新為「已核銷」",
+      ],
+    },
+    {
+      heading: "鎖定與解鎖",
+      type: "steps",
+      items: [
+        "帳務確認無誤後點「鎖定」，進入唯讀狀態",
+        "如需修正：點「解鎖」→ 填寫修改原因 → 修改後重新鎖定",
+        "所有解鎖操作均記錄於稽核日誌，管理員可查",
+      ],
+    },
+    {
+      heading: "注意事項",
+      type: "tips",
+      items: [
+        "諮商日期、金額等核心欄位鎖定後不可更改，需解鎖並填原因",
+        "心理師只能看到自己的紀錄，行政與管理員可看全所",
+      ],
+    },
+  ],
+};
 
 interface SessionRecord {
   id: number;
@@ -70,6 +127,7 @@ export default function LedgerPage() {
   const { data: session } = useSession();
   const token = (session?.user as any)?.accessToken;
   const userRole = (session?.user as any)?.role;
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const now = new Date();
   const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -256,9 +314,13 @@ export default function LedgerPage() {
 
   return (
     <div>
+      <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} content={helpContent} />
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">日結帳冊</h1>
         <div className="flex items-center gap-2">
+          <button onClick={() => setHelpOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700">
+            <span>ℹ️</span> 說明
+          </button>
           {userRole !== "therapist" && (
             <button
               onClick={() => exportCsv("/export/ledger", token, "ledger.csv")}

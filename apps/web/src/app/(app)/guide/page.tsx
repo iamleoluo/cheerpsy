@@ -1,320 +1,635 @@
 "use client";
 
-const modules = [
+import { useState } from "react";
+
+/* ───── types ───── */
+interface DocSection {
+  type: "steps" | "tips" | "notes" | "text" | "flow";
+  heading: string;
+  items: string[];
+}
+
+interface DocModule {
+  id: string;
+  icon: string;
+  title: string;
+  href: string;
+  tagline: string;
+  overview: string;
+  sections: DocSection[];
+}
+
+/* ───── content ───── */
+const modules: DocModule[] = [
   {
-    id: "01",
+    id: "overview",
+    icon: "🗺️",
+    title: "系統總覽",
+    href: "/dashboard",
+    tagline: "了解 CheerPsy 的核心流程與角色",
+    overview:
+      "CheerPsy 以「預約驅動」為核心設計：行政建立預約 → 隔日系統自動結算 → 諮商紀錄自動寫入流水帳 → 行政完成收款或請款 → 月底報表自動彙整。多數流程無需手動輸入。",
+    sections: [
+      {
+        type: "flow",
+        heading: "核心工作流程",
+        items: [
+          "建立個案 → 個案管理",
+          "建立預約 → 預約日曆",
+          "T+1 日結（系統自動）",
+          "收款 / 請款 → 日結帳冊 + 核銷案管理",
+          "心理師酬勞月結 → 財務管理",
+          "查看月度損益 → 營運報表",
+        ],
+      },
+      {
+        type: "text",
+        heading: "角色與權限概覽",
+        items: [
+          "管理員：所有功能 + 解鎖帳務 + 修改歷史紀錄 + 帳號管理",
+          "行政人員：個案管理、預約排程、收款請款、酬勞月結、零用金、報表查看",
+          "心理師：查看個人預約與流水帳、建立/取消預約、確認諮商文件",
+        ],
+      },
+      {
+        type: "tips",
+        heading: "重要規則",
+        items: [
+          "T+1 原則：當日個案未到請當日取消預約，逾時系統視為已執行無法撤回",
+          "70/30 拆帳：系統依各心理師抽成比例自動計算，無需手動輸入",
+          "帳務鎖定：已發生日期的帳務由系統鎖定，管理員解鎖需填原因並留存稽核紀錄",
+          "機構墊付：機構個案完成後先付心理師，機構到款前診所墊付，月報表追蹤墊付金額",
+        ],
+      },
+    ],
+  },
+  {
+    id: "cases",
+    icon: "👤",
     title: "個案管理",
     href: "/cases",
-    icon: "👤",
-    desc: "儲存個案基本資料，包含聯絡方式、經費來源、負責心理師等。初診時建立，基本資料不頻繁異動。",
-    steps: [
-      "點選「個案管理」→「＋新增個案」",
-      "填入姓名、性別、出生日期、聯絡電話等資料",
-      "選擇經費來源：自費 或 機構轉介",
-      "機構轉介需選擇對應機構",
-      "指定負責心理師後儲存",
+    tagline: "Stage 1 快速建檔，初診後補填轉正式",
+    overview:
+      "個案管理採用兩階段設計：預約時只需填基本資料（Stage 1），初診到場後補填完整資料並「轉正式」產生永久案號（Stage 2）。",
+    sections: [
+      {
+        type: "steps",
+        heading: "Stage 1：新增預約個案",
+        items: [
+          "點「＋新增個案」",
+          "填入姓名、電話、年齡（估算用，初診前不需精確）",
+          "指定負責心理師",
+          "選付費方式（自費 / 機構），機構需選對應機構名稱",
+          "選結帳週期（單次 / 月結 / 多次）",
+          "儲存後個案狀態為「已預約未初談」，系統自動分配流水序號 #000X",
+        ],
+      },
+      {
+        type: "steps",
+        heading: "Stage 2：初診後轉為正式個案",
+        items: [
+          "個案初診到場後，點個案列表的「編輯」",
+          "補填「轉正式所需資料」區塊：性別、出生日期、身份證字號（必填）",
+          "補填緊急聯絡人、聯絡電話",
+          "可選填地址、市話、轉介來源、會談地點、初談日期",
+          "儲存後點「轉正式」按鈕",
+          "系統自動產生正式案號（格式：西元年後2碼 + 流水號 + 身份證末2碼，例：26000145）",
+          "狀態自動變為「進行中」",
+        ],
+      },
+      {
+        type: "text",
+        heading: "狀態流程",
+        items: [
+          "已預約未初談 → 轉正式後變為「進行中」",
+          "進行中 → 可手動改為「暫停」或「結案」或「流失」",
+          "編輯個案時狀態下拉不顯示「已預約未初談」（只能透過新增產生）",
+        ],
+      },
+      {
+        type: "notes",
+        heading: "管理員提示",
+        items: [
+          "身份證字號使用 AES 加密儲存，管理員也無法直接查看原始值",
+          "轉正式後案號不可修改，確認再按",
+          "可用「匯出 CSV」匯出所有個案清單",
+        ],
+      },
+      {
+        type: "tips",
+        heading: "注意事項",
+        items: [
+          "機構個案請務必選對機構，影響核銷案編號與請款流程",
+          "結帳週期「月結」代表月底統一出帳，請確認與個案的實際付費方式一致",
+        ],
+      },
     ],
-    roles: "全角色均可查看；新增／編輯限行政與管理員",
   },
   {
-    id: "02",
-    title: "預約管理",
-    href: "/appointments",
+    id: "calendar",
     icon: "📅",
-    desc: "系統動態核心。心理師建立預約後，系統依狀態自動驅動流水帳、空間佔用與金流追蹤，無需手動介入。",
-    steps: [
-      "點選「預約管理」→「＋新增預約」或「批次預約」",
-      "選個案、諮商類型（現場／線上／家訪）、空間",
-      "填入日期、時段、金額（70/30 抽成自動計算）",
-      "系統隔日結算：前一日未取消的預約自動進入流水帳",
-      "若個案未到，請於當日內點「取消」，逾時視為已執行",
+    title: "預約日曆",
+    href: "/calendar",
+    tagline: "排程中心，預約驅動帳務自動化",
+    overview:
+      "所有諮商都從預約開始。新增預約後，系統在 T+1（隔日）自動執行日結，將昨日已執行的預約寫入流水帳，無需手動操作。",
+    sections: [
+      {
+        type: "steps",
+        heading: "新增單次預約",
+        items: [
+          "點「＋新增預約」（或在月曆空格點擊）",
+          "選個案（可輸入姓名搜尋）",
+          "選心理師、諮商類型（現場 / 線上 / 家訪）、診間",
+          "選日期、起始時間（預設 50 分鐘）",
+          "填入諮商費用（系統依抽成比例自動計算各方份額）",
+          "儲存",
+        ],
+      },
+      {
+        type: "steps",
+        heading: "批次預約（定期諮商）",
+        items: [
+          "點「批次預約」",
+          "選個案、心理師、類型、診間",
+          "設定起始日期、頻率（每週 / 隔週）、總次數",
+          "系統自動產生排程，顯示預覽清單",
+          "確認後一次建立所有預約",
+        ],
+      },
+      {
+        type: "steps",
+        heading: "取消預約",
+        items: [
+          "在月曆或預約列表找到該筆預約",
+          "點「取消」並確認",
+          "當日取消不計費，隔日日結後視為已執行",
+        ],
+      },
+      {
+        type: "tips",
+        heading: "T+1 日結規則",
+        items: [
+          "每日 00:00 後前一日的預約自動結算：未取消 → 已執行；已取消 → 不計費",
+          "個案未到請務必在當日結束前取消，否則帳務自動產生",
+          "管理員執行「日結」可補跑指定日期區間的結算",
+        ],
+      },
+      {
+        type: "notes",
+        heading: "管理員提示",
+        items: [
+          "預約建立後若需修改費用，可在流水帳解鎖後調整",
+          "診間衝突由系統自動阻擋（PostgreSQL EXCLUDE GIST），不同心理師同診間同時段無法預約",
+        ],
+      },
     ],
-    roles: "所有角色均可操作；修改已發生紀錄限管理員",
   },
   {
-    id: "03",
-    title: "諮商流水帳",
-    href: "/ledger",
+    id: "ledger",
     icon: "📒",
-    desc: "由預約「已執行」後自動寫入，無需手動輸入。諮商日期、金額等核心欄位任何人均不可修改；可修改的只有收款相關資訊。",
-    steps: [
-      "【自費收款】點「收款」→ 選現金或匯款 → 匯款需填入匯款資訊（如帳戶末五碼作為憑證）→ 確認後狀態變為「已收款」",
-      "【機構請款】點「請款」→ 填入請款單號（請款單據上的編號）→ 確認後狀態變為「請款中」",
-      "【機構到款】款項到帳後點「到款」→ 填入到款收據或匯款單號 → 確認後狀態變為「已核銷」",
-      "【修正資料】若填錯金額、單號等，點「編輯」可直接修改收款狀態與所有收款資訊",
-      "確認帳務無誤後點「鎖定」；管理員若需修正鎖定紀錄，點「解鎖」填寫原因後即可再次編輯",
-      "管理員每日點「執行日結」更新資料；補跑時可選日期區間",
+    title: "日結帳冊",
+    href: "/ledger",
+    tagline: "自動寫入的諮商財務台帳",
+    overview:
+      "日結帳冊由系統在 T+1 自動寫入，無需手動輸入諮商記錄。行政需要做的是：確認收款狀態、填入收款資訊、最後鎖定。",
+    sections: [
+      {
+        type: "steps",
+        heading: "執行日結",
+        items: [
+          "每日進入日結帳冊，點「執行日結」",
+          "系統自動將前一日未取消的預約寫入帳冊",
+          "確認新增筆數無誤",
+          "若需補跑歷史日期，點「執行日結」後可選日期區間",
+        ],
+      },
+      {
+        type: "steps",
+        heading: "自費收款",
+        items: [
+          "找到待收款的自費紀錄",
+          "點「收款」按鈕",
+          "選付款方式：現金 / 匯款",
+          "匯款需填入帳戶末 5 碼作為憑據",
+          "確認後狀態變為「已收款」",
+        ],
+      },
+      {
+        type: "steps",
+        heading: "機構請款",
+        items: [
+          "找到待請款的機構紀錄",
+          "點「請款」，填入請款單號（請款單據上的編號）",
+          "狀態變為「請款中」",
+          "款項到帳後點「到款」，填入到款收據或匯款單號",
+          "狀態更新為「已核銷」",
+        ],
+      },
+      {
+        type: "steps",
+        heading: "鎖定帳務",
+        items: [
+          "確認該筆帳務資訊正確無誤",
+          "點「鎖定」，該筆紀錄進入唯讀狀態",
+          "如需修正：點「解鎖」→ 填寫修改原因 → 修改後重新鎖定",
+          "所有解鎖操作均記錄於稽核日誌",
+        ],
+      },
+      {
+        type: "notes",
+        heading: "管理員提示",
+        items: [
+          "篩選條件：可依心理師、月份、付費方式、收款狀態快速過濾",
+          "匯出 CSV 可匯出當前篩選結果，用於外部對帳",
+          "諮商日期、金額等核心欄位一旦建立無法直接修改，需解鎖並填原因",
+        ],
+      },
     ],
-    roles: "心理師僅看個人紀錄；行政與管理員可看全所",
   },
   {
-    id: "04",
-    title: "空間預約",
-    href: "/rooms",
-    icon: "🏢",
-    desc: "即時空間佔用表，與預約系統連動。建立實體預約時自動佔位，取消時自動釋出。僅適用實體諮商。",
-    steps: [
-      "進入「空間預約」查看各診間當週時段表",
-      "點選週曆左右切換週次，或切換月視圖",
-      "格子顯示心理師姓名表示已佔用，空白表示可預約",
-      "點選個別空間切換查看該診間排程",
-    ],
-    roles: "全角色均可查看",
-  },
-  {
-    id: "05",
-    title: "財務核銷",
-    href: "/reconciliation",
+    id: "claims",
     icon: "💰",
-    desc: "以個案為單位彙整所有收款與請款紀錄，追蹤整體金流狀態。自費與機構分開呈現，方便逐案對帳。",
-    steps: [
-      "【自費對帳】篩選「自費」查看所有待收款個案，逐筆確認是否已於流水帳完成收款登載",
-      "【機構請款準備】篩選對應機構，確認哪些場次已累積待請款；備妥請款單據（含個案姓名、日期、場次、金額），填入請款單號後送出",
-      "【追蹤到款】提出請款後狀態顯示「請款中」；款項到帳時回到流水帳逐筆登錄到款收據/匯款單號，狀態更新為「已核銷」",
-      "可依機構、收款狀態、日期區間篩選，快速定位未處理項目",
+    title: "核銷案管理",
+    href: "/claims",
+    tagline: "打包諮商記錄，統一請款或收款",
+    overview:
+      "核銷案將多筆諮商記錄打包成一個核銷批次，適合機構月結請款或自費個案的期間收款確認。建立後可下載收據或請款單 PDF。",
+    sections: [
+      {
+        type: "steps",
+        heading: "建立自費核銷案",
+        items: [
+          "點「＋建立核銷案」，選「自費個案」",
+          "搜尋並選擇個案",
+          "勾選要納入的諮商記錄（系統列出尚未歸屬核銷案的記錄）",
+          "設定期間（起訖日期）",
+          "確認金額後建立",
+          "狀態進入「收款中」，下載收據 PDF 後點「送出」→「結案」",
+        ],
+      },
+      {
+        type: "steps",
+        heading: "建立機構核銷案",
+        items: [
+          "點「＋建立核銷案」，選「機構」",
+          "選擇機構名稱",
+          "勾選該機構的諮商記錄",
+          "設定期間，確認建立",
+          "等待心理師在「確認文件」頁面逐筆標記文件備妥",
+          "全部確認後批次自動升為「文件備妥」",
+          "行政點「提交請款」→ 填外部請款單號 → 等候到款",
+          "款項到帳後點「標記到款」→「結案」，下載請款單 PDF 存檔",
+        ],
+      },
+      {
+        type: "flow",
+        heading: "狀態流程",
+        items: [
+          "自費：收款中 → 送出 → 結案",
+          "機構：收款中 → 文件備妥（自動）→ 已提交 → 款項到帳 → 結案",
+        ],
+      },
+      {
+        type: "notes",
+        heading: "管理員提示",
+        items: [
+          "核銷案編號規則：自費 = S{週期碼}-{案號}-{YYYYMM}；機構 = I-{機構代碼}-{YYYYMM}",
+          "同一筆諮商記錄不能同時屬於兩個核銷案",
+          "PDF 收據格式：A4，含診所名稱、個案資訊、明細表、簽名欄",
+        ],
+      },
     ],
-    roles: "限行政與管理員",
   },
   {
-    id: "06",
-    title: "心理師酬勞",
-    href: "/payouts",
+    id: "finance",
     icon: "💳",
-    desc: "月結管理心理師 70% 酬勞。系統自動依流水帳計算每月應付金額，行政逐一確認付款後標記。",
-    steps: [
-      "每月月結時進入「心理師酬勞」，選擇年月",
-      "點「產生月結」，系統依流水帳自動計算各心理師應付金額（可重複點擊以更新）",
-      "逐一完成付款後點「標記已付款」",
-      "可匯出明細作為薪資憑證",
+    title: "財務管理",
+    href: "/finance",
+    tagline: "心理師酬勞月結與零用金管理",
+    overview:
+      "財務管理包含兩個子模組：心理師酬勞月結（依各人抽成比例自動計算）和零用金管理（診所日常支出記帳）。",
+    sections: [
+      {
+        type: "steps",
+        heading: "心理師酬勞月結",
+        items: [
+          "月底進入「財務管理」→「心理師酬勞」",
+          "選擇年月",
+          "點「產生月結」，系統依各心理師的抽成比例計算本月應付金額",
+          "確認各心理師金額無誤",
+          "逐一完成匯款後點「標記已付款」",
+          "可匯出明細 CSV 作為薪資憑證",
+        ],
+      },
+      {
+        type: "steps",
+        heading: "零用金管理",
+        items: [
+          "每筆支出點「＋新增支出」",
+          "填入日期、金額、品項（如：打掃費、文具、水電費）",
+          "系統即時更新零用金餘額",
+          "餘額低於警戒線時系統顯示提示",
+          "補款時記錄補款金額，水位恢復",
+        ],
+      },
+      {
+        type: "notes",
+        heading: "管理員提示",
+        items: [
+          "各心理師抽成比例在「系統管理→帳號管理」設定，預設 70%",
+          "月結計算基礎：當月所有已收款或請款中的諮商記錄",
+          "若當月有調整抽成比例，系統使用諮商發生當下記錄的比例（commission_rate_used）",
+        ],
+      },
     ],
-    roles: "限行政與管理員",
   },
   {
-    id: "07",
-    title: "零用金",
-    href: "/petty-cash",
-    icon: "🪙",
-    desc: "管理診所日常雜項支出（打掃費、耗材、水電費等）。餘額低於警戒線時系統提示補款。",
-    steps: [
-      "每筆支出點「＋新增支出」，填入日期、金額、項目",
-      "系統即時更新餘額",
-      "餘額低於警戒線時，點「申請補款」產出報表",
-      "撥款後記錄補款金額，水位恢復",
-    ],
-    roles: "限行政與管理員",
-  },
-  {
-    id: "08",
-    title: "月報表",
-    href: "/reports",
+    id: "reports",
     icon: "📈",
-    desc: "整合所有模組數據，每月產出損益摘要、心理師場次統計、空間稼動率與 KPI 報表。",
-    steps: [
-      "進入「月報表」，選擇要查看的年月",
-      "系統自動彙整當月諮商總收入、心理師酬勞、零用金支出",
-      "查看診所應得毛利（30%）與淨收益估算",
-      "確認墊付金額（機構應收未收 × 70%）",
+    title: "營運報表",
+    href: "/reports",
+    tagline: "月度損益摘要與 KPI 追蹤",
+    overview:
+      "營運報表整合所有模組數據，自動產出月度損益摘要。管理層可即時掌握診所營收、心理師酬勞支出、零用金、淨收益與機構墊付狀況。",
+    sections: [
+      {
+        type: "steps",
+        heading: "查看月報表",
+        items: [
+          "進入「營運報表」",
+          "選擇要查看的年月（預設當月）",
+          "系統自動彙整：諮商總收入、心理師酬勞支出、診所場地費（30%）、零用金支出",
+          "查看診所淨收益估算",
+          "確認機構墊付金額（已執行但尚未收款的機構個案，診所墊付的 70% 部分）",
+        ],
+      },
+      {
+        type: "text",
+        heading: "主要指標說明",
+        items: [
+          "諮商總收入：當月所有已執行諮商的費用總和",
+          "心理師酬勞：依各人抽成比例計算的應付總額",
+          "診所毛利（30%）：診所應得的場地與行政費用",
+          "零用金支出：當月記錄的所有雜項支出",
+          "淨收益：診所毛利 − 零用金支出",
+          "目前墊付金額：機構未到款部分，診所暫付的心理師酬勞",
+        ],
+      },
+      {
+        type: "notes",
+        heading: "管理員提示",
+        items: [
+          "報表數字即時反映帳冊狀態，帳冊有更新即反映在報表",
+          "可匯出 CSV 供外部財務系統使用",
+          "墊付金額越高代表機構款項積壓越多，需追蹤請款進度",
+        ],
+      },
     ],
-    roles: "限行政與管理員",
+  },
+  {
+    id: "admin",
+    icon: "🔑",
+    title: "系統管理",
+    href: "/admin/users",
+    tagline: "帳號管理、角色設定、機構維護",
+    overview:
+      "系統管理包含使用者帳號管理（邀請、停用）、角色與抽成比例設定，以及機構代碼維護。",
+    sections: [
+      {
+        type: "steps",
+        heading: "邀請新用戶",
+        items: [
+          "進入「系統管理 → 帳號管理」",
+          "點「＋邀請用戶」",
+          "填入對方的電子郵件",
+          "選擇角色（管理員 / 行政人員 / 心理師）",
+          "點「產生邀請碼」",
+          "將邀請碼傳給對方（系統會顯示邀請連結）",
+          "對方至登入頁點「首次註冊」輸入邀請碼完成註冊",
+        ],
+      },
+      {
+        type: "steps",
+        heading: "設定心理師抽成比例",
+        items: [
+          "在帳號列表找到該心理師",
+          "點「編輯」或「設定抽成」",
+          "輸入抽成比例（例：0.70 代表 70%，範圍 0.01–0.99）",
+          "儲存後新預約即採用新比例（歷史紀錄保留原比例快照）",
+        ],
+      },
+      {
+        type: "steps",
+        heading: "管理機構資料",
+        items: [
+          "進入「帳號管理 → 機構」頁籤（或由側邊欄的機構管理）",
+          "點「＋新增機構」",
+          "填入機構全名與機構代碼（英數 5 碼，例：NTC01）",
+          "機構代碼用於核銷案編號，設定後請勿修改",
+        ],
+      },
+      {
+        type: "notes",
+        heading: "管理員提示",
+        items: [
+          "停用帳號後該用戶無法登入，但歷史諮商記錄與個案資料完整保留",
+          "邀請碼可重複使用直到被人使用為止，請勿外洩",
+          "管理員角色僅應授予診所負責人或主管行政，避免過度授權",
+        ],
+      },
+      {
+        type: "tips",
+        heading: "注意事項",
+        items: [
+          "機構代碼一旦有核銷案使用後請勿修改，否則影響編號一致性",
+          "抽成比例調整只影響未來新增的諮商，不會追溯修改已有記錄",
+        ],
+      },
+    ],
   },
 ];
 
-const roles = [
-  {
-    title: "心理師",
-    color: "bg-blue-50 border-blue-200",
-    headerColor: "bg-blue-100 text-blue-800",
-    can: [
-      "建立／取消當日及未來的預約",
-      "查看個人門診名單與流水帳",
-      "查看個人當月應得酬勞",
-    ],
-    cannot: [
-      "修改已發生（前一日以前）的任何紀錄",
-      "查看其他心理師的個案或帳務",
-      "存取財務核銷、月報表等管理功能",
-    ],
-  },
-  {
-    title: "行政 / 會計",
-    color: "bg-amber-50 border-amber-200",
-    headerColor: "bg-amber-100 text-amber-800",
-    can: [
-      "所有個案資料的新增與管理",
-      "處理排診、提醒電訪紀錄",
-      "收費登載、收款狀態更新",
-      "機構請款操作、心理師酬勞月結",
-      "零用金記帳與補款申請",
-      "查看與匯出月報表",
-    ],
-    cannot: ["修改已發生的預約或帳務（限管理員）"],
-  },
-  {
-    title: "管理員",
-    color: "bg-green-50 border-green-200",
-    headerColor: "bg-green-100 text-green-800",
-    can: [
-      "以上全部功能",
-      "修改已發生日期的帳務（需填寫原因，留存修改紀錄）",
-      "管理機構、帳號設定",
-      "查看完整稽核紀錄",
-    ],
-    cannot: [],
-  },
-];
-
-export default function GuidePage() {
-  return (
-    <div className="mx-auto max-w-4xl space-y-10 pb-16">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">使用簡介</h1>
-        <p className="mt-2 text-gray-500">
-          CheerPsy 心理診療所管理系統共分為 8 個功能模組，涵蓋個案管理、預約排程、財務核銷到月報表。
-        </p>
-      </div>
-
-      {/* Core flow */}
-      <section>
-        <h2 className="mb-4 text-lg font-semibold text-gray-800">系統核心流程</h2>
-        <div className="rounded-xl border border-gray-200 bg-gray-50 p-5">
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            {[
-              { label: "建立個案", sub: "個案管理" },
-              { label: "建立預約", sub: "預約管理" },
-              { label: "隔日自動結算", sub: "系統執行" },
-              { label: "寫入流水帳", sub: "諮商流水帳" },
-              { label: "收款 / 請款", sub: "財務核銷" },
-              { label: "月結報表", sub: "月報表" },
-            ].map((step, i, arr) => (
-              <div key={i} className="flex items-center gap-2">
-                <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-center shadow-sm">
-                  <div className="font-medium text-gray-800">{step.label}</div>
-                  <div className="text-xs text-gray-400">{step.sub}</div>
-                </div>
-                {i < arr.length - 1 && <span className="text-gray-400">→</span>}
+/* ───── helpers ───── */
+function SectionBlock({ section }: { section: DocSection }) {
+  if (section.type === "flow") {
+    return (
+      <div className="mb-5">
+        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">{section.heading}</h4>
+        <div className="flex flex-wrap items-center gap-2">
+          {section.items.map((item, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm text-gray-700 shadow-sm">
+                {item}
               </div>
+              {i < section.items.length - 1 && <span className="text-gray-300">→</span>}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (section.type === "steps") {
+    return (
+      <div className="mb-5">
+        <h4 className="mb-2.5 text-xs font-semibold uppercase tracking-wide text-gray-400">
+          <span className="mr-1 text-primary-500">▶</span>{section.heading}
+        </h4>
+        <ol className="space-y-2">
+          {section.items.map((item, i) => (
+            <li key={i} className="flex items-start gap-2.5">
+              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-bold text-primary-700">
+                {i + 1}
+              </span>
+              <span className="text-sm text-gray-700">{item}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
+    );
+  }
+
+  if (section.type === "tips") {
+    return (
+      <div className="mb-5">
+        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+          <span className="mr-1 text-amber-500">⚠</span>{section.heading}
+        </h4>
+        <ul className="space-y-2">
+          {section.items.map((item, i) => (
+            <li key={i} className="rounded-lg bg-amber-50 border border-amber-100 px-3 py-2 text-sm text-amber-800">
+              {item}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
+  if (section.type === "notes") {
+    return (
+      <div className="mb-5">
+        <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+          <span className="mr-1">💡</span>{section.heading}
+        </h4>
+        <ul className="space-y-2">
+          {section.items.map((item, i) => (
+            <li key={i} className="rounded-lg bg-blue-50 border border-blue-100 px-3 py-2 text-sm text-blue-800">
+              {item}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-5">
+      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">{section.heading}</h4>
+      <ul className="space-y-1.5">
+        {section.items.map((item, i) => (
+          <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
+            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gray-300" />
+            {item}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/* ───── main ───── */
+export default function GuidePage() {
+  const [activeId, setActiveId] = useState("overview");
+  const active = modules.find((m) => m.id === activeId) ?? modules[0];
+
+  return (
+    <div className="flex h-[calc(100vh-64px)] overflow-hidden">
+      {/* sidebar */}
+      <nav className="hidden w-52 shrink-0 overflow-y-auto border-r border-gray-200 bg-gray-50 md:block">
+        <div className="px-4 py-4">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">功能模組</p>
+          <ul className="space-y-0.5">
+            {modules.map((m) => (
+              <li key={m.id}>
+                <button
+                  onClick={() => setActiveId(m.id)}
+                  className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                    activeId === m.id
+                      ? "bg-primary-100 font-semibold text-primary-800"
+                      : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                  }`}
+                >
+                  <span className="mr-2">{m.icon}</span>
+                  {m.title}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="border-t border-gray-200 px-4 py-4">
+          <p className="text-xs text-gray-400">管理員版說明</p>
+          <p className="text-xs text-gray-400">CheerPsy v2</p>
+        </div>
+      </nav>
+
+      {/* main content */}
+      <main className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-2xl px-6 py-6">
+          {/* mobile module picker */}
+          <div className="mb-5 md:hidden">
+            <select
+              value={activeId}
+              onChange={(e) => setActiveId(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            >
+              {modules.map((m) => (
+                <option key={m.id} value={m.id}>{m.icon} {m.title}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* module header */}
+          <div className="mb-6 border-b border-gray-200 pb-5">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">{active.icon}</span>
+              <div>
+                <h1 className="text-xl font-bold text-gray-900">{active.title}</h1>
+                <p className="text-sm text-gray-500">{active.tagline}</p>
+              </div>
+            </div>
+            <p className="mt-4 text-sm leading-relaxed text-gray-600">{active.overview}</p>
+          </div>
+
+          {/* sections */}
+          <div>
+            {active.sections.map((section, i) => (
+              <SectionBlock key={i} section={section} />
             ))}
           </div>
-          <p className="mt-4 text-xs text-gray-500">
-            心理師只需「建立預約」與「當日取消」兩個動作；其餘結算、帳務分流、報表產出全由系統與行政處理。
-          </p>
-        </div>
-      </section>
 
-      {/* Role permissions */}
-      <section>
-        <h2 className="mb-4 text-lg font-semibold text-gray-800">角色權限</h2>
-        <div className="grid gap-4 md:grid-cols-3">
-          {roles.map((role) => (
-            <div key={role.title} className={`rounded-xl border ${role.color} overflow-hidden`}>
-              <div className={`px-4 py-2.5 font-semibold ${role.headerColor}`}>{role.title}</div>
-              <div className="space-y-3 p-4">
-                <div>
-                  <p className="mb-1.5 text-xs font-medium text-gray-500 uppercase tracking-wide">可操作</p>
-                  <ul className="space-y-1">
-                    {role.can.map((item, i) => (
-                      <li key={i} className="flex items-start gap-1.5 text-sm text-gray-700">
-                        <span className="mt-0.5 text-green-500">✓</span>
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                {role.cannot.length > 0 && (
-                  <div>
-                    <p className="mb-1.5 text-xs font-medium text-gray-500 uppercase tracking-wide">不可操作</p>
-                    <ul className="space-y-1">
-                      {role.cannot.map((item, i) => (
-                        <li key={i} className="flex items-start gap-1.5 text-sm text-gray-700">
-                          <span className="mt-0.5 text-red-400">✕</span>
-                          {item}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
+          {/* nav buttons */}
+          <div className="mt-8 flex items-center justify-between border-t border-gray-200 pt-5">
+            {modules.findIndex((m) => m.id === activeId) > 0 ? (
+              <button
+                onClick={() => setActiveId(modules[modules.findIndex((m) => m.id === activeId) - 1].id)}
+                className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800"
+              >
+                ← {modules[modules.findIndex((m) => m.id === activeId) - 1].title}
+              </button>
+            ) : <div />}
+            {modules.findIndex((m) => m.id === activeId) < modules.length - 1 ? (
+              <button
+                onClick={() => setActiveId(modules[modules.findIndex((m) => m.id === activeId) + 1].id)}
+                className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800"
+              >
+                {modules[modules.findIndex((m) => m.id === activeId) + 1].title} →
+              </button>
+            ) : <div />}
+          </div>
         </div>
-      </section>
-
-      {/* Modules */}
-      <section>
-        <h2 className="mb-4 text-lg font-semibold text-gray-800">功能模組說明</h2>
-        <div className="space-y-4">
-          {modules.map((mod) => (
-            <div key={mod.id} className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-              <div className="flex items-center gap-3 border-b border-gray-100 bg-gray-50 px-5 py-3">
-                <span className="text-xl">{mod.icon}</span>
-                <div>
-                  <span className="text-xs font-medium text-gray-400">模組 {mod.id}　</span>
-                  <span className="font-semibold text-gray-800">{mod.title}</span>
-                </div>
-                <span className="ml-auto rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-500">
-                  {mod.roles}
-                </span>
-              </div>
-              <div className="grid gap-4 p-5 md:grid-cols-2">
-                <div>
-                  <p className="text-sm text-gray-600">{mod.desc}</p>
-                </div>
-                <div>
-                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">操作步驟</p>
-                  <ol className="space-y-1">
-                    {mod.steps.map((step, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
-                        <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-bold text-primary-700">
-                          {i + 1}
-                        </span>
-                        {step}
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Key rules */}
-      <section>
-        <h2 className="mb-4 text-lg font-semibold text-gray-800">重要規則</h2>
-        <div className="grid gap-3 md:grid-cols-2">
-          {[
-            {
-              icon: "⏰",
-              title: "當日取消原則",
-              desc: "個案未到請於當日取消預約。隔日結算後視為「已執行」，帳務自動產生，逾時不得修改（限管理員介入）。",
-            },
-            {
-              icon: "🔒",
-              title: "帳務鎖定原則",
-              desc: "已發生日期的帳務由系統鎖定，基層人員無法竄改。管理員修改需填寫原因，全程留存稽核紀錄。",
-            },
-            {
-              icon: "💹",
-              title: "70 / 30 抽成",
-              desc: "每筆諮商費用固定拆分：心理師 70%（月結支付），診所 30%（場地與行政費用）。系統自動計算，無需手動填寫。",
-            },
-            {
-              icon: "🏦",
-              title: "機構墊付注意",
-              desc: "機構個案諮商完成後先付心理師酬勞，機構撥款可能延遲數週。月報表會顯示「診所目前墊付金額」供管理層掌握資金壓力。",
-            },
-          ].map((rule) => (
-            <div key={rule.title} className="rounded-xl border border-gray-200 bg-white p-4">
-              <div className="mb-2 flex items-center gap-2">
-                <span className="text-xl">{rule.icon}</span>
-                <span className="font-semibold text-gray-800">{rule.title}</span>
-              </div>
-              <p className="text-sm text-gray-600">{rule.desc}</p>
-            </div>
-          ))}
-        </div>
-      </section>
+      </main>
     </div>
   );
 }

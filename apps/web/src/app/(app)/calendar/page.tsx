@@ -3,7 +3,62 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
+import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
 import FullCalendar from "@fullcalendar/react";
+
+const helpContent: HelpContent = {
+  title: "預約日曆",
+  overview: "排程中心，所有諮商都從建立預約開始。新增預約後，系統在 T+1（隔日）自動執行日結，將已執行預約寫入流水帳，無需手動操作。",
+  sections: [
+    {
+      heading: "新增單次預約",
+      type: "steps",
+      items: [
+        "點「＋新增預約」（或點月曆空格）",
+        "選個案（可輸入姓名搜尋）",
+        "選心理師、諮商類型（現場／線上／家訪）、診間",
+        "選日期與起始時間，填入諮商費用",
+        "系統自動計算心理師份額與診所份額，儲存",
+      ],
+    },
+    {
+      heading: "批次預約（定期諮商）",
+      type: "steps",
+      items: [
+        "點「批次預約」",
+        "選個案、心理師、類型、診間",
+        "設定起始日期、頻率（每週／隔週）與總次數",
+        "確認預覽清單後一次建立所有預約",
+      ],
+    },
+    {
+      heading: "取消預約",
+      type: "steps",
+      items: [
+        "找到該筆預約，點「取消」並確認",
+        "當日取消不計費",
+        "過隔日日結後自動視為已執行，帳務已產生",
+      ],
+    },
+    {
+      heading: "T+1 日結規則",
+      type: "tips",
+      items: [
+        "當日 23:59 前未取消的預約，隔日日結自動標記為「已執行」並寫入流水帳",
+        "個案未到請務必在當日結束前取消，否則帳務自動產生無法撤回",
+        "管理員可在日結帳冊手動補跑指定日期區間的結算",
+      ],
+    },
+    {
+      heading: "管理員提示",
+      type: "notes",
+      items: [
+        "診間衝突由系統自動阻擋，同診間同時段只能一個預約",
+        "預約建立後若需修改費用，至日結帳冊解鎖後調整",
+      ],
+    },
+  ],
+};
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
@@ -85,6 +140,7 @@ export default function CalendarPage() {
   const { data: session } = useSession();
   const token = (session?.user as any)?.accessToken;
   const [tab, setTab] = useState<"calendar" | "reminders">("calendar");
+  const [helpOpen, setHelpOpen] = useState(false);
 
   if (!token) return <p>Loading...</p>;
 
@@ -92,7 +148,11 @@ export default function CalendarPage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">預約日曆</h1>
+        <button onClick={() => setHelpOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700">
+          <span>ℹ️</span> 說明
+        </button>
       </div>
+      <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} content={helpContent} />
 
       <div className="mb-4 flex gap-1 border-b border-gray-200">
         {(

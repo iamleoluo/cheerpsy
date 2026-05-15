@@ -3,8 +3,57 @@
 import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
+import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+const helpContent: HelpContent = {
+  title: "核銷案管理",
+  overview: "將多筆諮商記錄打包成核銷批次，用於自費收款確認或機構統一請款。建立後可下載收據或請款單 PDF。",
+  sections: [
+    {
+      heading: "建立自費核銷案",
+      type: "steps",
+      items: [
+        "點「＋建立核銷案」，選「自費個案」",
+        "搜尋並選擇個案",
+        "勾選要納入的諮商記錄（系統列出未歸屬的記錄）",
+        "設定期間（起訖日期），確認金額後建立",
+        "狀態進入「收款中」",
+        "收款完成後點「送出」→「結案」，下載收據 PDF 存檔",
+      ],
+    },
+    {
+      heading: "建立機構核銷案",
+      type: "steps",
+      items: [
+        "點「＋建立核銷案」，選「機構」",
+        "選擇機構名稱，勾選諮商記錄，設定期間後建立",
+        "等待心理師在「確認文件」頁面逐筆標記文件備妥",
+        "全部確認後批次自動升為「文件備妥」",
+        "點「提交請款」，填入外部請款單號",
+        "款項到帳後點「標記到款」→「結案」，下載請款單 PDF",
+      ],
+    },
+    {
+      heading: "狀態流程",
+      type: "text",
+      items: [
+        "自費：收款中 → 送出 → 結案",
+        "機構：收款中 → 文件備妥（自動）→ 已提交 → 款項到帳 → 結案",
+      ],
+    },
+    {
+      heading: "管理員提示",
+      type: "notes",
+      items: [
+        "核銷案編號：自費 = S{週期}-{案號}-{YYYYMM}；機構 = I-{機構代碼}-{YYYYMM}",
+        "同一筆諮商記錄不能同時屬於兩個核銷案",
+        "PDF 收據含診所名稱、個案資訊、明細表、簽名欄",
+      ],
+    },
+  ],
+};
 
 /* ───── types ───── */
 
@@ -74,12 +123,19 @@ export default function ClaimsPage() {
   const token = (session?.user as any)?.accessToken;
   const userRole = (session?.user as any)?.role;
   const [tab, setTab] = useState<"batches" | "docs">("batches");
+  const [helpOpen, setHelpOpen] = useState(false);
 
   if (!token) return <p>Loading...</p>;
 
   return (
     <div>
-      <h1 className="mb-4 text-2xl font-bold">核銷案管理</h1>
+      <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} content={helpContent} />
+      <div className="mb-4 flex items-center justify-between">
+        <h1 className="text-2xl font-bold">核銷案管理</h1>
+        <button onClick={() => setHelpOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700">
+          <span>ℹ️</span> 說明
+        </button>
+      </div>
 
       <div className="mb-4 flex gap-1 border-b border-gray-200">
         {(

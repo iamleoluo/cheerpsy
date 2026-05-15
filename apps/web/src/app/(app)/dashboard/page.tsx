@@ -4,6 +4,43 @@ import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
 import Link from "next/link";
+import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
+
+const helpContent: HelpContent = {
+  title: "儀表板",
+  overview: "診所當日與本月運營狀況的快速總覽。每個數字都是即時從各模組彙整的，不需手動更新。",
+  sections: [
+    {
+      heading: "主要數字說明",
+      type: "text",
+      items: [
+        "今日預約：今天所有狀態為「已預約」的場次數",
+        "本月場次：本月已執行的諮商總場次",
+        "待收款：流水帳中付款狀態為「待收款」的筆數",
+        "零用金餘額：目前零用金帳戶的可用金額",
+      ],
+    },
+    {
+      heading: "日常工作流程",
+      type: "steps",
+      items: [
+        "早上：進入儀表板，確認今日預約場次",
+        "每日：進入日結帳冊，執行日結確保資料更新",
+        "有空：處理待收款項目，填入收款資訊並鎖定",
+        "月底：執行心理師酬勞月結，查看月報表",
+      ],
+    },
+    {
+      heading: "管理員提示",
+      type: "notes",
+      items: [
+        "數字若顯示「-」代表資料載入中，請稍待",
+        "零用金餘額低時，系統會在財務管理頁面顯示補款提示",
+        "待收款數字較高時，建議進入日結帳冊批次處理",
+      ],
+    },
+  ],
+};
 
 interface DashboardData {
   session_count: number;
@@ -25,6 +62,7 @@ export default function DashboardPage() {
 
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!token) return;
@@ -50,11 +88,17 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">儀表板</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          {userName}，{monthLabel}概覽
-        </p>
+      <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} content={helpContent} />
+      <div className="mb-6 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">儀表板</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            {userName}，{monthLabel}概覽
+          </p>
+        </div>
+        <button onClick={() => setHelpOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700">
+          <span>ℹ️</span> 說明
+        </button>
       </div>
 
       {loading || !data ? (

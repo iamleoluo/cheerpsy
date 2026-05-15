@@ -4,6 +4,52 @@ import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch, exportCsv } from "@/lib/client-api";
 import RoomMiniCalendar from "@/components/room-mini-calendar";
+import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
+
+const helpContent: HelpContent = {
+  title: "個案管理",
+  overview: "個案管理採兩階段設計：預約時快速建檔（Stage 1），初診到場後補填完整資料並「轉正式」產生永久案號（Stage 2）。",
+  sections: [
+    {
+      heading: "Stage 1：新增預約個案",
+      type: "steps",
+      items: [
+        "點「＋新增個案」",
+        "填入姓名、電話、年齡（初診前估算用）",
+        "指定負責心理師，選付費方式與結帳週期",
+        "儲存後狀態為「已預約未初談」，自動分配流水序號 #000X",
+      ],
+    },
+    {
+      heading: "Stage 2：初診後轉為正式個案",
+      type: "steps",
+      items: [
+        "個案初診到場後，點列表的「編輯」",
+        "補填身份證字號（必填，加密儲存）、出生日期、性別",
+        "補填緊急聯絡人姓名與電話",
+        "儲存後點「轉正式」按鈕",
+        "系統自動產生正式案號（例：26000145），狀態變為「進行中」",
+      ],
+    },
+    {
+      heading: "狀態流程",
+      type: "text",
+      items: [
+        "已預約未初談 → 轉正式 → 進行中",
+        "進行中 → 暫停 / 結案 / 流失",
+        "編輯時狀態下拉不含「已預約未初談」",
+      ],
+    },
+    {
+      heading: "注意事項",
+      type: "tips",
+      items: [
+        "身份證字號加密儲存，任何人無法查看原始值，轉正後案號不可修改",
+        "機構個案請務必選對機構，影響後續核銷案編號與請款流程",
+      ],
+    },
+  ],
+};
 
 /* ───── types ───── */
 
@@ -117,6 +163,7 @@ export default function CasesPage() {
   const userRole = (session?.user as any)?.role;
 
   const [mainTab, setMainTab] = useState<"cases" | "appointments">("cases");
+  const [helpOpen, setHelpOpen] = useState(false);
 
   if (!token) return <p className="p-6 text-gray-400">載入中...</p>;
 
@@ -124,7 +171,11 @@ export default function CasesPage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">個案管理</h1>
+        <button onClick={() => setHelpOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700">
+          <span>ℹ️</span> 說明
+        </button>
       </div>
+      <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} content={helpContent} />
 
       <div className="mb-6 flex gap-1 border-b border-gray-200">
         <button

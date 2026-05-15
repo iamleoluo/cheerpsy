@@ -3,6 +3,46 @@
 import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch, exportCsv } from "@/lib/client-api";
+import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
+
+const helpContent: HelpContent = {
+  title: "營運報表",
+  overview: "整合所有模組數據，自動產出月度損益摘要。管理層可即時掌握診所營收、心理師酬勞、零用金、淨收益與機構墊付狀況。",
+  sections: [
+    {
+      heading: "查看月報表",
+      type: "steps",
+      items: [
+        "進入「營運報表 → 月報表」",
+        "選擇要查看的年月（預設當月）",
+        "系統自動彙整：諮商總收入、心理師酬勞支出、診所毛利（30%）、零用金支出",
+        "查看診所淨收益估算與目前機構墊付金額",
+        "可匯出 CSV 供外部財務系統使用",
+      ],
+    },
+    {
+      heading: "主要指標說明",
+      type: "text",
+      items: [
+        "諮商總收入：當月所有已執行諮商的費用總和",
+        "心理師酬勞：依各人抽成比例計算的應付總額",
+        "診所毛利（30%）：診所應得的場地與行政費用",
+        "零用金支出：當月記錄的所有雜項支出",
+        "淨收益：診所毛利 − 零用金支出",
+        "目前墊付金額：機構未到款，診所暫付的心理師酬勞",
+      ],
+    },
+    {
+      heading: "管理員提示",
+      type: "notes",
+      items: [
+        "報表即時反映帳冊狀態，帳冊有更新即反映在報表",
+        "墊付金額越高代表機構款項積壓越多，需追蹤請款進度",
+        "流失預警頁籤顯示長期未回診的個案，可用於追蹤管理",
+      ],
+    },
+  ],
+};
 
 /* ───── main page ───── */
 
@@ -10,12 +50,19 @@ export default function ReportsPage() {
   const { data: session } = useSession();
   const token = (session?.user as any)?.accessToken;
   const [tab, setTab] = useState<"monthly" | "churn">("monthly");
+  const [helpOpen, setHelpOpen] = useState(false);
 
   if (!token) return <p>Loading...</p>;
 
   return (
     <div>
-      <h1 className="mb-4 text-2xl font-bold">營運報表</h1>
+      <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} content={helpContent} />
+      <div className="mb-4 flex items-center justify-between">
+        <h1 className="text-2xl font-bold">營運報表</h1>
+        <button onClick={() => setHelpOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700">
+          <span>ℹ️</span> 說明
+        </button>
+      </div>
 
       <div className="mb-4 flex gap-1 border-b border-gray-200">
         {(
