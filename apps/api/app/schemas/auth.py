@@ -17,5 +17,6 @@ class UserResponse(BaseModel):
     name: str
     role: str
     therapist_code: str | None = None
+    commission_rate: float | None = None
 
     model_config = {"from_attributes": True}

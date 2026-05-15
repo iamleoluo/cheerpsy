@@ -23,7 +23,7 @@ def list_petty_cash(
 @router.post("", response_model=PettyCashResponse, status_code=status.HTTP_201_CREATED)
 def create_petty_cash(
     body: PettyCashCreate,
-    user: User = Depends(RequireRole(["admin", "accountant"])),
+    user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
     db: Session = Depends(get_db),
 ):
     last = db.query(PettyCash).order_by(desc(PettyCash.id)).first()
@@ -37,6 +37,7 @@ def create_petty_cash(
         description=body.description,
         receipt_note=body.receipt_note,
         balance_after=new_balance,
+        created_by=user.id,
     )
     db.add(record)
     db.commit()

@@ -1,9 +1,10 @@
 import uuid
 from datetime import date, datetime, timezone
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from psycopg2.extras import DateTimeTZRange
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import RequireRole, get_current_user
@@ -19,6 +20,8 @@ from app.schemas.appointment import (
 )
 
 router = APIRouter(prefix="/appointments", tags=["appointments"])
+
+DEFAULT_COMMISSION_RATE = Decimal("0.70")
 
 
 def _make_number(therapist_code: str, dt: datetime, seq: int) -> str:
@@ -36,11 +39,25 @@ def _next_seq(db: Session, therapist_code: str, dt: datetime) -> int:
     return (result or 0) + 1
 
 
-def _to_response(a: Appointment) -> AppointmentResponse:
+def _next_visit_seq(db: Session, case_id: int) -> int:
+    current_max = db.query(func.max(Appointment.visit_seq)).filter(
+        Appointment.case_id == case_id
+    ).scalar()
+    return (current_max or 0) + 1
+
+
+def _get_commission_rate(therapist: User) -> Decimal:
+    if therapist.commission_rate is not None:
+        return Decimal(str(therapist.commission_rate))
+    return DEFAULT_COMMISSION_RATE
+
+
+def _to_response(a: Appointment, therapist: User | None = None) -> AppointmentResponse:
     start = end = None
     if a.time_range:
         start = a.time_range.lower
         end = a.time_range.upper
+    rate = _get_commission_rate(therapist) if therapist else DEFAULT_COMMISSION_RATE
     return AppointmentResponse(
         id=a.id,
         appointment_number=a.appointment_number,
@@ -54,8 +71,9 @@ def _to_response(a: Appointment) -> AppointmentResponse:
         start_time=start,
         end_time=end,
         amount=float(a.amount),
-        therapist_share=round(float(a.amount) * 0.7, 2),
-        clinic_share=round(float(a.amount) * 0.3, 2),
+        therapist_share=round(float(a.amount) * float(rate), 2),
+        clinic_share=round(float(a.amount) * (1 - float(rate)), 2),
+        visit_seq=a.visit_seq,
         status=a.status,
         batch_id=a.batch_id,
         created_at=a.created_at,
@@ -87,7 +105,14 @@ def list_appointments(
             text("time_range && :r").bindparams(r=range_filter)
         )
     appointments = query.order_by(Appointment.id.desc()).limit(200).all()
-    return [_to_response(a) for a in appointments]
+
+    therapist_ids = list({a.therapist_id for a in appointments})
+    therapists = {}
+    if therapist_ids:
+        users = db.query(User).filter(User.id.in_(therapist_ids)).all()
+        therapists = {u.id: u for u in users}
+
+    return [_to_response(a, therapists.get(a.therapist_id)) for a in appointments]
 
 
 @router.get("/{appointment_id}", response_model=AppointmentResponse)
@@ -101,7 +126,8 @@ def get_appointment(
         raise HTTPException(status_code=404, detail="Appointment not found")
     if user.role == "therapist" and a.therapist_id != user.id:
         raise HTTPException(status_code=403, detail="Access denied")
-    return _to_response(a)
+    therapist = db.query(User).filter(User.id == a.therapist_id).first()
+    return _to_response(a, therapist)
 
 
 @router.post("", response_model=AppointmentResponse, status_code=status.HTTP_201_CREATED)
@@ -126,6 +152,7 @@ def create_appointment(
 
     seq = _next_seq(db, therapist.therapist_code, body.start_time)
     number = _make_number(therapist.therapist_code, body.start_time, seq)
+    visit_seq = _next_visit_seq(db, body.case_id)
 
     time_range = DateTimeTZRange(body.start_time, body.end_time)
     appt = Appointment(
@@ -136,12 +163,14 @@ def create_appointment(
         session_type=body.session_type,
         time_range=time_range,
         amount=body.amount,
+        visit_seq=visit_seq,
         status="booked",
+        created_by=user.id,
     )
     db.add(appt)
     db.commit()
     db.refresh(appt)
-    return _to_response(appt)
+    return _to_response(appt, therapist)
 
 
 @router.post("/batch", response_model=list[AppointmentResponse], status_code=status.HTTP_201_CREATED)
@@ -159,9 +188,10 @@ def create_batch(
         raise HTTPException(status_code=400, detail="Therapist not found or has no code")
 
     batch_id = str(uuid.uuid4())[:8]
+    next_vs = _next_visit_seq(db, body.case_id)
     results = []
 
-    for slot in body.slots:
+    for i, slot in enumerate(body.slots):
         amount = slot.amount if slot.amount is not None else body.amount
 
         if body.room_id:
@@ -179,8 +209,10 @@ def create_batch(
             session_type=body.session_type,
             time_range=time_range,
             amount=amount,
+            visit_seq=next_vs + i,
             status="booked",
             batch_id=batch_id,
+            created_by=user.id,
         )
         db.add(appt)
         db.flush()
@@ -189,7 +221,7 @@ def create_batch(
     db.commit()
     for a in results:
         db.refresh(a)
-    return [_to_response(a) for a in results]
+    return [_to_response(a, therapist) for a in results]
 
 
 @router.put("/{appointment_id}/cancel", response_model=AppointmentResponse)
@@ -214,7 +246,8 @@ def cancel_appointment(
     a.status = "cancelled"
     db.commit()
     db.refresh(a)
-    return _to_response(a)
+    therapist = db.query(User).filter(User.id == a.therapist_id).first()
+    return _to_response(a, therapist)
 
 
 def _check_room_conflict(db: Session, room_id: int, start: datetime, end: datetime):

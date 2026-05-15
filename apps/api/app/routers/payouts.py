@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -12,6 +13,14 @@ from app.models.therapist_payout import PayoutDetail, TherapistPayout
 from app.models.user import User
 
 router = APIRouter(prefix="/payouts", tags=["payouts"])
+
+DEFAULT_COMMISSION_RATE = Decimal("0.70")
+
+
+def _get_rate(sr: SessionRecord) -> Decimal:
+    if sr.commission_rate_used is not None:
+        return Decimal(str(sr.commission_rate_used))
+    return DEFAULT_COMMISSION_RATE
 
 
 class PayoutResponse(BaseModel):
@@ -77,11 +86,12 @@ def payout_details(
     for d in details:
         sr = db.query(SessionRecord).filter(SessionRecord.id == d.session_id).first()
         if sr:
+            rate = _get_rate(sr)
             sessions.append({
                 "session_id": sr.id,
                 "session_date": sr.session_date.isoformat(),
                 "amount": float(sr.amount),
-                "therapist_share": round(float(sr.amount) * 0.7, 2),
+                "therapist_share": round(float(sr.amount) * float(rate), 2),
                 "fee_category": sr.fee_category,
                 "session_type": sr.session_type,
             })
@@ -122,12 +132,13 @@ def generate_payouts(
 
     created = 0
     for tid, recs in by_therapist.items():
-        total = sum(round(float(r.amount) * 0.7, 2) for r in recs)
+        total = sum(round(float(r.amount) * float(_get_rate(r)), 2) for r in recs)
         payout = TherapistPayout(
             therapist_id=tid,
             payout_month=body.payout_month,
             total_amount=total,
             status="pending",
+            created_by=user.id,
         )
         db.add(payout)
         db.flush()

@@ -41,6 +41,7 @@ class AppointmentResponse(BaseModel):
     amount: float
     therapist_share: float | None = None
     clinic_share: float | None = None
+    visit_seq: int | None = None
     status: str
     batch_id: str | None = None
     created_at: datetime | None = None

@@ -17,11 +17,13 @@ class Appointment(Base):
     time_range = Column(TSTZRANGE, nullable=False)
     amount = Column(Numeric(10, 2), nullable=False)
     status = Column(String(20), nullable=False, default="booked")  # booked, executed, cancelled
+    visit_seq = Column(Integer, nullable=True)
     batch_id = Column(String(50), nullable=True, index=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     case = relationship("Case", back_populates="appointments")
-    therapist = relationship("User", back_populates="appointments")
+    therapist = relationship("User", back_populates="appointments", foreign_keys=[therapist_id])
     room = relationship("Room")
     session_record = relationship("SessionRecord", back_populates="appointment", uselist=False)
     invoice = relationship("Invoice", back_populates="appointment", uselist=False)

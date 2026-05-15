@@ -84,6 +84,7 @@ def create_invoice(
         invoice_number=number,
         appointment_id=body.appointment_id,
         status="active",
+        created_by=user.id,
     )
     db.add(inv)
     db.commit()

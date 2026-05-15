@@ -54,6 +54,7 @@ class UserListResponse(BaseModel):
     name: str
     role: str
     therapist_code: str | None = None
+    commission_rate: float | None = None
     is_active: bool
     model_config = {"from_attributes": True}
 
@@ -75,11 +76,34 @@ def toggle_user(user_id: int, user: User = Depends(RequireRole(["admin"])), db: 
     return {"id": target.id, "is_active": target.is_active}
 
 
+class CommissionRateRequest(BaseModel):
+    commission_rate: float
+
+
+@router.put("/users/{user_id}/commission-rate")
+def set_commission_rate(
+    user_id: int,
+    body: CommissionRateRequest,
+    user: User = Depends(RequireRole(["admin"])),
+    db: Session = Depends(get_db),
+):
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.role != "therapist":
+        raise HTTPException(status_code=400, detail="Commission rate only applies to therapists")
+    if not (0 < body.commission_rate <= 1):
+        raise HTTPException(status_code=400, detail="Commission rate must be between 0 and 1")
+    target.commission_rate = body.commission_rate
+    db.commit()
+    return {"id": target.id, "commission_rate": float(target.commission_rate)}
+
+
 # ── Invitations (admin) ───────────────────────────────
 
 class CreateInviteRequest(BaseModel):
     name: str
-    role: str  # therapist | accountant | admin
+    role: str  # therapist | accountant | admin | staff
     therapist_code: str | None = None
 
 
@@ -103,7 +127,7 @@ def create_invitation(
     user: User = Depends(RequireRole(["admin"])),
     db: Session = Depends(get_db),
 ):
-    if body.role not in ("therapist", "accountant", "admin"):
+    if body.role not in ("therapist", "accountant", "admin", "staff"):
         raise HTTPException(status_code=400, detail="Invalid role")
     if body.role == "therapist" and not body.therapist_code:
         raise HTTPException(status_code=400, detail="Therapist code required")

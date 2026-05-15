@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -8,6 +9,7 @@ from app.auth.dependencies import RequireRole, get_current_user
 from app.database import get_db
 from app.models.audit_log import AuditLog
 from app.models.case import Case
+from app.models.claim_batch import ClaimBatch
 from app.models.session_record import SessionRecord
 from app.models.user import User
 from app.schemas.session_record import (
@@ -18,6 +20,8 @@ from app.schemas.session_record import (
     SettlementResponse,
 )
 from app.services.settlement import run_daily_settlement
+
+DEFAULT_COMMISSION_RATE = Decimal("0.70")
 
 
 def _write_audit(db: Session, table: str, record_id: int, op: str, user_id: int, before: dict | None, after: dict | None, reason: str | None = None):
@@ -34,10 +38,20 @@ def _write_audit(db: Session, table: str, record_id: int, op: str, user_id: int,
 router = APIRouter(prefix="/ledger", tags=["ledger"])
 
 
+def _get_rate(r: SessionRecord, db: Session) -> Decimal:
+    if r.commission_rate_used is not None:
+        return Decimal(str(r.commission_rate_used))
+    therapist = db.query(User).filter(User.id == r.therapist_id).first()
+    if therapist and therapist.commission_rate is not None:
+        return Decimal(str(therapist.commission_rate))
+    return DEFAULT_COMMISSION_RATE
+
+
 def _to_response(r: SessionRecord, db: Session) -> SessionRecordResponse:
     appt = r.appointment
     case = appt.case if appt else (db.query(Case).filter(Case.id == r.case_id).first() if r.case_id else None)
     therapist = appt.therapist if appt else db.query(User).filter(User.id == r.therapist_id).first()
+    rate = _get_rate(r, db)
     return SessionRecordResponse(
         id=r.id,
         appointment_id=r.appointment_id,
@@ -51,8 +65,8 @@ def _to_response(r: SessionRecord, db: Session) -> SessionRecordResponse:
         room_id=r.room_id,
         fee_category=r.fee_category,
         amount=float(r.amount),
-        therapist_share=round(float(r.amount) * 0.7, 2),
-        clinic_share=round(float(r.amount) * 0.3, 2),
+        therapist_share=round(float(r.amount) * float(rate), 2),
+        clinic_share=round(float(r.amount) * float(1 - rate), 2),
         payment_status=r.payment_status,
         funding_source=case.funding_source if case else None,
         institution_name=case.institution.name if case and case.institution else None,
@@ -60,6 +74,9 @@ def _to_response(r: SessionRecord, db: Session) -> SessionRecordResponse:
         payment_note=r.payment_note,
         claim_number=r.claim_number,
         receipt_number=r.receipt_number,
+        commission_rate_used=float(rate),
+        claim_batch_id=r.claim_batch_id,
+        therapist_doc_submitted_at=r.therapist_doc_submitted_at,
         locked_at=r.locked_at,
     )
 
@@ -115,7 +132,7 @@ def get_record(
 def update_payment_status(
     record_id: int,
     body: SessionRecordUpdatePayment,
-    user: User = Depends(RequireRole(["admin", "accountant"])),
+    user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
     db: Session = Depends(get_db),
 ):
     r = db.query(SessionRecord).filter(SessionRecord.id == record_id).first()
@@ -249,6 +266,41 @@ def direct_edit_record(
         "receipt_number": r.receipt_number,
     }
     _write_audit(db, "session_records", r.id, "UPDATE", user.id, before, after)
+    db.commit()
+    db.refresh(r)
+    return _to_response(r, db)
+
+
+@router.put("/{record_id}/confirm-doc", response_model=SessionRecordResponse)
+def confirm_doc_submission(
+    record_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    r = db.query(SessionRecord).filter(SessionRecord.id == record_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Record not found")
+    if user.role == "therapist" and r.therapist_id != user.id:
+        raise HTTPException(status_code=403, detail="Only the assigned therapist can confirm")
+    if user.role not in ("therapist", "admin"):
+        raise HTTPException(status_code=403, detail="Access denied")
+    if r.therapist_doc_submitted_at:
+        raise HTTPException(status_code=400, detail="Already confirmed")
+
+    r.therapist_doc_submitted_at = datetime.now(timezone.utc)
+    r.therapist_doc_submitted_by = user.id
+    db.flush()
+
+    if r.claim_batch_id:
+        batch = db.query(ClaimBatch).filter(ClaimBatch.id == r.claim_batch_id).first()
+        if batch and batch.status == "collecting":
+            unconfirmed = db.query(SessionRecord).filter(
+                SessionRecord.claim_batch_id == batch.id,
+                SessionRecord.therapist_doc_submitted_at.is_(None),
+            ).count()
+            if unconfirmed == 0:
+                batch.status = "ready"
+
     db.commit()
     db.refresh(r)
     return _to_response(r, db)

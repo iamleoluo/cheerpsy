@@ -3,6 +3,52 @@
 import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
+import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
+
+const helpContent: HelpContent = {
+  title: "系統管理",
+  overview: "管理使用者帳號（邀請、停用）、角色設定、抽成比例，以及機構代碼維護。",
+  sections: [
+    {
+      heading: "邀請新用戶",
+      type: "steps",
+      items: [
+        "點「＋建立邀請」",
+        "填入對方的電子郵件",
+        "選擇角色（管理員 / 行政人員 / 心理師）",
+        "點「產生邀請碼」",
+        "將邀請碼傳給對方",
+        "對方至登入頁點「首次註冊」輸入邀請碼完成帳號建立",
+      ],
+    },
+    {
+      heading: "設定心理師抽成比例",
+      type: "steps",
+      items: [
+        "在帳號列表找到該心理師，點「編輯」",
+        "輸入抽成比例（例：0.70 代表 70%）",
+        "儲存後新預約即採用新比例（歷史記錄保留原比例快照）",
+      ],
+    },
+    {
+      heading: "注意事項",
+      type: "tips",
+      items: [
+        "停用帳號後該用戶無法登入，但歷史諮商記錄與個案資料完整保留",
+        "機構代碼（英數 5 碼）用於核銷案編號，設定後有交易記錄請勿修改",
+        "邀請碼請勿外洩，被人使用後即失效",
+      ],
+    },
+    {
+      heading: "管理員提示",
+      type: "notes",
+      items: [
+        "管理員角色僅應授予診所負責人或主管行政，避免過度授權",
+        "抽成比例調整只影響未來新增的諮商，不追溯修改已有記錄",
+      ],
+    },
+  ],
+};
 
 interface UserItem {
   id: number;
@@ -38,6 +84,7 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<UserItem[]>([]);
   const [invitations, setInvitations] = useState<InvitationItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   // Invite modal
   const [showInvite, setShowInvite] = useState(false);
@@ -132,14 +179,20 @@ export default function AdminUsersPage() {
 
   return (
     <div>
+      <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} content={helpContent} />
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">帳號管理</h1>
-        <button
-          onClick={() => setShowInvite(true)}
-          className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
-        >
-          + 建立邀請
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setHelpOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700">
+            <span>ℹ️</span> 說明
+          </button>
+          <button
+            onClick={() => setShowInvite(true)}
+            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+          >
+            + 建立邀請
+          </button>
+        </div>
       </div>
 
       {/* Users table */}

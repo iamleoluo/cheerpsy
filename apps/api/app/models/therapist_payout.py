@@ -1,5 +1,7 @@
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, Numeric, String
 
+
+
 from app.database import Base
 
 
@@ -12,6 +14,7 @@ class TherapistPayout(Base):
     total_amount = Column(Numeric(10, 2), nullable=False)
     status = Column(String(20), nullable=False, default="pending")  # pending, paid
     paid_at = Column(DateTime(timezone=True), nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
 
 
 class PayoutDetail(Base):
