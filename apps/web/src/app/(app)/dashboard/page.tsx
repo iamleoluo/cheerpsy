@@ -89,7 +89,7 @@ export default function DashboardPage() {
               title="近 7 日預約"
               value={data.upcoming_reminders.toString()}
               sub="待提醒"
-              href="/reminders"
+              href="/calendar"
             />
           </div>
 
@@ -101,7 +101,7 @@ export default function DashboardPage() {
                   value={`$${data.petty_balance.toLocaleString()}`}
                   alert={data.petty_alert}
                   alertText="餘額低於 $3,000，請補充"
-                  href="/petty-cash"
+                  href="/finance"
                 />
               )}
               {data.churn_count > 0 && (
@@ -110,21 +110,21 @@ export default function DashboardPage() {
                   value={`${data.churn_count} 位個案`}
                   alert={true}
                   alertText="超過 30 天未預約"
-                  href="/churn"
+                  href="/reports"
                 />
               )}
             </div>
           )}
 
           <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <QuickLink href="/appointments" label="新增預約" desc="建立單次或批次預約" />
             <QuickLink href="/cases" label="個案管理" desc="查看與管理個案資料" />
-            <QuickLink href="/rooms" label="空間預約" desc="查看各治療室使用狀況" />
+            <QuickLink href="/calendar" label="預約日曆" desc="查看各治療室使用狀況" />
+            <QuickLink href="/ledger" label="日結帳冊" desc="每日結帳與收款管理" />
             {userRole !== "therapist" && (
               <>
-                <QuickLink href="/reports" label="月報表" desc="營收、績效、損益分析" />
-                <QuickLink href="/payouts" label="心理師酬勞" desc="月結酬勞計算與發放" />
-                <QuickLink href="/reconciliation" label="財務核銷" desc="自費/機構分群核銷報表" />
+                <QuickLink href="/reports" label="營運報表" desc="營收、績效、損益分析" />
+                <QuickLink href="/finance" label="財務管理" desc="收據、酬勞、零用金" />
+                <QuickLink href="/claims" label="核銷案管理" desc="自費/機構分群核銷" />
               </>
             )}
           </div>
