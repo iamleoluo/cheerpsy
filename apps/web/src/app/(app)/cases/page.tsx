@@ -3,9 +3,14 @@
 import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch, exportCsv } from "@/lib/client-api";
+import RoomMiniCalendar from "@/components/room-mini-calendar";
+
+/* ───── types ───── */
 
 interface CaseItem {
   id: number;
+  temp_seq: number | null;
+  case_number: string | null;
   name: string;
   birth_date: string | null;
   gender: string | null;
@@ -18,68 +23,154 @@ interface CaseItem {
   therapist_id: number;
   therapist_name: string | null;
   status: string;
+  billing_cycle: string | null;
   notes: string | null;
 }
 
-interface Therapist {
+interface Appointment {
   id: number;
-  name: string;
-  email: string;
-  role: string;
+  appointment_number: string;
+  case_id: number;
+  case_name: string | null;
+  therapist_id: number;
+  therapist_name: string | null;
+  room_id: number | null;
+  room_name: string | null;
+  session_type: string;
+  start_time: string | null;
+  end_time: string | null;
+  amount: number;
+  therapist_share: number | null;
+  clinic_share: number | null;
+  visit_seq: number | null;
+  status: string;
+  batch_id: string | null;
+  created_at: string | null;
 }
 
-interface InstitutionItem {
+interface SessionRecord {
   id: number;
-  name: string;
-  is_active: boolean;
+  session_date: string;
+  appointment_number: string;
+  case_name: string;
+  therapist_name: string;
+  amount: number;
+  therapist_share: number;
+  clinic_share: number;
+  commission_rate_used: number | null;
+  payment_status: string;
+  claim_batch_id: number | null;
+  therapist_doc_submitted_at: string | null;
 }
 
-const statusLabels: Record<string, string> = {
-  initial: "初談",
-  ongoing: "進行中",
-  paused: "暫停",
-  closed: "結案",
-  lost: "流失",
-};
+interface Therapist { id: number; name: string; email: string; role: string; }
+interface InstitutionItem { id: number; name: string; is_active: boolean; }
+interface RoomOption { id: number; name: string; floor: number; room_code: string; }
 
-const statusColors: Record<string, string> = {
-  initial: "bg-blue-100 text-blue-700",
-  ongoing: "bg-green-100 text-green-700",
-  paused: "bg-yellow-100 text-yellow-700",
-  closed: "bg-gray-100 text-gray-600",
-  lost: "bg-red-100 text-red-700",
-};
+/* ───── constants ───── */
 
-const fundingLabels: Record<string, string> = {
-  self_pay: "自費",
-  institution: "機構",
-};
+const statusLabels: Record<string, string> = { initial: "初談", ongoing: "進行中", paused: "暫停", closed: "結案", lost: "流失" };
+const statusColors: Record<string, string> = { initial: "bg-blue-100 text-blue-700", ongoing: "bg-green-100 text-green-700", paused: "bg-yellow-100 text-yellow-700", closed: "bg-gray-100 text-gray-600", lost: "bg-red-100 text-red-700" };
+const apptStatusLabels: Record<string, string> = { booked: "已預約", executed: "已執行", cancelled: "已取消" };
+const apptStatusColors: Record<string, string> = { booked: "bg-blue-100 text-blue-700", executed: "bg-green-100 text-green-700", cancelled: "bg-gray-100 text-gray-500" };
+const billingLabels: Record<string, string> = { once: "次結", monthly: "月結", multiple: "多次結" };
+const sessionTypeLabels: Record<string, string> = { in_person: "現場", online: "線上", home_visit: "到宅" };
+
+function fmtDate(iso: string | null) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+}
+function fmtTime(iso: string | null) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function caseDisplayId(c: CaseItem) {
+  if (c.case_number) return c.case_number;
+  if (c.temp_seq) return `#${String(c.temp_seq).padStart(4, "0")}`;
+  return "—";
+}
+
+function visitId(c: CaseItem | null, appt: Appointment) {
+  if (!c) return `—`;
+  const prefix = c.case_number ?? `#${String(c.temp_seq ?? 0).padStart(4, "0")}`;
+  return `${prefix}-${String(appt.visit_seq ?? 0).padStart(3, "0")}`;
+}
+
+/* ═══════════════════════════════════════════════════
+   Main Page
+   ═══════════════════════════════════════════════════ */
 
 export default function CasesPage() {
   const { data: session } = useSession();
   const token = (session?.user as any)?.accessToken;
   const userRole = (session?.user as any)?.role;
 
+  const [mainTab, setMainTab] = useState<"cases" | "appointments">("cases");
+
+  if (!token) return <p className="p-6 text-gray-400">載入中...</p>;
+
+  return (
+    <div>
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-2xl font-bold">個案管理</h1>
+      </div>
+
+      <div className="mb-6 flex gap-1 border-b border-gray-200">
+        <button
+          onClick={() => setMainTab("cases")}
+          className={`px-4 py-2.5 text-sm font-medium transition-colors ${
+            mainTab === "cases" ? "border-b-2 border-primary-600 text-primary-700" : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          個案列表
+        </button>
+        <button
+          onClick={() => setMainTab("appointments")}
+          className={`px-4 py-2.5 text-sm font-medium transition-colors ${
+            mainTab === "appointments" ? "border-b-2 border-primary-600 text-primary-700" : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          預約總表
+        </button>
+      </div>
+
+      {mainTab === "cases" ? (
+        <CasesTab token={token} userRole={userRole} />
+      ) : (
+        <AppointmentsTab token={token} userRole={userRole} />
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   Tab 1: 個案列表
+   ═══════════════════════════════════════════════════ */
+
+function CasesTab({ token, userRole }: { token: string; userRole: string }) {
   const [cases, setCases] = useState<CaseItem[]>([]);
   const [therapists, setTherapists] = useState<Therapist[]>([]);
   const [institutions, setInstitutions] = useState<InstitutionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [showForm, setShowForm] = useState(false);
-  const [editingCase, setEditingCase] = useState<CaseItem | null>(null);
   const [error, setError] = useState("");
 
+  const [showForm, setShowForm] = useState(false);
+  const [editingCase, setEditingCase] = useState<CaseItem | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+
   const fetchCases = useCallback(async () => {
-    if (!token) return;
     setLoading(true);
     try {
       const params = new URLSearchParams();
       if (search) params.set("q", search);
       if (statusFilter) params.set("status", statusFilter);
       const qs = params.toString();
-      const data = await clientFetch(`/cases${qs ? `?${qs}` : ""}`, token);
-      setCases(data);
+      setCases(await clientFetch(`/cases${qs ? `?${qs}` : ""}`, token));
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -87,52 +178,53 @@ export default function CasesPage() {
     }
   }, [token, search, statusFilter]);
 
-  const fetchTherapists = useCallback(async () => {
-    if (!token) return;
-    try {
-      const data = await clientFetch("/auth/therapists", token);
-      setTherapists(data);
-    } catch {
-      // therapists endpoint may not exist yet, use empty
-    }
+  const fetchMeta = useCallback(async () => {
+    const [t, i] = await Promise.all([
+      clientFetch("/auth/therapists", token).catch(() => []),
+      clientFetch("/institutions", token).catch(() => []),
+    ]);
+    setTherapists(t);
+    setInstitutions(i);
   }, [token]);
 
-  const fetchInstitutions = useCallback(async () => {
-    if (!token) return;
+  useEffect(() => { fetchCases(); fetchMeta(); }, [fetchCases, fetchMeta]);
+
+  const handleActivate = async (c: CaseItem) => {
+    if (!confirm(`確定將 ${caseDisplayId(c)} ${c.name} 轉為正式個案？\n正式編號產生後不可更改。`)) return;
     try {
-      const data = await clientFetch("/institutions", token);
-      setInstitutions(data);
-    } catch {
-      // institutions endpoint may not exist yet
+      await clientFetch(`/cases/${c.id}/activate`, token, { method: "POST" });
+      fetchCases();
+    } catch (e: any) {
+      alert(e.message);
     }
-  }, [token]);
-
-  useEffect(() => {
-    fetchCases();
-    fetchTherapists();
-    fetchInstitutions();
-  }, [fetchCases, fetchTherapists, fetchInstitutions]);
-
-  if (!token) return <p>Loading...</p>;
+  };
 
   return (
-    <div>
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">個案管理</h1>
+    <>
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex gap-3">
+          <input
+            type="text"
+            placeholder="搜尋個案姓名..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+          />
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          >
+            <option value="">全部狀態</option>
+            {Object.entries(statusLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+        </div>
         <div className="flex items-center gap-2">
           {userRole !== "therapist" && (
-            <button
-              onClick={() => exportCsv("/export/cases", token, "cases.csv")}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
-            >
-              匯出 CSV
-            </button>
+            <button onClick={() => exportCsv("/export/cases", token, "cases.csv")} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">匯出 CSV</button>
           )}
           <button
-            onClick={() => {
-              setEditingCase(null);
-              setShowForm(true);
-            }}
+            onClick={() => { setEditingCase(null); setShowForm(true); }}
             className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
           >
             + 新增個案
@@ -140,99 +232,78 @@ export default function CasesPage() {
         </div>
       </div>
 
-      <div className="mb-4 flex gap-3">
-        <input
-          type="text"
-          placeholder="搜尋個案姓名..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
-        />
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
-        >
-          <option value="">全部狀態</option>
-          {Object.entries(statusLabels).map(([k, v]) => (
-            <option key={k} value={k}>
-              {v}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {error && (
-        <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">
-          {error}
-        </div>
-      )}
+      {error && <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</div>}
 
       <div className="overflow-x-auto rounded-lg border border-gray-200">
         <table className="w-full text-left text-sm">
           <thead className="bg-gray-50 text-xs uppercase text-gray-500">
             <tr>
+              <th className="px-4 py-3">編號</th>
               <th className="px-4 py-3">姓名</th>
+              <th className="px-4 py-3">心理師</th>
+              <th className="px-4 py-3">付費 / 機構</th>
+              <th className="px-4 py-3">結帳週期</th>
               <th className="px-4 py-3">狀態</th>
-              <th className="px-4 py-3">性別</th>
-              <th className="px-4 py-3">電話</th>
-              <th className="px-4 py-3">付費方式</th>
-              <th className="px-4 py-3">負責心理師</th>
               <th className="px-4 py-3">操作</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
             {loading ? (
-              <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
-                  載入中...
-                </td>
-              </tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">載入中...</td></tr>
             ) : cases.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
-                  尚無個案資料
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">尚無個案資料</td></tr>
+            ) : cases.map((c) => (
+              <tr
+                key={c.id}
+                className={`hover:bg-gray-50 cursor-pointer ${expandedId === c.id ? "bg-primary-50" : ""}`}
+                onClick={() => setExpandedId(expandedId === c.id ? null : c.id)}
+              >
+                <td className="px-4 py-3">
+                  <div className="font-mono text-xs">
+                    {c.case_number ? (
+                      <span className="font-medium text-gray-800">{c.case_number}</span>
+                    ) : (
+                      <span className="text-gray-400">#{String(c.temp_seq ?? 0).padStart(4, "0")}</span>
+                    )}
+                  </div>
+                </td>
+                <td className="px-4 py-3 font-medium">{c.name}</td>
+                <td className="px-4 py-3">{c.therapist_name ?? "—"}</td>
+                <td className="px-4 py-3">
+                  {c.funding_source === "institution" ? c.institution_name ?? "機構" : "自費"}
+                </td>
+                <td className="px-4 py-3">
+                  <span className="text-xs">{billingLabels[c.billing_cycle ?? "once"] ?? c.billing_cycle}</span>
+                </td>
+                <td className="px-4 py-3">
+                  <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusColors[c.status] ?? "bg-gray-100"}`}>
+                    {statusLabels[c.status] ?? c.status}
+                  </span>
+                </td>
+                <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => { setEditingCase(c); setShowForm(true); }} className="text-xs text-blue-600 hover:underline">編輯</button>
+                    {c.status === "initial" && (
+                      <button onClick={() => handleActivate(c)} className="text-xs text-green-600 hover:underline">轉正式</button>
+                    )}
+                  </div>
                 </td>
               </tr>
-            ) : (
-              cases.map((c) => (
-                <tr key={c.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium">{c.name}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusColors[c.status] ?? "bg-gray-100"}`}
-                    >
-                      {statusLabels[c.status] ?? c.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    {c.gender === "male" ? "男" : c.gender === "female" ? "女" : c.gender ?? "-"}
-                  </td>
-                  <td className="px-4 py-3">{c.phone ?? "-"}</td>
-                  <td className="px-4 py-3">
-                    {fundingLabels[c.funding_source] ?? c.funding_source}
-                    {c.institution_name && ` (${c.institution_name})`}
-                  </td>
-                  <td className="px-4 py-3">{c.therapist_name ?? "-"}</td>
-                  <td className="px-4 py-3">
-                    {userRole !== "therapist" && (
-                      <button
-                        onClick={() => {
-                          setEditingCase(c);
-                          setShowForm(true);
-                        }}
-                        className="text-primary-600 hover:underline"
-                      >
-                        編輯
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))
-            )}
+            ))}
           </tbody>
         </table>
       </div>
+
+      {/* Expanded detail panel */}
+      {expandedId && (
+        <CaseDetailPanel
+          token={token}
+          userRole={userRole}
+          caseItem={cases.find((c) => c.id === expandedId)!}
+          onClose={() => setExpandedId(null)}
+          onCaseUpdated={fetchCases}
+        />
+      )}
 
       {showForm && (
         <CaseForm
@@ -241,37 +312,358 @@ export default function CasesPage() {
           institutions={institutions}
           editingCase={editingCase}
           userRole={userRole}
-          onClose={() => {
-            setShowForm(false);
-            setEditingCase(null);
-          }}
-          onSaved={() => {
-            setShowForm(false);
-            setEditingCase(null);
-            fetchCases();
-          }}
+          onClose={() => { setShowForm(false); setEditingCase(null); }}
+          onSaved={() => { setShowForm(false); setEditingCase(null); fetchCases(); }}
+        />
+      )}
+    </>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   Case Detail Panel (展開面板)
+   ═══════════════════════════════════════════════════ */
+
+function CaseDetailPanel({
+  token, userRole, caseItem, onClose, onCaseUpdated,
+}: {
+  token: string; userRole: string; caseItem: CaseItem; onClose: () => void; onCaseUpdated: () => void;
+}) {
+  const [subTab, setSubTab] = useState<"appointments" | "ledger">("appointments");
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [records, setRecords] = useState<SessionRecord[]>([]);
+  const [loadingAppts, setLoadingAppts] = useState(true);
+  const [loadingRecords, setLoadingRecords] = useState(false);
+  const [showApptForm, setShowApptForm] = useState(false);
+  const [showBatchForm, setShowBatchForm] = useState(false);
+
+  const fetchAppts = useCallback(async () => {
+    setLoadingAppts(true);
+    try {
+      setAppointments(await clientFetch(`/appointments?case_id=${caseItem.id}`, token));
+    } catch { /* ignore */ } finally { setLoadingAppts(false); }
+  }, [token, caseItem.id]);
+
+  const fetchRecords = useCallback(async () => {
+    setLoadingRecords(true);
+    try {
+      const all = await clientFetch("/ledger", token);
+      setRecords(all.filter((r: any) => r.case_name === caseItem.name));
+    } catch { /* ignore */ } finally { setLoadingRecords(false); }
+  }, [token, caseItem.name]);
+
+  useEffect(() => { fetchAppts(); }, [fetchAppts]);
+  useEffect(() => { if (subTab === "ledger") fetchRecords(); }, [subTab, fetchRecords]);
+
+  const handleCancelAppt = async (id: number) => {
+    if (!confirm("確定要取消此預約？")) return;
+    try {
+      await clientFetch(`/appointments/${id}/cancel`, token, { method: "PUT" });
+      fetchAppts();
+    } catch (e: any) { alert(e.message); }
+  };
+
+  const c = caseItem;
+  const displayId = caseDisplayId(c);
+
+  return (
+    <div className="mt-4 rounded-lg border border-primary-200 bg-white p-5 shadow-sm">
+      {/* Header */}
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-bold">
+            {c.name}
+            <span className="ml-2 font-mono text-sm font-normal text-gray-500">{displayId}</span>
+          </h3>
+          <p className="mt-1 text-sm text-gray-500">
+            心理師：{c.therapist_name} ・
+            {c.funding_source === "institution" ? c.institution_name : "自費"} ・
+            {billingLabels[c.billing_cycle ?? "once"]} ・
+            <span className={`${statusColors[c.status]} rounded-full px-1.5 py-0.5 text-xs`}>
+              {statusLabels[c.status]}
+            </span>
+          </p>
+        </div>
+        <button onClick={onClose} className="rounded px-2 py-1 text-sm text-gray-400 hover:bg-gray-100 hover:text-gray-600">✕ 收合</button>
+      </div>
+
+      {/* Sub-tabs */}
+      <div className="mb-4 flex gap-1 border-b border-gray-200">
+        <button
+          onClick={() => setSubTab("appointments")}
+          className={`px-3 py-2 text-sm font-medium ${subTab === "appointments" ? "border-b-2 border-primary-600 text-primary-700" : "text-gray-500 hover:text-gray-700"}`}
+        >
+          預約紀錄 ({appointments.length})
+        </button>
+        <button
+          onClick={() => setSubTab("ledger")}
+          className={`px-3 py-2 text-sm font-medium ${subTab === "ledger" ? "border-b-2 border-primary-600 text-primary-700" : "text-gray-500 hover:text-gray-700"}`}
+        >
+          帳冊紀錄 ({records.length})
+        </button>
+      </div>
+
+      {/* Sub-tab content */}
+      {subTab === "appointments" && (
+        <>
+          <div className="mb-3 flex justify-end gap-2">
+            <button onClick={() => setShowBatchForm(true)} className="rounded-lg border border-primary-600 px-3 py-1.5 text-xs font-medium text-primary-600 hover:bg-primary-50">批次預約</button>
+            <button onClick={() => setShowApptForm(true)} className="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700">+ 新增預約</button>
+          </div>
+          {loadingAppts ? (
+            <p className="py-4 text-center text-sm text-gray-400">載入中...</p>
+          ) : appointments.length === 0 ? (
+            <p className="py-4 text-center text-sm text-gray-400">尚無預約</p>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-gray-200">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+                  <tr>
+                    <th className="px-3 py-2">到訪序號</th>
+                    <th className="px-3 py-2">日期</th>
+                    <th className="px-3 py-2">時間</th>
+                    <th className="px-3 py-2">診間</th>
+                    <th className="px-3 py-2">金額</th>
+                    <th className="px-3 py-2">酬勞</th>
+                    <th className="px-3 py-2">狀態</th>
+                    <th className="px-3 py-2">操作</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {appointments.map((a) => (
+                    <tr key={a.id} className="hover:bg-gray-50">
+                      <td className="px-3 py-2 font-mono text-xs text-gray-600">
+                        {visitId(c, a)}
+                      </td>
+                      <td className="px-3 py-2 text-xs">{fmtDate(a.start_time)}</td>
+                      <td className="px-3 py-2 text-xs">{fmtTime(a.start_time)}~{fmtTime(a.end_time)}</td>
+                      <td className="px-3 py-2 text-xs">{a.room_name ?? "—"}</td>
+                      <td className="px-3 py-2">${a.amount.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-xs text-gray-500">
+                        ${a.therapist_share?.toLocaleString()}
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${apptStatusColors[a.status] ?? "bg-gray-100"}`}>
+                          {apptStatusLabels[a.status] ?? a.status}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        {a.status === "booked" && (
+                          <button onClick={() => handleCancelAppt(a.id)} className="text-xs text-red-500 hover:underline">取消</button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {subTab === "ledger" && (
+        <>
+          {loadingRecords ? (
+            <p className="py-4 text-center text-sm text-gray-400">載入中...</p>
+          ) : records.length === 0 ? (
+            <p className="py-4 text-center text-sm text-gray-400">尚無帳冊紀錄（需先日結）</p>
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-gray-200">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+                  <tr>
+                    <th className="px-3 py-2">日期</th>
+                    <th className="px-3 py-2">金額</th>
+                    <th className="px-3 py-2">抽成</th>
+                    <th className="px-3 py-2">收款狀態</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {records.map((r) => (
+                    <tr key={r.id} className="hover:bg-gray-50">
+                      <td className="px-3 py-2 text-xs">{r.session_date}</td>
+                      <td className="px-3 py-2">${r.amount.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-xs text-gray-500">
+                        {r.commission_rate_used ? `${Math.round(r.commission_rate_used * 100)}%` : "—"}
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs ${
+                          r.payment_status === "paid" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"
+                        }`}>
+                          {r.payment_status === "paid" ? "已收" : "未收"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Appointment forms */}
+      {showApptForm && (
+        <AppointmentForm
+          token={token}
+          fixedCaseId={caseItem.id}
+          fixedCaseName={caseItem.name}
+          onClose={() => setShowApptForm(false)}
+          onSaved={() => { setShowApptForm(false); fetchAppts(); }}
+        />
+      )}
+      {showBatchForm && (
+        <BatchForm
+          token={token}
+          fixedCaseId={caseItem.id}
+          fixedCaseName={caseItem.name}
+          onClose={() => setShowBatchForm(false)}
+          onSaved={() => { setShowBatchForm(false); fetchAppts(); }}
         />
       )}
     </div>
   );
 }
 
+/* ═══════════════════════════════════════════════════
+   Tab 2: 預約總表
+   ═══════════════════════════════════════════════════ */
+
+function AppointmentsTab({ token, userRole }: { token: string; userRole: string }) {
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [cases, setCases] = useState<CaseItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [error, setError] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [showBatchForm, setShowBatchForm] = useState(false);
+
+  const fetchAppointments = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (statusFilter) params.set("status", statusFilter);
+      const qs = params.toString();
+      const [appts, cs] = await Promise.all([
+        clientFetch(`/appointments${qs ? `?${qs}` : ""}`, token),
+        clientFetch("/cases", token).catch(() => []),
+      ]);
+      setAppointments(appts);
+      setCases(cs);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [token, statusFilter]);
+
+  useEffect(() => { fetchAppointments(); }, [fetchAppointments]);
+
+  const handleCancel = async (id: number) => {
+    if (!confirm("確定要取消此預約？")) return;
+    try {
+      await clientFetch(`/appointments/${id}/cancel`, token, { method: "PUT" });
+      fetchAppointments();
+    } catch (e: any) { alert(e.message); }
+  };
+
+  const casesMap = Object.fromEntries(cases.map((c) => [c.id, c]));
+
+  return (
+    <>
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex gap-3">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          >
+            <option value="">全部狀態</option>
+            {Object.entries(apptStatusLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+        </div>
+        <div className="flex gap-2">
+          {userRole !== "therapist" && (
+            <button onClick={() => exportCsv("/export/appointments", token, "appointments.csv")} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">匯出 CSV</button>
+          )}
+          <button onClick={() => setShowBatchForm(true)} className="rounded-lg border border-primary-600 px-4 py-2 text-sm font-medium text-primary-600 hover:bg-primary-50">批次預約</button>
+          <button onClick={() => setShowForm(true)} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700">+ 新增預約</button>
+        </div>
+      </div>
+
+      {error && <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</div>}
+
+      <div className="overflow-x-auto rounded-lg border border-gray-200">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+            <tr>
+              <th className="px-4 py-3">到訪序號</th>
+              <th className="px-4 py-3">個案</th>
+              <th className="px-4 py-3">心理師</th>
+              <th className="px-4 py-3">日期 / 時間</th>
+              <th className="px-4 py-3">類型</th>
+              <th className="px-4 py-3">診間</th>
+              <th className="px-4 py-3">金額</th>
+              <th className="px-4 py-3">心理師酬勞</th>
+              <th className="px-4 py-3">狀態</th>
+              <th className="px-4 py-3">操作</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200">
+            {loading ? (
+              <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">載入中...</td></tr>
+            ) : appointments.length === 0 ? (
+              <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">尚無預約資料</td></tr>
+            ) : appointments.map((a) => {
+              const c = casesMap[a.case_id];
+              return (
+                <tr key={a.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 font-mono text-xs text-gray-600">{visitId(c, a)}</td>
+                  <td className="px-4 py-3">{a.case_name ?? "—"}</td>
+                  <td className="px-4 py-3">{a.therapist_name ?? "—"}</td>
+                  <td className="px-4 py-3 text-xs">
+                    {fmtDate(a.start_time)} {fmtTime(a.start_time)}~{fmtTime(a.end_time)}
+                  </td>
+                  <td className="px-4 py-3 text-xs">{sessionTypeLabels[a.session_type] ?? a.session_type}</td>
+                  <td className="px-4 py-3 text-xs">{a.room_name ?? "—"}</td>
+                  <td className="px-4 py-3">${a.amount.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-xs text-gray-500">${a.therapist_share?.toLocaleString()}</td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${apptStatusColors[a.status] ?? "bg-gray-100"}`}>
+                      {apptStatusLabels[a.status] ?? a.status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    {a.status === "booked" && (
+                      <button onClick={() => handleCancel(a.id)} className="text-xs text-red-500 hover:underline">取消</button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {showForm && (
+        <AppointmentForm token={token} onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); fetchAppointments(); }} />
+      )}
+      {showBatchForm && (
+        <BatchForm token={token} onClose={() => setShowBatchForm(false)} onSaved={() => { setShowBatchForm(false); fetchAppointments(); }} />
+      )}
+    </>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   Case Form (新增 / 編輯個案)
+   ═══════════════════════════════════════════════════ */
+
 function CaseForm({
-  token,
-  therapists,
-  institutions,
-  editingCase,
-  userRole,
-  onClose,
-  onSaved,
+  token, therapists, institutions, editingCase, userRole, onClose, onSaved,
 }: {
-  token: string;
-  therapists: Therapist[];
-  institutions: InstitutionItem[];
-  editingCase: CaseItem | null;
-  userRole: string;
-  onClose: () => void;
-  onSaved: () => void;
+  token: string; therapists: Therapist[]; institutions: InstitutionItem[];
+  editingCase: CaseItem | null; userRole: string; onClose: () => void; onSaved: () => void;
 }) {
   const [form, setForm] = useState({
     name: editingCase?.name ?? "",
@@ -283,6 +675,7 @@ function CaseForm({
     funding_source: editingCase?.funding_source ?? "self_pay",
     institution_id: editingCase?.institution_id?.toString() ?? "",
     therapist_id: editingCase?.therapist_id?.toString() ?? "",
+    billing_cycle: editingCase?.billing_cycle ?? "once",
     national_id: "",
     status: editingCase?.status ?? "initial",
     notes: editingCase?.notes ?? "",
@@ -303,25 +696,18 @@ function CaseForm({
         birth_date: form.birth_date || null,
         initial_visit_date: form.initial_visit_date || null,
         funding_source: form.funding_source,
-        institution_id: form.funding_source === "institution" && form.institution_id
-          ? parseInt(form.institution_id)
-          : null,
+        institution_id: form.funding_source === "institution" && form.institution_id ? parseInt(form.institution_id) : null,
         therapist_id: parseInt(form.therapist_id),
+        billing_cycle: form.billing_cycle,
         notes: form.notes || null,
       };
-
       if (editingCase) {
         body.status = form.status;
-        await clientFetch(`/cases/${editingCase.id}`, token, {
-          method: "PUT",
-          body: JSON.stringify(body),
-        });
+        if (form.national_id) body.national_id = form.national_id;
+        await clientFetch(`/cases/${editingCase.id}`, token, { method: "PUT", body: JSON.stringify(body) });
       } else {
         if (form.national_id) body.national_id = form.national_id;
-        await clientFetch("/cases", token, {
-          method: "POST",
-          body: JSON.stringify(body),
-        });
+        await clientFetch("/cases", token, { method: "POST", body: JSON.stringify(body) });
       }
       onSaved();
     } catch (e: any) {
@@ -331,205 +717,357 @@ function CaseForm({
     }
   };
 
-  const setField = (key: string, value: string) =>
-    setForm((prev) => ({ ...prev, [key]: value }));
+  const sf = (key: string, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
-        <h2 className="mb-4 text-lg font-bold">
-          {editingCase ? "編輯個案" : "新增個案"}
-        </h2>
-
-        {error && (
-          <div className="mb-3 rounded-lg bg-red-50 p-2 text-sm text-red-600">
-            {error}
-          </div>
-        )}
-
+        <h2 className="mb-4 text-lg font-bold">{editingCase ? "編輯個案" : "新增個案"}</h2>
+        {error && <div className="mb-3 rounded-lg bg-red-50 p-2 text-sm text-red-600">{error}</div>}
         <form onSubmit={handleSubmit} className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">
-                姓名 <span className="text-red-500">*</span>
-              </span>
-              <input
-                required
-                value={form.name}
-                onChange={(e) => setField("name", e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
-              />
+              <span className="mb-1 block text-xs text-gray-500">姓名 <span className="text-red-500">*</span></span>
+              <input required value={form.name} onChange={(e) => sf("name", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
             </label>
             <label className="block">
               <span className="mb-1 block text-xs text-gray-500">性別</span>
-              <select
-                value={form.gender}
-                onChange={(e) => setField("gender", e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
-              >
+              <select value={form.gender} onChange={(e) => sf("gender", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
                 <option value="">未填寫</option>
                 <option value="male">男</option>
                 <option value="female">女</option>
               </select>
             </label>
           </div>
-
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
               <span className="mb-1 block text-xs text-gray-500">電話</span>
-              <input
-                value={form.phone}
-                onChange={(e) => setField("phone", e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
-              />
+              <input value={form.phone} onChange={(e) => sf("phone", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
             </label>
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">
-                緊急聯絡人
-              </span>
-              <input
-                value={form.emergency_contact}
-                onChange={(e) => setField("emergency_contact", e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
-              />
+              <span className="mb-1 block text-xs text-gray-500">緊急聯絡人</span>
+              <input value={form.emergency_contact} onChange={(e) => sf("emergency_contact", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
             </label>
           </div>
-
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
               <span className="mb-1 block text-xs text-gray-500">出生日期</span>
-              <input
-                type="date"
-                value={form.birth_date}
-                onChange={(e) => setField("birth_date", e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
-              />
+              <input type="date" value={form.birth_date} onChange={(e) => sf("birth_date", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
             </label>
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">
-                初談日期
-              </span>
-              <input
-                type="date"
-                value={form.initial_visit_date}
-                onChange={(e) => setField("initial_visit_date", e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
-              />
+              <span className="mb-1 block text-xs text-gray-500">初談日期</span>
+              <input type="date" value={form.initial_visit_date} onChange={(e) => sf("initial_visit_date", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
             </label>
           </div>
-
-          {!editingCase && (
+          <label className="block">
+            <span className="mb-1 block text-xs text-gray-500">身份證字號（加密儲存）</span>
+            <input value={form.national_id} onChange={(e) => sf("national_id", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="填入後可轉正式編號" />
+          </label>
+          <div className="grid grid-cols-3 gap-3">
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">
-                身份證字號（加密儲存）
-              </span>
-              <input
-                value={form.national_id}
-                onChange={(e) => setField("national_id", e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
-                placeholder="可選填"
-              />
-            </label>
-          )}
-
-          <div className="grid grid-cols-2 gap-3">
-            <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">
-                付費方式
-              </span>
-              <select
-                value={form.funding_source}
-                onChange={(e) => setField("funding_source", e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
-              >
+              <span className="mb-1 block text-xs text-gray-500">付費方式</span>
+              <select value={form.funding_source} onChange={(e) => sf("funding_source", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
                 <option value="self_pay">自費</option>
                 <option value="institution">機構</option>
               </select>
             </label>
             {form.funding_source === "institution" && (
               <label className="block">
-                <span className="mb-1 block text-xs text-gray-500">
-                  機構名稱
-                </span>
-                <select
-                  value={form.institution_id}
-                  onChange={(e) => setField("institution_id", e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
-                >
-                  <option value="">請選擇機構</option>
-                  {institutions.map((inst) => (
-                    <option key={inst.id} value={inst.id}>
-                      {inst.name}
-                    </option>
-                  ))}
+                <span className="mb-1 block text-xs text-gray-500">機構</span>
+                <select value={form.institution_id} onChange={(e) => sf("institution_id", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                  <option value="">請選擇</option>
+                  {institutions.map((inst) => <option key={inst.id} value={inst.id}>{inst.name}</option>)}
                 </select>
               </label>
             )}
+            <label className="block">
+              <span className="mb-1 block text-xs text-gray-500">結帳週期</span>
+              <select value={form.billing_cycle} onChange={(e) => sf("billing_cycle", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                <option value="once">次結</option>
+                <option value="monthly">月結</option>
+                <option value="multiple">多次結</option>
+              </select>
+            </label>
           </div>
-
           <label className="block">
-            <span className="mb-1 block text-xs text-gray-500">
-              負責心理師 <span className="text-red-500">*</span>
-            </span>
-            <select
-              required
-              value={form.therapist_id}
-              onChange={(e) => setField("therapist_id", e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
-            >
+            <span className="mb-1 block text-xs text-gray-500">負責心理師 <span className="text-red-500">*</span></span>
+            <select required value={form.therapist_id} onChange={(e) => sf("therapist_id", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
               <option value="">請選擇</option>
-              {therapists.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
+              {therapists.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </label>
-
           {editingCase && (
             <label className="block">
               <span className="mb-1 block text-xs text-gray-500">狀態</span>
-              <select
-                value={form.status}
-                onChange={(e) => setField("status", e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
-              >
-                {Object.entries(statusLabels).map(([k, v]) => (
-                  <option key={k} value={k}>
-                    {v}
-                  </option>
-                ))}
+              <select value={form.status} onChange={(e) => sf("status", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                {Object.entries(statusLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
             </label>
           )}
-
           <label className="block">
             <span className="mb-1 block text-xs text-gray-500">備註</span>
-            <textarea
-              value={form.notes}
-              onChange={(e) => setField("notes", e.target.value)}
-              rows={2}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
-            />
+            <textarea value={form.notes} onChange={(e) => sf("notes", e.target.value)} rows={2} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
           </label>
-
           <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
-            >
-              取消
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
-            >
+            <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">取消</button>
+            <button type="submit" disabled={saving} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">
               {saving ? "儲存中..." : "儲存"}
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   Appointment Form (新增單筆預約)
+   ═══════════════════════════════════════════════════ */
+
+function AppointmentForm({
+  token, fixedCaseId, fixedCaseName, onClose, onSaved,
+}: {
+  token: string; fixedCaseId?: number; fixedCaseName?: string; onClose: () => void; onSaved: () => void;
+}) {
+  const [cases, setCases] = useState<{ id: number; name: string }[]>([]);
+  const [rooms, setRooms] = useState<RoomOption[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [form, setForm] = useState({
+    case_id: fixedCaseId?.toString() ?? "",
+    room_id: "",
+    session_type: "in_person",
+    start_date: "",
+    start_time: "10:00",
+    end_time: "11:00",
+    amount: "2000",
+  });
+
+  useEffect(() => {
+    if (!fixedCaseId) clientFetch("/cases", token).then(setCases).catch(() => {});
+    clientFetch("/rooms", token).then(setRooms).catch(() => {});
+  }, [token, fixedCaseId]);
+
+  const sf = (key: string, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      await clientFetch("/appointments", token, {
+        method: "POST",
+        body: JSON.stringify({
+          case_id: parseInt(form.case_id),
+          room_id: form.room_id ? parseInt(form.room_id) : null,
+          session_type: form.session_type,
+          start_time: `${form.start_date}T${form.start_time}:00+08:00`,
+          end_time: `${form.start_date}T${form.end_time}:00+08:00`,
+          amount: parseFloat(form.amount),
+        }),
+      });
+      onSaved();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const selectedRoom = rooms.find((r) => String(r.id) === form.room_id);
+  const showCalendar = form.session_type === "in_person" && selectedRoom;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className={`flex rounded-xl bg-white shadow-xl transition-all ${showCalendar ? "w-full max-w-4xl" : "w-full max-w-md"}`}>
+        <div className={`p-6 ${showCalendar ? "w-1/2 border-r border-gray-200" : "w-full"}`}>
+          <h2 className="mb-4 text-lg font-bold">新增預約{fixedCaseName ? ` — ${fixedCaseName}` : ""}</h2>
+          {error && <div className="mb-3 rounded-lg bg-red-50 p-2 text-sm text-red-600">{error}</div>}
+          <form onSubmit={handleSubmit} className="space-y-3">
+            {!fixedCaseId && (
+              <label className="block">
+                <span className="mb-1 block text-xs text-gray-500">個案 <span className="text-red-500">*</span></span>
+                <select required value={form.case_id} onChange={(e) => sf("case_id", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                  <option value="">請選擇</option>
+                  {cases.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </label>
+            )}
+            <label className="block">
+              <span className="mb-1 block text-xs text-gray-500">諮商類型</span>
+              <select value={form.session_type} onChange={(e) => sf("session_type", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                <option value="in_person">現場</option>
+                <option value="online">線上</option>
+                <option value="home_visit">到宅</option>
+              </select>
+            </label>
+            {form.session_type === "in_person" && (
+              <label className="block">
+                <span className="mb-1 block text-xs text-gray-500">診間 <span className="text-red-500">*</span></span>
+                <select required={form.session_type === "in_person"} value={form.room_id} onChange={(e) => sf("room_id", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                  <option value="">請選擇</option>
+                  {rooms.map((r) => <option key={r.id} value={r.id}>{r.name} ({r.room_code})</option>)}
+                </select>
+              </label>
+            )}
+            <label className="block">
+              <span className="mb-1 block text-xs text-gray-500">日期 <span className="text-red-500">*</span></span>
+              <input required type="date" value={form.start_date} onChange={(e) => sf("start_date", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="mb-1 block text-xs text-gray-500">開始時間</span>
+                <input required type="time" value={form.start_time} onChange={(e) => sf("start_time", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs text-gray-500">結束時間</span>
+                <input required type="time" value={form.end_time} onChange={(e) => sf("end_time", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              </label>
+            </div>
+            <label className="block">
+              <span className="mb-1 block text-xs text-gray-500">金額 <span className="text-red-500">*</span></span>
+              <input required type="number" value={form.amount} onChange={(e) => sf("amount", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            </label>
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">取消</button>
+              <button type="submit" disabled={saving} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">{saving ? "儲存中..." : "儲存"}</button>
+            </div>
+          </form>
+        </div>
+        {showCalendar && (
+          <div className="w-1/2 p-4">
+            <RoomMiniCalendar token={token} roomId={selectedRoom.id} roomName={selectedRoom.name} focusDate={form.start_date || undefined} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   Batch Form (批次預約)
+   ═══════════════════════════════════════════════════ */
+
+function BatchForm({
+  token, fixedCaseId, fixedCaseName, onClose, onSaved,
+}: {
+  token: string; fixedCaseId?: number; fixedCaseName?: string; onClose: () => void; onSaved: () => void;
+}) {
+  const [cases, setCases] = useState<{ id: number; name: string }[]>([]);
+  const [rooms, setRooms] = useState<RoomOption[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [form, setForm] = useState({ case_id: fixedCaseId?.toString() ?? "", room_id: "", session_type: "in_person", amount: "2000" });
+  const [slots, setSlots] = useState([{ date: "", start: "10:00", end: "11:00" }]);
+
+  useEffect(() => {
+    if (!fixedCaseId) clientFetch("/cases", token).then(setCases).catch(() => {});
+    clientFetch("/rooms", token).then(setRooms).catch(() => {});
+  }, [token, fixedCaseId]);
+
+  const sf = (key: string, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
+  const addSlot = () => setSlots((prev) => [...prev, { date: "", start: "10:00", end: "11:00" }]);
+  const removeSlot = (i: number) => setSlots((prev) => prev.filter((_, idx) => idx !== i));
+  const updateSlot = (i: number, key: string, value: string) => setSlots((prev) => prev.map((s, idx) => idx === i ? { ...s, [key]: value } : s));
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      await clientFetch("/appointments/batch", token, {
+        method: "POST",
+        body: JSON.stringify({
+          case_id: parseInt(form.case_id),
+          room_id: form.room_id ? parseInt(form.room_id) : null,
+          session_type: form.session_type,
+          amount: parseFloat(form.amount),
+          slots: slots.map((s) => ({
+            start_time: `${s.date}T${s.start}:00+08:00`,
+            end_time: `${s.date}T${s.end}:00+08:00`,
+          })),
+        }),
+      });
+      onSaved();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const selectedRoom = rooms.find((r) => String(r.id) === form.room_id);
+  const showCalendar = form.session_type === "in_person" && selectedRoom;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className={`flex rounded-xl bg-white shadow-xl transition-all ${showCalendar ? "w-full max-w-5xl" : "w-full max-w-lg"}`}>
+        <div className={`p-6 ${showCalendar ? "w-1/2 border-r border-gray-200" : "w-full"}`}>
+          <h2 className="mb-4 text-lg font-bold">批次預約{fixedCaseName ? ` — ${fixedCaseName}` : ""}</h2>
+          {error && <div className="mb-3 rounded-lg bg-red-50 p-2 text-sm text-red-600">{error}</div>}
+          <form onSubmit={handleSubmit} className="space-y-3">
+            {!fixedCaseId && (
+              <label className="block">
+                <span className="mb-1 block text-xs text-gray-500">個案 <span className="text-red-500">*</span></span>
+                <select required value={form.case_id} onChange={(e) => sf("case_id", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                  <option value="">請選擇</option>
+                  {cases.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </label>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="mb-1 block text-xs text-gray-500">諮商類型</span>
+                <select value={form.session_type} onChange={(e) => sf("session_type", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                  <option value="in_person">現場</option>
+                  <option value="online">線上</option>
+                  <option value="home_visit">到宅</option>
+                </select>
+              </label>
+              {form.session_type === "in_person" && (
+                <label className="block">
+                  <span className="mb-1 block text-xs text-gray-500">診間</span>
+                  <select value={form.room_id} onChange={(e) => sf("room_id", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    <option value="">請選擇</option>
+                    {rooms.map((r) => <option key={r.id} value={r.id}>{r.name} ({r.room_code})</option>)}
+                  </select>
+                </label>
+              )}
+            </div>
+            <label className="block">
+              <span className="mb-1 block text-xs text-gray-500">預設金額 <span className="text-red-500">*</span></span>
+              <input required type="number" value={form.amount} onChange={(e) => sf("amount", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            </label>
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs font-medium text-gray-500">時段 ({slots.length})</span>
+                <button type="button" onClick={addSlot} className="text-xs text-primary-600 hover:underline">+ 新增時段</button>
+              </div>
+              <div className="max-h-48 space-y-2 overflow-y-auto">
+                {slots.map((slot, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <input required type="date" value={slot.date} onChange={(e) => updateSlot(i, "date", e.target.value)} className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm" />
+                    <input required type="time" value={slot.start} onChange={(e) => updateSlot(i, "start", e.target.value)} className="w-24 rounded-lg border border-gray-300 px-2 py-1.5 text-sm" />
+                    <span className="text-gray-400">~</span>
+                    <input required type="time" value={slot.end} onChange={(e) => updateSlot(i, "end", e.target.value)} className="w-24 rounded-lg border border-gray-300 px-2 py-1.5 text-sm" />
+                    {slots.length > 1 && <button type="button" onClick={() => removeSlot(i)} className="text-red-400 hover:text-red-600">x</button>}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">取消</button>
+              <button type="submit" disabled={saving} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">
+                {saving ? "建立中..." : `建立 ${slots.length} 筆預約`}
+              </button>
+            </div>
+          </form>
+        </div>
+        {showCalendar && (
+          <div className="w-1/2 p-4">
+            <RoomMiniCalendar token={token} roomId={selectedRoom.id} roomName={selectedRoom.name} focusDate={slots.find((s) => s.date)?.date || undefined} />
+          </div>
+        )}
       </div>
     </div>
   );
