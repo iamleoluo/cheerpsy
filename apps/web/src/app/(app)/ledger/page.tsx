@@ -257,7 +257,7 @@ export default function LedgerPage() {
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">諮商流水帳</h1>
+        <h1 className="text-2xl font-bold">日結帳冊</h1>
         <div className="flex items-center gap-2">
           {userRole !== "therapist" && (
             <button
