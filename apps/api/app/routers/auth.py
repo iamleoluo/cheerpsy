@@ -108,9 +108,9 @@ def create_invitation(
     if body.role == "therapist" and not body.therapist_code:
         raise HTTPException(status_code=400, detail="Therapist code required")
     if body.therapist_code:
-        existing = db.query(User).filter(User.therapist_code == body.therapist_code).first()
+        existing = db.query(User).filter(User.therapist_code == body.therapist_code, User.is_active == True).first()
         if existing:
-            raise HTTPException(status_code=400, detail=f"Therapist code '{body.therapist_code}' already in use")
+            raise HTTPException(status_code=400, detail=f"Therapist code '{body.therapist_code}' already in use by active user")
 
     inv = Invitation(
         invite_key=_generate_key(),
@@ -196,6 +196,15 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
 
     if len(body.password) < 6:
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    # Clear therapist_code from deactivated user so UNIQUE constraint allows reuse
+    if inv.therapist_code:
+        old_user = db.query(User).filter(
+            User.therapist_code == inv.therapist_code,
+            User.is_active == False,
+        ).first()
+        if old_user:
+            old_user.therapist_code = None
 
     new_user = User(
         email=body.email,
