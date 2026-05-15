@@ -13,6 +13,7 @@ class Case(Base):
     case_number = Column(String(10), unique=True, nullable=True, index=True)
     billing_cycle = Column(String(20), nullable=False, default="once", server_default="once")
     name = Column(String(100), nullable=False)
+    age = Column(Integer, nullable=True)
     national_id_encrypted = Column(LargeBinary, nullable=True)
     national_id_hmac = Column(String(64), nullable=True, index=True)
     birth_date = Column(Date, nullable=True)

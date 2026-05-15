@@ -20,6 +20,7 @@ def _to_response(c: Case) -> CaseResponse:
         case_code=c.case_code,
         case_number=c.case_number,
         name=c.name,
+        age=c.age,
         birth_date=c.birth_date,
         gender=c.gender,
         phone=c.phone,
@@ -88,6 +89,7 @@ def create_case(
     c = Case(
         temp_seq=next_seq,
         name=body.name,
+        age=body.age,
         birth_date=body.birth_date,
         gender=body.gender,
         phone=body.phone,
@@ -153,8 +155,22 @@ def activate_case(
         raise HTTPException(status_code=400, detail="Case already has a formal number")
     if c.status != "initial":
         raise HTTPException(status_code=400, detail="Only initial-status cases can be activated")
+
+    missing = []
     if not c.national_id_encrypted:
-        raise HTTPException(status_code=400, detail="National ID is required before activation")
+        missing.append("身份證字號")
+    if not c.birth_date:
+        missing.append("出生日期")
+    if not c.gender:
+        missing.append("性別")
+    if not c.phone:
+        missing.append("連絡電話")
+    if not c.emergency_contact:
+        missing.append("緊急聯絡人")
+    if not c.emergency_phone:
+        missing.append("緊急聯絡人電話")
+    if missing:
+        raise HTTPException(status_code=400, detail=f"轉正式前需填寫：{'、'.join(missing)}")
 
     c.case_number = generate_case_number(db, c)
     c.status = "ongoing"
