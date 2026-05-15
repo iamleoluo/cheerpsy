@@ -16,5 +16,5 @@ class User(Base):
     commission_rate = Column(Numeric(4, 2), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
 
-    cases = relationship("Case", back_populates="therapist")
-    appointments = relationship("Appointment", back_populates="therapist")
+    cases = relationship("Case", back_populates="therapist", foreign_keys="[Case.therapist_id]")
+    appointments = relationship("Appointment", back_populates="therapist", foreign_keys="[Appointment.therapist_id]")

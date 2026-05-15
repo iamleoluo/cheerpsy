@@ -23,7 +23,7 @@ class Appointment(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     case = relationship("Case", back_populates="appointments")
-    therapist = relationship("User", back_populates="appointments")
+    therapist = relationship("User", back_populates="appointments", foreign_keys=[therapist_id])
     room = relationship("Room")
     session_record = relationship("SessionRecord", back_populates="appointment", uselist=False)
     invoice = relationship("Invoice", back_populates="appointment", uselist=False)
