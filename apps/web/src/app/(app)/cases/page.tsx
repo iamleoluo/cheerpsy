@@ -1082,6 +1082,75 @@ function AppointmentForm({
    Batch Form (批次預約)
    ═══════════════════════════════════════════════════ */
 
+const DOW_LABELS = ["日", "一", "二", "三", "四", "五", "六"];
+const WEEK_OF_MONTH_LABELS = ["第1個", "第2個", "第3個", "第4個", "最後一個"];
+
+function isoDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function formatPreviewDate(iso: string): string {
+  const d = new Date(iso + "T00:00:00");
+  return `${d.getMonth() + 1}/${d.getDate()} (${DOW_LABELS[d.getDay()]})`;
+}
+
+function generateWeeklySlots(
+  dowTarget: number,   // 0=Sun … 6=Sat
+  startDate: string,  // YYYY-MM-DD — first possible date
+  startTime: string,
+  endTime: string,
+  count: number,
+): { date: string; start: string; end: string }[] {
+  const results: { date: string; start: string; end: string }[] = [];
+  const cur = new Date(startDate + "T00:00:00");
+  // advance to first matching weekday
+  while (cur.getDay() !== dowTarget) cur.setDate(cur.getDate() + 1);
+  for (let i = 0; i < count; i++) {
+    results.push({ date: isoDate(cur), start: startTime, end: endTime });
+    cur.setDate(cur.getDate() + 7);
+  }
+  return results;
+}
+
+function nthWeekdayOfMonth(year: number, month: number, dow: number, n: number): Date | null {
+  // n = 1..4 or -1 for last
+  if (n === -1) {
+    // last occurrence: start from last day, go back
+    const d = new Date(year, month + 1, 0); // last day of month
+    while (d.getDay() !== dow) d.setDate(d.getDate() - 1);
+    return d;
+  }
+  // find nth occurrence (1-based)
+  const d = new Date(year, month, 1);
+  while (d.getDay() !== dow) d.setDate(d.getDate() + 1);
+  d.setDate(d.getDate() + (n - 1) * 7);
+  // ensure still in month
+  if (d.getMonth() !== month) return null;
+  return d;
+}
+
+function generateMonthlySlots(
+  dow: number,
+  weekOfMonth: number,  // 1..4 or -1 for last
+  startMonth: string,   // YYYY-MM
+  startTime: string,
+  endTime: string,
+  count: number,
+): { date: string; start: string; end: string }[] {
+  const results: { date: string; start: string; end: string }[] = [];
+  const [y, m] = startMonth.split("-").map(Number);
+  let year = y;
+  let month = m - 1; // JS month 0-based
+  while (results.length < count) {
+    const d = nthWeekdayOfMonth(year, month, dow, weekOfMonth);
+    if (d) results.push({ date: isoDate(d), start: startTime, end: endTime });
+    month++;
+    if (month > 11) { month = 0; year++; }
+    if (year > y + 10) break; // safety
+  }
+  return results;
+}
+
 function BatchForm({
   token, fixedCaseId, fixedCaseName, onClose, onSaved,
 }: {
@@ -1091,8 +1160,30 @@ function BatchForm({
   const [rooms, setRooms] = useState<RoomOption[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [form, setForm] = useState({ case_id: fixedCaseId?.toString() ?? "", room_id: "", session_type: "in_person", amount: "2000" });
-  const [slots, setSlots] = useState([{ date: "", start: "10:00", end: "11:00" }]);
+
+  // base fields
+  const [form, setForm] = useState({
+    case_id: fixedCaseId?.toString() ?? "",
+    room_id: "",
+    session_type: "in_person",
+    amount: "2000",
+  });
+
+  // recurrence settings
+  const [recurrence, setRecurrence] = useState<"weekly" | "monthly">("weekly");
+  const [dow, setDow] = useState(3); // Wed
+  const [weekOfMonth, setWeekOfMonth] = useState(1); // 1st
+  const today = new Date();
+  const [startDate, setStartDate] = useState(isoDate(today));
+  const [startMonth, setStartMonth] = useState(
+    `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`
+  );
+  const [startTime, setStartTime] = useState("10:00");
+  const [endTime, setEndTime] = useState("11:00");
+  const [count, setCount] = useState("8");
+
+  // generated preview slots
+  const [slots, setSlots] = useState<{ date: string; start: string; end: string }[] | null>(null);
 
   useEffect(() => {
     if (!fixedCaseId) clientFetch("/cases", token).then(setCases).catch(() => {});
@@ -1100,12 +1191,24 @@ function BatchForm({
   }, [token, fixedCaseId]);
 
   const sf = (key: string, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
-  const addSlot = () => setSlots((prev) => [...prev, { date: "", start: "10:00", end: "11:00" }]);
-  const removeSlot = (i: number) => setSlots((prev) => prev.filter((_, idx) => idx !== i));
-  const updateSlot = (i: number, key: string, value: string) => setSlots((prev) => prev.map((s, idx) => idx === i ? { ...s, [key]: value } : s));
+
+  const handleGenerate = () => {
+    const n = Math.max(1, Math.min(52, parseInt(count) || 1));
+    let generated: { date: string; start: string; end: string }[];
+    if (recurrence === "weekly") {
+      generated = generateWeeklySlots(dow, startDate, startTime, endTime, n);
+    } else {
+      generated = generateMonthlySlots(dow, weekOfMonth, startMonth, startTime, endTime, n);
+    }
+    setSlots(generated);
+    setError("");
+  };
+
+  const removeSlot = (i: number) => setSlots((prev) => prev ? prev.filter((_, idx) => idx !== i) : prev);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!slots || slots.length === 0) { setError("請先產生時段預覽"); return; }
     setSaving(true);
     setError("");
     try {
@@ -1131,75 +1234,217 @@ function BatchForm({
   };
 
   const selectedRoom = rooms.find((r) => String(r.id) === form.room_id);
-  const showCalendar = form.session_type === "in_person" && selectedRoom;
+  const showCalendar = form.session_type === "in_person" && selectedRoom && slots && slots.length > 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className={`flex rounded-xl bg-white shadow-xl transition-all ${showCalendar ? "w-full max-w-5xl" : "w-full max-w-lg"}`}>
-        <div className={`p-6 ${showCalendar ? "w-1/2 border-r border-gray-200" : "w-full"}`}>
-          <h2 className="mb-4 text-lg font-bold">批次預約{fixedCaseName ? ` — ${fixedCaseName}` : ""}</h2>
-          {error && <div className="mb-3 rounded-lg bg-red-50 p-2 text-sm text-red-600">{error}</div>}
-          <form onSubmit={handleSubmit} className="space-y-3">
-            {!fixedCaseId && (
-              <label className="block">
-                <span className="mb-1 block text-xs text-gray-500">個案 <span className="text-red-500">*</span></span>
-                <select required value={form.case_id} onChange={(e) => sf("case_id", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
-                  <option value="">請選擇</option>
-                  {cases.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </label>
-            )}
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block">
-                <span className="mb-1 block text-xs text-gray-500">諮商類型</span>
-                <select value={form.session_type} onChange={(e) => sf("session_type", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
-                  <option value="in_person">現場</option>
-                  <option value="online">線上</option>
-                  <option value="home_visit">到宅</option>
-                </select>
-              </label>
-              {form.session_type === "in_person" && (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className={`flex max-h-[92vh] w-full rounded-xl bg-white shadow-xl ${showCalendar ? "max-w-5xl" : "max-w-lg"}`}>
+        {/* left: settings + preview */}
+        <div className={`flex flex-col overflow-hidden ${showCalendar ? "w-1/2 border-r border-gray-200" : "w-full"}`}>
+          <div className="flex-1 overflow-y-auto p-6">
+            <h2 className="mb-4 text-lg font-bold">批次預約{fixedCaseName ? ` — ${fixedCaseName}` : ""}</h2>
+            {error && <div className="mb-3 rounded-lg bg-red-50 p-2 text-sm text-red-600">{error}</div>}
+
+            <form id="batch-form" onSubmit={handleSubmit} className="space-y-4">
+              {/* case */}
+              {!fixedCaseId && (
                 <label className="block">
-                  <span className="mb-1 block text-xs text-gray-500">診間</span>
-                  <select value={form.room_id} onChange={(e) => sf("room_id", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                  <span className="mb-1 block text-xs text-gray-500">個案 <span className="text-red-500">*</span></span>
+                  <select required value={form.case_id} onChange={(e) => sf("case_id", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
                     <option value="">請選擇</option>
-                    {rooms.map((r) => <option key={r.id} value={r.id}>{r.name} ({r.room_code})</option>)}
+                    {cases.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                 </label>
               )}
-            </div>
-            <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">預設金額 <span className="text-red-500">*</span></span>
-              <input required type="number" value={form.amount} onChange={(e) => sf("amount", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-            </label>
-            <div>
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-xs font-medium text-gray-500">時段 ({slots.length})</span>
-                <button type="button" onClick={addSlot} className="text-xs text-primary-600 hover:underline">+ 新增時段</button>
+
+              {/* session type + room */}
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="mb-1 block text-xs text-gray-500">諮商類型</span>
+                  <select value={form.session_type} onChange={(e) => { sf("session_type", e.target.value); setSlots(null); }} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    <option value="in_person">現場</option>
+                    <option value="online">線上</option>
+                    <option value="home_visit">到宅</option>
+                  </select>
+                </label>
+                {form.session_type === "in_person" && (
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-gray-500">診間</span>
+                    <select value={form.room_id} onChange={(e) => sf("room_id", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                      <option value="">請選擇</option>
+                      {rooms.map((r) => <option key={r.id} value={r.id}>{r.name} ({r.room_code})</option>)}
+                    </select>
+                  </label>
+                )}
               </div>
-              <div className="max-h-48 space-y-2 overflow-y-auto">
-                {slots.map((slot, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <input required type="date" value={slot.date} onChange={(e) => updateSlot(i, "date", e.target.value)} className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm" />
-                    <input required type="time" value={slot.start} onChange={(e) => updateSlot(i, "start", e.target.value)} className="w-24 rounded-lg border border-gray-300 px-2 py-1.5 text-sm" />
-                    <span className="text-gray-400">~</span>
-                    <input required type="time" value={slot.end} onChange={(e) => updateSlot(i, "end", e.target.value)} className="w-24 rounded-lg border border-gray-300 px-2 py-1.5 text-sm" />
-                    {slots.length > 1 && <button type="button" onClick={() => removeSlot(i)} className="text-red-400 hover:text-red-600">x</button>}
+
+              {/* amount */}
+              <label className="block">
+                <span className="mb-1 block text-xs text-gray-500">每次金額 <span className="text-red-500">*</span></span>
+                <input required type="number" value={form.amount} onChange={(e) => sf("amount", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              </label>
+
+              {/* recurrence panel */}
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">循環設定</p>
+
+                {/* frequency toggle */}
+                <div className="flex gap-1 rounded-lg border border-gray-200 bg-white p-1">
+                  {(["weekly", "monthly"] as const).map((f) => (
+                    <button
+                      key={f}
+                      type="button"
+                      onClick={() => { setRecurrence(f); setSlots(null); }}
+                      className={`flex-1 rounded-md py-1.5 text-sm font-medium transition-colors ${recurrence === f ? "bg-primary-600 text-white shadow-sm" : "text-gray-600 hover:bg-gray-100"}`}
+                    >
+                      {f === "weekly" ? "每週" : "每月"}
+                    </button>
+                  ))}
+                </div>
+
+                {/* day of week picker — always shown */}
+                <div>
+                  <p className="mb-1.5 text-xs text-gray-500">
+                    {recurrence === "weekly" ? "星期幾" : "第幾個禮拜幾"}
+                  </p>
+                  {recurrence === "monthly" && (
+                    <div className="mb-2 flex flex-wrap gap-1">
+                      {WEEK_OF_MONTH_LABELS.map((label, i) => {
+                        const val = i === 4 ? -1 : i + 1;
+                        return (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => { setWeekOfMonth(val); setSlots(null); }}
+                            className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors ${weekOfMonth === val ? "border-primary-500 bg-primary-100 text-primary-700" : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"}`}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <div className="flex gap-1">
+                    {DOW_LABELS.map((label, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => { setDow(i); setSlots(null); }}
+                        className={`flex-1 rounded-lg border py-1.5 text-xs font-bold transition-colors ${dow === i ? "border-primary-500 bg-primary-500 text-white" : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
                   </div>
-                ))}
+                </div>
+
+                {/* time range */}
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <p className="mb-1 text-xs text-gray-500">開始時間</p>
+                    <input type="time" value={startTime} onChange={(e) => { setStartTime(e.target.value); setSlots(null); }} className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm" />
+                  </div>
+                  <span className="mt-4 text-gray-400">~</span>
+                  <div className="flex-1">
+                    <p className="mb-1 text-xs text-gray-500">結束時間</p>
+                    <input type="time" value={endTime} onChange={(e) => { setEndTime(e.target.value); setSlots(null); }} className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm" />
+                  </div>
+                </div>
+
+                {/* start + count */}
+                <div className="flex items-end gap-3">
+                  <div className="flex-1">
+                    <p className="mb-1 text-xs text-gray-500">{recurrence === "weekly" ? "起始日期" : "起始月份"}</p>
+                    {recurrence === "weekly" ? (
+                      <input type="date" value={startDate} onChange={(e) => { setStartDate(e.target.value); setSlots(null); }} className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm" />
+                    ) : (
+                      <input type="month" value={startMonth} onChange={(e) => { setStartMonth(e.target.value); setSlots(null); }} className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm" />
+                    )}
+                  </div>
+                  <div className="w-24">
+                    <p className="mb-1 text-xs text-gray-500">循環次數</p>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        min={1}
+                        max={52}
+                        value={count}
+                        onChange={(e) => { setCount(e.target.value); setSlots(null); }}
+                        className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm"
+                      />
+                      <span className="text-xs text-gray-400 whitespace-nowrap">次</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* generate button */}
+                <button
+                  type="button"
+                  onClick={handleGenerate}
+                  className="w-full rounded-lg bg-gray-800 py-2 text-sm font-medium text-white hover:bg-gray-700"
+                >
+                  產生時段預覽
+                </button>
               </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">取消</button>
-              <button type="submit" disabled={saving} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">
-                {saving ? "建立中..." : `建立 ${slots.length} 筆預約`}
-              </button>
-            </div>
-          </form>
+
+              {/* slot preview */}
+              {slots && (
+                <div>
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-gray-600">
+                      預覽時段（共 {slots.length} 筆）
+                    </span>
+                    <span className="text-xs text-gray-400">點 ✕ 可移除個別時段</span>
+                  </div>
+                  {slots.length === 0 ? (
+                    <p className="rounded-lg bg-yellow-50 px-3 py-2 text-xs text-yellow-700">所有時段已移除</p>
+                  ) : (
+                    <ul className="max-h-52 divide-y divide-gray-100 overflow-y-auto rounded-xl border border-gray-200 bg-white">
+                      {slots.map((s, i) => (
+                        <li key={i} className="flex items-center justify-between px-3 py-2">
+                          <span className="text-sm text-gray-700">
+                            <span className="font-medium">{formatPreviewDate(s.date)}</span>
+                            <span className="ml-2 text-gray-400">{s.start} ~ {s.end}</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => removeSlot(i)}
+                            className="ml-2 text-xs text-gray-300 hover:text-red-500"
+                          >
+                            ✕
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </form>
+          </div>
+
+          {/* footer */}
+          <div className="flex justify-end gap-2 border-t border-gray-200 px-6 py-4">
+            <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">取消</button>
+            <button
+              form="batch-form"
+              type="submit"
+              disabled={saving || !slots || slots.length === 0}
+              className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-40"
+            >
+              {saving ? "建立中..." : slots && slots.length > 0 ? `建立 ${slots.length} 筆預約` : "請先產生預覽"}
+            </button>
+          </div>
         </div>
+
+        {/* right: room calendar */}
         {showCalendar && (
-          <div className="w-1/2 p-4">
-            <RoomMiniCalendar token={token} roomId={selectedRoom.id} roomName={selectedRoom.name} focusDate={slots.find((s) => s.date)?.date || undefined} />
+          <div className="w-1/2 overflow-y-auto p-4">
+            <RoomMiniCalendar
+              token={token}
+              roomId={selectedRoom.id}
+              roomName={selectedRoom.name}
+              focusDate={slots[0]?.date || undefined}
+            />
           </div>
         )}
       </div>
