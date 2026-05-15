@@ -39,6 +39,7 @@ def _to_response(c: Case) -> CaseResponse:
         therapist_name=c.therapist.name if c.therapist else None,
         status=c.status,
         billing_cycle=c.billing_cycle,
+        has_national_id=c.national_id_encrypted is not None,
         notes=c.notes,
     )
 

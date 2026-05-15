@@ -66,6 +66,7 @@ class CaseResponse(BaseModel):
     therapist_name: str | None = None
     status: str
     billing_cycle: str | None = None
+    has_national_id: bool = False
     notes: str | None = None
 
     model_config = {"from_attributes": True}
