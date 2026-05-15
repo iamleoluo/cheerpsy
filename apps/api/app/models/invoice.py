@@ -12,6 +12,7 @@ class Invoice(Base):
     appointment_id = Column(Integer, ForeignKey("appointments.id"), nullable=False)
     status = Column(String(20), nullable=False, default="active")  # active, voided
     void_reason = Column(Text, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     appointment = relationship("Appointment", back_populates="invoice")

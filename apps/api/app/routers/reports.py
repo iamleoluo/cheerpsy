@@ -1,4 +1,5 @@
 from datetime import date
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import extract, func
@@ -13,6 +14,14 @@ from app.models.session_record import SessionRecord
 from app.models.user import User
 
 router = APIRouter(prefix="/reports", tags=["reports"])
+
+DEFAULT_COMMISSION_RATE = Decimal("0.70")
+
+
+def _get_rate(r: SessionRecord) -> Decimal:
+    if r.commission_rate_used is not None:
+        return Decimal(str(r.commission_rate_used))
+    return DEFAULT_COMMISSION_RATE
 
 
 @router.get("/monthly")
@@ -32,8 +41,8 @@ def monthly_report(
     )
 
     total_revenue = sum(float(r.amount) for r in records)
-    total_therapist = sum(round(float(r.amount) * 0.7, 2) for r in records)
-    total_clinic = sum(round(float(r.amount) * 0.3, 2) for r in records)
+    total_therapist = sum(round(float(r.amount) * float(_get_rate(r)), 2) for r in records)
+    total_clinic = sum(round(float(r.amount) * float(1 - _get_rate(r)), 2) for r in records)
     session_count = len(records)
 
     paid_count = sum(1 for r in records if r.payment_status in ("paid", "claimed"))
@@ -75,7 +84,7 @@ def monthly_report(
             by_therapist[tid] = {"therapist_id": tid, "sessions": 0, "revenue": 0.0, "share": 0.0}
         by_therapist[tid]["sessions"] += 1
         by_therapist[tid]["revenue"] += float(r.amount)
-        by_therapist[tid]["share"] += round(float(r.amount) * 0.7, 2)
+        by_therapist[tid]["share"] += round(float(r.amount) * float(_get_rate(r)), 2)
 
     therapist_names = {}
     if by_therapist:

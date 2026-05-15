@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Date, Integer, Numeric, String, Text
+from sqlalchemy import Column, Date, ForeignKey, Integer, Numeric, String, Text
 
 from app.database import Base
 
@@ -13,3 +13,4 @@ class PettyCash(Base):
     description = Column(String(200), nullable=True)
     receipt_note = Column(Text, nullable=True)
     balance_after = Column(Numeric(10, 2), nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)

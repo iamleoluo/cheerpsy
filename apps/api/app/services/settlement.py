@@ -1,12 +1,16 @@
-"""T+1 daily settlement: booked appointments from yesterday → executed + session_records."""
+"""T+1 daily settlement: booked appointments from yesterday -> executed + session_records."""
 
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.models.appointment import Appointment
 from app.models.session_record import SessionRecord
+from app.models.user import User
+
+DEFAULT_COMMISSION_RATE = Decimal("0.70")
 
 
 def run_daily_settlement(db: Session, target_date: date | None = None) -> dict:
@@ -26,6 +30,7 @@ def run_daily_settlement(db: Session, target_date: date | None = None) -> dict:
         .all()
     )
 
+    therapist_cache: dict[int, User] = {}
     executed = 0
     skipped = 0
 
@@ -37,6 +42,14 @@ def run_daily_settlement(db: Session, target_date: date | None = None) -> dict:
 
         appt.status = "executed"
 
+        if appt.therapist_id not in therapist_cache:
+            therapist_cache[appt.therapist_id] = db.query(User).filter(User.id == appt.therapist_id).first()
+        therapist = therapist_cache[appt.therapist_id]
+
+        rate = DEFAULT_COMMISSION_RATE
+        if therapist and therapist.commission_rate is not None:
+            rate = Decimal(str(therapist.commission_rate))
+
         record = SessionRecord(
             appointment_id=appt.id,
             session_date=target_date,
@@ -46,7 +59,9 @@ def run_daily_settlement(db: Session, target_date: date | None = None) -> dict:
             room_id=appt.room_id,
             fee_category="counseling",
             amount=appt.amount,
+            commission_rate_used=rate,
             payment_status="unpaid",
+            locked_at=datetime.now(timezone.utc),
         )
         db.add(record)
         executed += 1

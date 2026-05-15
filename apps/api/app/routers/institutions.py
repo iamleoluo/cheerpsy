@@ -12,11 +12,18 @@ router = APIRouter(prefix="/institutions", tags=["institutions"])
 
 class InstitutionCreate(BaseModel):
     name: str
+    code: str | None = None
+
+
+class InstitutionUpdate(BaseModel):
+    name: str | None = None
+    code: str | None = None
 
 
 class InstitutionResponse(BaseModel):
     id: int
     name: str
+    code: str | None = None
     is_active: bool
 
     model_config = {"from_attributes": True}
@@ -44,12 +51,50 @@ def create_institution(
     if existing:
         if not existing.is_active:
             existing.is_active = True
+            if body.code:
+                existing.code = body.code.strip().upper()
             db.commit()
             db.refresh(existing)
             return existing
         raise HTTPException(status_code=400, detail="Institution already exists")
-    inst = Institution(name=body.name.strip())
+
+    if body.code:
+        code = body.code.strip().upper()
+        if len(code) > 5:
+            raise HTTPException(status_code=400, detail="Code must be 5 characters or less")
+        dup = db.query(Institution).filter(Institution.code == code).first()
+        if dup:
+            raise HTTPException(status_code=400, detail=f"Code '{code}' already in use")
+    else:
+        code = None
+
+    inst = Institution(name=body.name.strip(), code=code, created_by=user.id)
     db.add(inst)
+    db.commit()
+    db.refresh(inst)
+    return inst
+
+
+@router.put("/{inst_id}", response_model=InstitutionResponse)
+def update_institution(
+    inst_id: int,
+    body: InstitutionUpdate,
+    user: User = Depends(RequireRole(["admin"])),
+    db: Session = Depends(get_db),
+):
+    inst = db.query(Institution).filter(Institution.id == inst_id).first()
+    if not inst:
+        raise HTTPException(status_code=404, detail="Not found")
+    if body.name is not None:
+        inst.name = body.name.strip()
+    if body.code is not None:
+        code = body.code.strip().upper()
+        if len(code) > 5:
+            raise HTTPException(status_code=400, detail="Code must be 5 characters or less")
+        dup = db.query(Institution).filter(Institution.code == code, Institution.id != inst_id).first()
+        if dup:
+            raise HTTPException(status_code=400, detail=f"Code '{code}' already in use")
+        inst.code = code
     db.commit()
     db.refresh(inst)
     return inst

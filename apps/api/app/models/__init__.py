@@ -10,6 +10,7 @@ from app.models.petty_cash import PettyCash
 from app.models.audit_log import AuditLog
 from app.models.reminder_log import ReminderLog
 from app.models.invitation import Invitation
+from app.models.claim_batch import ClaimBatch
 
 __all__ = [
     "User",
@@ -25,4 +26,5 @@ __all__ = [
     "AuditLog",
     "ReminderLog",
     "Invitation",
+    "ClaimBatch",
 ]

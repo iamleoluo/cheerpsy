@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import RequireRole, get_current_user
@@ -6,6 +7,7 @@ from app.database import get_db
 from app.models.case import Case
 from app.models.user import User
 from app.schemas.case import CaseCreate, CaseResponse, CaseUpdate
+from app.services.case_numbering import generate_case_number
 from app.utils.encryption import encrypt_national_id, hmac_national_id
 
 router = APIRouter(prefix="/cases", tags=["cases"])
@@ -14,7 +16,9 @@ router = APIRouter(prefix="/cases", tags=["cases"])
 def _to_response(c: Case) -> CaseResponse:
     return CaseResponse(
         id=c.id,
+        temp_seq=c.temp_seq,
         case_code=c.case_code,
+        case_number=c.case_number,
         name=c.name,
         birth_date=c.birth_date,
         gender=c.gender,
@@ -33,6 +37,7 @@ def _to_response(c: Case) -> CaseResponse:
         therapist_id=c.therapist_id,
         therapist_name=c.therapist.name if c.therapist else None,
         status=c.status,
+        billing_cycle=c.billing_cycle,
         notes=c.notes,
     )
 
@@ -78,7 +83,10 @@ def create_case(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    next_seq = (db.query(func.coalesce(func.max(Case.temp_seq), 0)).scalar() or 0) + 1
+
     c = Case(
+        temp_seq=next_seq,
         name=body.name,
         birth_date=body.birth_date,
         gender=body.gender,
@@ -88,7 +96,9 @@ def create_case(
         funding_source=body.funding_source,
         institution_id=body.institution_id if body.funding_source == "institution" else None,
         therapist_id=body.therapist_id if user.role != "therapist" else user.id,
+        billing_cycle=body.billing_cycle,
         notes=body.notes,
+        created_by=user.id,
     )
     if body.national_id:
         c.national_id_encrypted = encrypt_national_id(body.national_id)
@@ -103,17 +113,51 @@ def create_case(
 def update_case(
     case_id: int,
     body: CaseUpdate,
-    user: User = Depends(RequireRole(["admin", "accountant"])),
+    user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
     db: Session = Depends(get_db),
 ):
     c = db.query(Case).filter(Case.id == case_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="Case not found")
+
     update_data = body.model_dump(exclude_unset=True)
+
+    if "national_id" in update_data:
+        nid = update_data.pop("national_id")
+        if nid:
+            c.national_id_encrypted = encrypt_national_id(nid)
+            c.national_id_hmac = hmac_national_id(nid)
+
+    if c.case_number and "case_number" in update_data:
+        raise HTTPException(status_code=400, detail="Case number cannot be changed once assigned")
+
     for key, val in update_data.items():
         setattr(c, key, val)
     if c.funding_source == "self_pay":
         c.institution_id = None
+    db.commit()
+    db.refresh(c)
+    return _to_response(c)
+
+
+@router.post("/{case_id}/activate", response_model=CaseResponse)
+def activate_case(
+    case_id: int,
+    user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
+    db: Session = Depends(get_db),
+):
+    c = db.query(Case).filter(Case.id == case_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Case not found")
+    if c.case_number:
+        raise HTTPException(status_code=400, detail="Case already has a formal number")
+    if c.status != "initial":
+        raise HTTPException(status_code=400, detail="Only initial-status cases can be activated")
+    if not c.national_id_encrypted:
+        raise HTTPException(status_code=400, detail="National ID is required before activation")
+
+    c.case_number = generate_case_number(db, c)
+    c.status = "ongoing"
     db.commit()
     db.refresh(c)
     return _to_response(c)

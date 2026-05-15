@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Date, ForeignKey, Integer, LargeBinary, String, Text
+from sqlalchemy import Column, Date, ForeignKey, Integer, LargeBinary, Sequence, String, Text
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -8,7 +8,10 @@ class Case(Base):
     __tablename__ = "cases"
 
     id = Column(Integer, primary_key=True)
+    temp_seq = Column(Integer, Sequence("cases_temp_seq_seq"), nullable=True)
     case_code = Column(String(20), nullable=True, index=True)
+    case_number = Column(String(10), unique=True, nullable=True, index=True)
+    billing_cycle = Column(String(20), nullable=False, default="once", server_default="once")
     name = Column(String(100), nullable=False)
     national_id_encrypted = Column(LargeBinary, nullable=True)
     national_id_hmac = Column(String(64), nullable=True, index=True)
@@ -28,7 +31,8 @@ class Case(Base):
     therapist_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     status = Column(String(20), nullable=False, default="initial")
     notes = Column(Text, nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
 
-    therapist = relationship("User", back_populates="cases")
+    therapist = relationship("User", back_populates="cases", foreign_keys=[therapist_id])
     institution = relationship("Institution")
     appointments = relationship("Appointment", back_populates="case")

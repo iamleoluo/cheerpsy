@@ -14,11 +14,13 @@ class CaseCreate(BaseModel):
     funding_source: str = "self_pay"
     institution_id: int | None = None
     therapist_id: int
+    billing_cycle: str = "once"
     notes: str | None = None
 
 
 class CaseUpdate(BaseModel):
     name: str | None = None
+    national_id: str | None = None
     birth_date: date | None = None
     gender: str | None = None
     phone: str | None = None
@@ -27,12 +29,15 @@ class CaseUpdate(BaseModel):
     institution_id: int | None = None
     therapist_id: int | None = None
     status: str | None = None
+    billing_cycle: str | None = None
     notes: str | None = None
 
 
 class CaseResponse(BaseModel):
     id: int
+    temp_seq: int | None = None
     case_code: str | None = None
+    case_number: str | None = None
     name: str
     birth_date: date | None = None
     gender: str | None = None
@@ -51,6 +56,7 @@ class CaseResponse(BaseModel):
     therapist_id: int
     therapist_name: str | None = None
     status: str
+    billing_cycle: str | None = None
     notes: str | None = None
 
     model_config = {"from_attributes": True}
