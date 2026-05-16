@@ -155,7 +155,7 @@ def create_appointment(
         raise HTTPException(status_code=403, detail="只能為自己的個案建立預約")
 
     therapist = user if user.role == "therapist" else db.query(User).filter(User.id == case.therapist_id).first()
-    if not therapist or not therapist.therapist_code:
+    if not therapist or not therapist.user_code:
         raise HTTPException(status_code=400, detail="Therapist not found or has no code")
 
     if body.session_type == "in_person" and not body.room_id:
@@ -164,8 +164,8 @@ def create_appointment(
     if body.room_id:
         _check_room_conflict(db, body.room_id, body.start_time, body.end_time)
 
-    seq = _next_seq(db, therapist.therapist_code, body.start_time)
-    number = _make_number(therapist.therapist_code, body.start_time, seq)
+    seq = _next_seq(db, therapist.user_code, body.start_time)
+    number = _make_number(therapist.user_code, body.start_time, seq)
     visit_seq = _next_visit_seq(db, body.case_id)
 
     time_range = DateTimeTZRange(body.start_time, body.end_time)
@@ -204,7 +204,7 @@ def create_batch(
         raise HTTPException(status_code=403, detail="只能為自己的個案建立預約")
 
     therapist = user if user.role == "therapist" else db.query(User).filter(User.id == case.therapist_id).first()
-    if not therapist or not therapist.therapist_code:
+    if not therapist or not therapist.user_code:
         raise HTTPException(status_code=400, detail="Therapist not found or has no code")
 
     batch_id = str(uuid.uuid4())[:8]
@@ -217,8 +217,8 @@ def create_batch(
         if body.room_id:
             _check_room_conflict(db, body.room_id, slot.start_time, slot.end_time)
 
-        seq = _next_seq(db, therapist.therapist_code, slot.start_time)
-        number = _make_number(therapist.therapist_code, slot.start_time, seq)
+        seq = _next_seq(db, therapist.user_code, slot.start_time)
+        number = _make_number(therapist.user_code, slot.start_time, seq)
         time_range = DateTimeTZRange(slot.start_time, slot.end_time)
 
         appt = Appointment(

@@ -55,7 +55,7 @@ interface UserItem {
   email: string;
   name: string;
   role: string;
-  therapist_code: string | null;
+  user_code: string | null;
   is_active: boolean;
 }
 
@@ -75,6 +75,21 @@ const roleLabels: Record<string, string> = {
   admin: "管理員",
   accountant: "會計",
   therapist: "心理師",
+  staff: "行政人員",
+};
+
+const roleCodePrefix: Record<string, string> = {
+  admin: "A",
+  accountant: "C",
+  staff: "S",
+  therapist: "T",
+};
+
+const roleBadgeClass: Record<string, string> = {
+  admin: "bg-green-100 text-green-700",
+  accountant: "bg-amber-100 text-amber-700",
+  staff: "bg-purple-100 text-purple-700",
+  therapist: "bg-blue-100 text-blue-700",
 };
 
 export default function AdminUsersPage() {
@@ -122,10 +137,7 @@ export default function AdminUsersPage() {
     if (!token || !invName.trim()) return;
     setCreatingInvite(true);
     try {
-      const body: any = { name: invName.trim(), role: invRole };
-      if (invRole === "therapist" && invCode.trim()) {
-        body.therapist_code = invCode.trim();
-      }
+      const body: any = { name: invName.trim(), role: invRole, user_code: invCode.trim() };
       const result = await clientFetch("/auth/invitations", token, {
         method: "POST",
         body: JSON.stringify(body),
@@ -216,13 +228,11 @@ export default function AdminUsersPage() {
                 <td className="px-4 py-3 font-medium">{u.name}</td>
                 <td className="px-4 py-3 text-gray-500">{u.email}</td>
                 <td className="px-4 py-3">
-                  <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                    u.role === "admin" ? "bg-green-100 text-green-700" :
-                    u.role === "accountant" ? "bg-amber-100 text-amber-700" :
-                    "bg-blue-100 text-blue-700"
-                  }`}>{roleLabels[u.role] ?? u.role}</span>
+                  <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${roleBadgeClass[u.role] ?? "bg-gray-100 text-gray-700"}`}>
+                    {roleLabels[u.role] ?? u.role}
+                  </span>
                 </td>
-                <td className="px-4 py-3 font-mono text-xs text-gray-400">{u.therapist_code ?? "-"}</td>
+                <td className="px-4 py-3 font-mono text-xs text-gray-500">{u.user_code ?? "-"}</td>
                 <td className="px-4 py-3">
                   <span className={`inline-block rounded-full px-2 py-0.5 text-xs ${u.is_active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
                     {u.is_active ? "啟用" : "停用"}
@@ -289,33 +299,34 @@ export default function AdminUsersPage() {
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-500">角色 *</label>
-                <select value={invRole} onChange={(e) => setInvRole(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
-                  <option value="therapist">心理師</option>
-                  <option value="accountant">會計</option>
-                  <option value="admin">管理員</option>
+                <select value={invRole} onChange={(e) => { setInvRole(e.target.value); setInvCode(""); }} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                  <option value="therapist">心理師（T）</option>
+                  <option value="accountant">會計（C）</option>
+                  <option value="staff">行政人員（S）</option>
+                  <option value="admin">管理員（A）</option>
                 </select>
               </div>
-              {invRole === "therapist" && (() => {
-                const allCodes = users.filter((u) => u.therapist_code).map((u) => ({ code: u.therapist_code!, name: u.name, active: u.is_active }));
-                const reusable = allCodes.filter((c) => !c.active);
-                const usedSet = new Set(allCodes.filter((c) => c.active).map((c) => c.code));
+              {(() => {
+                const prefix = roleCodePrefix[invRole] ?? invRole[0].toUpperCase();
+                const allCodesForRole = users.filter((u) => u.user_code?.startsWith(prefix)).map((u) => ({ code: u.user_code!, name: u.name, active: u.is_active }));
+                const reusable = allCodesForRole.filter((c) => !c.active);
                 let nextCode = "";
                 for (let i = 1; i <= 999; i++) {
-                  const candidate = `T${String(i).padStart(3, "0")}`;
-                  if (!allCodes.some((c) => c.code === candidate)) { nextCode = candidate; break; }
+                  const candidate = `${prefix}${String(i).padStart(3, "0")}`;
+                  if (!allCodesForRole.some((c) => c.code === candidate)) { nextCode = candidate; break; }
                 }
                 return (
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-500">心理師代號 *</label>
-                    <input type="text" value={invCode} onChange={(e) => setInvCode(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" placeholder="例如 T018" />
+                    <label className="mb-1 block text-xs font-medium text-gray-500">使用者代號 *</label>
+                    <input type="text" value={invCode} onChange={(e) => setInvCode(e.target.value.toUpperCase())} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" placeholder={`例如 ${prefix}001`} />
                     <div className="mt-2 space-y-1">
                       {nextCode && (
                         <button type="button" onClick={() => setInvCode(nextCode)} className="rounded bg-primary-50 px-2 py-0.5 text-xs text-primary-600 hover:bg-primary-100">
-                          自動：{nextCode}（新代號）
+                          自動：{nextCode}（下一個可用代號）
                         </button>
                       )}
                       {reusable.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
+                        <div className="flex flex-wrap gap-1 mt-1">
                           {reusable.map((c) => (
                             <button key={c.code} type="button" onClick={() => setInvCode(c.code)} className={`rounded px-2 py-0.5 text-xs ${invCode === c.code ? "bg-amber-200 text-amber-800" : "bg-amber-50 text-amber-600 hover:bg-amber-100"}`}>
                               {c.code}（原 {c.name}，已停用）
@@ -330,7 +341,7 @@ export default function AdminUsersPage() {
             </div>
             <div className="mt-5 flex justify-end gap-2">
               <button onClick={() => { setShowInvite(false); setInvName(""); setInvRole("therapist"); setInvCode(""); }} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">取消</button>
-              <button onClick={handleCreateInvite} disabled={!invName.trim() || creatingInvite} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">
+              <button onClick={handleCreateInvite} disabled={!invName.trim() || !invCode.trim() || creatingInvite} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">
                 {creatingInvite ? "建立中..." : "建立"}
               </button>
             </div>

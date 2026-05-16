@@ -12,7 +12,7 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     name = Column(String(100), nullable=False)
     role = Column(String(20), nullable=False)  # admin, accountant, therapist, staff
-    therapist_code = Column(String(10), unique=True, nullable=True)
+    user_code = Column(String(10), unique=True, nullable=True)
     commission_rate = Column(Numeric(4, 2), nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
 

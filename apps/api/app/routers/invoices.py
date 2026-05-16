@@ -77,7 +77,7 @@ def create_invoice(
         raise HTTPException(status_code=409, detail="Active invoice already exists")
 
     therapist = appt.therapist
-    code = therapist.therapist_code if therapist else "XXX"
+    code = therapist.user_code if therapist else "XXX"
     number = _make_invoice_number(code, appt.created_at, db)
 
     inv = Invoice(

@@ -202,7 +202,7 @@ def export_users(
             "Email": u.email,
             "姓名": u.name,
             "角色": u.role,
-            "代碼": u.therapist_code or "",
+            "代碼": u.user_code or "",
             "啟用": "是" if u.is_active else "否",
         })
     return _csv_response(rows, "users.csv")

@@ -11,7 +11,7 @@ class Invitation(Base):
     type = Column(String(10), nullable=False)  # invite | reset
     name = Column(String(100), nullable=False)
     role = Column(String(20), nullable=True)  # for invite
-    therapist_code = Column(String(10), nullable=True)  # for invite
+    user_code = Column(String(10), nullable=True)  # for invite
     target_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)  # for reset
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
