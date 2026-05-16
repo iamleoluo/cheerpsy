@@ -39,6 +39,9 @@ class ClaimBatchResponse(BaseModel):
     record_count: int = 0
     confirmed_count: int = 0
     created_at: str | None = None
+    submitted_at: str | None = None
+    received_at: str | None = None
+    closed_at: str | None = None
 
 
 class ClaimBatchRecordResponse(BaseModel):

@@ -68,6 +68,9 @@ def _to_response(db: Session, b: ClaimBatch) -> ClaimBatchResponse:
         record_count=record_count,
         confirmed_count=confirmed_count,
         created_at=b.created_at.isoformat() if b.created_at else None,
+        submitted_at=b.submitted_at.isoformat() if b.submitted_at else None,
+        received_at=b.received_at.isoformat() if b.received_at else None,
+        closed_at=b.closed_at.isoformat() if b.closed_at else None,
     )
 
 
@@ -401,8 +404,10 @@ def submit_batch(
     if batch.type == "self_pay" and batch.status not in ("collecting", "ready"):
         raise HTTPException(status_code=400, detail="Self-pay batch must be in 'collecting' or 'ready' status to submit")
 
+    from datetime import datetime, timezone
     old_status = batch.status
     batch.status = "submitted"
+    batch.submitted_at = datetime.now(timezone.utc)
     write_audit(db, "claim_batches", batch.id, "UPDATE", user.id,
                 {"status": old_status}, {"status": "submitted"})
     db.commit()
@@ -423,7 +428,9 @@ def receive_batch(
     if batch.status != "submitted":
         raise HTTPException(status_code=400, detail="Batch must be in 'submitted' status")
 
+    from datetime import datetime, timezone
     batch.status = "received"
+    batch.received_at = datetime.now(timezone.utc)
     write_audit(db, "claim_batches", batch.id, "UPDATE", user.id,
                 {"status": "submitted"}, {"status": "received"})
     records = db.query(SessionRecord).filter(SessionRecord.claim_batch_id == batch_id).all()
@@ -446,8 +453,10 @@ def close_batch(
     if batch.status not in ("submitted", "ready", "collecting"):
         raise HTTPException(status_code=400, detail=f"Cannot close batch in status '{batch.status}'")
 
+    from datetime import datetime, timezone
     old_status = batch.status
     batch.status = "closed"
+    batch.closed_at = datetime.now(timezone.utc)
     write_audit(db, "claim_batches", batch.id, "UPDATE", user.id,
                 {"status": old_status}, {"status": "closed"})
     if batch.type == "self_pay":

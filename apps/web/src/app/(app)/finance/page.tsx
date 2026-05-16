@@ -49,7 +49,7 @@ export default function FinancePage() {
   const { data: session } = useSession();
   const token = (session?.user as any)?.accessToken;
   const userRole = (session?.user as any)?.role;
-  const [tab, setTab] = useState<"invoices" | "payouts" | "petty">("invoices");
+  const [tab, setTab] = useState<"tracking" | "payouts" | "petty">("tracking");
   const [helpOpen, setHelpOpen] = useState(false);
 
   if (!token) return <p>Loading...</p>;
@@ -67,7 +67,7 @@ export default function FinancePage() {
       <div className="mb-4 flex gap-1 border-b border-gray-200">
         {(
           [
-            ["invoices", "收據管理"],
+            ["tracking", "款項追蹤"],
             ["payouts", "心理師酬勞"],
             ["petty", "零用金"],
           ] as const
@@ -86,7 +86,7 @@ export default function FinancePage() {
         ))}
       </div>
 
-      {tab === "invoices" && <InvoicesTab token={token} userRole={userRole} />}
+      {tab === "tracking" && <PaymentTrackingTab token={token} />}
       {tab === "payouts" && <PayoutsTab token={token} userRole={userRole} />}
       {tab === "petty" && <PettyCashTab token={token} userRole={userRole} />}
     </div>
@@ -94,287 +94,236 @@ export default function FinancePage() {
 }
 
 /* ═══════════════════════════════════════════════
-   Tab 1 — 收據管理
+   Tab 1 — 款項追蹤
    ═══════════════════════════════════════════════ */
 
-interface InvoiceItem {
+interface TrackingBatch {
   id: number;
-  invoice_number: string;
-  appointment_id: number;
-  appointment_number: string | null;
+  batch_number: string;
+  type: string;
   case_name: string | null;
-  therapist_name: string | null;
-  amount: number | null;
+  institution_name: string | null;
+  total_amount: number;
+  payment_method: string | null;
+  payment_note: string | null;
   status: string;
-  void_reason: string | null;
+  record_count: number;
   created_at: string | null;
+  submitted_at: string | null;
+  received_at: string | null;
+  closed_at: string | null;
 }
 
-interface ExecutedAppointment {
-  id: number;
-  appointment_number: string;
-  case_name: string | null;
-  therapist_name: string | null;
-  amount: number;
-  status: string;
-}
-
-const invoiceStatusLabels: Record<string, string> = { active: "有效", voided: "作廢" };
-const invoiceStatusColors: Record<string, string> = {
-  active: "bg-green-100 text-green-700",
-  voided: "bg-red-100 text-red-600",
+const TRACK_TYPE_LABELS: Record<string, string> = { self_pay: "自費", institution: "機構" };
+const TRACK_STATUS_LABELS: Record<string, string> = {
+  collecting: "收集中",
+  ready: "文件備妥",
+  submitted: "已提交",
+  received: "款項到帳",
+  closed: "已結案",
+};
+const TRACK_STATUS_COLORS: Record<string, string> = {
+  collecting: "bg-blue-100 text-blue-700",
+  ready: "bg-cyan-100 text-cyan-700",
+  submitted: "bg-amber-100 text-amber-700",
+  received: "bg-green-100 text-green-700",
+  closed: "bg-gray-100 text-gray-600",
 };
 
-function InvoicesTab({ token, userRole }: { token: string; userRole: string }) {
-  const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState("");
-  const [showCreate, setShowCreate] = useState(false);
-  const [voidingId, setVoidingId] = useState<number | null>(null);
-  const [voidReason, setVoidReason] = useState("");
+function fmtTs(iso: string | null) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
 
-  const fetchInvoices = useCallback(async () => {
+function fmtDateOnly(iso: string | null) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+/** Self-pay progress steps */
+const SELF_PAY_STEPS = ["建立", "付款結案"] as const;
+/** Institution progress steps */
+const INST_STEPS = ["建立", "提交", "到帳", "結案"] as const;
+
+function ProgressBar({ steps, timestamps }: { steps: readonly string[]; timestamps: (string | null)[] }) {
+  const completed = timestamps.filter(Boolean).length;
+  const total = steps.length;
+
+  return (
+    <div className="flex items-center gap-0">
+      {steps.map((label, i) => {
+        const ts = timestamps[i];
+        const done = !!ts;
+        const isLast = i === total - 1;
+        return (
+          <div key={label} className="flex items-center">
+            <div className="flex flex-col items-center">
+              <div
+                className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
+                  done ? "bg-green-500 text-white" : "bg-gray-200 text-gray-400"
+                }`}
+              >
+                {done ? "✓" : i + 1}
+              </div>
+              <span className={`mt-0.5 text-[10px] leading-tight ${done ? "text-green-700 font-medium" : "text-gray-400"}`}>
+                {label}
+              </span>
+              {ts && (
+                <span className="text-[9px] text-gray-400">{fmtDateOnly(ts)}</span>
+              )}
+            </div>
+            {!isLast && (
+              <div className={`mx-0.5 h-0.5 w-6 ${done && timestamps[i + 1] ? "bg-green-400" : "bg-gray-200"}`} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function PaymentTrackingTab({ token }: { token: string }) {
+  const [batches, setBatches] = useState<TrackingBatch[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [typeFilter, setTypeFilter] = useState<"" | "self_pay" | "institution">("");
+  const [statusFilter, setStatusFilter] = useState("");
+
+  const fetchBatches = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (filter) params.set("status", filter);
+      if (typeFilter) params.set("type", typeFilter);
+      if (statusFilter) params.set("status", statusFilter);
       const qs = params.toString();
-      const data = await clientFetch(`/invoices${qs ? `?${qs}` : ""}`, token);
-      setInvoices(data);
-    } catch {
-      /* ignore */
-    } finally {
+      const data = await clientFetch(`/claim-batches${qs ? `?${qs}` : ""}`, token);
+      setBatches(data);
+    } catch { /* ignore */ } finally {
       setLoading(false);
     }
-  }, [token, filter]);
+  }, [token, typeFilter, statusFilter]);
 
-  useEffect(() => {
-    fetchInvoices();
-  }, [fetchInvoices]);
+  useEffect(() => { fetchBatches(); }, [fetchBatches]);
 
-  const handleVoid = async () => {
-    if (!voidingId || !voidReason) return;
-    try {
-      await clientFetch(`/invoices/${voidingId}/void`, token, {
-        method: "PUT",
-        body: JSON.stringify({ void_reason: voidReason }),
-      });
-      setVoidingId(null);
-      setVoidReason("");
-      fetchInvoices();
-    } catch (e: any) {
-      alert(e.message);
-    }
-  };
+  // Stats
+  const totalAmount = batches.reduce((s, b) => s + b.total_amount, 0);
+  const openCount = batches.filter((b) => b.status !== "closed").length;
+  // "Today" items: closed_at or received_at is today
+  const today = new Date().toISOString().slice(0, 10);
+  const todayItems = batches.filter((b) => {
+    const closedDate = b.closed_at?.slice(0, 10);
+    const receivedDate = b.received_at?.slice(0, 10);
+    return closedDate === today || receivedDate === today;
+  });
 
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <select
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-        >
-          <option value="">全部</option>
-          <option value="active">有效</option>
-          <option value="voided">作廢</option>
-        </select>
-        <div className="flex items-center gap-2">
-          {userRole !== "therapist" && (
-            <button
-              onClick={() => exportCsv("/export/invoices", token, "invoices.csv")}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
-            >
-              匯出 CSV
-            </button>
-          )}
-          {userRole !== "therapist" && (
-            <button
-              onClick={() => setShowCreate(true)}
-              className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
-            >
-              + 開立收據
-            </button>
-          )}
+        <div className="flex gap-3">
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value as any)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          >
+            <option value="">全部類型</option>
+            <option value="self_pay">自費</option>
+            <option value="institution">機構</option>
+          </select>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          >
+            <option value="">全部狀態</option>
+            {Object.entries(TRACK_STATUS_LABELS).map(([k, v]) => (
+              <option key={k} value={k}>{v}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex items-center gap-4 text-sm text-gray-500">
+          <span>共 {batches.length} 筆</span>
+          <span>合計 <strong className="text-gray-800">${totalAmount.toLocaleString()}</strong></span>
+          {openCount > 0 && <span className="text-amber-600">{openCount} 筆進行中</span>}
+          {todayItems.length > 0 && <span className="text-green-600">{todayItems.length} 筆今日異動</span>}
         </div>
       </div>
+
+      {/* Today's highlight */}
+      {todayItems.length > 0 && (
+        <div className="mb-4 rounded-lg border border-green-200 bg-green-50 p-3">
+          <h3 className="mb-1 text-sm font-semibold text-green-800">今日對帳項目</h3>
+          <div className="flex flex-wrap gap-2">
+            {todayItems.map((b) => (
+              <span key={b.id} className="rounded bg-white px-2 py-1 text-xs border border-green-200">
+                <span className="font-mono">{b.batch_number}</span>
+                {" "}${b.total_amount.toLocaleString()}
+                {" "}<span className="text-green-600">{TRACK_STATUS_LABELS[b.status]}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="overflow-x-auto rounded-lg border border-gray-200">
         <table className="w-full text-left text-sm">
           <thead className="bg-gray-50 text-xs uppercase text-gray-500">
             <tr>
-              <th className="px-4 py-3">收據編號</th>
-              <th className="px-4 py-3">預約編號</th>
-              <th className="px-4 py-3">個案</th>
-              <th className="px-4 py-3">心理師</th>
-              <th className="px-4 py-3">金額</th>
-              <th className="px-4 py-3">狀態</th>
-              <th className="px-4 py-3">開立日期</th>
-              <th className="px-4 py-3">操作</th>
+              <th className="px-3 py-3">案號</th>
+              <th className="px-3 py-3">類型</th>
+              <th className="px-3 py-3">對象</th>
+              <th className="px-3 py-3">筆數</th>
+              <th className="px-3 py-3 text-right">金額</th>
+              <th className="px-3 py-3">付款方式</th>
+              <th className="px-3 py-3">狀態</th>
+              <th className="px-3 py-3">進度</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
             {loading ? (
-              <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-gray-400">載入中...</td>
-              </tr>
-            ) : invoices.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-gray-400">尚無收據</td>
-              </tr>
-            ) : (
-              invoices.map((inv) => (
-                <tr key={inv.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-mono text-xs">{inv.invoice_number}</td>
-                  <td className="px-4 py-3 font-mono text-xs">{inv.appointment_number ?? "-"}</td>
-                  <td className="px-4 py-3">{inv.case_name ?? "-"}</td>
-                  <td className="px-4 py-3">{inv.therapist_name ?? "-"}</td>
-                  <td className="px-4 py-3">${inv.amount?.toLocaleString() ?? "-"}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${invoiceStatusColors[inv.status] ?? "bg-gray-100"}`}
-                    >
-                      {invoiceStatusLabels[inv.status] ?? inv.status}
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">載入中...</td></tr>
+            ) : batches.length === 0 ? (
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">尚無核銷案</td></tr>
+            ) : batches.map((b) => {
+              const isSelfPay = b.type === "self_pay";
+              const steps = isSelfPay ? SELF_PAY_STEPS : INST_STEPS;
+              const timestamps = isSelfPay
+                ? [b.created_at, b.closed_at]
+                : [b.created_at, b.submitted_at, b.received_at, b.closed_at];
+
+              return (
+                <tr key={b.id} className={`hover:bg-gray-50 ${
+                  // Highlight today's items
+                  (b.closed_at?.slice(0, 10) === today || b.received_at?.slice(0, 10) === today) ? "bg-green-50" : ""
+                }`}>
+                  <td className="px-3 py-3 font-mono text-xs">{b.batch_number}</td>
+                  <td className="px-3 py-3">
+                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                      isSelfPay ? "bg-purple-100 text-purple-700" : "bg-indigo-100 text-indigo-700"
+                    }`}>
+                      {TRACK_TYPE_LABELS[b.type] ?? b.type}
                     </span>
-                    {inv.void_reason && (
-                      <div className="mt-1 text-xs text-gray-400">{inv.void_reason}</div>
-                    )}
                   </td>
-                  <td className="px-4 py-3 text-xs">
-                    {inv.created_at ? new Date(inv.created_at).toLocaleDateString("zh-TW") : "-"}
+                  <td className="px-3 py-3 text-xs">{isSelfPay ? b.case_name : b.institution_name}</td>
+                  <td className="px-3 py-3 text-xs">{b.record_count}</td>
+                  <td className="px-3 py-3 text-right font-medium">${b.total_amount.toLocaleString()}</td>
+                  <td className="px-3 py-3 text-xs">
+                    {b.payment_method === "cash" ? "現金" : b.payment_method === "transfer" ? "匯款" : "—"}
+                    {b.payment_note && <span className="ml-1 text-gray-400">({b.payment_note})</span>}
                   </td>
-                  <td className="px-4 py-3">
-                    {inv.status === "active" && userRole !== "therapist" && (
-                      <button onClick={() => setVoidingId(inv.id)} className="text-xs text-red-600 hover:underline">
-                        作廢
-                      </button>
-                    )}
+                  <td className="px-3 py-3">
+                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${TRACK_STATUS_COLORS[b.status] ?? "bg-gray-100"}`}>
+                      {TRACK_STATUS_LABELS[b.status] ?? b.status}
+                    </span>
+                  </td>
+                  <td className="px-3 py-3">
+                    <ProgressBar steps={steps} timestamps={timestamps} />
                   </td>
                 </tr>
-              ))
-            )}
+              );
+            })}
           </tbody>
         </table>
-      </div>
-
-      {showCreate && (
-        <CreateInvoiceModal
-          token={token}
-          onClose={() => setShowCreate(false)}
-          onCreated={() => {
-            setShowCreate(false);
-            fetchInvoices();
-          }}
-        />
-      )}
-
-      {voidingId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
-            <h2 className="mb-4 text-lg font-bold">作廢收據</h2>
-            <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">作廢原因 *</span>
-              <textarea
-                value={voidReason}
-                onChange={(e) => setVoidReason(e.target.value)}
-                rows={3}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
-            </label>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                onClick={() => { setVoidingId(null); setVoidReason(""); }}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
-              >
-                取消
-              </button>
-              <button
-                onClick={handleVoid}
-                disabled={!voidReason}
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
-              >
-                確認作廢
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function CreateInvoiceModal({
-  token,
-  onClose,
-  onCreated,
-}: {
-  token: string;
-  onClose: () => void;
-  onCreated: () => void;
-}) {
-  const [appointments, setAppointments] = useState<ExecutedAppointment[]>([]);
-  const [selectedId, setSelectedId] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    clientFetch("/appointments?status=executed", token)
-      .then(setAppointments)
-      .catch(() => {});
-  }, [token]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    setError("");
-    try {
-      await clientFetch("/invoices", token, {
-        method: "POST",
-        body: JSON.stringify({ appointment_id: parseInt(selectedId) }),
-      });
-      onCreated();
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
-        <h2 className="mb-4 text-lg font-bold">開立收據</h2>
-        {error && <div className="mb-3 rounded-lg bg-red-50 p-2 text-sm text-red-600">{error}</div>}
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <label className="block">
-            <span className="mb-1 block text-xs text-gray-500">已執行的預約 *</span>
-            <select
-              required
-              value={selectedId}
-              onChange={(e) => setSelectedId(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            >
-              <option value="">請選擇</option>
-              {appointments.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.appointment_number} - {a.case_name} (${a.amount})
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">
-              取消
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
-            >
-              {saving ? "開立中..." : "開立收據"}
-            </button>
-          </div>
-        </form>
       </div>
     </div>
   );
