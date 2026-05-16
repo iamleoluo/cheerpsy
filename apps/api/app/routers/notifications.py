@@ -110,13 +110,13 @@ def _compute_live_alerts(user: User, db: Session) -> list[dict]:
 
     if user.role == "therapist":
         # 1. Today's appointments
-        from sqlalchemy import cast, Date
+        from sqlalchemy import text
         today_appts = (
             db.query(Appointment)
             .filter(
                 Appointment.therapist_id == user.id,
                 Appointment.status == "booked",
-                cast(Appointment.start_time, Date) == today,
+                text("lower(time_range)::date = :today").bindparams(today=today),
             )
             .count()
         )
@@ -165,12 +165,12 @@ def _compute_live_alerts(user: User, db: Session) -> list[dict]:
             })
 
         # 2. Today's appointments (all)
-        from sqlalchemy import cast, Date
+        from sqlalchemy import text
         today_total = (
             db.query(Appointment)
             .filter(
                 Appointment.status == "booked",
-                cast(Appointment.start_time, Date) == today,
+                text("lower(time_range)::date = :today").bindparams(today=today),
             )
             .count()
         )
