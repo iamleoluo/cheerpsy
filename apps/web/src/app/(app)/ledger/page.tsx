@@ -32,9 +32,8 @@ const helpContent: HelpContent = {
       heading: "注意事項",
       type: "tips",
       items: [
-        "帳務紀錄鎖定後不可修改，需管理員解鎖並填寫原因",
         "心理師只能看到自己的帳務紀錄",
-        "所有操作（鎖定、解鎖、收款變更）都會記錄在稽核日誌",
+        "所有操作都會記錄在稽核日誌",
       ],
     },
   ],
@@ -105,9 +104,6 @@ export default function LedgerPage() {
   const [settleDateTo, setSettleDateTo] = useState("");
   const [settleResult, setSettleResult] = useState("");
 
-  // Modals
-  const [unlockModal, setUnlockModal] = useState<number | null>(null);
-  const [unlockReason, setUnlockReason] = useState("");
 
   // Batch select for creating claim
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -164,31 +160,6 @@ export default function LedgerPage() {
       setSettleResult(`錯誤：${e.message}`);
     } finally {
       setSettling(false);
-    }
-  };
-
-  const handleLock = async (id: number) => {
-    if (!token || !confirm("鎖定後無法修改，確定嗎？")) return;
-    try {
-      await clientFetch(`/ledger/${id}/lock`, token, { method: "PUT" });
-      fetchRecords();
-    } catch (e: any) {
-      alert(e.message);
-    }
-  };
-
-  const handleUnlock = async () => {
-    if (!unlockModal || !token || !unlockReason.trim()) return;
-    try {
-      await clientFetch(`/ledger/${unlockModal}/unlock`, token, {
-        method: "PUT",
-        body: JSON.stringify({ reason: unlockReason.trim() }),
-      });
-      setUnlockModal(null);
-      setUnlockReason("");
-      fetchRecords();
-    } catch (e: any) {
-      alert(e.message);
     }
   };
 
@@ -349,19 +320,18 @@ export default function LedgerPage() {
               <th className="px-4 py-3">來源</th>
               <th className="px-4 py-3">收款狀態</th>
               <th className="px-4 py-3">核銷案</th>
-              {userRole === "admin" && <th className="px-4 py-3">操作</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
             {loading ? (
-              <tr><td colSpan={11} className="px-4 py-8 text-center text-gray-400">載入中...</td></tr>
+              <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">載入中...</td></tr>
             ) : displayRecords.length === 0 ? (
-              <tr><td colSpan={11} className="px-4 py-8 text-center text-gray-400">
+              <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">
                 {tab === "pending" ? "所有帳單皆已歸入核銷案 🎉" : "尚無流水帳資料"}
               </td></tr>
             ) : (
               displayRecords.map((r) => (
-                <tr key={r.id} className={`hover:bg-gray-50 ${r.locked_at ? "bg-gray-50/50" : ""}`}>
+                <tr key={r.id} className="hover:bg-gray-50">
                   {tab === "pending" && userRole !== "therapist" && (
                     <td className="px-3 py-3">
                       <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleSelect(r.id)} className="accent-primary-600" />
@@ -387,7 +357,6 @@ export default function LedgerPage() {
                     <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${paymentColors[r.payment_status] ?? "bg-gray-100"}`}>
                       {getPaymentLabel(r.payment_status, r.funding_source)}
                     </span>
-                    {r.locked_at && <span className="ml-1 text-xs text-gray-400">🔒</span>}
                   </td>
                   <td className="px-4 py-3 text-xs">
                     {r.claim_batch_id ? (
@@ -398,16 +367,6 @@ export default function LedgerPage() {
                       <span className="text-gray-400">未歸入</span>
                     )}
                   </td>
-                  {userRole === "admin" && (
-                    <td className="px-4 py-3">
-                      {!r.locked_at && (
-                        <button onClick={() => handleLock(r.id)} className="text-xs text-gray-400 hover:underline">鎖定</button>
-                      )}
-                      {r.locked_at && (
-                        <button onClick={() => { setUnlockModal(r.id); setUnlockReason(""); }} className="text-xs text-amber-600 hover:underline">解鎖</button>
-                      )}
-                    </td>
-                  )}
                 </tr>
               ))
             )}
@@ -415,30 +374,6 @@ export default function LedgerPage() {
         </table>
       </div>
 
-      {/* Unlock modal */}
-      {unlockModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
-            <h3 className="mb-4 text-lg font-semibold">解鎖帳務紀錄</h3>
-            <p className="mb-3 text-sm text-gray-500">解鎖後可再次修改此筆帳務。此操作會記錄在稽核日誌中。</p>
-            <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">解鎖原因 *</span>
-              <textarea
-                value={unlockReason}
-                onChange={(e) => setUnlockReason(e.target.value)}
-                rows={3}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                placeholder="請說明解鎖原因..."
-                autoFocus
-              />
-            </label>
-            <div className="mt-4 flex justify-end gap-2">
-              <button onClick={() => { setUnlockModal(null); setUnlockReason(""); }} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">取消</button>
-              <button onClick={handleUnlock} disabled={!unlockReason.trim()} className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50">確認解鎖</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
