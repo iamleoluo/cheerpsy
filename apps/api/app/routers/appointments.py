@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from psycopg2.extras import DateTimeTZRange
 from sqlalchemy import func, text
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.auth.dependencies import RequireRole, get_current_user
 from app.database import get_db
@@ -92,7 +92,11 @@ def list_appointments(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    query = db.query(Appointment)
+    query = db.query(Appointment).options(
+        joinedload(Appointment.case),
+        joinedload(Appointment.therapist),
+        joinedload(Appointment.room),
+    )
     if user.role == "therapist" and not room_id:
         query = query.filter(Appointment.therapist_id == user.id)
     if status_filter:

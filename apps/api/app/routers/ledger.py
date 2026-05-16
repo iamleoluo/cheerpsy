@@ -3,10 +3,11 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.auth.dependencies import RequireRole, get_current_user
 from app.database import get_db
+from app.models.appointment import Appointment
 from app.models.audit_log import AuditLog
 from app.models.case import Case
 from app.models.claim_batch import ClaimBatch
@@ -91,7 +92,10 @@ def list_records(
 ):
     from datetime import date
     import calendar
-    query = db.query(SessionRecord)
+    query = db.query(SessionRecord).options(
+        joinedload(SessionRecord.appointment).joinedload(Appointment.case).joinedload(Case.institution),
+        joinedload(SessionRecord.appointment).joinedload(Appointment.therapist),
+    )
     if user.role == "therapist":
         query = query.filter(SessionRecord.therapist_id == user.id)
     elif therapist_id:

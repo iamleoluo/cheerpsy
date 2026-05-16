@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.auth.dependencies import RequireRole, get_current_user
 from app.database import get_db
@@ -53,7 +53,7 @@ def list_cases(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    query = db.query(Case)
+    query = db.query(Case).options(joinedload(Case.therapist), joinedload(Case.institution))
     if user.role == "therapist":
         query = query.filter(Case.therapist_id == user.id)
     elif therapist_id:
@@ -62,7 +62,7 @@ def list_cases(
         query = query.filter(Case.status == status_filter)
     if q:
         query = query.filter(Case.name.ilike(f"%{q}%"))
-    cases = query.order_by(Case.id.desc()).all()
+    cases = query.order_by(Case.id.desc()).limit(500).all()
     return [_to_response(c) for c in cases]
 
 
