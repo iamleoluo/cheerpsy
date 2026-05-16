@@ -20,7 +20,8 @@ const helpContent: HelpContent = {
         "勾選要納入的諮商記錄（系統列出未歸屬的記錄）",
         "設定期間（起訖日期），確認金額後建立",
         "狀態進入「收款中」",
-        "收款完成後點「送出」→「結案」，下載收據 PDF 存檔",
+        "點「付款」，選擇付款方式（現金/匯款）並填寫匯款資訊",
+        "確認後批次自動結案，可下載收據 PDF 存檔",
       ],
     },
     {
@@ -39,7 +40,7 @@ const helpContent: HelpContent = {
       heading: "狀態流程",
       type: "text",
       items: [
-        "自費：收款中 → 送出 → 結案",
+        "自費：收款中 → 付款（選現金/匯款）→ 結案 → 列印收據",
         "機構：收款中 → 文件備妥（自動）→ 已提交 → 款項到帳 → 結案",
       ],
     },
@@ -320,6 +321,99 @@ function BatchListTab({ token, userRole }: { token: string; userRole: string }) 
 
 /* ── Batch row + expandable detail ── */
 
+/* ── Payment Modal (self-pay only) ── */
+
+function PaymentModal({
+  batch,
+  token,
+  onClose,
+  onDone,
+}: {
+  batch: ClaimBatch;
+  token: string;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [method, setMethod] = useState<"cash" | "transfer">("cash");
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async () => {
+    if (method === "transfer" && !note.trim()) {
+      alert("請填寫匯款資訊");
+      return;
+    }
+    setSaving(true);
+    try {
+      // 1. Save payment info
+      await clientFetch(`/claim-batches/${batch.id}`, token, {
+        method: "PUT",
+        body: JSON.stringify({
+          payment_method: method,
+          payment_note: note.trim() || null,
+        }),
+      });
+      // 2. Close the batch
+      await clientFetch(`/claim-batches/${batch.id}/close`, token, { method: "PUT" });
+      onDone();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="w-80 rounded-lg bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <h3 className="mb-4 text-base font-semibold">確認付款</h3>
+        <p className="mb-3 text-sm text-gray-600">
+          核銷案：<span className="font-mono">{batch.batch_number}</span><br />
+          金額：<strong>${batch.total_amount.toLocaleString()}</strong>
+        </p>
+
+        <fieldset className="mb-3">
+          <legend className="mb-1 text-xs font-medium text-gray-700">付款方式</legend>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="radio" value="cash" checked={method === "cash"} onChange={() => setMethod("cash")} />
+            現金
+          </label>
+          <label className="flex items-center gap-2 text-sm mt-1">
+            <input type="radio" value="transfer" checked={method === "transfer"} onChange={() => setMethod("transfer")} />
+            匯款
+          </label>
+        </fieldset>
+
+        <label className="block mb-4">
+          <span className="text-xs font-medium text-gray-700">
+            匯款資訊{method === "cash" ? "（選填）" : "（必填）"}
+          </span>
+          <input
+            type="text"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder={method === "transfer" ? "請輸入末5碼或匯款帳號" : ""}
+            className="mt-1 block w-full rounded border px-2 py-1.5 text-sm"
+          />
+        </label>
+
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="rounded px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100">
+            取消
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={saving}
+            className="rounded bg-green-600 px-4 py-1.5 text-sm text-white hover:bg-green-700 disabled:opacity-50"
+          >
+            {saving ? "處理中…" : "確認付款"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BatchRow({
   batch: b,
   token,
@@ -340,6 +434,7 @@ function BatchRow({
   const [extRef, setExtRef] = useState(b.external_ref ?? "");
   const [payMethod, setPayMethod] = useState(b.payment_method ?? "");
   const [payNote, setPayNote] = useState(b.payment_note ?? "");
+  const [showPayModal, setShowPayModal] = useState(false);
 
   useEffect(() => {
     if (expanded) {
@@ -371,6 +466,14 @@ function BatchRow({
 
   return (
     <>
+      {showPayModal && (
+        <PaymentModal
+          batch={b}
+          token={token}
+          onClose={() => setShowPayModal(false)}
+          onDone={() => { setShowPayModal(false); onRefresh(); }}
+        />
+      )}
       <tr className="border-b hover:bg-gray-50 cursor-pointer" onClick={onToggle}>
         <td className="px-3 py-2 font-mono text-xs">{b.batch_number}</td>
         <td className="px-3 py-2">{TYPE_LABELS[b.type] ?? b.type}</td>
@@ -388,30 +491,41 @@ function BatchRow({
         <td className="px-3 py-2"><StatusBadge status={b.status} /></td>
         <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
           <div className="flex flex-wrap gap-1">
-            {canEdit && (b.status === "collecting" || b.status === "ready") && (
-              <button onClick={() => transition("submit")} className="rounded bg-blue-600 px-2 py-0.5 text-xs text-white hover:bg-blue-700">
-                送出
+            {/* ── Self-pay flow ── */}
+            {b.type === "self_pay" && canEdit && ["collecting", "ready"].includes(b.status) && (
+              <button
+                onClick={() => setShowPayModal(true)}
+                className="rounded bg-green-600 px-2 py-0.5 text-xs text-white hover:bg-green-700"
+              >
+                付款
               </button>
             )}
-            {canEdit && b.status === "submitted" && b.type === "institution" && (
-              <button onClick={() => transition("receive")} className="rounded bg-green-600 px-2 py-0.5 text-xs text-white hover:bg-green-700">
-                確認收款
-              </button>
-            )}
-            {canEdit && ["submitted", "ready", "collecting"].includes(b.status) && (
-              <button onClick={() => transition("close")} className="rounded bg-gray-600 px-2 py-0.5 text-xs text-white hover:bg-gray-700">
-                結案
-              </button>
-            )}
-            {b.type === "self_pay" && (
+            {b.type === "self_pay" && b.status === "closed" && (
               <button
                 onClick={() => downloadPdf(`/claim-batches/${b.id}/receipt`, token, `receipt-${b.batch_number}.pdf`)}
                 className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-100"
               >
-                收據
+                列印收據
               </button>
             )}
-            {b.type === "institution" && (
+
+            {/* ── Institution flow ── */}
+            {b.type === "institution" && canEdit && (b.status === "collecting" || b.status === "ready") && (
+              <button onClick={() => transition("submit")} className="rounded bg-blue-600 px-2 py-0.5 text-xs text-white hover:bg-blue-700">
+                提交請款
+              </button>
+            )}
+            {b.type === "institution" && canEdit && b.status === "submitted" && (
+              <button onClick={() => transition("receive")} className="rounded bg-green-600 px-2 py-0.5 text-xs text-white hover:bg-green-700">
+                確認收款
+              </button>
+            )}
+            {b.type === "institution" && canEdit && ["submitted", "received"].includes(b.status) && (
+              <button onClick={() => transition("close")} className="rounded bg-gray-600 px-2 py-0.5 text-xs text-white hover:bg-gray-700">
+                結案
+              </button>
+            )}
+            {b.type === "institution" && b.status === "closed" && (
               <button
                 onClick={() => downloadPdf(`/claim-batches/${b.id}/claim-form`, token, `claim-${b.batch_number}.pdf`)}
                 className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-100"
@@ -469,8 +583,10 @@ function BatchRow({
                     <th className="px-2 py-1">心理師</th>
                     <th className="px-2 py-1">類型</th>
                     <th className="px-2 py-1 text-right">金額</th>
-                    <th className="px-2 py-1">付款</th>
-                    <th className="px-2 py-1">文件確認</th>
+                    <th className="px-2 py-1">付款狀態</th>
+                    {b.type === "institution" && (
+                      <th className="px-2 py-1">文件確認</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -482,13 +598,15 @@ function BatchRow({
                       <td className="px-2 py-1">{r.session_type}</td>
                       <td className="px-2 py-1 text-right">${r.amount.toLocaleString()}</td>
                       <td className="px-2 py-1">{r.payment_status}</td>
-                      <td className="px-2 py-1">
-                        {r.therapist_doc_submitted_at ? (
-                          <span className="text-green-600">&#10003; 已確認</span>
-                        ) : (
-                          <span className="text-amber-600">待確認</span>
-                        )}
-                      </td>
+                      {b.type === "institution" && (
+                        <td className="px-2 py-1">
+                          {r.therapist_doc_submitted_at ? (
+                            <span className="text-green-600">&#10003; 已確認</span>
+                          ) : (
+                            <span className="text-amber-600">待確認</span>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
