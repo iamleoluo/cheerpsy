@@ -461,7 +461,10 @@ function PayoutsTab({ token, userRole }: { token: string; userRole: string }) {
         method: "POST",
         body: JSON.stringify({ payout_month: filterMonth }),
       });
-      alert(`${result.month} 酬勞已產生，共 ${result.payouts_created} 位心理師`);
+      const parts = [];
+      if (result.payouts_created > 0) parts.push(`新增 ${result.payouts_created} 位`);
+      if (result.payouts_updated > 0) parts.push(`更新 ${result.payouts_updated} 位`);
+      alert(`${result.month} 酬勞已更新：${parts.join("、") || "無異動"}（已付款者不重算）`);
       fetchPayouts();
     } catch (e: any) {
       alert(e.message);

@@ -114,10 +114,6 @@ def generate_payouts(
         raise HTTPException(status_code=400, detail="Invalid month format. Use YYYY-MM")
     year, month = int(parts[0]), int(parts[1])
 
-    existing = db.query(TherapistPayout).filter(TherapistPayout.payout_month == body.payout_month).first()
-    if existing:
-        raise HTTPException(status_code=400, detail=f"{body.payout_month} 酬勞已產生，請勿重複產生")
-
     records = (
         db.query(SessionRecord)
         .filter(
@@ -131,25 +127,41 @@ def generate_payouts(
     for r in records:
         by_therapist.setdefault(r.therapist_id, []).append(r)
 
-    created = 0
+    created = updated = 0
     for tid, recs in by_therapist.items():
         total = sum(round(float(r.amount) * float(_get_rate(r)), 2) for r in recs)
-        payout = TherapistPayout(
-            therapist_id=tid,
-            payout_month=body.payout_month,
-            total_amount=total,
-            status="pending",
-            created_by=user.id,
-        )
-        db.add(payout)
-        db.flush()
 
-        for r in recs:
-            db.add(PayoutDetail(payout_id=payout.id, session_id=r.id))
-        created += 1
+        existing = db.query(TherapistPayout).filter(
+            TherapistPayout.therapist_id == tid,
+            TherapistPayout.payout_month == body.payout_month,
+        ).first()
+
+        if existing:
+            # Only update pending payouts; skip already-paid ones
+            if existing.status == "paid":
+                continue
+            existing.total_amount = total
+            db.query(PayoutDetail).filter(PayoutDetail.payout_id == existing.id).delete()
+            db.flush()
+            for r in recs:
+                db.add(PayoutDetail(payout_id=existing.id, session_id=r.id))
+            updated += 1
+        else:
+            payout = TherapistPayout(
+                therapist_id=tid,
+                payout_month=body.payout_month,
+                total_amount=total,
+                status="pending",
+                created_by=user.id,
+            )
+            db.add(payout)
+            db.flush()
+            for r in recs:
+                db.add(PayoutDetail(payout_id=payout.id, session_id=r.id))
+            created += 1
 
     db.commit()
-    return {"month": body.payout_month, "payouts_created": created}
+    return {"month": body.payout_month, "payouts_created": created, "payouts_updated": updated}
 
 
 @router.put("/{payout_id}/pay")
