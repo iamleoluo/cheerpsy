@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch, exportCsv } from "@/lib/client-api";
 import RoomMiniCalendar from "@/components/room-mini-calendar";
@@ -221,6 +221,7 @@ function CasesTab({ token, userRole }: { token: string; userRole: string }) {
   const [showForm, setShowForm] = useState(false);
   const [editingCase, setEditingCase] = useState<CaseItem | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const detailPanelRef = useRef<HTMLDivElement>(null);
 
   const fetchCases = useCallback(async () => {
     setLoading(true);
@@ -247,6 +248,13 @@ function CasesTab({ token, userRole }: { token: string; userRole: string }) {
   }, [token]);
 
   useEffect(() => { fetchCases(); fetchMeta(); }, [fetchCases, fetchMeta]);
+
+  // Auto-scroll to detail panel when expanded
+  useEffect(() => {
+    if (expandedId && detailPanelRef.current) {
+      setTimeout(() => detailPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+    }
+  }, [expandedId]);
 
   const handleActivate = async (c: CaseItem) => {
     if (!confirm(`確定將 ${caseDisplayId(c)} ${c.name} 轉為正式個案？\n正式編號產生後不可更改。`)) return;
@@ -358,13 +366,15 @@ function CasesTab({ token, userRole }: { token: string; userRole: string }) {
 
       {/* Expanded detail panel */}
       {expandedId && (
-        <CaseDetailPanel
-          token={token}
-          userRole={userRole}
-          caseItem={cases.find((c) => c.id === expandedId)!}
-          onClose={() => setExpandedId(null)}
-          onCaseUpdated={fetchCases}
-        />
+        <div ref={detailPanelRef}>
+          <CaseDetailPanel
+            token={token}
+            userRole={userRole}
+            caseItem={cases.find((c) => c.id === expandedId)!}
+            onClose={() => setExpandedId(null)}
+            onCaseUpdated={fetchCases}
+          />
+        </div>
       )}
 
       {showForm && (
