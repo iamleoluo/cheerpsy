@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import appointments, audit, auth, cases, churn, claim_batches, dashboard, export, health, institutions, invoices, ledger, payouts, petty_cash, reminders, reports, rooms
+from app.routers import appointments, audit, auth, cases, churn, claim_batches, dashboard, export, health, institutions, invoices, ledger, notifications, payouts, petty_cash, reminders, reports, rooms
 
 app = FastAPI(title="CheerPsy API", version="2.0.0")
 
@@ -31,3 +31,18 @@ app.include_router(payouts.router)
 app.include_router(audit.router)
 app.include_router(export.router)
 app.include_router(claim_batches.router)
+app.include_router(notifications.router)
+
+
+@app.on_event("startup")
+def startup_auto_lock():
+    """On server start, auto-lock any past session records that weren't locked."""
+    from app.database import SessionLocal
+    from app.services.settlement import auto_lock_past_records
+    db = SessionLocal()
+    try:
+        count = auto_lock_past_records(db)
+        if count > 0:
+            print(f"[startup] Auto-locked {count} past session records")
+    finally:
+        db.close()

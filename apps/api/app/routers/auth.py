@@ -12,6 +12,7 @@ from app.database import get_db
 from app.models.invitation import Invitation
 from app.models.user import User
 from app.schemas.auth import LoginRequest, TokenResponse, UserResponse
+from app.services.audit import write_audit
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -71,7 +72,10 @@ def toggle_user(user_id: int, user: User = Depends(RequireRole(["admin"])), db: 
         raise HTTPException(status_code=404, detail="User not found")
     if target.id == user.id:
         raise HTTPException(status_code=400, detail="Cannot deactivate yourself")
+    before_active = target.is_active
     target.is_active = not target.is_active
+    write_audit(db, "users", target.id, "UPDATE", user.id,
+                {"is_active": before_active}, {"is_active": target.is_active})
     db.commit()
     return {"id": target.id, "is_active": target.is_active}
 
@@ -94,7 +98,10 @@ def set_commission_rate(
         raise HTTPException(status_code=400, detail="Commission rate only applies to therapists")
     if not (0 < body.commission_rate <= 1):
         raise HTTPException(status_code=400, detail="Commission rate must be between 0 and 1")
+    old_rate = float(target.commission_rate) if target.commission_rate is not None else None
     target.commission_rate = body.commission_rate
+    write_audit(db, "users", target.id, "UPDATE", user.id,
+                {"commission_rate": old_rate}, {"commission_rate": body.commission_rate})
     db.commit()
     return {"id": target.id, "commission_rate": float(target.commission_rate)}
 

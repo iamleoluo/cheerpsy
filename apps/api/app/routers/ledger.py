@@ -132,7 +132,7 @@ def get_record(
 def update_payment_status(
     record_id: int,
     body: SessionRecordUpdatePayment,
-    user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
+    user: User = Depends(RequireRole(["admin", "staff"])),
     db: Session = Depends(get_db),
 ):
     r = db.query(SessionRecord).filter(SessionRecord.id == record_id).first()
@@ -233,7 +233,7 @@ def unlock_record(
 def direct_edit_record(
     record_id: int,
     body: SessionRecordDirectEdit,
-    user: User = Depends(RequireRole(["admin", "accountant"])),
+    user: User = Depends(RequireRole(["admin"])),
     db: Session = Depends(get_db),
 ):
     r = db.query(SessionRecord).filter(SessionRecord.id == record_id).first()

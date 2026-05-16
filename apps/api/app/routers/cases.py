@@ -7,6 +7,7 @@ from app.database import get_db
 from app.models.case import Case
 from app.models.user import User
 from app.schemas.case import CaseCreate, CaseResponse, CaseUpdate
+from app.services.audit import write_audit
 from app.services.case_numbering import generate_case_number
 from app.utils.encryption import encrypt_national_id, hmac_national_id
 
@@ -134,10 +135,13 @@ def update_case(
     if c.case_number and "case_number" in update_data:
         raise HTTPException(status_code=400, detail="Case number cannot be changed once assigned")
 
+    before = {k: getattr(c, k, None) for k in update_data.keys()}
     for key, val in update_data.items():
         setattr(c, key, val)
     if c.funding_source == "self_pay":
         c.institution_id = None
+    after = {k: getattr(c, k, None) for k in update_data.keys()}
+    write_audit(db, "cases", c.id, "UPDATE", user.id, before, after)
     db.commit()
     db.refresh(c)
     return _to_response(c)
@@ -175,6 +179,9 @@ def activate_case(
 
     c.case_number = generate_case_number(db, c)
     c.status = "ongoing"
+    write_audit(db, "cases", c.id, "UPDATE", user.id,
+                {"status": "initial", "case_number": None},
+                {"status": "ongoing", "case_number": c.case_number})
     db.commit()
     db.refresh(c)
     return _to_response(c)

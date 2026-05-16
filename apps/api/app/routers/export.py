@@ -10,7 +10,9 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import RequireRole
 from app.database import get_db
 from app.models.appointment import Appointment
+from app.models.audit_log import AuditLog
 from app.models.case import Case
+from app.models.claim_batch import ClaimBatch
 from app.models.institution import Institution
 from app.models.invoice import Invoice
 from app.models.petty_cash import PettyCash
@@ -236,6 +238,92 @@ def export_institutions(
         rows.append({
             "ID": i.id,
             "機構名稱": i.name,
+            "代號": i.code or "",
             "狀態": "啟用" if i.is_active else "已停用",
         })
     return _csv_response(rows, "institutions.csv")
+
+
+@router.get("/claim-batches")
+def export_claim_batches(
+    user: User = Depends(RequireRole(["admin"])),
+    db: Session = Depends(get_db),
+):
+    batches = db.query(ClaimBatch).order_by(ClaimBatch.id.desc()).all()
+    rows = []
+    for b in batches:
+        rows.append({
+            "ID": b.id,
+            "編號": b.batch_number,
+            "類型": b.type,
+            "狀態": b.status,
+            "個案ID": b.case_id or "",
+            "機構ID": b.institution_id or "",
+            "期間起": str(b.period_start) if b.period_start else "",
+            "期間迄": str(b.period_end) if b.period_end else "",
+            "金額": str(b.total_amount) if b.total_amount else "0",
+            "外部參考": b.external_ref or "",
+            "建立時間": str(b.created_at) if b.created_at else "",
+        })
+    return _csv_response(rows, "claim_batches.csv")
+
+
+@router.get("/petty-cash")
+def export_petty_cash(
+    user: User = Depends(RequireRole(["admin"])),
+    db: Session = Depends(get_db),
+):
+    items = db.query(PettyCash).order_by(PettyCash.id.desc()).all()
+    rows = []
+    for p in items:
+        rows.append({
+            "ID": p.id,
+            "日期": str(p.date),
+            "類別": p.category,
+            "說明": p.description,
+            "金額": str(p.amount),
+            "建立者": p.created_by or "",
+            "建立時間": str(p.created_at) if p.created_at else "",
+        })
+    return _csv_response(rows, "petty_cash.csv")
+
+
+@router.get("/audit-log")
+def export_audit_log(
+    user: User = Depends(RequireRole(["admin"])),
+    db: Session = Depends(get_db),
+):
+    logs = db.query(AuditLog).order_by(AuditLog.id.desc()).limit(5000).all()
+    rows = []
+    for lg in logs:
+        rows.append({
+            "ID": lg.id,
+            "表": lg.table_name,
+            "記錄ID": lg.record_id,
+            "操作": lg.operation,
+            "操作者ID": lg.changed_by or "",
+            "時間": str(lg.changed_at) if lg.changed_at else "",
+            "原因": lg.reason or "",
+            "修改前": str(lg.before_data) if lg.before_data else "",
+            "修改後": str(lg.after_data) if lg.after_data else "",
+        })
+    return _csv_response(rows, "audit_log.csv")
+
+
+@router.get("/tables")
+def list_exportable_tables(
+    user: User = Depends(RequireRole(["admin"])),
+):
+    """List all tables available for CSV export."""
+    return [
+        {"key": "cases", "label": "個案", "endpoint": "/export/cases"},
+        {"key": "appointments", "label": "預約", "endpoint": "/export/appointments"},
+        {"key": "ledger", "label": "日結帳冊", "endpoint": "/export/ledger"},
+        {"key": "claim-batches", "label": "核銷案", "endpoint": "/export/claim-batches"},
+        {"key": "invoices", "label": "收據", "endpoint": "/export/invoices"},
+        {"key": "petty-cash", "label": "零用金", "endpoint": "/export/petty-cash"},
+        {"key": "users", "label": "使用者", "endpoint": "/export/users"},
+        {"key": "rooms", "label": "諮商室", "endpoint": "/export/rooms"},
+        {"key": "institutions", "label": "機構", "endpoint": "/export/institutions"},
+        {"key": "audit-log", "label": "稽核日誌", "endpoint": "/export/audit-log"},
+    ]

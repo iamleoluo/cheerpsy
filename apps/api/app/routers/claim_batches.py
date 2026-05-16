@@ -11,6 +11,7 @@ from app.models.claim_batch import ClaimBatch
 from app.models.institution import Institution
 from app.models.session_record import SessionRecord
 from app.models.user import User
+from app.services.audit import write_audit
 from app.schemas.claim_batch import (
     ClaimBatchCreate,
     ClaimBatchRecordResponse,
@@ -238,12 +239,15 @@ def update_claim_batch(
     if not batch:
         raise HTTPException(status_code=404, detail="Claim batch not found")
 
+    before = {"external_ref": batch.external_ref, "payment_method": batch.payment_method, "payment_note": batch.payment_note}
     if body.external_ref is not None:
         batch.external_ref = body.external_ref
     if body.payment_method is not None:
         batch.payment_method = body.payment_method
     if body.payment_note is not None:
         batch.payment_note = body.payment_note
+    after = {"external_ref": batch.external_ref, "payment_method": batch.payment_method, "payment_note": batch.payment_note}
+    write_audit(db, "claim_batches", batch.id, "UPDATE", user.id, before, after)
 
     db.commit()
     db.refresh(batch)
@@ -323,7 +327,10 @@ def submit_batch(
     if batch.type == "self_pay" and batch.status not in ("collecting", "ready"):
         raise HTTPException(status_code=400, detail="Self-pay batch must be in 'collecting' or 'ready' status to submit")
 
+    old_status = batch.status
     batch.status = "submitted"
+    write_audit(db, "claim_batches", batch.id, "UPDATE", user.id,
+                {"status": old_status}, {"status": "submitted"})
     db.commit()
     return {"status": "submitted"}
 
@@ -343,6 +350,8 @@ def receive_batch(
         raise HTTPException(status_code=400, detail="Batch must be in 'submitted' status")
 
     batch.status = "received"
+    write_audit(db, "claim_batches", batch.id, "UPDATE", user.id,
+                {"status": "submitted"}, {"status": "received"})
     records = db.query(SessionRecord).filter(SessionRecord.claim_batch_id == batch_id).all()
     for r in records:
         if r.payment_status in ("unpaid", "claiming"):
@@ -363,7 +372,10 @@ def close_batch(
     if batch.status not in ("submitted", "ready", "collecting"):
         raise HTTPException(status_code=400, detail=f"Cannot close batch in status '{batch.status}'")
 
+    old_status = batch.status
     batch.status = "closed"
+    write_audit(db, "claim_batches", batch.id, "UPDATE", user.id,
+                {"status": old_status}, {"status": "closed"})
     if batch.type == "self_pay":
         records = db.query(SessionRecord).filter(SessionRecord.claim_batch_id == batch_id).all()
         for r in records:

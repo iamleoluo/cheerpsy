@@ -3,6 +3,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from psycopg2.extras import DateTimeTZRange
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
@@ -13,6 +14,7 @@ from app.models.appointment import Appointment
 from app.models.case import Case
 from app.models.room import Room
 from app.models.user import User
+from app.services.audit import write_audit
 from app.schemas.appointment import (
     AppointmentBatchCreate,
     AppointmentCreate,
@@ -136,9 +138,17 @@ def create_appointment(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # accountant cannot create appointments
+    if user.role == "accountant":
+        raise HTTPException(status_code=403, detail="Accountant cannot create appointments")
+
     case = db.query(Case).filter(Case.id == body.case_id).first()
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+
+    # therapist can only create for their own cases
+    if user.role == "therapist" and case.therapist_id != user.id:
+        raise HTTPException(status_code=403, detail="只能為自己的個案建立預約")
 
     therapist = user if user.role == "therapist" else db.query(User).filter(User.id == case.therapist_id).first()
     if not therapist or not therapist.therapist_code:
@@ -179,9 +189,15 @@ def create_batch(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    if user.role == "accountant":
+        raise HTTPException(status_code=403, detail="Accountant cannot create appointments")
+
     case = db.query(Case).filter(Case.id == body.case_id).first()
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+
+    if user.role == "therapist" and case.therapist_id != user.id:
+        raise HTTPException(status_code=403, detail="只能為自己的個案建立預約")
 
     therapist = user if user.role == "therapist" else db.query(User).filter(User.id == case.therapist_id).first()
     if not therapist or not therapist.therapist_code:
@@ -244,6 +260,48 @@ def cancel_appointment(
         raise HTTPException(status_code=400, detail="Cannot cancel past appointments")
 
     a.status = "cancelled"
+    write_audit(db, "appointments", a.id, "UPDATE", user.id,
+                {"status": "booked"}, {"status": "cancelled"})
+    db.commit()
+    db.refresh(a)
+    therapist = db.query(User).filter(User.id == a.therapist_id).first()
+    return _to_response(a, therapist)
+
+
+class AmountUpdate(BaseModel):
+    amount: Decimal
+
+
+@router.put("/{appointment_id}/amount", response_model=AppointmentResponse)
+def update_amount(
+    appointment_id: int,
+    body: AmountUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Therapist or admin can update amount on their own booked (future) appointments."""
+    a = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if not a:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+
+    # Therapist can only modify own; admin can modify any
+    if user.role == "therapist" and a.therapist_id != user.id:
+        raise HTTPException(status_code=403, detail="只能修改自己的預約金額")
+    if user.role not in ("therapist", "admin"):
+        raise HTTPException(status_code=403, detail="Only therapist or admin can update amount")
+
+    if a.status != "booked":
+        raise HTTPException(status_code=400, detail="只能修改尚未執行的預約金額")
+
+    # Cannot modify past appointments
+    appt_date = a.time_range.lower.date() if a.time_range else None
+    if appt_date and appt_date < date.today():
+        raise HTTPException(status_code=400, detail="無法修改已過去的預約金額")
+
+    old_amount = float(a.amount) if a.amount else 0
+    a.amount = body.amount
+    write_audit(db, "appointments", a.id, "UPDATE", user.id,
+                {"amount": old_amount}, {"amount": float(body.amount)})
     db.commit()
     db.refresh(a)
     therapist = db.query(User).filter(User.id == a.therapist_id).first()

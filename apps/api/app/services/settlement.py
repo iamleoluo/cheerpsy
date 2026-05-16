@@ -68,3 +68,24 @@ def run_daily_settlement(db: Session, target_date: date | None = None) -> dict:
 
     db.commit()
     return {"date": str(target_date), "executed": executed, "skipped": skipped}
+
+
+def auto_lock_past_records(db: Session) -> int:
+    """Auto-lock any session_records whose session_date has passed (T+1 rule).
+    This ensures that even if settlement wasn't run, records from past days get locked.
+    Returns count of newly locked records.
+    """
+    yesterday = date.today() - timedelta(days=1)
+    unlocked_past = (
+        db.query(SessionRecord)
+        .filter(
+            SessionRecord.session_date <= yesterday,
+            SessionRecord.locked_at.is_(None),
+        )
+        .all()
+    )
+    now = datetime.now(timezone.utc)
+    for r in unlocked_past:
+        r.locked_at = now
+    db.commit()
+    return len(unlocked_past)

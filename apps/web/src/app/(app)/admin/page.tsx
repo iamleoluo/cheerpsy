@@ -56,7 +56,7 @@ export default function AdminPage() {
   const token = (session?.user as any)?.accessToken;
   const userRole = (session?.user as any)?.role;
 
-  const [tab, setTab] = useState<"users" | "institutions">("users");
+  const [tab, setTab] = useState<"users" | "institutions" | "data">("users");
 
   if (userRole !== "admin") {
     return (
@@ -96,9 +96,19 @@ export default function AdminPage() {
         >
           機構管理
         </button>
+        <button
+          onClick={() => setTab("data")}
+          className={`px-4 py-2.5 text-sm font-medium transition-colors ${
+            tab === "data"
+              ? "border-b-2 border-primary-600 text-primary-700"
+              : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          資料匯出入
+        </button>
       </div>
 
-      {tab === "users" ? <UsersTab token={token} /> : <InstitutionsTab token={token} />}
+      {tab === "users" ? <UsersTab token={token} /> : tab === "institutions" ? <InstitutionsTab token={token} /> : <DataTab token={token} />}
     </div>
   );
 }
@@ -846,6 +856,115 @@ function InstitutionsTab({ token }: { token: string }) {
           </div>
         </div>
       )}
+    </>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   Tab 3: 資料匯出入
+   ═══════════════════════════════════════════════════ */
+
+function DataTab({ token }: { token: string }) {
+  const [tables, setTables] = useState<{ key: string; label: string; endpoint: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState<string | null>(null);
+
+  const fetchTables = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await clientFetch("/export/tables", token);
+      setTables(data);
+    } catch {
+      // fallback
+      setTables([
+        { key: "cases", label: "個案", endpoint: "/export/cases" },
+        { key: "appointments", label: "預約", endpoint: "/export/appointments" },
+        { key: "ledger", label: "日結���冊", endpoint: "/export/ledger" },
+        { key: "claim-batches", label: "核��案", endpoint: "/export/claim-batches" },
+        { key: "invoices", label: "收據", endpoint: "/export/invoices" },
+        { key: "petty-cash", label: "零用金", endpoint: "/export/petty-cash" },
+        { key: "users", label: "使用者", endpoint: "/export/users" },
+        { key: "rooms", label: "諮商室", endpoint: "/export/rooms" },
+        { key: "institutions", label: "機構", endpoint: "/export/institutions" },
+        { key: "audit-log", label: "稽核日誌", endpoint: "/export/audit-log" },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    fetchTables();
+  }, [fetchTables]);
+
+  const handleDownload = async (table: { key: string; endpoint: string }) => {
+    setDownloading(table.key);
+    try {
+      await exportCsv(table.endpoint, token, `${table.key}.csv`);
+    } catch (e: any) {
+      alert(`匯出失敗：${e.message}`);
+    } finally {
+      setDownloading(null);
+    }
+  };
+
+  return (
+    <>
+      <div className="mb-6">
+        <p className="text-sm text-gray-500">匯出各資料表為 CSV 格式，或上傳 CSV 匯入資料。</p>
+      </div>
+
+      {/* Export section */}
+      <div className="mb-8">
+        <h2 className="mb-4 text-lg font-semibold">📥 資料匯出</h2>
+        {loading ? (
+          <div className="py-8 text-center text-gray-400">載入中...</div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {tables.map((t) => (
+              <div key={t.key} className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">{t.label}</p>
+                  <p className="text-xs text-gray-400">{t.key}.csv</p>
+                </div>
+                <button
+                  onClick={() => handleDownload(t)}
+                  disabled={downloading === t.key}
+                  className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  {downloading === t.key ? "下載中..." : "下載 CSV"}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <button
+          onClick={async () => {
+            for (const t of tables) {
+              await exportCsv(t.endpoint, token, `${t.key}.csv`);
+              await new Promise((r) => setTimeout(r, 300));
+            }
+          }}
+          className="mt-4 rounded-lg bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-900"
+        >
+          全部下載
+        </button>
+      </div>
+
+      {/* Import section (placeholder) */}
+      <div>
+        <h2 className="mb-4 text-lg font-semibold">📤 資料匯入</h2>
+        <div className="rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-8 text-center">
+          <div className="mb-2 text-3xl text-gray-300">📁</div>
+          <p className="text-sm font-medium text-gray-500">資料匯入功能準備中</p>
+          <p className="mt-1 text-xs text-gray-400">
+            匯入格式與欄位對應尚未確定，待確認後啟用此功能。
+          </p>
+          <p className="mt-3 text-xs text-gray-400">
+            目前可透過後端腳本（import_data.py）進行批次匯入。
+          </p>
+        </div>
+      </div>
     </>
   );
 }

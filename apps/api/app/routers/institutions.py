@@ -6,6 +6,7 @@ from app.auth.dependencies import RequireRole, get_current_user
 from app.database import get_db
 from app.models.institution import Institution
 from app.models.user import User
+from app.services.audit import write_audit
 
 router = APIRouter(prefix="/institutions", tags=["institutions"])
 
@@ -85,6 +86,7 @@ def update_institution(
     inst = db.query(Institution).filter(Institution.id == inst_id).first()
     if not inst:
         raise HTTPException(status_code=404, detail="Not found")
+    before_data = {"name": inst.name, "code": inst.code}
     if body.name is not None:
         inst.name = body.name.strip()
     if body.code is not None:
@@ -95,6 +97,8 @@ def update_institution(
         if dup:
             raise HTTPException(status_code=400, detail=f"Code '{code}' already in use")
         inst.code = code
+    after_data = {"name": inst.name, "code": inst.code}
+    write_audit(db, "institutions", inst.id, "UPDATE", user.id, before_data, after_data)
     db.commit()
     db.refresh(inst)
     return inst
@@ -110,6 +114,8 @@ def delete_institution(
     if not inst:
         raise HTTPException(status_code=404, detail="Not found")
     inst.is_active = False
+    write_audit(db, "institutions", inst.id, "UPDATE", user.id,
+                {"is_active": True}, {"is_active": False})
     db.commit()
 
 
@@ -123,6 +129,8 @@ def activate_institution(
     if not inst:
         raise HTTPException(status_code=404, detail="Not found")
     inst.is_active = True
+    write_audit(db, "institutions", inst.id, "UPDATE", user.id,
+                {"is_active": False}, {"is_active": True})
     db.commit()
     db.refresh(inst)
     return inst

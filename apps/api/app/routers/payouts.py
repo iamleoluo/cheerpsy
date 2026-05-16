@@ -11,6 +11,7 @@ from app.database import get_db
 from app.models.session_record import SessionRecord
 from app.models.therapist_payout import PayoutDetail, TherapistPayout
 from app.models.user import User
+from app.services.audit import write_audit
 
 router = APIRouter(prefix="/payouts", tags=["payouts"])
 
@@ -164,5 +165,7 @@ def mark_paid(
         raise HTTPException(status_code=400, detail="Already paid")
     payout.status = "paid"
     payout.paid_at = datetime.now(timezone.utc)
+    write_audit(db, "therapist_payouts", payout.id, "UPDATE", user.id,
+                {"status": "pending"}, {"status": "paid", "paid_at": payout.paid_at.isoformat()})
     db.commit()
     return {"status": "paid"}

@@ -7,6 +7,7 @@ from app.database import get_db
 from app.models.petty_cash import PettyCash
 from app.models.user import User
 from app.schemas.petty_cash import PettyCashCreate, PettyCashResponse
+from app.services.audit import write_audit
 
 router = APIRouter(prefix="/petty-cash", tags=["petty-cash"])
 
@@ -54,5 +55,8 @@ def delete_petty_cash(
     record = db.query(PettyCash).filter(PettyCash.id == record_id).first()
     if not record:
         raise HTTPException(status_code=404, detail="Record not found")
+    write_audit(db, "petty_cash", record.id, "DELETE", user.id,
+                {"date": str(record.date), "amount": float(record.amount), "description": record.description},
+                None)
     db.delete(record)
     db.commit()
