@@ -132,6 +132,41 @@ def list_eligible_cases(
     ]
 
 
+@router.get("/eligible-institutions")
+def list_eligible_institutions(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return institutions that have cases with unassigned session_records."""
+    from sqlalchemy import distinct
+
+    # case_ids with unassigned records
+    case_ids_with_records = (
+        db.query(distinct(SessionRecord.case_id))
+        .filter(SessionRecord.claim_batch_id.is_(None), SessionRecord.case_id.isnot(None))
+        .all()
+    )
+    cids = [row[0] for row in case_ids_with_records]
+    if not cids:
+        return []
+
+    # institution_ids from those cases
+    inst_ids = (
+        db.query(distinct(Case.institution_id))
+        .filter(Case.id.in_(cids), Case.funding_source == "institution", Case.institution_id.isnot(None))
+        .all()
+    )
+    iids = [row[0] for row in inst_ids]
+    if not iids:
+        return []
+
+    institutions = db.query(Institution).filter(Institution.id.in_(iids)).order_by(Institution.name).all()
+    return [
+        {"id": i.id, "name": i.name, "code": i.code}
+        for i in institutions
+    ]
+
+
 @router.get("/unassigned/records")
 def list_unassigned_records(
     case_id: int | None = Query(None),

@@ -642,10 +642,10 @@ function CreateBatchModal({
   const [submitting, setSubmitting] = useState(false);
   const [step, setStep] = useState(1);
 
-  // Load eligible cases (only those with unassigned records) based on batch type
+  // Load eligible cases/institutions (only those with unassigned records)
   useEffect(() => {
     clientFetch(`/claim-batches/eligible-cases?type=${batchType}`, token).then(setCases).catch(() => {});
-    clientFetch("/institutions", token).then(setInstitutions).catch(() => {});
+    clientFetch("/claim-batches/eligible-institutions", token).then(setInstitutions).catch(() => {});
   }, [token, batchType]);
 
   const loadUnassigned = async () => {
