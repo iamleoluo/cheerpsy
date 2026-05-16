@@ -189,6 +189,7 @@ function PaymentTrackingTab({ token }: { token: string }) {
   const [loading, setLoading] = useState(true);
   const [typeFilter, setTypeFilter] = useState<"" | "self_pay" | "institution">("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [reconDate, setReconDate] = useState(new Date().toISOString().slice(0, 10));
 
   const fetchBatches = useCallback(async () => {
     setLoading(true);
@@ -209,63 +210,52 @@ function PaymentTrackingTab({ token }: { token: string }) {
   // Stats
   const totalAmount = batches.reduce((s, b) => s + b.total_amount, 0);
   const openCount = batches.filter((b) => b.status !== "closed").length;
-  // "Today" items: closed_at or received_at is today
-  const today = new Date().toISOString().slice(0, 10);
-  const todayItems = batches.filter((b) => {
+
+  // Reconciliation: items where closed_at or received_at matches selected date
+  const reconItems = batches.filter((b) => {
     const closedDate = b.closed_at?.slice(0, 10);
     const receivedDate = b.received_at?.slice(0, 10);
-    return closedDate === today || receivedDate === today;
+    return closedDate === reconDate || receivedDate === reconDate;
   });
+  const reconTotal = reconItems.reduce((s, b) => s + b.total_amount, 0);
+  const reconCash = reconItems.filter((b) => b.payment_method === "cash").reduce((s, b) => s + b.total_amount, 0);
+  const reconTransfer = reconItems.filter((b) => b.payment_method === "transfer").reduce((s, b) => s + b.total_amount, 0);
+  const reconOther = reconTotal - reconCash - reconTransfer;
 
   return (
-    <div>
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex gap-3">
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value as any)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          >
-            <option value="">全部類型</option>
-            <option value="self_pay">自費</option>
-            <option value="institution">機構</option>
-          </select>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          >
-            <option value="">全部狀態</option>
-            {Object.entries(TRACK_STATUS_LABELS).map(([k, v]) => (
-              <option key={k} value={k}>{v}</option>
-            ))}
-          </select>
-        </div>
-        <div className="flex items-center gap-4 text-sm text-gray-500">
-          <span>共 {batches.length} 筆</span>
-          <span>合計 <strong className="text-gray-800">${totalAmount.toLocaleString()}</strong></span>
-          {openCount > 0 && <span className="text-amber-600">{openCount} 筆進行中</span>}
-          {todayItems.length > 0 && <span className="text-green-600">{todayItems.length} 筆今日異動</span>}
-        </div>
-      </div>
-
-      {/* Today's highlight */}
-      {todayItems.length > 0 && (
-        <div className="mb-4 rounded-lg border border-green-200 bg-green-50 p-3">
-          <h3 className="mb-1 text-sm font-semibold text-green-800">今日對帳項目</h3>
-          <div className="flex flex-wrap gap-2">
-            {todayItems.map((b) => (
-              <span key={b.id} className="rounded bg-white px-2 py-1 text-xs border border-green-200">
-                <span className="font-mono">{b.batch_number}</span>
-                {" "}${b.total_amount.toLocaleString()}
-                {" "}<span className="text-green-600">{TRACK_STATUS_LABELS[b.status]}</span>
-              </span>
-            ))}
+    <div className="flex gap-4">
+      {/* ── Left: main tracking table ── */}
+      <div className="min-w-0 flex-1">
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex gap-3">
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value as any)}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            >
+              <option value="">全部類型</option>
+              <option value="self_pay">自費</option>
+              <option value="institution">機構</option>
+            </select>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            >
+              <option value="">全部狀態</option>
+              {Object.entries(TRACK_STATUS_LABELS).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-4 text-sm text-gray-500">
+            <span>共 {batches.length} 筆</span>
+            <span>合計 <strong className="text-gray-800">${totalAmount.toLocaleString()}</strong></span>
+            {openCount > 0 && <span className="text-amber-600">{openCount} 筆進行中</span>}
           </div>
         </div>
-      )}
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
+        <div className="overflow-x-auto rounded-lg border border-gray-200">
         <table className="w-full text-left text-sm">
           <thead className="bg-gray-50 text-xs uppercase text-gray-500">
             <tr>
@@ -293,8 +283,7 @@ function PaymentTrackingTab({ token }: { token: string }) {
 
               return (
                 <tr key={b.id} className={`hover:bg-gray-50 ${
-                  // Highlight today's items
-                  (b.closed_at?.slice(0, 10) === today || b.received_at?.slice(0, 10) === today) ? "bg-green-50" : ""
+                  (b.closed_at?.slice(0, 10) === reconDate || b.received_at?.slice(0, 10) === reconDate) ? "bg-green-50" : ""
                 }`}>
                   <td className="px-3 py-3 font-mono text-xs">{b.batch_number}</td>
                   <td className="px-3 py-3">
@@ -324,6 +313,82 @@ function PaymentTrackingTab({ token }: { token: string }) {
             })}
           </tbody>
         </table>
+      </div>
+      </div>
+
+      {/* ── Right: daily reconciliation panel ── */}
+      <div className="w-72 shrink-0">
+        <div className="sticky top-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+          <h3 className="mb-3 text-sm font-bold text-gray-700">每日對帳</h3>
+          <input
+            type="date"
+            value={reconDate}
+            onChange={(e) => setReconDate(e.target.value)}
+            className="mb-3 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+          />
+
+          {reconItems.length === 0 ? (
+            <p className="py-4 text-center text-xs text-gray-400">該日無到帳/結案項目</p>
+          ) : (
+            <>
+              {/* Summary */}
+              <div className="mb-3 space-y-1 rounded bg-gray-50 p-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">筆數</span>
+                  <span className="font-medium">{reconItems.length} 筆</span>
+                </div>
+                <div className="flex justify-between border-t border-gray-200 pt-1">
+                  <span className="text-gray-500">合計</span>
+                  <span className="font-bold text-gray-800">${reconTotal.toLocaleString()}</span>
+                </div>
+                {reconCash > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">現金</span>
+                    <span>${reconCash.toLocaleString()}</span>
+                  </div>
+                )}
+                {reconTransfer > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">匯款</span>
+                    <span>${reconTransfer.toLocaleString()}</span>
+                  </div>
+                )}
+                {reconOther > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">其他</span>
+                    <span>${reconOther.toLocaleString()}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Item list */}
+              <div className="max-h-[60vh] space-y-2 overflow-y-auto">
+                {reconItems.map((b) => (
+                  <div key={b.id} className="rounded border border-gray-100 bg-gray-50 px-3 py-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-xs font-medium">{b.batch_number}</span>
+                      <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                        b.type === "self_pay" ? "bg-purple-100 text-purple-700" : "bg-indigo-100 text-indigo-700"
+                      }`}>
+                        {TRACK_TYPE_LABELS[b.type]}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500">
+                      {b.type === "self_pay" ? b.case_name : b.institution_name}
+                    </div>
+                    <div className="mt-1 flex items-center justify-between">
+                      <span className="text-xs text-gray-500">
+                        {b.payment_method === "cash" ? "現金" : b.payment_method === "transfer" ? "匯款" : "—"}
+                        {b.payment_note && <span className="ml-1 text-gray-400">({b.payment_note})</span>}
+                      </span>
+                      <span className="text-sm font-bold">${b.total_amount.toLocaleString()}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
