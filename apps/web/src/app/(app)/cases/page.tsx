@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch, exportCsv } from "@/lib/client-api";
 import RoomMiniCalendar from "@/components/room-mini-calendar";
@@ -221,7 +221,6 @@ function CasesTab({ token, userRole }: { token: string; userRole: string }) {
   const [showForm, setShowForm] = useState(false);
   const [editingCase, setEditingCase] = useState<CaseItem | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
-  const detailPanelRef = useRef<HTMLDivElement>(null);
 
   const fetchCases = useCallback(async () => {
     setLoading(true);
@@ -248,13 +247,6 @@ function CasesTab({ token, userRole }: { token: string; userRole: string }) {
   }, [token]);
 
   useEffect(() => { fetchCases(); fetchMeta(); }, [fetchCases, fetchMeta]);
-
-  // Auto-scroll to detail panel when expanded
-  useEffect(() => {
-    if (expandedId && detailPanelRef.current) {
-      setTimeout(() => detailPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
-    }
-  }, [expandedId]);
 
   const handleActivate = async (c: CaseItem) => {
     if (!confirm(`確定將 ${caseDisplayId(c)} ${c.name} 轉為正式個案？\n正式編號產生後不可更改。`)) return;
@@ -320,62 +312,63 @@ function CasesTab({ token, userRole }: { token: string; userRole: string }) {
             ) : cases.length === 0 ? (
               <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">尚無個案資料</td></tr>
             ) : cases.map((c) => (
-              <tr
-                key={c.id}
-                className={`hover:bg-gray-50 cursor-pointer ${expandedId === c.id ? "bg-primary-50" : ""}`}
-                onClick={() => setExpandedId(expandedId === c.id ? null : c.id)}
-              >
-                <td className="px-4 py-3">
-                  <div className="font-mono text-xs">
-                    {c.case_number ? (
-                      <span className="font-medium text-gray-800">{c.case_number}</span>
-                    ) : (
-                      <span className="text-gray-400">#{String(c.temp_seq ?? 0).padStart(4, "0")}</span>
-                    )}
-                  </div>
-                </td>
-                <td className="px-4 py-3 font-medium">
-                  {c.name}
-                  {c.age && !c.birth_date && <span className="ml-1 text-xs text-gray-400">({c.age}歲)</span>}
-                </td>
-                <td className="px-4 py-3">{c.therapist_name ?? "—"}</td>
-                <td className="px-4 py-3">
-                  {c.funding_source === "institution" ? c.institution_name ?? "機構" : "自費"}
-                </td>
-                <td className="px-4 py-3">
-                  <span className="text-xs">{billingLabels[c.billing_cycle ?? "once"] ?? c.billing_cycle}</span>
-                </td>
-                <td className="px-4 py-3">
-                  <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusColors[c.status] ?? "bg-gray-100"}`}>
-                    {statusLabels[c.status] ?? c.status}
-                  </span>
-                </td>
-                <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => { setEditingCase(c); setShowForm(true); }} className="text-xs text-blue-600 hover:underline">編輯</button>
-                    {c.status === "initial" && (
-                      <button onClick={() => handleActivate(c)} className="text-xs text-green-600 hover:underline">轉正式</button>
-                    )}
-                  </div>
-                </td>
-              </tr>
+              <React.Fragment key={c.id}>
+                <tr
+                  className={`hover:bg-gray-50 cursor-pointer ${expandedId === c.id ? "bg-primary-50" : ""}`}
+                  onClick={() => setExpandedId(expandedId === c.id ? null : c.id)}
+                >
+                  <td className="px-4 py-3">
+                    <div className="font-mono text-xs">
+                      {c.case_number ? (
+                        <span className="font-medium text-gray-800">{c.case_number}</span>
+                      ) : (
+                        <span className="text-gray-400">#{String(c.temp_seq ?? 0).padStart(4, "0")}</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 font-medium">
+                    {c.name}
+                    {c.age && !c.birth_date && <span className="ml-1 text-xs text-gray-400">({c.age}歲)</span>}
+                  </td>
+                  <td className="px-4 py-3">{c.therapist_name ?? "—"}</td>
+                  <td className="px-4 py-3">
+                    {c.funding_source === "institution" ? c.institution_name ?? "機構" : "自費"}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="text-xs">{billingLabels[c.billing_cycle ?? "once"] ?? c.billing_cycle}</span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusColors[c.status] ?? "bg-gray-100"}`}>
+                      {statusLabels[c.status] ?? c.status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => { setEditingCase(c); setShowForm(true); }} className="text-xs text-blue-600 hover:underline">編輯</button>
+                      {c.status === "initial" && (
+                        <button onClick={() => handleActivate(c)} className="text-xs text-green-600 hover:underline">轉正式</button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+                {expandedId === c.id && (
+                  <tr>
+                    <td colSpan={7} className="p-0">
+                      <CaseDetailPanel
+                        token={token}
+                        userRole={userRole}
+                        caseItem={c}
+                        onClose={() => setExpandedId(null)}
+                        onCaseUpdated={fetchCases}
+                      />
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
             ))}
           </tbody>
         </table>
       </div>
-
-      {/* Expanded detail panel */}
-      {expandedId && (
-        <div ref={detailPanelRef}>
-          <CaseDetailPanel
-            token={token}
-            userRole={userRole}
-            caseItem={cases.find((c) => c.id === expandedId)!}
-            onClose={() => setExpandedId(null)}
-            onCaseUpdated={fetchCases}
-          />
-        </div>
-      )}
 
       {showForm && (
         <CaseForm
