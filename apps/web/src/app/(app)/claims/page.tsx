@@ -642,10 +642,11 @@ function CreateBatchModal({
   const [submitting, setSubmitting] = useState(false);
   const [step, setStep] = useState(1);
 
+  // Load eligible cases (only those with unassigned records) based on batch type
   useEffect(() => {
-    clientFetch("/cases", token).then(setCases).catch(() => {});
+    clientFetch(`/claim-batches/eligible-cases?type=${batchType}`, token).then(setCases).catch(() => {});
     clientFetch("/institutions", token).then(setInstitutions).catch(() => {});
-  }, [token]);
+  }, [token, batchType]);
 
   const loadUnassigned = async () => {
     const params = new URLSearchParams();
@@ -720,7 +721,7 @@ function CreateBatchModal({
               <div className="flex gap-3">
                 {(["self_pay", "institution"] as const).map((t) => (
                   <label key={t} className="flex items-center gap-1 text-sm">
-                    <input type="radio" name="btype" checked={batchType === t} onChange={() => setBatchType(t)} />
+                    <input type="radio" name="btype" checked={batchType === t} onChange={() => { setBatchType(t); setSelectedCaseId(""); setSelectedInstId(""); }} />
                     {TYPE_LABELS[t]}
                   </label>
                 ))}

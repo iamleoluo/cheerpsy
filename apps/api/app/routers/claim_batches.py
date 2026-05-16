@@ -93,6 +93,45 @@ def list_claim_batches(
     return [_to_response(db, b) for b in batches]
 
 
+@router.get("/eligible-cases")
+def list_eligible_cases(
+    type: str = Query("self_pay", description="self_pay or institution"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return cases that have unassigned session_records, filtered by funding source."""
+    from sqlalchemy import distinct
+
+    # Find case_ids with at least one unassigned session_record
+    case_ids_with_records = (
+        db.query(distinct(SessionRecord.case_id))
+        .filter(SessionRecord.claim_batch_id.is_(None), SessionRecord.case_id.isnot(None))
+        .all()
+    )
+    cids = [row[0] for row in case_ids_with_records]
+    if not cids:
+        return []
+
+    q = db.query(Case).filter(Case.id.in_(cids))
+    if type == "self_pay":
+        q = q.filter(Case.funding_source == "self_pay")
+    elif type == "institution":
+        q = q.filter(Case.funding_source == "institution")
+
+    cases = q.order_by(Case.name).all()
+    return [
+        {
+            "id": c.id,
+            "name": c.name,
+            "case_number": c.case_number,
+            "billing_cycle": c.billing_cycle,
+            "funding_source": c.funding_source,
+            "institution_id": c.institution_id,
+        }
+        for c in cases
+    ]
+
+
 @router.get("/unassigned/records")
 def list_unassigned_records(
     case_id: int | None = Query(None),
