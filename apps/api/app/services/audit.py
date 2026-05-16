@@ -1,8 +1,22 @@
 """Shared audit logging utility."""
 
+from datetime import date, datetime
 from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditLog
+
+
+def _jsonify(obj):
+    """Recursively convert non-JSON-serializable types (date, datetime, Decimal) to strings."""
+    if obj is None:
+        return None
+    if isinstance(obj, dict):
+        return {k: _jsonify(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_jsonify(v) for v in obj]
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    return obj
 
 
 def write_audit(
@@ -21,7 +35,7 @@ def write_audit(
         record_id=record_id,
         operation=operation,
         changed_by=user_id,
-        before_data=before,
-        after_data=after,
+        before_data=_jsonify(before),
+        after_data=_jsonify(after),
         reason=reason,
     ))
