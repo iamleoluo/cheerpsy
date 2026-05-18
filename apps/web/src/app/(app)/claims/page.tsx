@@ -368,6 +368,7 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
   const [payIds, setPayIds] = useState<number[] | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState<ClaimBatch[]>([]);
+  const [expandedCaseId, setExpandedCaseId] = useState<number | string | null>(null);
 
   const canEdit = ["admin", "staff"].includes(userRole);
 
@@ -390,12 +391,15 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
     }
   }, [showHistory, token]);
 
-  // group by case
-  const groups = records.reduce<Record<string, LedgerRecord[]>>((acc, r) => {
-    const key = r.case_name ?? `#${r.case_id ?? "?"}`;
-    (acc[key] ||= []).push(r);
-    return acc;
-  }, {});
+  // group by case_id (fall back to case_name if no id)
+  const groups = records.reduce<Record<string | number, { name: string; records: LedgerRecord[] }>>(
+    (acc, r) => {
+      const key = r.case_id ?? (r.case_name ?? "?");
+      if (!acc[key]) acc[key] = { name: r.case_name ?? `#${r.case_id}`, records: [] };
+      acc[key].records.push(r);
+      return acc;
+    }, {}
+  );
 
   const toggle = (id: number) => {
     setSelected((prev) => {
@@ -405,9 +409,14 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
     });
   };
 
-  const selectedTotal = records
-    .filter((r) => selected.has(r.id))
-    .reduce((s, r) => s + r.effective_amount, 0);
+  const toggleCase = (key: string | number) => {
+    setExpandedCaseId((prev) => {
+      if (prev === key) return null;
+      // Clear selection when switching cases
+      setSelected(new Set());
+      return key;
+    });
+  };
 
   const afterPay = (ids: number[], combine: boolean) => {
     if (ids.length === 1) {
@@ -433,15 +442,7 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
         />
       )}
 
-      <div className="mb-3 flex items-center gap-3">
-        {canEdit && selected.size > 0 && (
-          <button
-            onClick={() => setPayIds([...selected])}
-            className="rounded bg-green-600 px-4 py-1.5 text-sm text-white hover:bg-green-700"
-          >
-            批次付款（{selected.size} 筆 ${selectedTotal.toLocaleString()}）
-          </button>
-        )}
+      <div className="mb-3 flex items-center">
         <button
           onClick={() => setShowHistory((v) => !v)}
           className="ml-auto text-sm text-primary-600 hover:underline"
@@ -491,59 +492,96 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
       ) : records.length === 0 ? (
         <div className="py-8 text-center text-gray-400">沒有待收款的自費帳務 🎉</div>
       ) : (
-        <div className="space-y-5">
-          {Object.entries(groups).map(([caseName, rs]) => {
+        <div className="space-y-2">
+          {Object.entries(groups).map(([key, { name: caseName, records: rs }]) => {
+            const caseKey = key;
+            const isOpen = expandedCaseId === caseKey;
             const groupTotal = rs.reduce((s, r) => s + r.effective_amount, 0);
+            const caseSelected = rs.filter((r) => selected.has(r.id));
+            const caseSelectedTotal = caseSelected.reduce((s, r) => s + r.effective_amount, 0);
+
             return (
-              <div key={caseName} className="rounded-lg border border-gray-200">
-                <div className="flex items-center justify-between border-b bg-gray-50 px-4 py-2">
-                  <span className="font-medium">{caseName}</span>
-                  <span className="text-sm text-gray-500">{rs.length} 筆 · ${groupTotal.toLocaleString()}</span>
-                </div>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-left text-xs text-gray-500">
-                      {canEdit && <th className="px-3 py-2 w-8"></th>}
-                      <th className="px-3 py-2">收據編號</th>
-                      <th className="px-3 py-2">日期</th>
-                      <th className="px-3 py-2">心理師</th>
-                      <th className="px-3 py-2">類型</th>
-                      <th className="px-3 py-2 text-right">金額</th>
-                      <th className="px-3 py-2">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rs.map((r) => (
-                      <tr key={r.id} className="border-b hover:bg-gray-50">
-                        {canEdit && (
-                          <td className="px-3 py-2">
-                            <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)} />
-                          </td>
-                        )}
-                        <td className="px-3 py-2 font-mono text-xs">{r.receipt_no ?? "-"}</td>
-                        <td className="px-3 py-2">{r.session_date}</td>
-                        <td className="px-3 py-2">{r.therapist_name}</td>
-                        <td className="px-3 py-2">{SESSION_TYPE_LABELS[r.session_type] ?? r.session_type}</td>
-                        <td className="px-3 py-2 text-right">
-                          ${r.effective_amount.toLocaleString()}
-                          {r.discount_amount > 0 && (
-                            <span className="ml-1 text-xs text-amber-600">(優待 ${r.discount_amount.toLocaleString()})</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
-                          {canEdit && (
-                            <button
-                              onClick={() => setPayIds([r.id])}
-                              className="rounded bg-green-600 px-2 py-0.5 text-xs text-white hover:bg-green-700"
-                            >
-                              付款
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div key={caseKey} className="rounded-lg border border-gray-200 overflow-hidden">
+                {/* Accordion header */}
+                <button
+                  onClick={() => toggleCase(caseKey)}
+                  className="flex w-full items-center justify-between bg-gray-50 px-4 py-3 hover:bg-gray-100 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm">{caseName}</span>
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">
+                      {rs.length} 筆待收
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-gray-500">${groupTotal.toLocaleString()}</span>
+                    <span className={`text-gray-400 transition-transform text-xs ${isOpen ? "rotate-180" : ""}`}>▼</span>
+                  </div>
+                </button>
+
+                {/* Accordion body */}
+                {isOpen && (
+                  <>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-t text-left text-xs text-gray-500 bg-white">
+                          {canEdit && <th className="px-3 py-2 w-8"></th>}
+                          <th className="px-3 py-2">收據編號</th>
+                          <th className="px-3 py-2">日期</th>
+                          <th className="px-3 py-2">心理師</th>
+                          <th className="px-3 py-2">類型</th>
+                          <th className="px-3 py-2 text-right">金額</th>
+                          <th className="px-3 py-2">操作</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rs.map((r) => (
+                          <tr key={r.id} className="border-b hover:bg-gray-50">
+                            {canEdit && (
+                              <td className="px-3 py-2">
+                                <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)} />
+                              </td>
+                            )}
+                            <td className="px-3 py-2 font-mono text-xs">{r.receipt_no ?? "-"}</td>
+                            <td className="px-3 py-2">{r.session_date}</td>
+                            <td className="px-3 py-2">{r.therapist_name}</td>
+                            <td className="px-3 py-2">{SESSION_TYPE_LABELS[r.session_type] ?? r.session_type}</td>
+                            <td className="px-3 py-2 text-right">
+                              ${r.effective_amount.toLocaleString()}
+                              {r.discount_amount > 0 && (
+                                <span className="ml-1 text-xs text-amber-600">(優待 ${r.discount_amount.toLocaleString()})</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2">
+                              {canEdit && (
+                                <button
+                                  onClick={() => setPayIds([r.id])}
+                                  className="rounded bg-green-600 px-2 py-0.5 text-xs text-white hover:bg-green-700"
+                                >
+                                  付款
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {/* Per-case payment footer */}
+                    {canEdit && caseSelected.length > 0 && (
+                      <div className="flex items-center justify-end gap-2 border-t bg-gray-50 px-4 py-2">
+                        <span className="text-xs text-gray-500">
+                          已選 {caseSelected.length} 筆 · ${caseSelectedTotal.toLocaleString()}
+                        </span>
+                        <button
+                          onClick={() => setPayIds(caseSelected.map((r) => r.id))}
+                          className="rounded bg-green-600 px-3 py-1.5 text-xs text-white hover:bg-green-700"
+                        >
+                          批次付款
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             );
           })}

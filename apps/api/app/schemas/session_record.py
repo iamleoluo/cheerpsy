@@ -87,3 +87,15 @@ class SettlementResponse(BaseModel):
     date: str
     executed: int
     skipped: int
+
+
+class SelfPayCaseStat(BaseModel):
+    case_id: int
+    case_name: str
+    therapist_name: str | None = None
+    paid_count: int
+    unpaid_count: int
+    paid_amount: float
+    unpaid_amount: float
+    total_count: int
+    all_paid: bool

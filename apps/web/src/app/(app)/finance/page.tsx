@@ -123,6 +123,18 @@ interface TrackingBatch {
   closed_at: string | null;
 }
 
+interface SelfPayCaseStat {
+  case_id: number;
+  case_name: string;
+  therapist_name: string | null;
+  paid_count: number;
+  unpaid_count: number;
+  paid_amount: number;
+  unpaid_amount: number;
+  total_count: number;
+  all_paid: boolean;
+}
+
 const TRACK_TYPE_LABELS: Record<string, string> = { self_pay: "自費", institution: "機構" };
 const TRACK_STATUS_LABELS: Record<string, string> = {
   collecting: "收集中",
@@ -193,10 +205,10 @@ function ProgressBar({ steps, timestamps }: { steps: readonly string[]; timestam
   );
 }
 
-function PaymentTrackingTab({ token }: { token: string }) {
+/* ── Institution tracking content (sub-component) ── */
+function InstitutionTrackingContent({ token }: { token: string }) {
   const [batches, setBatches] = useState<TrackingBatch[]>([]);
   const [loading, setLoading] = useState(true);
-  const [typeFilter, setTypeFilter] = useState<"" | "self_pay" | "institution">("");
   const [statusFilter, setStatusFilter] = useState("");
   const [reconDate, setReconDate] = useState(new Date().toISOString().slice(0, 10));
 
@@ -204,23 +216,20 @@ function PaymentTrackingTab({ token }: { token: string }) {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (typeFilter) params.set("type", typeFilter);
+      params.set("type", "institution");
       if (statusFilter) params.set("status", statusFilter);
-      const qs = params.toString();
-      const data = await clientFetch(`/claim-batches${qs ? `?${qs}` : ""}`, token);
+      const data = await clientFetch(`/claim-batches?${params.toString()}`, token);
       setBatches(data);
     } catch { /* ignore */ } finally {
       setLoading(false);
     }
-  }, [token, typeFilter, statusFilter]);
+  }, [token, statusFilter]);
 
   useEffect(() => { fetchBatches(); }, [fetchBatches]);
 
-  // Stats
   const totalAmount = batches.reduce((s, b) => s + b.total_amount, 0);
   const openCount = batches.filter((b) => b.status !== "closed").length;
 
-  // Reconciliation: items where closed_at or received_at matches selected date
   const reconItems = batches.filter((b) => {
     const closedDate = b.closed_at?.slice(0, 10);
     const receivedDate = b.received_at?.slice(0, 10);
@@ -237,15 +246,6 @@ function PaymentTrackingTab({ token }: { token: string }) {
       <div className="min-w-0 flex-1">
         <div className="mb-4 flex items-center justify-between">
           <div className="flex gap-3">
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as any)}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-            >
-              <option value="">全部類型</option>
-              <option value="self_pay">自費</option>
-              <option value="institution">機構</option>
-            </select>
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
@@ -265,64 +265,51 @@ function PaymentTrackingTab({ token }: { token: string }) {
         </div>
 
         <div className="overflow-x-auto rounded-lg border border-gray-200">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-gray-50 text-xs uppercase text-gray-500">
-            <tr>
-              <th className="px-3 py-3">案號</th>
-              <th className="px-3 py-3">類型</th>
-              <th className="px-3 py-3">對象</th>
-              <th className="px-3 py-3">筆數</th>
-              <th className="px-3 py-3 text-right">金額</th>
-              <th className="px-3 py-3">付款方式</th>
-              <th className="px-3 py-3">狀態</th>
-              <th className="px-3 py-3">進度</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200">
-            {loading ? (
-              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">載入中...</td></tr>
-            ) : batches.length === 0 ? (
-              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">尚無核銷案</td></tr>
-            ) : batches.map((b) => {
-              const isSelfPay = b.type === "self_pay";
-              const steps = isSelfPay ? SELF_PAY_STEPS : INST_STEPS;
-              const timestamps = isSelfPay
-                ? [b.created_at, b.closed_at]
-                : [b.created_at, b.submitted_at, b.received_at, b.closed_at];
-
-              return (
-                <tr key={b.id} className={`hover:bg-gray-50 ${
-                  (b.closed_at?.slice(0, 10) === reconDate || b.received_at?.slice(0, 10) === reconDate) ? "bg-green-50" : ""
-                }`}>
-                  <td className="px-3 py-3 font-mono text-xs">{b.batch_number}</td>
-                  <td className="px-3 py-3">
-                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                      isSelfPay ? "bg-purple-100 text-purple-700" : "bg-indigo-100 text-indigo-700"
-                    }`}>
-                      {TRACK_TYPE_LABELS[b.type] ?? b.type}
-                    </span>
-                  </td>
-                  <td className="px-3 py-3 text-xs">{isSelfPay ? b.case_name : b.institution_name}</td>
-                  <td className="px-3 py-3 text-xs">{b.record_count}</td>
-                  <td className="px-3 py-3 text-right font-medium">${b.total_amount.toLocaleString()}</td>
-                  <td className="px-3 py-3 text-xs">
-                    {b.payment_method === "cash" ? "現金" : b.payment_method === "transfer" ? "匯款" : "—"}
-                    {b.payment_note && <span className="ml-1 text-gray-400">({b.payment_note})</span>}
-                  </td>
-                  <td className="px-3 py-3">
-                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${TRACK_STATUS_COLORS[b.status] ?? "bg-gray-100"}`}>
-                      {TRACK_STATUS_LABELS[b.status] ?? b.status}
-                    </span>
-                  </td>
-                  <td className="px-3 py-3">
-                    <ProgressBar steps={steps} timestamps={timestamps} />
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+          <table className="w-full text-left text-sm">
+            <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+              <tr>
+                <th className="px-3 py-3">案號</th>
+                <th className="px-3 py-3">機構</th>
+                <th className="px-3 py-3">筆數</th>
+                <th className="px-3 py-3 text-right">金額</th>
+                <th className="px-3 py-3">付款方式</th>
+                <th className="px-3 py-3">狀態</th>
+                <th className="px-3 py-3">進度</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {loading ? (
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">載入中...</td></tr>
+              ) : batches.length === 0 ? (
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">尚無機構核銷案</td></tr>
+              ) : batches.map((b) => {
+                const timestamps = [b.created_at, b.submitted_at, b.received_at, b.closed_at];
+                return (
+                  <tr key={b.id} className={`hover:bg-gray-50 ${
+                    (b.closed_at?.slice(0, 10) === reconDate || b.received_at?.slice(0, 10) === reconDate) ? "bg-green-50" : ""
+                  }`}>
+                    <td className="px-3 py-3 font-mono text-xs">{b.batch_number}</td>
+                    <td className="px-3 py-3 text-xs">{b.institution_name}</td>
+                    <td className="px-3 py-3 text-xs">{b.record_count}</td>
+                    <td className="px-3 py-3 text-right font-medium">${b.total_amount.toLocaleString()}</td>
+                    <td className="px-3 py-3 text-xs">
+                      {b.payment_method === "cash" ? "現金" : b.payment_method === "transfer" ? "匯款" : "—"}
+                      {b.payment_note && <span className="ml-1 text-gray-400">({b.payment_note})</span>}
+                    </td>
+                    <td className="px-3 py-3">
+                      <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${TRACK_STATUS_COLORS[b.status] ?? "bg-gray-100"}`}>
+                        {TRACK_STATUS_LABELS[b.status] ?? b.status}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3">
+                      <ProgressBar steps={INST_STEPS} timestamps={timestamps} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* ── Right: daily reconciliation panel ── */}
@@ -340,7 +327,6 @@ function PaymentTrackingTab({ token }: { token: string }) {
             <p className="py-4 text-center text-xs text-gray-400">該日無到帳/結案項目</p>
           ) : (
             <>
-              {/* Summary */}
               <div className="mb-3 space-y-1 rounded bg-gray-50 p-2 text-xs">
                 <div className="flex justify-between">
                   <span className="text-gray-500">筆數</span>
@@ -369,22 +355,14 @@ function PaymentTrackingTab({ token }: { token: string }) {
                   </div>
                 )}
               </div>
-
-              {/* Item list */}
               <div className="max-h-[60vh] space-y-2 overflow-y-auto">
                 {reconItems.map((b) => (
                   <div key={b.id} className="rounded border border-gray-100 bg-gray-50 px-3 py-2">
                     <div className="flex items-center justify-between">
                       <span className="font-mono text-xs font-medium">{b.batch_number}</span>
-                      <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
-                        b.type === "self_pay" ? "bg-purple-100 text-purple-700" : "bg-indigo-100 text-indigo-700"
-                      }`}>
-                        {TRACK_TYPE_LABELS[b.type]}
-                      </span>
+                      <span className="rounded-full bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700">機構</span>
                     </div>
-                    <div className="mt-1 text-xs text-gray-500">
-                      {b.type === "self_pay" ? b.case_name : b.institution_name}
-                    </div>
+                    <div className="mt-1 text-xs text-gray-500">{b.institution_name}</div>
                     <div className="mt-1 flex items-center justify-between">
                       <span className="text-xs text-gray-500">
                         {b.payment_method === "cash" ? "現金" : b.payment_method === "transfer" ? "匯款" : "—"}
@@ -399,6 +377,161 @@ function PaymentTrackingTab({ token }: { token: string }) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ── Self-pay cases tracking (sub-component) ── */
+function SelfPayTrackingTab({ token }: { token: string }) {
+  const [cases, setCases] = useState<SelfPayCaseStat[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  useEffect(() => {
+    clientFetch("/ledger/self-pay-cases", token)
+      .then(setCases)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [token]);
+
+  const active = cases.filter((c) => !c.all_paid);
+  const history = cases.filter((c) => c.all_paid);
+
+  if (loading) {
+    return <div className="py-12 text-center text-gray-400">載入中...</div>;
+  }
+
+  return (
+    <div>
+      {/* Active cases */}
+      {active.length === 0 ? (
+        <div className="rounded-lg border border-green-200 bg-green-50 py-12 text-center">
+          <p className="text-lg font-medium text-green-700">目前所有個案均已結清 🎉</p>
+          <p className="mt-1 text-sm text-green-600">所有自費款項皆已收款完畢</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-gray-200">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+              <tr>
+                <th className="px-4 py-3">個案</th>
+                <th className="px-4 py-3">治療師</th>
+                <th className="px-4 py-3">收款進度</th>
+                <th className="px-4 py-3 text-right">待收金額</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {active.map((c) => (
+                <tr key={c.case_id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 font-medium text-gray-900">{c.case_name}</td>
+                  <td className="px-4 py-3">
+                    {c.therapist_name ? (
+                      <span className="inline-block rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
+                        {c.therapist_name}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-400">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <span className="text-gray-500">已結清 {c.paid_count} 筆</span>
+                      <span className="text-gray-300">·</span>
+                      <span className="font-medium text-amber-600">尚待 {c.unpaid_count} 筆</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-right font-medium text-amber-700">
+                    ${c.unpaid_amount.toLocaleString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* History section */}
+      {history.length > 0 && (
+        <div className="mt-4">
+          <button
+            onClick={() => setHistoryOpen((o) => !o)}
+            className="flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-700"
+          >
+            <span className={`transition-transform ${historyOpen ? "rotate-90" : ""}`}>▶</span>
+            歷史紀錄（已全數結清 {history.length} 個個案）
+          </button>
+          {historyOpen && (
+            <div className="mt-2 overflow-x-auto rounded-lg border border-gray-200">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+                  <tr>
+                    <th className="px-4 py-3">個案</th>
+                    <th className="px-4 py-3">治療師</th>
+                    <th className="px-4 py-3">結清狀態</th>
+                    <th className="px-4 py-3 text-right">已收金額</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {history.map((c) => (
+                    <tr key={c.case_id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium text-gray-700">{c.case_name}</td>
+                      <td className="px-4 py-3">
+                        {c.therapist_name ? (
+                          <span className="inline-block rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+                            {c.therapist_name}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-block rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                          全部結清（{c.total_count} 筆）
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right font-medium text-green-700">
+                        ${c.paid_amount.toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Main PaymentTrackingTab with sub-tabs ── */
+function PaymentTrackingTab({ token }: { token: string }) {
+  const [trackingSubTab, setTrackingSubTab] = useState<"institution" | "self_pay">("institution");
+
+  return (
+    <div>
+      {/* Sub-tab switcher */}
+      <div className="mb-4 flex gap-2">
+        {(["institution", "self_pay"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTrackingSubTab(t)}
+            className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+              trackingSubTab === t
+                ? "bg-primary-600 text-white shadow-sm"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            }`}
+          >
+            {t === "institution" ? "機構" : "自費"}
+          </button>
+        ))}
+      </div>
+
+      {trackingSubTab === "institution" ? (
+        <InstitutionTrackingContent token={token} />
+      ) : (
+        <SelfPayTrackingTab token={token} />
+      )}
     </div>
   );
 }
