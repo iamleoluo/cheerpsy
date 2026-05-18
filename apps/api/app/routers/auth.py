@@ -80,6 +80,56 @@ def toggle_user(user_id: int, user: User = Depends(RequireRole(["admin"])), db: 
     return {"id": target.id, "is_active": target.is_active}
 
 
+class UpdateUserRequest(BaseModel):
+    name: str | None = None
+    role: str | None = None
+    user_code: str | None = None
+
+
+@router.put("/users/{user_id}", response_model=UserListResponse)
+def update_user(
+    user_id: int,
+    body: UpdateUserRequest,
+    user: User = Depends(RequireRole(["admin"])),
+    db: Session = Depends(get_db),
+):
+    """Admin can update name, role, and user_code for any account."""
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    before = {"name": target.name, "role": target.role, "user_code": target.user_code}
+
+    if body.name is not None:
+        stripped = body.name.strip()
+        if not stripped:
+            raise HTTPException(status_code=400, detail="Name cannot be empty")
+        target.name = stripped
+
+    if body.role is not None:
+        if body.role not in ("therapist", "accountant", "admin", "staff"):
+            raise HTTPException(status_code=400, detail="Invalid role")
+        target.role = body.role
+
+    if body.user_code is not None:
+        code = body.user_code.strip() or None
+        if code:
+            conflict = db.query(User).filter(
+                User.user_code == code,
+                User.is_active == True,
+                User.id != user_id,
+            ).first()
+            if conflict:
+                raise HTTPException(status_code=400, detail=f"User code '{code}' already in use by active user")
+        target.user_code = code
+
+    after = {"name": target.name, "role": target.role, "user_code": target.user_code}
+    write_audit(db, "users", target.id, "UPDATE", user.id, before, after)
+    db.commit()
+    db.refresh(target)
+    return target
+
+
 class CommissionRateRequest(BaseModel):
     commission_rate: float
 

@@ -15,7 +15,7 @@ const helpContent: HelpContent = {
       items: [
         "點「＋建立邀請」",
         "填入姓名，選擇角色",
-        "輸入使用者代號（點「自動」快速填入下一個可用代號）",
+        "系統自動帶入下一個可用代號，可自行修改",
         "產生邀請碼後傳給對方",
         "對方至登入頁點「首次註冊」輸入邀請碼完成帳號建立",
       ],
@@ -31,12 +31,13 @@ const helpContent: HelpContent = {
       ],
     },
     {
-      heading: "設定心理師抽成比例",
+      heading: "編輯帳號資料",
       type: "steps",
       items: [
-        "在帳號列表找到該心理師，點「編輯」",
-        "輸入抽成比例（例：0.75 代表 75%，預設 0.70）",
-        "儲存後新預約即採用新比例（歷史記錄保留原比例快照）",
+        "在帳號列表找到該用戶，點「編輯」",
+        "可修改姓名、角色、使用者代號",
+        "心理師抽成比例在「編輯」modal 一併設定",
+        "儲存後立即生效",
       ],
     },
     {
@@ -58,6 +59,7 @@ interface UserItem {
   name: string;
   role: string;
   user_code: string | null;
+  commission_rate: number | null;
   is_active: boolean;
 }
 
@@ -94,6 +96,16 @@ const roleBadgeClass: Record<string, string> = {
   therapist: "bg-blue-100 text-blue-700",
 };
 
+function computeNextCode(users: UserItem[], role: string): string {
+  const prefix = roleCodePrefix[role] ?? role[0].toUpperCase();
+  const existingCodes = users.filter((u) => u.user_code?.startsWith(prefix)).map((u) => u.user_code!);
+  for (let i = 1; i <= 999; i++) {
+    const candidate = `${prefix}${String(i).padStart(3, "0")}`;
+    if (!existingCodes.includes(candidate)) return candidate;
+  }
+  return `${prefix}001`;
+}
+
 export default function AdminUsersPage() {
   const { data: session } = useSession();
   const token = (session?.user as any)?.accessToken;
@@ -109,6 +121,14 @@ export default function AdminUsersPage() {
   const [invRole, setInvRole] = useState("therapist");
   const [invCode, setInvCode] = useState("");
   const [creatingInvite, setCreatingInvite] = useState(false);
+
+  // Edit modal
+  const [editUser, setEditUser] = useState<UserItem | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editRole, setEditRole] = useState("therapist");
+  const [editCode, setEditCode] = useState("");
+  const [editRate, setEditRate] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
 
   // Result modal (show key)
   const [resultKey, setResultKey] = useState("");
@@ -135,6 +155,29 @@ export default function AdminUsersPage() {
     fetchData();
   }, [fetchData]);
 
+  // Auto-populate invite code when modal opens or role changes
+  useEffect(() => {
+    if (!showInvite) return;
+    setInvCode(computeNextCode(users, invRole));
+  }, [showInvite, invRole, users]);
+
+  const openInvite = () => {
+    setInvName("");
+    setInvRole("therapist");
+    setInvCode("");
+    setShowInvite(true);
+  };
+
+  const openEdit = (u: UserItem) => {
+    setEditUser(u);
+    setEditName(u.name);
+    setEditRole(u.role);
+    setEditCode(u.user_code ?? "");
+    setEditRate(u.commission_rate != null ? String(u.commission_rate) : "");
+  };
+
+  const closeEdit = () => setEditUser(null);
+
   const handleCreateInvite = async () => {
     if (!token || !invName.trim()) return;
     setCreatingInvite(true);
@@ -145,9 +188,6 @@ export default function AdminUsersPage() {
         body: JSON.stringify(body),
       });
       setShowInvite(false);
-      setInvName("");
-      setInvRole("therapist");
-      setInvCode("");
       setResultKey(result.invite_key);
       setResultLabel(`${invName.trim()} 的邀請金鑰`);
       fetchData();
@@ -155,6 +195,38 @@ export default function AdminUsersPage() {
       alert(e.message);
     } finally {
       setCreatingInvite(false);
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editUser || !token) return;
+    setSavingEdit(true);
+    try {
+      // Update name/role/code
+      await clientFetch(`/auth/users/${editUser.id}`, token, {
+        method: "PUT",
+        body: JSON.stringify({
+          name: editName.trim(),
+          role: editRole,
+          user_code: editCode.trim() || null,
+        }),
+      });
+      // Update commission rate if therapist
+      if (editRole === "therapist" && editRate) {
+        const rate = parseFloat(editRate);
+        if (!isNaN(rate) && rate > 0 && rate <= 1) {
+          await clientFetch(`/auth/users/${editUser.id}/commission-rate`, token, {
+            method: "PUT",
+            body: JSON.stringify({ commission_rate: rate }),
+          });
+        }
+      }
+      closeEdit();
+      fetchData();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -201,7 +273,7 @@ export default function AdminUsersPage() {
             <span>ℹ️</span> 說明
           </button>
           <button
-            onClick={() => setShowInvite(true)}
+            onClick={openInvite}
             className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
           >
             + 建立邀請
@@ -234,7 +306,9 @@ export default function AdminUsersPage() {
                     {roleLabels[u.role] ?? u.role}
                   </span>
                 </td>
-                <td className="px-4 py-3 font-mono text-xs text-gray-500">{u.user_code ?? "-"}</td>
+                <td className="px-4 py-3 font-mono text-xs text-gray-500">
+                  {u.user_code ?? <span className="text-red-400">未設定</span>}
+                </td>
                 <td className="px-4 py-3">
                   <span className={`inline-block rounded-full px-2 py-0.5 text-xs ${u.is_active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
                     {u.is_active ? "啟用" : "停用"}
@@ -242,6 +316,7 @@ export default function AdminUsersPage() {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
+                    <button onClick={() => openEdit(u)} className="text-xs text-primary-600 hover:underline">編輯</button>
                     <button onClick={() => handleResetPassword(u.id, u.name)} className="text-xs text-blue-600 hover:underline">重設密碼</button>
                     <button onClick={() => handleToggle(u.id)} className="text-xs text-gray-500 hover:underline">
                       {u.is_active ? "停用" : "啟用"}
@@ -291,8 +366,8 @@ export default function AdminUsersPage() {
 
       {/* Create invitation modal */}
       {showInvite && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowInvite(false)}>
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-4 text-lg font-semibold">建立邀請</h3>
             <div className="space-y-3">
               <div>
@@ -301,7 +376,7 @@ export default function AdminUsersPage() {
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-500">角色 *</label>
-                <select value={invRole} onChange={(e) => { setInvRole(e.target.value); setInvCode(""); }} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                <select value={invRole} onChange={(e) => setInvRole(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
                   <option value="therapist">心理師（T）</option>
                   <option value="accountant">會計（C）</option>
                   <option value="staff">行政人員（S）</option>
@@ -310,41 +385,94 @@ export default function AdminUsersPage() {
               </div>
               {(() => {
                 const prefix = roleCodePrefix[invRole] ?? invRole[0].toUpperCase();
-                const allCodesForRole = users.filter((u) => u.user_code?.startsWith(prefix)).map((u) => ({ code: u.user_code!, name: u.name, active: u.is_active }));
-                const reusable = allCodesForRole.filter((c) => !c.active);
-                let nextCode = "";
-                for (let i = 1; i <= 999; i++) {
-                  const candidate = `${prefix}${String(i).padStart(3, "0")}`;
-                  if (!allCodesForRole.some((c) => c.code === candidate)) { nextCode = candidate; break; }
-                }
+                const reusable = users.filter((u) => u.user_code?.startsWith(prefix) && !u.is_active);
                 return (
                   <div>
                     <label className="mb-1 block text-xs font-medium text-gray-500">使用者代號 *</label>
-                    <input type="text" value={invCode} onChange={(e) => setInvCode(e.target.value.toUpperCase())} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" placeholder={`例如 ${prefix}001`} />
-                    <div className="mt-2 space-y-1">
-                      {nextCode && (
-                        <button type="button" onClick={() => setInvCode(nextCode)} className="rounded bg-primary-50 px-2 py-0.5 text-xs text-primary-600 hover:bg-primary-100">
-                          自動：{nextCode}（下一個可用代號）
-                        </button>
-                      )}
-                      {reusable.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {reusable.map((c) => (
-                            <button key={c.code} type="button" onClick={() => setInvCode(c.code)} className={`rounded px-2 py-0.5 text-xs ${invCode === c.code ? "bg-amber-200 text-amber-800" : "bg-amber-50 text-amber-600 hover:bg-amber-100"}`}>
-                              {c.code}（原 {c.name}，已停用）
+                    <input
+                      type="text"
+                      value={invCode}
+                      onChange={(e) => setInvCode(e.target.value.toUpperCase())}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono"
+                      placeholder={`例如 ${prefix}001`}
+                    />
+                    {reusable.length > 0 && (
+                      <div className="mt-2">
+                        <p className="mb-1 text-xs text-gray-400">可重用停用帳號的代號：</p>
+                        <div className="flex flex-wrap gap-1">
+                          {reusable.map((u) => (
+                            <button key={u.user_code} type="button" onClick={() => setInvCode(u.user_code!)} className={`rounded px-2 py-0.5 text-xs ${invCode === u.user_code ? "bg-amber-200 text-amber-800" : "bg-amber-50 text-amber-600 hover:bg-amber-100"}`}>
+                              {u.user_code}（原 {u.name}，已停用）
                             </button>
                           ))}
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
             </div>
             <div className="mt-5 flex justify-end gap-2">
-              <button onClick={() => { setShowInvite(false); setInvName(""); setInvRole("therapist"); setInvCode(""); }} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">取消</button>
+              <button onClick={() => setShowInvite(false)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">取消</button>
               <button onClick={handleCreateInvite} disabled={!invName.trim() || !invCode.trim() || creatingInvite} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">
                 {creatingInvite ? "建立中..." : "建立"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit user modal */}
+      {editUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={closeEdit}>
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="mb-1 text-lg font-semibold">編輯帳號</h3>
+            <p className="mb-4 text-xs text-gray-400">{editUser.email}</p>
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">姓名 *</label>
+                <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" autoFocus />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">角色 *</label>
+                <select value={editRole} onChange={(e) => setEditRole(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                  <option value="therapist">心理師（T）</option>
+                  <option value="accountant">會計（C）</option>
+                  <option value="staff">行政人員（S）</option>
+                  <option value="admin">管理員（A）</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">使用者代號</label>
+                <input
+                  type="text"
+                  value={editCode}
+                  onChange={(e) => setEditCode(e.target.value.toUpperCase())}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono"
+                  placeholder="如 T001、S002"
+                />
+              </div>
+              {editRole === "therapist" && (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">抽成比例（心理師）</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    max="1"
+                    value={editRate}
+                    onChange={(e) => setEditRate(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    placeholder="預設 0.70"
+                  />
+                  <p className="mt-1 text-xs text-gray-400">0.70 = 70%，留空維持現有比例</p>
+                </div>
+              )}
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button onClick={closeEdit} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">取消</button>
+              <button onClick={handleSaveEdit} disabled={!editName.trim() || savingEdit} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">
+                {savingEdit ? "儲存中..." : "儲存"}
               </button>
             </div>
           </div>
