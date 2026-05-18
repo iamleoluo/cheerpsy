@@ -16,6 +16,7 @@ from app.models.claim_batch import ClaimBatch
 from app.models.institution import Institution
 from app.models.invoice import Invoice
 from app.models.petty_cash import PettyCash
+from app.models.product_sales import ProductSale
 from app.models.room import Room
 from app.models.session_record import SessionRecord
 from app.models.user import User
@@ -296,6 +297,31 @@ def export_claim_batches(
     return _csv_response(rows, "claim_batches.csv")
 
 
+@router.get("/product-sales")
+def export_product_sales(
+    user: User = Depends(RequireRole(["admin", "accountant"])),
+    db: Session = Depends(get_db),
+):
+    items = db.query(ProductSale).order_by(ProductSale.sale_date, ProductSale.id).all()
+    rows = []
+    for p in items:
+        rows.append({
+            "ID": p.id,
+            "日期": str(p.sale_date),
+            "商品名稱": p.product_name,
+            "金額": float(p.amount),
+            "數量": p.quantity,
+            "付款方式": p.payment_method or "",
+            "付款備註": p.payment_note or "",
+            "收據編號": p.receipt_no or "",
+            "是否作廢": "是" if p.is_void else "否",
+            "作廢原因": p.void_reason or "",
+            "建立者ID": p.created_by or "",
+            "建立時間": p.created_at.isoformat() if p.created_at else "",
+        })
+    return _csv_response(rows, "product_sales.csv")
+
+
 @router.get("/audit-log")
 def export_audit_log(
     user: User = Depends(RequireRole(["admin"])),
@@ -333,5 +359,6 @@ def list_exportable_tables(
         {"key": "users", "label": "使用者", "endpoint": "/export/users"},
         {"key": "rooms", "label": "諮商室", "endpoint": "/export/rooms"},
         {"key": "institutions", "label": "機構", "endpoint": "/export/institutions"},
+        {"key": "product-sales", "label": "商品販售", "endpoint": "/export/product-sales"},
         {"key": "audit-log", "label": "稽核日誌", "endpoint": "/export/audit-log"},
     ]
