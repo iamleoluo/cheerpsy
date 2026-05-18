@@ -369,13 +369,14 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState<ClaimBatch[]>([]);
   const [expandedCaseId, setExpandedCaseId] = useState<number | string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"all" | "unpaid" | "paid">("all");
 
   const canEdit = ["admin", "staff"].includes(userRole);
 
   const fetchRecords = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await clientFetch("/ledger/self-pay-unpaid", token);
+      const data = await clientFetch("/ledger/self-pay-all", token);
       setRecords(data);
       setSelected(new Set());
     } catch { /* ignore */ } finally {
@@ -391,8 +392,17 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
     }
   }, [showHistory, token]);
 
+  const isPaid = (r: LedgerRecord) => r.payment_status === "paid" || r.payment_status === "claimed";
+
+  // Apply status filter
+  const filtered = records.filter((r) => {
+    if (statusFilter === "unpaid") return r.payment_status === "unpaid";
+    if (statusFilter === "paid") return isPaid(r);
+    return true;
+  });
+
   // group by case_id (fall back to case_name if no id)
-  const groups = records.reduce<Record<string | number, { name: string; records: LedgerRecord[] }>>(
+  const groups = filtered.reduce<Record<string | number, { name: string; records: LedgerRecord[] }>>(
     (acc, r) => {
       const key = r.case_id ?? (r.case_name ?? "?");
       if (!acc[key]) acc[key] = { name: r.case_name ?? `#${r.case_id}`, records: [] };
@@ -442,12 +452,23 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
         />
       )}
 
-      <div className="mb-3 flex items-center">
+      <div className="mb-3 flex items-center gap-3">
+        {!showHistory && (
+          <select
+            value={statusFilter}
+            onChange={(e) => { setStatusFilter(e.target.value as "all" | "unpaid" | "paid"); setExpandedCaseId(null); }}
+            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm"
+          >
+            <option value="all">全部狀態</option>
+            <option value="unpaid">待付款</option>
+            <option value="paid">已付款</option>
+          </select>
+        )}
         <button
           onClick={() => setShowHistory((v) => !v)}
           className="ml-auto text-sm text-primary-600 hover:underline"
         >
-          {showHistory ? "← 回未收款" : "歷史核銷案"}
+          {showHistory ? "← 回帳冊" : "歷史核銷案"}
         </button>
       </div>
 
@@ -489,14 +510,20 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
         </div>
       ) : loading ? (
         <div className="py-8 text-center text-gray-400">載入中...</div>
-      ) : records.length === 0 ? (
-        <div className="py-8 text-center text-gray-400">沒有待收款的自費帳務 🎉</div>
+      ) : filtered.length === 0 ? (
+        <div className="py-8 text-center text-gray-400">
+          {statusFilter === "unpaid" ? "沒有待收款的自費帳務 🎉"
+            : statusFilter === "paid" ? "尚無已付款的自費帳務"
+            : "尚無自費帳務"}
+        </div>
       ) : (
         <div className="space-y-2">
           {Object.entries(groups).map(([key, { name: caseName, records: rs }]) => {
             const caseKey = key;
             const isOpen = expandedCaseId === caseKey;
-            const groupTotal = rs.reduce((s, r) => s + r.effective_amount, 0);
+            const unpaidRs = rs.filter((r) => r.payment_status === "unpaid");
+            const paidRs = rs.filter((r) => isPaid(r));
+            const unpaidTotal = unpaidRs.reduce((s, r) => s + r.effective_amount, 0);
             const caseSelected = rs.filter((r) => selected.has(r.id));
             const caseSelectedTotal = caseSelected.reduce((s, r) => s + r.effective_amount, 0);
 
@@ -509,12 +536,22 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
                 >
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-sm">{caseName}</span>
-                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">
-                      {rs.length} 筆待收
-                    </span>
+                    {unpaidRs.length > 0 && (
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">
+                        {unpaidRs.length} 筆待收
+                      </span>
+                    )}
+                    {paidRs.length > 0 && (
+                      <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700">
+                        {paidRs.length} 筆已付
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-sm text-gray-500">${groupTotal.toLocaleString()}</span>
+                    {unpaidTotal > 0
+                      ? <span className="text-sm text-amber-600">待收 ${unpaidTotal.toLocaleString()}</span>
+                      : <span className="text-sm text-green-600">全部結清 ✓</span>
+                    }
                     <span className={`text-gray-400 transition-transform text-xs ${isOpen ? "rotate-180" : ""}`}>▼</span>
                   </div>
                 </button>
@@ -531,15 +568,20 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
                           <th className="px-3 py-2">心理師</th>
                           <th className="px-3 py-2">類型</th>
                           <th className="px-3 py-2 text-right">金額</th>
+                          <th className="px-3 py-2">狀態</th>
                           <th className="px-3 py-2">操作</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {rs.map((r) => (
-                          <tr key={r.id} className="border-b hover:bg-gray-50">
+                        {rs.map((r) => {
+                          const paid = isPaid(r);
+                          return (
+                          <tr key={r.id} className={`border-b hover:bg-gray-50 ${paid ? "bg-green-50/40" : ""}`}>
                             {canEdit && (
                               <td className="px-3 py-2">
-                                <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)} />
+                                {!paid && (
+                                  <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)} />
+                                )}
                               </td>
                             )}
                             <td className="px-3 py-2 font-mono text-xs">{r.receipt_no ?? "-"}</td>
@@ -553,7 +595,13 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
                               )}
                             </td>
                             <td className="px-3 py-2">
-                              {canEdit && (
+                              {paid
+                                ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700">已付款</span>
+                                : <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">待付款</span>
+                              }
+                            </td>
+                            <td className="px-3 py-2">
+                              {canEdit && !paid && (
                                 <button
                                   onClick={() => setPayIds([r.id])}
                                   className="rounded bg-green-600 px-2 py-0.5 text-xs text-white hover:bg-green-700"
@@ -561,9 +609,18 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
                                   付款
                                 </button>
                               )}
+                              {paid && (
+                                <button
+                                  onClick={() => downloadPdf(`/ledger/${r.id}/receipt`, token, `receipt-${r.id}.pdf`)}
+                                  className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-100"
+                                >
+                                  收據
+                                </button>
+                              )}
                             </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                     {/* Per-case payment footer */}
