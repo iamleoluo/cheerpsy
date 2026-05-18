@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 from decimal import Decimal
 
 import io
@@ -67,6 +67,14 @@ def _validate_and_set_payment(r: SessionRecord, method: str | None, note: str | 
         r.payment_note = note.strip()
     else:
         r.payment_note = note.strip() if note else None
+
+
+def _resolve_paid_at(paid_date: date | None) -> datetime:
+    """If a collection date is supplied (back-dated entry), anchor at noon UTC to
+    avoid timezone date-shift; otherwise use the current timestamp."""
+    if paid_date is not None:
+        return datetime.combine(paid_date, time(12, 0), tzinfo=timezone.utc)
+    return datetime.now(timezone.utc)
 
 
 def _to_response(r: SessionRecord, db: Session) -> SessionRecordResponse:
@@ -584,7 +592,7 @@ def pay_self_pay_record(
     before = {"payment_status": r.payment_status, "payment_method": r.payment_method}
     _validate_and_set_payment(r, body.payment_method, body.payment_note)
     r.payment_status = "paid"
-    r.paid_at = datetime.now(timezone.utc)
+    r.paid_at = _resolve_paid_at(body.paid_date)
     after = {"payment_status": r.payment_status, "payment_method": r.payment_method}
     _write_audit(db, "session_records", r.id, "UPDATE", user.id, before, after)
     db.commit()
@@ -610,11 +618,12 @@ def pay_batch(
             raise HTTPException(status_code=400, detail=f"紀錄 {r.id} 非未收款狀態")
         if (r.funding_source or "self_pay") != "self_pay":
             raise HTTPException(status_code=400, detail=f"紀錄 {r.id} 非自費")
+    paid_at = _resolve_paid_at(body.paid_date)
     for r in records:
         before = {"payment_status": r.payment_status}
         _validate_and_set_payment(r, body.payment_method, body.payment_note)
         r.payment_status = "paid"
-        r.paid_at = datetime.now(timezone.utc)
+        r.paid_at = paid_at
         _write_audit(db, "session_records", r.id, "UPDATE", user.id, before, {"payment_status": "paid"})
     db.commit()
     return {

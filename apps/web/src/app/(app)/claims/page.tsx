@@ -263,8 +263,10 @@ function SelfPayPaymentModal({
   const [method, setMethod] = useState<"cash" | "transfer">("cash");
   const [note, setNote] = useState("");
   const [combine, setCombine] = useState(true);
+  const [paidDate, setPaidDate] = useState(new Date().toISOString().slice(0, 10));
   const [saving, setSaving] = useState(false);
   const isBatch = recordIds.length > 1;
+  const today = new Date().toISOString().slice(0, 10);
 
   const submit = async () => {
     if (method === "transfer" && !note.trim()) {
@@ -281,12 +283,13 @@ function SelfPayPaymentModal({
             payment_method: method,
             payment_note: note.trim() || null,
             combine_receipt: combine,
+            paid_date: paidDate,
           }),
         });
       } else {
         await clientFetch(`/ledger/${recordIds[0]}/pay`, token, {
           method: "PUT",
-          body: JSON.stringify({ payment_method: method, payment_note: note.trim() || null }),
+          body: JSON.stringify({ payment_method: method, payment_note: note.trim() || null, paid_date: paidDate }),
         });
       }
       onDone(recordIds, isBatch ? combine : false);
@@ -304,6 +307,20 @@ function SelfPayPaymentModal({
         <p className="mb-3 text-sm text-gray-600">
           合計：<strong>${total.toLocaleString()}</strong>
         </p>
+
+        <label className="mb-3 block">
+          <span className="text-xs font-medium text-gray-700">收款日期</span>
+          <input
+            type="date"
+            value={paidDate}
+            max={today}
+            onChange={(e) => setPaidDate(e.target.value)}
+            className="mt-1 block w-full rounded border px-2 py-1.5 text-sm"
+          />
+          {paidDate !== today && (
+            <span className="mt-1 block text-xs text-amber-600">補登：實際收款日 {paidDate}</span>
+          )}
+        </label>
 
         <fieldset className="mb-3">
           <legend className="mb-1 text-xs font-medium text-gray-700">付款方式</legend>
