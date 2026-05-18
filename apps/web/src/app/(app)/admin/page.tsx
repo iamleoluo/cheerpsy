@@ -11,9 +11,24 @@ interface UserItem {
   email: string;
   name: string;
   role: string;
-  therapist_code: string | null;
+  user_code: string | null;
   commission_rate: number | null;
+  base_price: number | null;
   is_active: boolean;
+}
+
+const ROLE_CODE_PREFIX: Record<string, string> = {
+  admin: "A", accountant: "C", staff: "S", therapist: "T",
+};
+
+function computeNextCode(users: UserItem[], role: string): string {
+  const prefix = ROLE_CODE_PREFIX[role] ?? role[0].toUpperCase();
+  const used = users.filter((u) => u.user_code?.startsWith(prefix)).map((u) => u.user_code!);
+  for (let i = 1; i <= 999; i++) {
+    const c = `${prefix}${String(i).padStart(3, "0")}`;
+    if (!used.includes(c)) return c;
+  }
+  return `${prefix}001`;
 }
 
 interface InvitationItem {
@@ -134,6 +149,9 @@ function UsersTab({ token }: { token: string }) {
 
   const [editingRate, setEditingRate] = useState<number | null>(null);
   const [editRateValue, setEditRateValue] = useState("");
+  const [editingBase, setEditingBase] = useState<number | null>(null);
+  const [editBaseValue, setEditBaseValue] = useState("");
+  const [invBase, setInvBase] = useState("2000");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -155,27 +173,40 @@ function UsersTab({ token }: { token: string }) {
     fetchData();
   }, [fetchData]);
 
+  // Auto-populate the suggested code when modal opens or role changes
+  useEffect(() => {
+    if (!showInvite) return;
+    setInvCode(computeNextCode(users, invRole));
+  }, [showInvite, invRole, users]);
+
   const handleCreateInvite = async () => {
     if (!invName.trim()) return;
     setCreatingInvite(true);
     try {
-      const body: any = { name: invName.trim(), role: invRole };
-      if (invRole === "therapist" && invCode.trim()) {
-        body.therapist_code = invCode.trim();
-      }
+      // user_code optional — backend auto-generates if blank (all roles)
+      const body: any = { name: invName.trim(), role: invRole, user_code: invCode.trim() || null };
       const result = await clientFetch("/auth/invitations", token, {
         method: "POST",
         body: JSON.stringify(body),
       });
+      const finalCode: string = result.user_code;
 
-      if (invRole === "therapist" && invCommission) {
+      if (invRole === "therapist") {
         const newUser = (await clientFetch("/auth/users", token) as UserItem[])
-          .find((u) => u.therapist_code === invCode.trim());
+          .find((u) => u.user_code === finalCode);
         if (newUser) {
-          await clientFetch(`/auth/users/${newUser.id}/commission-rate`, token, {
-            method: "PUT",
-            body: JSON.stringify({ commission_rate: parseFloat(invCommission) }),
-          }).catch(() => {});
+          if (invCommission) {
+            await clientFetch(`/auth/users/${newUser.id}/commission-rate`, token, {
+              method: "PUT",
+              body: JSON.stringify({ commission_rate: parseFloat(invCommission) }),
+            }).catch(() => {});
+          }
+          if (invBase) {
+            await clientFetch(`/auth/users/${newUser.id}`, token, {
+              method: "PUT",
+              body: JSON.stringify({ base_price: parseFloat(invBase) }),
+            }).catch(() => {});
+          }
         }
       }
 
@@ -184,13 +215,32 @@ function UsersTab({ token }: { token: string }) {
       setInvRole("therapist");
       setInvCode("");
       setInvCommission("0.70");
+      setInvBase("2000");
       setResultKey(result.invite_key);
-      setResultLabel(`${invName.trim()} 的邀請金鑰`);
+      setResultLabel(`${invName.trim()} 的邀請金鑰（代號 ${finalCode}）`);
       fetchData();
     } catch (e: any) {
       alert(e.message);
     } finally {
       setCreatingInvite(false);
+    }
+  };
+
+  const handleSaveBase = async (userId: number) => {
+    const val = parseFloat(editBaseValue);
+    if (isNaN(val) || val < 0) {
+      alert("請輸入有效的價格（≥ 0）");
+      return;
+    }
+    try {
+      await clientFetch(`/auth/users/${userId}`, token, {
+        method: "PUT",
+        body: JSON.stringify({ base_price: val }),
+      });
+      setEditingBase(null);
+      fetchData();
+    } catch (e: any) {
+      alert(e.message);
     }
   };
 
@@ -265,6 +315,7 @@ function UsersTab({ token }: { token: string }) {
               <th className="px-4 py-3">角色</th>
               <th className="px-4 py-3">代號</th>
               <th className="px-4 py-3">抽成比例</th>
+              <th className="px-4 py-3">預設價格</th>
               <th className="px-4 py-3">狀態</th>
               <th className="px-4 py-3">操作</th>
             </tr>
@@ -272,7 +323,7 @@ function UsersTab({ token }: { token: string }) {
           <tbody className="divide-y divide-gray-200">
             {loading ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-gray-400">載入中...</td>
+                <td colSpan={8} className="px-4 py-8 text-center text-gray-400">載入中...</td>
               </tr>
             ) : (
               users.map((u) => (
@@ -284,8 +335,8 @@ function UsersTab({ token }: { token: string }) {
                       {roleLabels[u.role] ?? u.role}
                     </span>
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs text-gray-400">
-                    {u.therapist_code ?? "—"}
+                  <td className="px-4 py-3 font-mono text-xs text-gray-500">
+                    {u.user_code ? u.user_code : <span className="text-red-400">未設定</span>}
                   </td>
                   <td className="px-4 py-3">
                     {u.role === "therapist" ? (
@@ -328,6 +379,51 @@ function UsersTab({ token }: { token: string }) {
                           title="點擊編輯"
                         >
                           {Math.round((u.commission_rate ?? 0.7) * 100)}%
+                        </button>
+                      )
+                    ) : (
+                      <span className="text-xs text-gray-300">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {u.role === "therapist" ? (
+                      editingBase === u.id ? (
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min="0"
+                            value={editBaseValue}
+                            onChange={(e) => setEditBaseValue(e.target.value)}
+                            className="w-24 rounded border border-gray-300 px-2 py-1 text-xs"
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleSaveBase(u.id);
+                              if (e.key === "Escape") setEditingBase(null);
+                            }}
+                          />
+                          <button
+                            onClick={() => handleSaveBase(u.id)}
+                            className="text-xs text-green-600 hover:text-green-700"
+                          >
+                            ✓
+                          </button>
+                          <button
+                            onClick={() => setEditingBase(null)}
+                            className="text-xs text-gray-400 hover:text-gray-600"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setEditingBase(u.id);
+                            setEditBaseValue(String(u.base_price ?? 2000));
+                          }}
+                          className="rounded px-2 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-50"
+                          title="點擊編輯"
+                        >
+                          {u.base_price != null ? `$${Number(u.base_price).toLocaleString()}` : "未設定"}
                         </button>
                       )
                     ) : (
@@ -426,82 +522,81 @@ function UsersTab({ token }: { token: string }) {
                 </select>
               </div>
 
-              {invRole === "therapist" && (() => {
-                const allCodes = users.filter((u) => u.therapist_code).map((u) => ({
-                  code: u.therapist_code!,
-                  name: u.name,
-                  active: u.is_active,
-                }));
-                const reusable = allCodes.filter((c) => !c.active);
-                let nextCode = "";
-                for (let i = 1; i <= 999; i++) {
-                  const candidate = `T${String(i).padStart(3, "0")}`;
-                  if (!allCodes.some((c) => c.code === candidate)) {
-                    nextCode = candidate;
-                    break;
-                  }
-                }
+              {(() => {
+                const prefix = ROLE_CODE_PREFIX[invRole] ?? invRole[0].toUpperCase();
+                const reusable = users
+                  .filter((u) => u.user_code?.startsWith(prefix) && !u.is_active)
+                  .map((u) => ({ code: u.user_code!, name: u.name }));
                 return (
-                  <>
-                    <div>
-                      <label className="mb-1 block text-xs font-medium text-gray-500">心理師代號 *</label>
-                      <input
-                        type="text"
-                        value={invCode}
-                        onChange={(e) => setInvCode(e.target.value)}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono"
-                        placeholder="例如 T018"
-                      />
-                      <div className="mt-2 space-y-1">
-                        {nextCode && (
-                          <button
-                            type="button"
-                            onClick={() => setInvCode(nextCode)}
-                            className="rounded bg-primary-50 px-2 py-0.5 text-xs text-primary-600 hover:bg-primary-100"
-                          >
-                            自動：{nextCode}（新代號）
-                          </button>
-                        )}
-                        {reusable.length > 0 && (
-                          <div className="flex flex-wrap gap-1">
-                            {reusable.map((c) => (
-                              <button
-                                key={c.code}
-                                type="button"
-                                onClick={() => setInvCode(c.code)}
-                                className={`rounded px-2 py-0.5 text-xs ${
-                                  invCode === c.code
-                                    ? "bg-amber-200 text-amber-800"
-                                    : "bg-amber-50 text-amber-600 hover:bg-amber-100"
-                                }`}
-                              >
-                                {c.code}（原 {c.name}，已停用）
-                              </button>
-                            ))}
-                          </div>
-                        )}
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">
+                      使用者代號（留空自動產生）
+                    </label>
+                    <input
+                      type="text"
+                      value={invCode}
+                      onChange={(e) => setInvCode(e.target.value.toUpperCase())}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono"
+                      placeholder={`留空自動產生（如 ${prefix}001）`}
+                    />
+                    {reusable.length > 0 && (
+                      <div className="mt-2">
+                        <p className="mb-1 text-xs text-gray-400">可重用停用帳號的代號：</p>
+                        <div className="flex flex-wrap gap-1">
+                          {reusable.map((c) => (
+                            <button
+                              key={c.code}
+                              type="button"
+                              onClick={() => setInvCode(c.code)}
+                              className={`rounded px-2 py-0.5 text-xs ${
+                                invCode === c.code
+                                  ? "bg-amber-200 text-amber-800"
+                                  : "bg-amber-50 text-amber-600 hover:bg-amber-100"
+                              }`}
+                            >
+                              {c.code}（原 {c.name}，已停用）
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-medium text-gray-500">抽成比例</label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          max="1"
-                          value={invCommission}
-                          onChange={(e) => setInvCommission(e.target.value)}
-                          className="w-24 rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                        />
-                        <span className="text-sm text-gray-500">
-                          （{Math.round(parseFloat(invCommission || "0") * 100)}% 歸心理師）
-                        </span>
-                      </div>
-                    </div>
-                  </>
+                    )}
+                  </div>
                 );
               })()}
+
+              {invRole === "therapist" && (
+                <>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">抽成比例</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        max="1"
+                        value={invCommission}
+                        onChange={(e) => setInvCommission(e.target.value)}
+                        className="w-24 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      />
+                      <span className="text-sm text-gray-500">
+                        （{Math.round(parseFloat(invCommission || "0") * 100)}% 歸心理師）
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">預約基礎價格</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={invBase}
+                      onChange={(e) => setInvBase(e.target.value)}
+                      className="w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      placeholder="例如 2000"
+                    />
+                    <p className="mt-1 text-xs text-gray-400">建立預約時自動帶入，可於當下調整</p>
+                  </div>
+                </>
+              )}
             </div>
             <div className="mt-5 flex justify-end gap-2">
               <button
@@ -511,6 +606,7 @@ function UsersTab({ token }: { token: string }) {
                   setInvRole("therapist");
                   setInvCode("");
                   setInvCommission("0.70");
+                  setInvBase("2000");
                 }}
                 className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
               >

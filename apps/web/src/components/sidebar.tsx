@@ -14,6 +14,7 @@ const navItems = [
   { href: "/finance", label: "財務管理", icon: "💳", roles: ["admin", "accountant", "staff"] },
   { href: "/reports", label: "營運報表", icon: "📈", roles: ["admin", "accountant"] },
   { href: "/admin", label: "系統管理", icon: "🔑", roles: ["admin"] },
+  { href: "/settings", label: "個人設定", icon: "⚙️" },
   { href: "/guide", label: "操作指南", icon: "📖" },
 ] as const;
 

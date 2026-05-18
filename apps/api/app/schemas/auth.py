@@ -18,5 +18,6 @@ class UserResponse(BaseModel):
     role: str
     user_code: str | None = None
     commission_rate: float | None = None
+    base_price: float | None = None
 
     model_config = {"from_attributes": True}

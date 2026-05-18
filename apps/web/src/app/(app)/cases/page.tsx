@@ -127,7 +127,7 @@ interface SessionRecord {
   therapist_doc_submitted_at: string | null;
 }
 
-interface Therapist { id: number; name: string; email: string; role: string; }
+interface Therapist { id: number; name: string; email: string; role: string; base_price?: number | null; }
 interface InstitutionItem { id: number; name: string; is_active: boolean; }
 interface RoomOption { id: number; name: string; floor: number; room_code: string; }
 
@@ -976,7 +976,8 @@ function AppointmentForm({
 }: {
   token: string; fixedCaseId?: number; fixedCaseName?: string; onClose: () => void; onSaved: () => void;
 }) {
-  const [cases, setCases] = useState<{ id: number; name: string }[]>([]);
+  const [cases, setCases] = useState<{ id: number; name: string; therapist_id: number }[]>([]);
+  const [therapists, setTherapists] = useState<Therapist[]>([]);
   const [rooms, setRooms] = useState<RoomOption[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -991,9 +992,31 @@ function AppointmentForm({
   });
 
   useEffect(() => {
-    if (!fixedCaseId) clientFetch("/cases", token).then(setCases).catch(() => {});
+    clientFetch("/auth/therapists", token).then(setTherapists).catch(() => {});
     clientFetch("/rooms", token).then(setRooms).catch(() => {});
+    if (fixedCaseId) {
+      clientFetch(`/cases/${fixedCaseId}`, token).then((c) => setCases([c])).catch(() => {});
+    } else {
+      clientFetch("/cases", token).then(setCases).catch(() => {});
+    }
   }, [token, fixedCaseId]);
+
+  // Resolve a case's therapist base price (default 2000 if unset)
+  const basePriceFor = (caseId: string) => {
+    const c = cases.find((x) => String(x.id) === caseId);
+    if (!c) return null;
+    const t = therapists.find((x) => x.id === c.therapist_id);
+    const bp = t?.base_price;
+    return bp != null ? String(bp) : "2000";
+  };
+
+  // Auto-fill amount when the selected case (and therefore therapist) resolves
+  useEffect(() => {
+    if (!form.case_id || cases.length === 0 || therapists.length === 0) return;
+    const bp = basePriceFor(form.case_id);
+    if (bp != null) setForm((prev) => ({ ...prev, amount: bp }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.case_id, cases, therapists]);
 
   const sf = (key: string, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
 
@@ -1169,7 +1192,8 @@ function BatchForm({
 }: {
   token: string; fixedCaseId?: number; fixedCaseName?: string; onClose: () => void; onSaved: () => void;
 }) {
-  const [cases, setCases] = useState<{ id: number; name: string }[]>([]);
+  const [cases, setCases] = useState<{ id: number; name: string; therapist_id: number }[]>([]);
+  const [therapists, setTherapists] = useState<Therapist[]>([]);
   const [rooms, setRooms] = useState<RoomOption[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -1199,9 +1223,29 @@ function BatchForm({
   const [slots, setSlots] = useState<{ date: string; start: string; end: string }[] | null>(null);
 
   useEffect(() => {
-    if (!fixedCaseId) clientFetch("/cases", token).then(setCases).catch(() => {});
+    clientFetch("/auth/therapists", token).then(setTherapists).catch(() => {});
     clientFetch("/rooms", token).then(setRooms).catch(() => {});
+    if (fixedCaseId) {
+      clientFetch(`/cases/${fixedCaseId}`, token).then((c) => setCases([c])).catch(() => {});
+    } else {
+      clientFetch("/cases", token).then(setCases).catch(() => {});
+    }
   }, [token, fixedCaseId]);
+
+  const basePriceFor = (caseId: string) => {
+    const c = cases.find((x) => String(x.id) === caseId);
+    if (!c) return null;
+    const t = therapists.find((x) => x.id === c.therapist_id);
+    const bp = t?.base_price;
+    return bp != null ? String(bp) : "2000";
+  };
+
+  useEffect(() => {
+    if (!form.case_id || cases.length === 0 || therapists.length === 0) return;
+    const bp = basePriceFor(form.case_id);
+    if (bp != null) setForm((prev) => ({ ...prev, amount: bp }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.case_id, cases, therapists]);
 
   const sf = (key: string, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
 
