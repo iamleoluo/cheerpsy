@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Date, DateTime, ForeignKey, Integer, Numeric, String
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, Numeric, String
 from sqlalchemy.orm import relationship as _rel
 
 from app.database import Base
@@ -23,6 +23,14 @@ class SessionRecord(Base):
     claim_number = Column(String(100), nullable=True)
     receipt_number = Column(String(100), nullable=True)
     commission_rate_used = Column(Numeric(4, 2), nullable=True)
+    funding_source = Column(String(20), nullable=True)  # snapshot of case.funding_source at materialization
+    receipt_no = Column(String(30), nullable=True, unique=True)  # clinic receipt no: R{YYYYMMDD}{seq:04d}
+    discount_amount = Column(Numeric(10, 2), nullable=False, default=0, server_default="0")
+    discount_note = Column(String(200), nullable=True)
+    is_void = Column(Boolean, nullable=False, default=False, server_default="false")
+    void_reason = Column(String(200), nullable=True)
+    voided_at = Column(DateTime(timezone=True), nullable=True)
+    voided_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     claim_batch_id = Column(Integer, ForeignKey("claim_batches.id"), nullable=True)
     therapist_doc_submitted_at = Column(DateTime(timezone=True), nullable=True)
     therapist_doc_submitted_by = Column(Integer, ForeignKey("users.id"), nullable=True)
