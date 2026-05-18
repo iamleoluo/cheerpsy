@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -19,8 +19,9 @@ from app.schemas.session_record import (
     SessionRecordUpdatePayment,
     SettlementRequest,
     SettlementResponse,
+    VoidRequest,
 )
-from app.services.settlement import run_daily_settlement
+from app.services.settlement import materialize_due_appointments, run_daily_settlement
 
 DEFAULT_COMMISSION_RATE = Decimal("0.70")
 
@@ -53,6 +54,10 @@ def _to_response(r: SessionRecord, db: Session) -> SessionRecordResponse:
     case = appt.case if appt else (db.query(Case).filter(Case.id == r.case_id).first() if r.case_id else None)
     therapist = appt.therapist if appt else db.query(User).filter(User.id == r.therapist_id).first()
     rate = _get_rate(r, db)
+    amount = float(r.amount)
+    discount = float(r.discount_amount or 0)
+    effective = round(amount - discount, 2)
+    funding = r.funding_source or (case.funding_source if case else None)
     return SessionRecordResponse(
         id=r.id,
         appointment_id=r.appointment_id,
@@ -65,20 +70,26 @@ def _to_response(r: SessionRecord, db: Session) -> SessionRecordResponse:
         session_type=r.session_type,
         room_id=r.room_id,
         fee_category=r.fee_category,
-        amount=float(r.amount),
-        therapist_share=round(float(r.amount) * float(rate), 2),
-        clinic_share=round(float(r.amount) * float(1 - rate), 2),
+        amount=amount,
+        discount_amount=discount,
+        discount_note=r.discount_note,
+        effective_amount=effective,
+        therapist_share=round(effective * float(rate), 2),
+        clinic_share=round(effective * float(1 - rate), 2),
         payment_status=r.payment_status,
-        funding_source=case.funding_source if case else None,
+        funding_source=funding,
         institution_name=case.institution.name if case and case.institution else None,
         payment_method=r.payment_method,
         payment_note=r.payment_note,
         claim_number=r.claim_number,
         receipt_number=r.receipt_number,
+        receipt_no=r.receipt_no,
         commission_rate_used=float(rate),
         claim_batch_id=r.claim_batch_id,
         therapist_doc_submitted_at=r.therapist_doc_submitted_at,
         locked_at=r.locked_at,
+        is_void=bool(r.is_void),
+        void_reason=r.void_reason,
     )
 
 
@@ -90,8 +101,8 @@ def list_records(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    from datetime import date
     import calendar
+    materialize_due_appointments(db)
     query = db.query(SessionRecord).options(
         joinedload(SessionRecord.appointment).joinedload(Appointment.case).joinedload(Case.institution),
         joinedload(SessionRecord.appointment).joinedload(Appointment.therapist),
@@ -142,8 +153,8 @@ def update_payment_status(
     r = db.query(SessionRecord).filter(SessionRecord.id == record_id).first()
     if not r:
         raise HTTPException(status_code=404, detail="Record not found")
-    if r.locked_at:
-        raise HTTPException(status_code=400, detail="Record is locked")
+    if r.is_void:
+        raise HTTPException(status_code=400, detail="Record is void")
 
     case = r.appointment.case if r.appointment else (
         db.query(Case).filter(Case.id == r.case_id).first() if r.case_id else None
@@ -243,8 +254,6 @@ def direct_edit_record(
     r = db.query(SessionRecord).filter(SessionRecord.id == record_id).first()
     if not r:
         raise HTTPException(status_code=404, detail="Record not found")
-    if r.locked_at:
-        raise HTTPException(status_code=400, detail="Record is locked")
 
     valid_statuses = {"unpaid", "paid", "claiming", "claimed"}
     if body.payment_status not in valid_statuses:
@@ -305,6 +314,43 @@ def confirm_doc_submission(
             if unconfirmed == 0:
                 batch.status = "ready"
 
+    db.commit()
+    db.refresh(r)
+    return _to_response(r, db)
+
+
+@router.put("/{record_id}/void", response_model=SessionRecordResponse)
+def void_record(
+    record_id: int,
+    body: VoidRequest = VoidRequest(),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    r = db.query(SessionRecord).filter(SessionRecord.id == record_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Record not found")
+    if r.is_void:
+        raise HTTPException(status_code=400, detail="Record already void")
+    if r.payment_status in ("paid", "claimed"):
+        raise HTTPException(status_code=400, detail="已收款/已請款的紀錄不可作廢")
+
+    if user.role == "therapist":
+        if r.therapist_id != user.id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        if r.session_date != date.today():
+            raise HTTPException(status_code=403, detail="心理師僅能於當日作廢，逾期請洽管理員")
+    elif user.role in ("admin", "staff"):
+        pass
+    else:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    before = {"is_void": r.is_void, "payment_status": r.payment_status}
+    r.is_void = True
+    r.void_reason = body.reason.strip() if body.reason else None
+    r.voided_at = datetime.now(timezone.utc)
+    r.voided_by = user.id
+    after = {"is_void": r.is_void, "void_reason": r.void_reason}
+    _write_audit(db, "session_records", r.id, "VOID", user.id, before, after, reason=r.void_reason)
     db.commit()
     db.refresh(r)
     return _to_response(r, db)

@@ -16,6 +16,9 @@ class SessionRecordResponse(BaseModel):
     room_id: int | None = None
     fee_category: str
     amount: float
+    discount_amount: float = 0
+    discount_note: str | None = None
+    effective_amount: float
     therapist_share: float
     clinic_share: float
     payment_status: str
@@ -25,10 +28,13 @@ class SessionRecordResponse(BaseModel):
     payment_note: str | None = None
     claim_number: str | None = None
     receipt_number: str | None = None
+    receipt_no: str | None = None
     commission_rate_used: float | None = None
     claim_batch_id: int | None = None
     therapist_doc_submitted_at: datetime | None = None
     locked_at: datetime | None = None
+    is_void: bool = False
+    void_reason: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -47,6 +53,10 @@ class SessionRecordDirectEdit(BaseModel):
     payment_note: str | None = None
     claim_number: str | None = None
     receipt_number: str | None = None
+
+
+class VoidRequest(BaseModel):
+    reason: str | None = None
 
 
 class SettlementRequest(BaseModel):

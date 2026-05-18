@@ -32,17 +32,3 @@ app.include_router(audit.router)
 app.include_router(export.router)
 app.include_router(claim_batches.router)
 app.include_router(notifications.router)
-
-
-@app.on_event("startup")
-def startup_auto_lock():
-    """On server start, auto-lock any past session records that weren't locked."""
-    from app.database import SessionLocal
-    from app.services.settlement import auto_lock_past_records
-    db = SessionLocal()
-    try:
-        count = auto_lock_past_records(db)
-        if count > 0:
-            print(f"[startup] Auto-locked {count} past session records")
-    finally:
-        db.close()
