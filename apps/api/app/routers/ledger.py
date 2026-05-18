@@ -173,6 +173,29 @@ def list_self_pay_unpaid(
     return [_to_response(r, db) for r in records]
 
 
+@router.get("/self-pay-all", response_model=list[SessionRecordResponse])
+def list_self_pay_all(
+    user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
+    db: Session = Depends(get_db),
+):
+    """All non-void self-pay session records (paid + unpaid), for finance tracking."""
+    materialize_due_appointments(db)
+    records = (
+        db.query(SessionRecord)
+        .options(
+            joinedload(SessionRecord.appointment).joinedload(Appointment.case).joinedload(Case.institution),
+            joinedload(SessionRecord.appointment).joinedload(Appointment.therapist),
+        )
+        .filter(
+            SessionRecord.is_void.is_(False),
+            SessionRecord.funding_source == "self_pay",
+        )
+        .order_by(SessionRecord.session_date.desc(), SessionRecord.case_id)
+        .all()
+    )
+    return [_to_response(r, db) for r in records]
+
+
 @router.get("/self-pay-cases", response_model=list[SelfPayCaseStat])
 def list_self_pay_cases(
     user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
