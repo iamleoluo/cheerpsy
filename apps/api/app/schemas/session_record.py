@@ -69,6 +69,7 @@ class DiscountRequest(BaseModel):
 class PayRequest(BaseModel):
     payment_method: str
     payment_note: str | None = None
+    paid_date: date | None = None  # actual collection date; defaults to now() if omitted
 
 
 class PayBatchRequest(BaseModel):
@@ -76,6 +77,7 @@ class PayBatchRequest(BaseModel):
     payment_method: str
     payment_note: str | None = None
     combine_receipt: bool = False
+    paid_date: date | None = None  # actual collection date; defaults to now() if omitted
 
 
 class SettlementRequest(BaseModel):
