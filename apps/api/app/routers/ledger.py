@@ -23,6 +23,7 @@ from app.schemas.session_record import (
     DiscountRequest,
     PayBatchRequest,
     PayRequest,
+    SelfPayCaseStat,
     SettlementRequest,
     SettlementResponse,
     VoidRequest,
@@ -170,6 +171,54 @@ def list_self_pay_unpaid(
         .all()
     )
     return [_to_response(r, db) for r in records]
+
+
+@router.get("/self-pay-cases", response_model=list[SelfPayCaseStat])
+def list_self_pay_cases(
+    user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
+    db: Session = Depends(get_db),
+):
+    """Aggregate all non-void self-pay session records by case, returning paid/unpaid counts."""
+    from collections import defaultdict
+    materialize_due_appointments(db)
+    records = (
+        db.query(SessionRecord)
+        .filter(
+            SessionRecord.is_void.is_(False),
+            SessionRecord.funding_source == "self_pay",
+        )
+        .order_by(SessionRecord.case_id, SessionRecord.session_date)
+        .all()
+    )
+
+    groups: dict[int, list] = defaultdict(list)
+    for r in records:
+        groups[r.case_id or 0].append(r)
+
+    result = []
+    for case_id, recs in groups.items():
+        case = db.query(Case).filter(Case.id == case_id).first() if case_id else None
+        therapist = db.query(User).filter(User.id == case.therapist_id).first() if case else None
+
+        def eff(r: SessionRecord) -> float:
+            return float(r.amount) - float(r.discount_amount or 0)
+
+        paid = [r for r in recs if r.payment_status in ("paid", "claimed")]
+        unpaid = [r for r in recs if r.payment_status == "unpaid"]
+        result.append(SelfPayCaseStat(
+            case_id=case_id,
+            case_name=case.name if case else f"#{case_id}",
+            therapist_name=therapist.name if therapist else None,
+            paid_count=len(paid),
+            unpaid_count=len(unpaid),
+            paid_amount=sum(eff(r) for r in paid),
+            unpaid_amount=sum(eff(r) for r in unpaid),
+            total_count=len(recs),
+            all_paid=(len(unpaid) == 0 and len(recs) > 0),
+        ))
+
+    result.sort(key=lambda s: (s.all_paid, s.case_name))
+    return result
 
 
 def _build_receipt_dicts(records: list[SessionRecord], db: Session) -> list[dict]:
