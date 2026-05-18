@@ -347,13 +347,26 @@ function SelfPayTrackingContent({ records, loading, reconDate }: { records: Self
 
   return (
     <div>
-      {unpaidTotal > 0 && (
-        <div className="mb-3 flex items-center gap-2 text-sm">
+      <div className="mb-3 flex flex-wrap items-center gap-4 text-sm">
+        {unpaidTotal > 0 && (
           <span className="rounded-full bg-amber-100 px-3 py-1 font-medium text-amber-700">
             待收合計 ${unpaidTotal.toLocaleString()}
           </span>
+        )}
+        {/* Legend: explain the progress dots */}
+        <div className="flex items-center gap-3 text-xs text-gray-500">
+          <span className="font-medium text-gray-600">療程付款進度：每個點代表一次療程</span>
+          <span className="flex items-center gap-1">
+            <span className="h-3 w-3 rounded-full border border-green-600 bg-green-500" /> 已付款
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="h-3 w-3 rounded-full border border-gray-300 bg-gray-200" /> 待付款
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="h-3 w-3 rounded-full border border-blue-500 bg-blue-400" /> 當日入帳
+          </span>
         </div>
-      )}
+      </div>
       <div className="overflow-x-auto rounded-lg border border-gray-200">
         <table className="w-full text-left text-sm">
           <thead className="bg-gray-50 text-xs uppercase text-gray-500">
