@@ -8,56 +8,44 @@ import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const helpContent: HelpContent = {
-  title: "核銷案管理",
-  overview: "將多筆諮商記錄打包成核銷批次，用於自費收款確認或機構統一請款。自費與機構走不同的狀態流程。",
+  title: "帳冊管理",
+  overview: "自費與機構帳務分流處理。自費不需建立核銷案，系統自動帶出個案所有未結清帳務，可逐筆或批次付款；機構維持核銷批次流程。",
   sections: [
     {
-      heading: "建立自費核銷案",
+      heading: "自費付款",
       type: "steps",
       items: [
-        "點「＋建立核銷案」，選「自費個案」",
-        "選擇個案（僅列出有未歸入帳的自費個案）",
-        "勾選要納入的諮商記錄，設定期間後建立",
-        "點「付款」→ 選現金或匯款，填寫匯款後 5 碼",
-        "確認後批次自動結案，可下載收據 PDF 存檔",
+        "切到「自費」分頁，系統依個案列出所有未收款帳務（次結/月結同一個案彙整）",
+        "逐筆點「付款」，或勾選多筆點「批次付款」",
+        "選現金或匯款，匯款填末 5 碼",
+        "付款後可下載收據；批次付款時可選擇合併單張或逐筆收據",
       ],
     },
     {
-      heading: "建立機構核銷案",
+      heading: "機構核銷案",
       type: "steps",
       items: [
-        "點「＋建立核銷案」，選「機構」",
-        "選擇機構（僅列出有未歸入帳的機構）",
-        "勾選諮商記錄，設定期間後建立（狀態：收款中）",
-        "心理師在日結帳冊逐筆點「確認文件」",
-        "全部確認後批次自動升為「文件備妥」",
-        "點「提交請款」，填入外部請款單號（狀態：已提交）",
-        "款項到帳後點「標記到款」→「結案」",
+        "切到「機構」分頁，點「＋建立核銷案」",
+        "選擇機構（僅列出有未歸入帳的機構），勾選紀錄，設定期間後建立",
+        "心理師於「文件確認」逐筆確認，全部確認後自動升「待送出」",
+        "點「提交請款」填外部單號 → 款項到帳「確認收款」→「結案」",
       ],
     },
     {
       heading: "狀態流程",
       type: "text",
       items: [
-        "自費：收款中 → 付款結案 → 列印收據",
-        "機構：收款中 → 文件備妥（自動）→ 已提交 → 款項到帳 → 結案",
-      ],
-    },
-    {
-      heading: "款項追蹤",
-      type: "tips",
-      items: [
-        "財務管理頁的「款項追蹤」可用進度條查看每筆核銷案的當前狀態",
-        "選擇日期可查看當天結案或到款的核銷案，方便與銀行帳務對賬",
+        "自費：未收款 → 付款（逐筆/批次）→ 可印收據",
+        "機構：收集中 → 文件備妥（自動）→ 已送出 → 已收款 → 已結案",
       ],
     },
     {
       heading: "管理員提示",
       type: "notes",
       items: [
-        "核銷案編號：自費 = S{週期碼}-{案號}-{YYYYMM}；機構 = I-{機構代碼}-{YYYYMM}",
-        "同一筆諮商記錄不能同時屬於兩個核銷案",
-        "自費核銷案不需要心理師文件確認，機構案需要",
+        "自費收據編號取自帳冊流水帳的收據編號；機構請款單號 = I-{機構代碼}-{YYYYMM}",
+        "自費不需要心理師文件確認，機構案需要",
+        "既有自費核銷案仍可於「歷史核銷案」檢視與重印收據",
       ],
     },
   ],
@@ -110,19 +98,32 @@ interface UnassignedRecord {
   therapist_doc_submitted_at: string | null;
 }
 
-interface CaseOption {
-  id: number;
-  name: string;
-  case_number: string | null;
-  billing_cycle: string;
-  institution_id: number | null;
-}
-
 interface InstitutionOption {
   id: number;
   name: string;
   code: string | null;
 }
+
+interface LedgerRecord {
+  id: number;
+  session_date: string;
+  case_id: number | null;
+  case_name: string | null;
+  therapist_name: string | null;
+  session_type: string;
+  amount: number;
+  discount_amount: number;
+  effective_amount: number;
+  payment_status: string;
+  receipt_no: string | null;
+  is_void: boolean;
+}
+
+const SESSION_TYPE_LABELS: Record<string, string> = {
+  in_person: "現場",
+  online: "線上",
+  home_visit: "到宅",
+};
 
 /* ───── main page ───── */
 
@@ -130,7 +131,8 @@ export default function ClaimsPage() {
   const { data: session } = useSession();
   const token = (session?.user as any)?.accessToken;
   const userRole = (session?.user as any)?.role;
-  const [tab, setTab] = useState<"batches" | "docs">("batches");
+  const [mode, setMode] = useState<"self_pay" | "institution">("self_pay");
+  const [instTab, setInstTab] = useState<"batches" | "docs">("batches");
   const [helpOpen, setHelpOpen] = useState(false);
 
   if (!token) return <p>Loading...</p>;
@@ -139,26 +141,26 @@ export default function ClaimsPage() {
     <div>
       <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} content={helpContent} />
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">核銷案管理</h1>
+        <h1 className="text-2xl font-bold">帳冊管理</h1>
         <button onClick={() => setHelpOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700">
           <span>ℹ️</span> 說明
         </button>
       </div>
 
-      <div className="mb-4 flex gap-1 border-b border-gray-200">
+      <div className="mb-4 flex gap-2">
         {(
           [
-            ["batches", "核銷案列表"],
-            ["docs", "文件確認"],
+            ["self_pay", "自費"],
+            ["institution", "機構"],
           ] as const
         ).map(([key, label]) => (
           <button
             key={key}
-            onClick={() => setTab(key)}
-            className={`px-4 py-2 text-sm font-medium transition-colors ${
-              tab === key
-                ? "border-b-2 border-primary-600 text-primary-600"
-                : "text-gray-500 hover:text-gray-700"
+            onClick={() => setMode(key)}
+            className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+              mode === key
+                ? "bg-primary-600 text-white"
+                : "border border-gray-300 text-gray-600 hover:bg-gray-50"
             }`}
           >
             {label}
@@ -166,8 +168,34 @@ export default function ClaimsPage() {
         ))}
       </div>
 
-      {tab === "batches" && <BatchListTab token={token} userRole={userRole} />}
-      {tab === "docs" && <DocConfirmTab token={token} userRole={userRole} />}
+      {mode === "self_pay" && <SelfPayTab token={token} userRole={userRole} />}
+
+      {mode === "institution" && (
+        <div>
+          <div className="mb-4 flex gap-1 border-b border-gray-200">
+            {(
+              [
+                ["batches", "核銷案列表"],
+                ["docs", "文件確認"],
+              ] as const
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setInstTab(key)}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  instTab === key
+                    ? "border-b-2 border-primary-600 text-primary-600"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {instTab === "batches" && <BatchListTab token={token} userRole={userRole} />}
+          {instTab === "docs" && <DocConfirmTab token={token} userRole={userRole} />}
+        </div>
+      )}
     </div>
   );
 }
@@ -190,7 +218,6 @@ const STATUS_COLORS: Record<string, string> = {
   received: "bg-green-100 text-green-800",
   closed: "bg-gray-100 text-gray-600",
 };
-const TYPE_LABELS: Record<string, string> = { self_pay: "自費", institution: "機構" };
 
 function StatusBadge({ status }: { status: string }) {
   return (
@@ -217,13 +244,322 @@ function downloadPdf(path: string, token: string, filename: string) {
 }
 
 /* ═══════════════════════════════════════════════
-   Tab 1 — 核銷案列表
+   自費 — per-record / batch payment (no claim batch)
+   ═══════════════════════════════════════════════ */
+
+function SelfPayPaymentModal({
+  token,
+  recordIds,
+  total,
+  onClose,
+  onDone,
+}: {
+  token: string;
+  recordIds: number[];
+  total: number;
+  onClose: () => void;
+  onDone: (ids: number[], combine: boolean) => void;
+}) {
+  const [method, setMethod] = useState<"cash" | "transfer">("cash");
+  const [note, setNote] = useState("");
+  const [combine, setCombine] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const isBatch = recordIds.length > 1;
+
+  const submit = async () => {
+    if (method === "transfer" && !note.trim()) {
+      alert("請填寫匯款資訊");
+      return;
+    }
+    setSaving(true);
+    try {
+      if (isBatch) {
+        await clientFetch("/ledger/pay-batch", token, {
+          method: "POST",
+          body: JSON.stringify({
+            record_ids: recordIds,
+            payment_method: method,
+            payment_note: note.trim() || null,
+            combine_receipt: combine,
+          }),
+        });
+      } else {
+        await clientFetch(`/ledger/${recordIds[0]}/pay`, token, {
+          method: "PUT",
+          body: JSON.stringify({ payment_method: method, payment_note: note.trim() || null }),
+        });
+      }
+      onDone(recordIds, isBatch ? combine : false);
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="w-80 rounded-lg bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <h3 className="mb-4 text-base font-semibold">{isBatch ? `批次付款（${recordIds.length} 筆）` : "確認付款"}</h3>
+        <p className="mb-3 text-sm text-gray-600">
+          合計：<strong>${total.toLocaleString()}</strong>
+        </p>
+
+        <fieldset className="mb-3">
+          <legend className="mb-1 text-xs font-medium text-gray-700">付款方式</legend>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="radio" checked={method === "cash"} onChange={() => setMethod("cash")} />
+            現金
+          </label>
+          <label className="mt-1 flex items-center gap-2 text-sm">
+            <input type="radio" checked={method === "transfer"} onChange={() => setMethod("transfer")} />
+            匯款
+          </label>
+        </fieldset>
+
+        <label className="mb-3 block">
+          <span className="text-xs font-medium text-gray-700">
+            匯款資訊{method === "cash" ? "（選填）" : "（必填）"}
+          </span>
+          <input
+            type="text"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder={method === "transfer" ? "請輸入末5碼或匯款帳號" : ""}
+            className="mt-1 block w-full rounded border px-2 py-1.5 text-sm"
+          />
+        </label>
+
+        {isBatch && (
+          <fieldset className="mb-4">
+            <legend className="mb-1 text-xs font-medium text-gray-700">收據</legend>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="radio" checked={combine} onChange={() => setCombine(true)} />
+              合併一張收據
+            </label>
+            <label className="mt-1 flex items-center gap-2 text-sm">
+              <input type="radio" checked={!combine} onChange={() => setCombine(false)} />
+              逐筆各一張
+            </label>
+          </fieldset>
+        )}
+
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="rounded px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100">
+            取消
+          </button>
+          <button
+            onClick={submit}
+            disabled={saving}
+            className="rounded bg-green-600 px-4 py-1.5 text-sm text-white hover:bg-green-700 disabled:opacity-50"
+          >
+            {saving ? "處理中…" : "確認付款"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
+  const [records, setRecords] = useState<LedgerRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [payIds, setPayIds] = useState<number[] | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState<ClaimBatch[]>([]);
+
+  const canEdit = ["admin", "staff"].includes(userRole);
+
+  const fetchRecords = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await clientFetch("/ledger/self-pay-unpaid", token);
+      setRecords(data);
+      setSelected(new Set());
+    } catch { /* ignore */ } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => { fetchRecords(); }, [fetchRecords]);
+
+  useEffect(() => {
+    if (showHistory) {
+      clientFetch("/claim-batches?type=self_pay", token).then(setHistory).catch(() => {});
+    }
+  }, [showHistory, token]);
+
+  // group by case
+  const groups = records.reduce<Record<string, LedgerRecord[]>>((acc, r) => {
+    const key = r.case_name ?? `#${r.case_id ?? "?"}`;
+    (acc[key] ||= []).push(r);
+    return acc;
+  }, {});
+
+  const toggle = (id: number) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const selectedTotal = records
+    .filter((r) => selected.has(r.id))
+    .reduce((s, r) => s + r.effective_amount, 0);
+
+  const afterPay = (ids: number[], combine: boolean) => {
+    if (ids.length === 1) {
+      downloadPdf(`/ledger/${ids[0]}/receipt`, token, `receipt-${ids[0]}.pdf`);
+    } else if (combine) {
+      downloadPdf(`/ledger/receipt?record_ids=${ids.join(",")}`, token, `receipt-combined.pdf`);
+    } else {
+      ids.forEach((id) => downloadPdf(`/ledger/${id}/receipt`, token, `receipt-${id}.pdf`));
+    }
+    setPayIds(null);
+    fetchRecords();
+  };
+
+  return (
+    <div>
+      {payIds && (
+        <SelfPayPaymentModal
+          token={token}
+          recordIds={payIds}
+          total={records.filter((r) => payIds.includes(r.id)).reduce((s, r) => s + r.effective_amount, 0)}
+          onClose={() => setPayIds(null)}
+          onDone={afterPay}
+        />
+      )}
+
+      <div className="mb-3 flex items-center gap-3">
+        {canEdit && selected.size > 0 && (
+          <button
+            onClick={() => setPayIds([...selected])}
+            className="rounded bg-green-600 px-4 py-1.5 text-sm text-white hover:bg-green-700"
+          >
+            批次付款（{selected.size} 筆 ${selectedTotal.toLocaleString()}）
+          </button>
+        )}
+        <button
+          onClick={() => setShowHistory((v) => !v)}
+          className="ml-auto text-sm text-primary-600 hover:underline"
+        >
+          {showHistory ? "← 回未收款" : "歷史核銷案"}
+        </button>
+      </div>
+
+      {showHistory ? (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-gray-50 text-left text-xs text-gray-500">
+                <th className="px-3 py-2">編號</th>
+                <th className="px-3 py-2">個案</th>
+                <th className="px-3 py-2">期間</th>
+                <th className="px-3 py-2 text-right">金額</th>
+                <th className="px-3 py-2">狀態</th>
+                <th className="px-3 py-2">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.length === 0 ? (
+                <tr><td colSpan={6} className="py-6 text-center text-gray-400">無歷史核銷案</td></tr>
+              ) : history.map((b) => (
+                <tr key={b.id} className="border-b hover:bg-gray-50">
+                  <td className="px-3 py-2 font-mono text-xs">{b.batch_number}</td>
+                  <td className="px-3 py-2">{b.case_name}</td>
+                  <td className="px-3 py-2 text-xs">{b.period_start ?? ""} ~ {b.period_end ?? ""}</td>
+                  <td className="px-3 py-2 text-right">${b.total_amount.toLocaleString()}</td>
+                  <td className="px-3 py-2"><StatusBadge status={b.status} /></td>
+                  <td className="px-3 py-2">
+                    <button
+                      onClick={() => downloadPdf(`/claim-batches/${b.id}/receipt`, token, `receipt-${b.batch_number}.pdf`)}
+                      className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-100"
+                    >
+                      重印收據
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : loading ? (
+        <div className="py-8 text-center text-gray-400">載入中...</div>
+      ) : records.length === 0 ? (
+        <div className="py-8 text-center text-gray-400">沒有待收款的自費帳務 🎉</div>
+      ) : (
+        <div className="space-y-5">
+          {Object.entries(groups).map(([caseName, rs]) => {
+            const groupTotal = rs.reduce((s, r) => s + r.effective_amount, 0);
+            return (
+              <div key={caseName} className="rounded-lg border border-gray-200">
+                <div className="flex items-center justify-between border-b bg-gray-50 px-4 py-2">
+                  <span className="font-medium">{caseName}</span>
+                  <span className="text-sm text-gray-500">{rs.length} 筆 · ${groupTotal.toLocaleString()}</span>
+                </div>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-xs text-gray-500">
+                      {canEdit && <th className="px-3 py-2 w-8"></th>}
+                      <th className="px-3 py-2">收據編號</th>
+                      <th className="px-3 py-2">日期</th>
+                      <th className="px-3 py-2">心理師</th>
+                      <th className="px-3 py-2">類型</th>
+                      <th className="px-3 py-2 text-right">金額</th>
+                      <th className="px-3 py-2">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rs.map((r) => (
+                      <tr key={r.id} className="border-b hover:bg-gray-50">
+                        {canEdit && (
+                          <td className="px-3 py-2">
+                            <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)} />
+                          </td>
+                        )}
+                        <td className="px-3 py-2 font-mono text-xs">{r.receipt_no ?? "-"}</td>
+                        <td className="px-3 py-2">{r.session_date}</td>
+                        <td className="px-3 py-2">{r.therapist_name}</td>
+                        <td className="px-3 py-2">{SESSION_TYPE_LABELS[r.session_type] ?? r.session_type}</td>
+                        <td className="px-3 py-2 text-right">
+                          ${r.effective_amount.toLocaleString()}
+                          {r.discount_amount > 0 && (
+                            <span className="ml-1 text-xs text-amber-600">(優待 ${r.discount_amount.toLocaleString()})</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          {canEdit && (
+                            <button
+                              onClick={() => setPayIds([r.id])}
+                              className="rounded bg-green-600 px-2 py-0.5 text-xs text-white hover:bg-green-700"
+                            >
+                              付款
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════
+   機構 — 核銷案列表 (institution only)
    ═══════════════════════════════════════════════ */
 
 function BatchListTab({ token, userRole }: { token: string; userRole: string }) {
   const [batches, setBatches] = useState<ClaimBatch[]>([]);
   const [statusFilter, setStatusFilter] = useState("");
-  const [typeFilter, setTypeFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -231,16 +567,14 @@ function BatchListTab({ token, userRole }: { token: string; userRole: string }) 
   const fetchBatches = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
+      const params = new URLSearchParams({ type: "institution" });
       if (statusFilter) params.set("status", statusFilter);
-      if (typeFilter) params.set("type", typeFilter);
-      const qs = params.toString();
-      const data = await clientFetch(`/claim-batches${qs ? `?${qs}` : ""}`, token);
+      const data = await clientFetch(`/claim-batches?${params.toString()}`, token);
       setBatches(data);
     } catch { /* ignore */ } finally {
       setLoading(false);
     }
-  }, [token, statusFilter, typeFilter]);
+  }, [token, statusFilter]);
 
   useEffect(() => { fetchBatches(); }, [fetchBatches]);
 
@@ -248,7 +582,6 @@ function BatchListTab({ token, userRole }: { token: string; userRole: string }) 
 
   return (
     <div>
-      {/* Filters + Create button */}
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <select
           value={statusFilter}
@@ -259,15 +592,6 @@ function BatchListTab({ token, userRole }: { token: string; userRole: string }) 
           {Object.entries(STATUS_LABELS).map(([k, v]) => (
             <option key={k} value={k}>{v}</option>
           ))}
-        </select>
-        <select
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
-          className="rounded border border-gray-300 px-3 py-1.5 text-sm"
-        >
-          <option value="">全部類型</option>
-          <option value="self_pay">自費</option>
-          <option value="institution">機構</option>
         </select>
         {canEdit && (
           <button
@@ -290,15 +614,14 @@ function BatchListTab({ token, userRole }: { token: string; userRole: string }) 
       {loading ? (
         <div className="py-8 text-center text-gray-400">載入中...</div>
       ) : batches.length === 0 ? (
-        <div className="py-8 text-center text-gray-400">目前沒有核銷案</div>
+        <div className="py-8 text-center text-gray-400">目前沒有機構核銷案</div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-gray-50 text-left text-xs text-gray-500">
                 <th className="px-3 py-2">編號</th>
-                <th className="px-3 py-2">類型</th>
-                <th className="px-3 py-2">個案/機構</th>
+                <th className="px-3 py-2">機構</th>
                 <th className="px-3 py-2">期間</th>
                 <th className="px-3 py-2 text-right">金額</th>
                 <th className="px-3 py-2">紀錄</th>
@@ -326,101 +649,6 @@ function BatchListTab({ token, userRole }: { token: string; userRole: string }) 
   );
 }
 
-/* ── Batch row + expandable detail ── */
-
-/* ── Payment Modal (self-pay only) ── */
-
-function PaymentModal({
-  batch,
-  token,
-  onClose,
-  onDone,
-}: {
-  batch: ClaimBatch;
-  token: string;
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const [method, setMethod] = useState<"cash" | "transfer">("cash");
-  const [note, setNote] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  const handleSubmit = async () => {
-    if (method === "transfer" && !note.trim()) {
-      alert("請填寫匯款資訊");
-      return;
-    }
-    setSaving(true);
-    try {
-      // 1. Save payment info
-      await clientFetch(`/claim-batches/${batch.id}`, token, {
-        method: "PUT",
-        body: JSON.stringify({
-          payment_method: method,
-          payment_note: note.trim() || null,
-        }),
-      });
-      // 2. Close the batch
-      await clientFetch(`/claim-batches/${batch.id}/close`, token, { method: "PUT" });
-      onDone();
-    } catch (e: any) {
-      alert(e.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="w-80 rounded-lg bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <h3 className="mb-4 text-base font-semibold">確認付款</h3>
-        <p className="mb-3 text-sm text-gray-600">
-          核銷案：<span className="font-mono">{batch.batch_number}</span><br />
-          金額：<strong>${batch.total_amount.toLocaleString()}</strong>
-        </p>
-
-        <fieldset className="mb-3">
-          <legend className="mb-1 text-xs font-medium text-gray-700">付款方式</legend>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="radio" value="cash" checked={method === "cash"} onChange={() => setMethod("cash")} />
-            現金
-          </label>
-          <label className="flex items-center gap-2 text-sm mt-1">
-            <input type="radio" value="transfer" checked={method === "transfer"} onChange={() => setMethod("transfer")} />
-            匯款
-          </label>
-        </fieldset>
-
-        <label className="block mb-4">
-          <span className="text-xs font-medium text-gray-700">
-            匯款資訊{method === "cash" ? "（選填）" : "（必填）"}
-          </span>
-          <input
-            type="text"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder={method === "transfer" ? "請輸入末5碼或匯款帳號" : ""}
-            className="mt-1 block w-full rounded border px-2 py-1.5 text-sm"
-          />
-        </label>
-
-        <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="rounded px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100">
-            取消
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={saving}
-            className="rounded bg-green-600 px-4 py-1.5 text-sm text-white hover:bg-green-700 disabled:opacity-50"
-          >
-            {saving ? "處理中…" : "確認付款"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function BatchRow({
   batch: b,
   token,
@@ -441,7 +669,6 @@ function BatchRow({
   const [extRef, setExtRef] = useState(b.external_ref ?? "");
   const [payMethod, setPayMethod] = useState(b.payment_method ?? "");
   const [payNote, setPayNote] = useState(b.payment_note ?? "");
-  const [showPayModal, setShowPayModal] = useState(false);
 
   useEffect(() => {
     if (expanded) {
@@ -473,21 +700,10 @@ function BatchRow({
 
   return (
     <>
-      {showPayModal && (
-        <PaymentModal
-          batch={b}
-          token={token}
-          onClose={() => setShowPayModal(false)}
-          onDone={() => { setShowPayModal(false); onRefresh(); }}
-        />
-      )}
       <tr className="border-b hover:bg-gray-50 cursor-pointer" onClick={onToggle}>
         <td className="px-3 py-2 font-mono text-xs">{b.batch_number}</td>
-        <td className="px-3 py-2">{TYPE_LABELS[b.type] ?? b.type}</td>
-        <td className="px-3 py-2">{b.type === "self_pay" ? b.case_name : b.institution_name}</td>
-        <td className="px-3 py-2 text-xs">
-          {b.period_start ?? ""} ~ {b.period_end ?? ""}
-        </td>
+        <td className="px-3 py-2">{b.institution_name}</td>
+        <td className="px-3 py-2 text-xs">{b.period_start ?? ""} ~ {b.period_end ?? ""}</td>
         <td className="px-3 py-2 text-right">${b.total_amount.toLocaleString()}</td>
         <td className="px-3 py-2 text-xs">
           {b.confirmed_count}/{b.record_count}
@@ -498,41 +714,22 @@ function BatchRow({
         <td className="px-3 py-2"><StatusBadge status={b.status} /></td>
         <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
           <div className="flex flex-wrap gap-1">
-            {/* ── Self-pay flow ── */}
-            {b.type === "self_pay" && canEdit && ["collecting", "ready"].includes(b.status) && (
-              <button
-                onClick={() => setShowPayModal(true)}
-                className="rounded bg-green-600 px-2 py-0.5 text-xs text-white hover:bg-green-700"
-              >
-                付款
-              </button>
-            )}
-            {b.type === "self_pay" && b.status === "closed" && (
-              <button
-                onClick={() => downloadPdf(`/claim-batches/${b.id}/receipt`, token, `receipt-${b.batch_number}.pdf`)}
-                className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-100"
-              >
-                列印收據
-              </button>
-            )}
-
-            {/* ── Institution flow ── */}
-            {b.type === "institution" && canEdit && (b.status === "collecting" || b.status === "ready") && (
+            {canEdit && (b.status === "collecting" || b.status === "ready") && (
               <button onClick={() => transition("submit")} className="rounded bg-blue-600 px-2 py-0.5 text-xs text-white hover:bg-blue-700">
                 提交請款
               </button>
             )}
-            {b.type === "institution" && canEdit && b.status === "submitted" && (
+            {canEdit && b.status === "submitted" && (
               <button onClick={() => transition("receive")} className="rounded bg-green-600 px-2 py-0.5 text-xs text-white hover:bg-green-700">
                 確認收款
               </button>
             )}
-            {b.type === "institution" && canEdit && ["submitted", "received"].includes(b.status) && (
+            {canEdit && ["submitted", "received"].includes(b.status) && (
               <button onClick={() => transition("close")} className="rounded bg-gray-600 px-2 py-0.5 text-xs text-white hover:bg-gray-700">
                 結案
               </button>
             )}
-            {b.type === "institution" && b.status === "closed" && (
+            {b.status === "closed" && (
               <button
                 onClick={() => downloadPdf(`/claim-batches/${b.id}/claim-form`, token, `claim-${b.batch_number}.pdf`)}
                 className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-100"
@@ -545,8 +742,7 @@ function BatchRow({
       </tr>
       {expanded && (
         <tr>
-          <td colSpan={8} className="border-b bg-gray-50 px-4 py-3">
-            {/* Edit external_ref / payment info */}
+          <td colSpan={7} className="border-b bg-gray-50 px-4 py-3">
             {canEdit && (
               <div className="mb-3">
                 {editRef ? (
@@ -578,7 +774,6 @@ function BatchRow({
               </div>
             )}
 
-            {/* Records detail */}
             {records.length === 0 ? (
               <p className="text-xs text-gray-400">無紀錄</p>
             ) : (
@@ -591,9 +786,7 @@ function BatchRow({
                     <th className="px-2 py-1">類型</th>
                     <th className="px-2 py-1 text-right">金額</th>
                     <th className="px-2 py-1">付款狀態</th>
-                    {b.type === "institution" && (
-                      <th className="px-2 py-1">文件確認</th>
-                    )}
+                    <th className="px-2 py-1">文件確認</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -602,18 +795,16 @@ function BatchRow({
                       <td className="px-2 py-1">{r.session_date}</td>
                       <td className="px-2 py-1">{r.case_name}</td>
                       <td className="px-2 py-1">{r.therapist_name}</td>
-                      <td className="px-2 py-1">{r.session_type}</td>
+                      <td className="px-2 py-1">{SESSION_TYPE_LABELS[r.session_type] ?? r.session_type}</td>
                       <td className="px-2 py-1 text-right">${r.amount.toLocaleString()}</td>
                       <td className="px-2 py-1">{r.payment_status}</td>
-                      {b.type === "institution" && (
-                        <td className="px-2 py-1">
-                          {r.therapist_doc_submitted_at ? (
-                            <span className="text-green-600">&#10003; 已確認</span>
-                          ) : (
-                            <span className="text-amber-600">待確認</span>
-                          )}
-                        </td>
-                      )}
+                      <td className="px-2 py-1">
+                        {r.therapist_doc_submitted_at ? (
+                          <span className="text-green-600">&#10003; 已確認</span>
+                        ) : (
+                          <span className="text-amber-600">待確認</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -626,7 +817,7 @@ function BatchRow({
   );
 }
 
-/* ── Create batch modal ── */
+/* ── Create batch modal (institution only) ── */
 
 function CreateBatchModal({
   token,
@@ -637,10 +828,7 @@ function CreateBatchModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const [batchType, setBatchType] = useState<"self_pay" | "institution">("self_pay");
-  const [cases, setCases] = useState<CaseOption[]>([]);
   const [institutions, setInstitutions] = useState<InstitutionOption[]>([]);
-  const [selectedCaseId, setSelectedCaseId] = useState<number | "">("");
   const [selectedInstId, setSelectedInstId] = useState<number | "">("");
   const [periodStart, setPeriodStart] = useState("");
   const [periodEnd, setPeriodEnd] = useState("");
@@ -649,19 +837,15 @@ function CreateBatchModal({
   const [submitting, setSubmitting] = useState(false);
   const [step, setStep] = useState(1);
 
-  // Load eligible cases/institutions (only those with unassigned records)
   useEffect(() => {
-    clientFetch(`/claim-batches/eligible-cases?type=${batchType}`, token).then(setCases).catch(() => {});
     clientFetch("/claim-batches/eligible-institutions", token).then(setInstitutions).catch(() => {});
-  }, [token, batchType]);
+  }, [token]);
 
   const loadUnassigned = async () => {
     const params = new URLSearchParams();
-    if (batchType === "self_pay" && selectedCaseId) params.set("case_id", String(selectedCaseId));
-    if (batchType === "institution" && selectedInstId) params.set("institution_id", String(selectedInstId));
-    const qs = params.toString();
+    if (selectedInstId) params.set("institution_id", String(selectedInstId));
     try {
-      const data = await clientFetch(`/claim-batches/unassigned/records${qs ? `?${qs}` : ""}`, token);
+      const data = await clientFetch(`/claim-batches/unassigned/records?${params.toString()}`, token);
       setUnassigned(data);
       setSelectedIds(new Set(data.map((r: UnassignedRecord) => r.id)));
       setStep(2);
@@ -679,25 +863,21 @@ function CreateBatchModal({
   };
 
   const toggleAll = () => {
-    if (selectedIds.size === unassigned.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(unassigned.map((r) => r.id)));
-    }
+    if (selectedIds.size === unassigned.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(unassigned.map((r) => r.id)));
   };
 
   const handleCreate = async () => {
     if (selectedIds.size === 0) { alert("請至少勾選一筆紀錄"); return; }
     setSubmitting(true);
     try {
-      const selectedCase = cases.find((c) => c.id === selectedCaseId);
       await clientFetch("/claim-batches", token, {
         method: "POST",
         body: JSON.stringify({
-          type: batchType,
-          case_id: batchType === "self_pay" ? selectedCaseId || null : null,
-          institution_id: batchType === "institution" ? selectedInstId || null : null,
-          billing_cycle: selectedCase?.billing_cycle ?? null,
+          type: "institution",
+          case_id: null,
+          institution_id: selectedInstId || null,
+          billing_cycle: null,
           period_start: periodStart || null,
           period_end: periodEnd || null,
           session_record_ids: [...selectedIds],
@@ -717,59 +897,27 @@ function CreateBatchModal({
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 pt-20" onClick={onClose}>
       <div className="w-full max-w-3xl rounded-lg bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold">建立核銷案</h2>
+          <h2 className="text-lg font-bold">建立機構核銷案</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
         </div>
 
         {step === 1 && (
           <div className="space-y-4">
             <div>
-              <label className="mb-1 block text-sm font-medium">類型</label>
-              <div className="flex gap-3">
-                {(["self_pay", "institution"] as const).map((t) => (
-                  <label key={t} className="flex items-center gap-1 text-sm">
-                    <input type="radio" name="btype" checked={batchType === t} onChange={() => { setBatchType(t); setSelectedCaseId(""); setSelectedInstId(""); }} />
-                    {TYPE_LABELS[t]}
-                  </label>
+              <label className="mb-1 block text-sm font-medium">機構</label>
+              <select
+                value={selectedInstId}
+                onChange={(e) => setSelectedInstId(e.target.value ? Number(e.target.value) : "")}
+                className="w-full rounded border px-3 py-2 text-sm"
+              >
+                <option value="">-- 選擇機構 --</option>
+                {institutions.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.code ? `[${i.code}] ` : ""}{i.name}
+                  </option>
                 ))}
-              </div>
+              </select>
             </div>
-
-            {batchType === "self_pay" && (
-              <div>
-                <label className="mb-1 block text-sm font-medium">個案</label>
-                <select
-                  value={selectedCaseId}
-                  onChange={(e) => setSelectedCaseId(e.target.value ? Number(e.target.value) : "")}
-                  className="w-full rounded border px-3 py-2 text-sm"
-                >
-                  <option value="">-- 選擇個案 --</option>
-                  {cases.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.case_number ? `[${c.case_number}] ` : ""}{c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {batchType === "institution" && (
-              <div>
-                <label className="mb-1 block text-sm font-medium">機構</label>
-                <select
-                  value={selectedInstId}
-                  onChange={(e) => setSelectedInstId(e.target.value ? Number(e.target.value) : "")}
-                  className="w-full rounded border px-3 py-2 text-sm"
-                >
-                  <option value="">-- 選擇機構 --</option>
-                  {institutions.map((i) => (
-                    <option key={i.id} value={i.id}>
-                      {i.code ? `[${i.code}] ` : ""}{i.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
 
             <div className="flex gap-3">
               <div className="flex-1">
@@ -786,7 +934,7 @@ function CreateBatchModal({
               <button onClick={onClose} className="rounded border px-4 py-2 text-sm">取消</button>
               <button
                 onClick={loadUnassigned}
-                disabled={(batchType === "self_pay" && !selectedCaseId) || (batchType === "institution" && !selectedInstId)}
+                disabled={!selectedInstId}
                 className="rounded bg-primary-600 px-4 py-2 text-sm text-white hover:bg-primary-700 disabled:opacity-50"
               >
                 下一步：選擇紀錄
@@ -828,7 +976,7 @@ function CreateBatchModal({
                         <td className="px-2 py-1">{r.session_date}</td>
                         <td className="px-2 py-1">{r.case_name}</td>
                         <td className="px-2 py-1">{r.therapist_name}</td>
-                        <td className="px-2 py-1">{r.session_type}</td>
+                        <td className="px-2 py-1">{SESSION_TYPE_LABELS[r.session_type] ?? r.session_type}</td>
                         <td className="px-2 py-1 text-right">${r.amount.toLocaleString()}</td>
                         <td className="px-2 py-1">
                           {r.therapist_doc_submitted_at ? (
@@ -862,7 +1010,7 @@ function CreateBatchModal({
 }
 
 /* ═══════════════════════════════════════════════
-   Tab 2 — 文件確認（心理師用）
+   文件確認（心理師用）
    ═══════════════════════════════════════════════ */
 
 function DocConfirmTab({ token, userRole }: { token: string; userRole: string }) {
@@ -921,7 +1069,7 @@ function DocConfirmTab({ token, userRole }: { token: string; userRole: string })
                 <tr key={r.id} className="border-b hover:bg-gray-50">
                   <td className="px-3 py-2">{r.session_date}</td>
                   <td className="px-3 py-2">{r.case_name}</td>
-                  <td className="px-3 py-2">{r.session_type}</td>
+                  <td className="px-3 py-2">{SESSION_TYPE_LABELS[r.session_type] ?? r.session_type}</td>
                   <td className="px-3 py-2 text-right">${r.amount?.toLocaleString()}</td>
                   <td className="px-3 py-2 font-mono text-xs">{r.claim_batch_number ?? `#${r.claim_batch_id}`}</td>
                   <td className="px-3 py-2">

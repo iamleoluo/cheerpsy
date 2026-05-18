@@ -1,7 +1,10 @@
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
+import io
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 
@@ -17,10 +20,13 @@ from app.schemas.session_record import (
     SessionRecordDirectEdit,
     SessionRecordResponse,
     SessionRecordUpdatePayment,
+    PayBatchRequest,
+    PayRequest,
     SettlementRequest,
     SettlementResponse,
     VoidRequest,
 )
+from app.services.pdf_generator import generate_self_pay_receipt
 from app.services.settlement import materialize_due_appointments, run_daily_settlement
 
 DEFAULT_COMMISSION_RATE = Decimal("0.70")
@@ -47,6 +53,18 @@ def _get_rate(r: SessionRecord, db: Session) -> Decimal:
     if therapist and therapist.commission_rate is not None:
         return Decimal(str(therapist.commission_rate))
     return DEFAULT_COMMISSION_RATE
+
+
+def _validate_and_set_payment(r: SessionRecord, method: str | None, note: str | None):
+    if not method or method not in ("cash", "transfer"):
+        raise HTTPException(status_code=400, detail="請選擇收款方式（現金或匯款）")
+    r.payment_method = method
+    if method == "transfer":
+        if not note or not note.strip():
+            raise HTTPException(status_code=400, detail="匯款資訊為必填（如帳戶末五碼）")
+        r.payment_note = note.strip()
+    else:
+        r.payment_note = note.strip() if note else None
 
 
 def _to_response(r: SessionRecord, db: Session) -> SessionRecordResponse:
@@ -127,6 +145,75 @@ def list_records(
     q = query.order_by(SessionRecord.session_date.desc())
     records = (q.all() if limit is None else q.limit(limit).all())
     return [_to_response(r, db) for r in records]
+
+
+@router.get("/self-pay-unpaid", response_model=list[SessionRecordResponse])
+def list_self_pay_unpaid(
+    user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
+    db: Session = Depends(get_db),
+):
+    """Self-pay records awaiting payment (no claim batch needed). Grouped by case client-side."""
+    materialize_due_appointments(db)
+    records = (
+        db.query(SessionRecord)
+        .options(
+            joinedload(SessionRecord.appointment).joinedload(Appointment.case).joinedload(Case.institution),
+            joinedload(SessionRecord.appointment).joinedload(Appointment.therapist),
+        )
+        .filter(
+            SessionRecord.payment_status == "unpaid",
+            SessionRecord.is_void.is_(False),
+            SessionRecord.funding_source == "self_pay",
+        )
+        .order_by(SessionRecord.case_id, SessionRecord.session_date)
+        .all()
+    )
+    return [_to_response(r, db) for r in records]
+
+
+def _build_receipt_dicts(records: list[SessionRecord], db: Session) -> list[dict]:
+    out = []
+    for r in records:
+        appt = r.appointment
+        therapist = appt.therapist if appt else db.query(User).filter(User.id == r.therapist_id).first()
+        out.append({
+            "session_date": r.session_date,
+            "therapist_name": therapist.name if therapist else "",
+            "session_type": {"in_person": "現場", "online": "線上", "home_visit": "到宅"}.get(r.session_type, r.session_type),
+            "amount": float(r.amount) - float(r.discount_amount or 0),
+        })
+    return out
+
+
+@router.get("/receipt")
+def download_combined_receipt(
+    record_ids: str = Query(..., description="comma-separated session_record ids"),
+    user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
+    db: Session = Depends(get_db),
+):
+    ids = [int(x) for x in record_ids.split(",") if x.strip()]
+    records = db.query(SessionRecord).filter(SessionRecord.id.in_(ids)).all()
+    if not records:
+        raise HTTPException(status_code=404, detail="No records found")
+    records.sort(key=lambda r: (r.session_date, r.id))
+    case = db.query(Case).filter(Case.id == records[0].case_id).first() if records[0].case_id else None
+    dicts = _build_receipt_dicts(records, db)
+    total = sum(d["amount"] for d in dicts)
+    dates = sorted(r.session_date for r in records)
+    label = f"R{dates[0].strftime('%Y%m%d')}-{len(records)}筆"
+    pdf = generate_self_pay_receipt(
+        batch_number=label,
+        case_name=case.name if case else "N/A",
+        period_start=dates[0],
+        period_end=dates[-1],
+        records=dicts,
+        total_amount=total,
+    )
+    return StreamingResponse(
+        io.BytesIO(pdf),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="receipt-{label}.pdf"'},
+    )
 
 
 @router.get("/{record_id}", response_model=SessionRecordResponse)
@@ -354,6 +441,89 @@ def void_record(
     db.commit()
     db.refresh(r)
     return _to_response(r, db)
+
+
+@router.put("/{record_id}/pay", response_model=SessionRecordResponse)
+def pay_self_pay_record(
+    record_id: int,
+    body: PayRequest,
+    user: User = Depends(RequireRole(["admin", "staff"])),
+    db: Session = Depends(get_db),
+):
+    r = db.query(SessionRecord).filter(SessionRecord.id == record_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Record not found")
+    if r.is_void:
+        raise HTTPException(status_code=400, detail="Record is void")
+    if r.payment_status != "unpaid":
+        raise HTTPException(status_code=400, detail="僅未收款的紀錄可付款")
+    if (r.funding_source or "self_pay") != "self_pay":
+        raise HTTPException(status_code=400, detail="此功能僅適用自費紀錄")
+    before = {"payment_status": r.payment_status, "payment_method": r.payment_method}
+    _validate_and_set_payment(r, body.payment_method, body.payment_note)
+    r.payment_status = "paid"
+    after = {"payment_status": r.payment_status, "payment_method": r.payment_method}
+    _write_audit(db, "session_records", r.id, "UPDATE", user.id, before, after)
+    db.commit()
+    db.refresh(r)
+    return _to_response(r, db)
+
+
+@router.post("/pay-batch")
+def pay_batch(
+    body: PayBatchRequest,
+    user: User = Depends(RequireRole(["admin", "staff"])),
+    db: Session = Depends(get_db),
+):
+    if not body.record_ids:
+        raise HTTPException(status_code=400, detail="未選擇任何紀錄")
+    records = db.query(SessionRecord).filter(SessionRecord.id.in_(body.record_ids)).all()
+    if len(records) != len(set(body.record_ids)):
+        raise HTTPException(status_code=400, detail="部分紀錄不存在")
+    for r in records:
+        if r.is_void:
+            raise HTTPException(status_code=400, detail=f"紀錄 {r.id} 已作廢")
+        if r.payment_status != "unpaid":
+            raise HTTPException(status_code=400, detail=f"紀錄 {r.id} 非未收款狀態")
+        if (r.funding_source or "self_pay") != "self_pay":
+            raise HTTPException(status_code=400, detail=f"紀錄 {r.id} 非自費")
+    for r in records:
+        before = {"payment_status": r.payment_status}
+        _validate_and_set_payment(r, body.payment_method, body.payment_note)
+        r.payment_status = "paid"
+        _write_audit(db, "session_records", r.id, "UPDATE", user.id, before, {"payment_status": "paid"})
+    db.commit()
+    return {
+        "paid": len(records),
+        "record_ids": [r.id for r in records],
+        "combine_receipt": body.combine_receipt,
+    }
+
+
+@router.get("/{record_id}/receipt")
+def download_record_receipt(
+    record_id: int,
+    user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
+    db: Session = Depends(get_db),
+):
+    r = db.query(SessionRecord).filter(SessionRecord.id == record_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Record not found")
+    case = db.query(Case).filter(Case.id == r.case_id).first() if r.case_id else None
+    dicts = _build_receipt_dicts([r], db)
+    pdf = generate_self_pay_receipt(
+        batch_number=r.receipt_no or f"R{r.id}",
+        case_name=case.name if case else "N/A",
+        period_start=r.session_date,
+        period_end=r.session_date,
+        records=dicts,
+        total_amount=dicts[0]["amount"],
+    )
+    return StreamingResponse(
+        io.BytesIO(pdf),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="receipt-{r.receipt_no or r.id}.pdf"'},
+    )
 
 
 @router.post("/settle", response_model=SettlementResponse)

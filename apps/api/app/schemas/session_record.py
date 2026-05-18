@@ -59,6 +59,18 @@ class VoidRequest(BaseModel):
     reason: str | None = None
 
 
+class PayRequest(BaseModel):
+    payment_method: str
+    payment_note: str | None = None
+
+
+class PayBatchRequest(BaseModel):
+    record_ids: list[int]
+    payment_method: str
+    payment_note: str | None = None
+    combine_receipt: bool = False
+
+
 class SettlementRequest(BaseModel):
     target_date: date | None = None
     date_from: date | None = None
