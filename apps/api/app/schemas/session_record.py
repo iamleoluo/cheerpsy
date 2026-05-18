@@ -59,6 +59,12 @@ class VoidRequest(BaseModel):
     reason: str | None = None
 
 
+class DiscountRequest(BaseModel):
+    discount_amount: float | None = None
+    discount_percent: float | None = None
+    discount_note: str | None = None
+
+
 class PayRequest(BaseModel):
     payment_method: str
     payment_note: str | None = None

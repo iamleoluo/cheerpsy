@@ -26,15 +26,20 @@ def dashboard_stats(
     base_q = db.query(SessionRecord).filter(
         extract("year", SessionRecord.session_date) == year,
         extract("month", SessionRecord.session_date) == month,
+        SessionRecord.is_void.is_(False),
     )
     if user.role == "therapist":
         base_q = base_q.filter(SessionRecord.therapist_id == user.id)
 
     records = base_q.all()
     session_count = len(records)
-    total_revenue = sum(float(r.amount) for r in records)
+
+    def _eff(r):
+        return float(r.amount) - float(r.discount_amount or 0)
+
+    total_revenue = sum(_eff(r) for r in records)
     unpaid_count = sum(1 for r in records if r.payment_status in ("unpaid", "claiming"))
-    unpaid_amount = sum(float(r.amount) for r in records if r.payment_status in ("unpaid", "claiming"))
+    unpaid_amount = sum(_eff(r) for r in records if r.payment_status in ("unpaid", "claiming"))
 
     # Upcoming 7-day appointments needing reminders
     day_start = datetime(today.year, today.month, today.day, tzinfo=timezone.utc)

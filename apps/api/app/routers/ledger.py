@@ -20,6 +20,7 @@ from app.schemas.session_record import (
     SessionRecordDirectEdit,
     SessionRecordResponse,
     SessionRecordUpdatePayment,
+    DiscountRequest,
     PayBatchRequest,
     PayRequest,
     SettlementRequest,
@@ -401,6 +402,52 @@ def confirm_doc_submission(
             if unconfirmed == 0:
                 batch.status = "ready"
 
+    db.commit()
+    db.refresh(r)
+    return _to_response(r, db)
+
+
+@router.put("/{record_id}/discount", response_model=SessionRecordResponse)
+def set_discount(
+    record_id: int,
+    body: DiscountRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    r = db.query(SessionRecord).filter(SessionRecord.id == record_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Record not found")
+    if r.is_void:
+        raise HTTPException(status_code=400, detail="Record is void")
+    if r.payment_status in ("paid", "claimed"):
+        raise HTTPException(status_code=400, detail="已收款/已請款的紀錄不可調整優待")
+
+    if user.role == "admin":
+        pass
+    elif user.role == "staff":
+        if r.session_date != date.today():
+            raise HTTPException(status_code=403, detail="行政人員僅能於當日調整優待，逾期請洽管理員")
+    else:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    amount = Decimal(str(r.amount))
+    if body.discount_percent is not None:
+        pct = Decimal(str(body.discount_percent))
+        if pct < 0 or pct > 100:
+            raise HTTPException(status_code=400, detail="折扣百分比須介於 0~100")
+        disc = (amount * pct / Decimal("100")).quantize(Decimal("0.01"))
+    elif body.discount_amount is not None:
+        disc = Decimal(str(body.discount_amount)).quantize(Decimal("0.01"))
+    else:
+        disc = Decimal("0")
+    if disc < 0 or disc > amount:
+        raise HTTPException(status_code=400, detail="優待金額須介於 0 ~ 原始金額")
+
+    before = {"discount_amount": float(r.discount_amount or 0), "discount_note": r.discount_note}
+    r.discount_amount = disc
+    r.discount_note = body.discount_note.strip() if body.discount_note else None
+    after = {"discount_amount": float(disc), "discount_note": r.discount_note}
+    _write_audit(db, "session_records", r.id, "UPDATE", user.id, before, after)
     db.commit()
     db.refresh(r)
     return _to_response(r, db)

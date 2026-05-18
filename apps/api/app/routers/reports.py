@@ -24,6 +24,11 @@ def _get_rate(r: SessionRecord) -> Decimal:
     return DEFAULT_COMMISSION_RATE
 
 
+def _eff(r: SessionRecord) -> float:
+    """Effective amount = original amount minus 優待 discount."""
+    return float(r.amount) - float(r.discount_amount or 0)
+
+
 @router.get("/monthly")
 def monthly_report(
     year: int = Query(...),
@@ -36,13 +41,14 @@ def monthly_report(
         .filter(
             extract("year", SessionRecord.session_date) == year,
             extract("month", SessionRecord.session_date) == month,
+            SessionRecord.is_void.is_(False),
         )
         .all()
     )
 
-    total_revenue = sum(float(r.amount) for r in records)
-    total_therapist = sum(round(float(r.amount) * float(_get_rate(r)), 2) for r in records)
-    total_clinic = sum(round(float(r.amount) * float(1 - _get_rate(r)), 2) for r in records)
+    total_revenue = sum(_eff(r) for r in records)
+    total_therapist = sum(round(_eff(r) * float(_get_rate(r)), 2) for r in records)
+    total_clinic = sum(round(_eff(r) * float(1 - _get_rate(r)), 2) for r in records)
     session_count = len(records)
 
     paid_count = sum(1 for r in records if r.payment_status in ("paid", "claimed"))
@@ -55,7 +61,7 @@ def monthly_report(
         if t not in by_type:
             by_type[t] = {"count": 0, "revenue": 0.0}
         by_type[t]["count"] += 1
-        by_type[t]["revenue"] += float(r.amount)
+        by_type[t]["revenue"] += _eff(r)
 
     # Funding source breakdown (self_pay vs institution advance)
     self_pay_revenue = 0.0
@@ -68,13 +74,13 @@ def monthly_report(
         elif r.case_id:
             case = db.query(Case).filter(Case.id == r.case_id).first()
 
-        funding = case.funding_source if case else "self_pay"
+        funding = r.funding_source or (case.funding_source if case else "self_pay")
         if funding == "institution":
-            institution_revenue += float(r.amount)
+            institution_revenue += _eff(r)
             if r.payment_status in ("unpaid", "claiming"):
-                institution_unpaid += float(r.amount)
+                institution_unpaid += _eff(r)
         else:
-            self_pay_revenue += float(r.amount)
+            self_pay_revenue += _eff(r)
 
     # Therapist summary
     by_therapist: dict[int, dict] = {}
@@ -83,8 +89,8 @@ def monthly_report(
         if tid not in by_therapist:
             by_therapist[tid] = {"therapist_id": tid, "sessions": 0, "revenue": 0.0, "share": 0.0}
         by_therapist[tid]["sessions"] += 1
-        by_therapist[tid]["revenue"] += float(r.amount)
-        by_therapist[tid]["share"] += round(float(r.amount) * float(_get_rate(r)), 2)
+        by_therapist[tid]["revenue"] += _eff(r)
+        by_therapist[tid]["share"] += round(_eff(r) * float(_get_rate(r)), 2)
 
     therapist_names = {}
     if by_therapist:
@@ -198,6 +204,7 @@ def reconciliation_report(
         .filter(
             extract("year", SessionRecord.session_date) == year,
             extract("month", SessionRecord.session_date) == month,
+            SessionRecord.is_void.is_(False),
         )
         .order_by(SessionRecord.session_date)
         .all()
@@ -213,7 +220,7 @@ def reconciliation_report(
         elif r.case_id:
             case = db.query(Case).filter(Case.id == r.case_id).first()
 
-        funding = case.funding_source if case else "self_pay"
+        funding = r.funding_source or (case.funding_source if case else "self_pay")
         institution_name = None
         if case and case.institution:
             institution_name = case.institution.name
@@ -230,7 +237,7 @@ def reconciliation_report(
             "case_id": r.case_id,
             "case_name": case.name if case else None,
             "therapist_name": therapist.name if therapist else None,
-            "amount": float(r.amount),
+            "amount": _eff(r),
             "payment_status": r.payment_status,
             "claim_number": r.claim_number,
             "receipt_number": r.receipt_number,

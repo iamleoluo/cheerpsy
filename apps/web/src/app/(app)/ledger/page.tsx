@@ -6,8 +6,8 @@ import { clientFetch, exportCsv } from "@/lib/client-api";
 import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
 
 const helpContent: HelpContent = {
-  title: "日結帳冊",
-  overview: "T+1 自動產生的諮商財務帳冊，為唯讀檢視。「待處理」分頁列出尚未歸入核銷案的帳單，可直接批次建立核銷案開始收款流程。",
+  title: "帳冊流水帳",
+  overview: "預約結束時間一過即時進帳冊，列為應收未收。每筆都有收據編號可開立收據；行政可加優待，未執行的場次需於當日由心理師作廢（逾期由管理員處理）。",
   sections: [
     {
       heading: "頁面說明",
@@ -61,6 +61,12 @@ interface SessionRecord {
   session_type: string;
   fee_category: string;
   amount: number;
+  discount_amount: number;
+  discount_note: string | null;
+  effective_amount: number;
+  receipt_no: string | null;
+  is_void: boolean;
+  void_reason: string | null;
   therapist_share: number;
   clinic_share: number;
   payment_status: string;
@@ -117,6 +123,12 @@ export default function LedgerPage() {
 
   // Batch select for creating claim
   const [selected, setSelected] = useState<Set<number>>(new Set());
+
+  // Discount modal
+  const [discountRec, setDiscountRec] = useState<SessionRecord | null>(null);
+  const [discMode, setDiscMode] = useState<"amount" | "percent">("amount");
+  const [discValue, setDiscValue] = useState("");
+  const [discNote, setDiscNote] = useState("");
 
   const fetchRecords = useCallback(async () => {
     if (!token) return;
@@ -191,6 +203,44 @@ export default function LedgerPage() {
     }
   };
 
+  const openDiscount = (r: SessionRecord) => {
+    setDiscountRec(r);
+    setDiscMode("amount");
+    setDiscValue(r.discount_amount ? String(r.discount_amount) : "");
+    setDiscNote(r.discount_note ?? "");
+  };
+
+  const submitDiscount = async () => {
+    if (!discountRec) return;
+    const body: any = { discount_note: discNote || null };
+    if (discMode === "percent") body.discount_percent = Number(discValue);
+    else body.discount_amount = Number(discValue);
+    try {
+      await clientFetch(`/ledger/${discountRec.id}/discount`, token, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      });
+      setDiscountRec(null);
+      fetchRecords();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
+  const handleVoid = async (r: SessionRecord) => {
+    const reason = prompt("作廢原因（選填）：");
+    if (reason === null) return;
+    try {
+      await clientFetch(`/ledger/${r.id}/void`, token, {
+        method: "PUT",
+        body: JSON.stringify({ reason: reason || null }),
+      });
+      fetchRecords();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
   if (!token) return <p>Loading...</p>;
 
   // Filter pending: unpaid AND not in any claim batch
@@ -199,9 +249,9 @@ export default function LedgerPage() {
     : records;
 
   const displayRecords = tab === "pending" ? pendingRecords : records;
-  const totalAmount = displayRecords.reduce((s, r) => s + r.amount, 0);
-  const totalTherapist = displayRecords.reduce((s, r) => s + r.therapist_share, 0);
-  const totalClinic = displayRecords.reduce((s, r) => s + r.clinic_share, 0);
+  const totalAmount = displayRecords.filter((r) => !r.is_void).reduce((s, r) => s + r.effective_amount, 0);
+  const totalTherapist = displayRecords.filter((r) => !r.is_void).reduce((s, r) => s + r.therapist_share, 0);
+  const totalClinic = displayRecords.filter((r) => !r.is_void).reduce((s, r) => s + r.clinic_share, 0);
 
   const tabs: { key: Tab; label: string; badge?: number }[] = [
     { key: "month", label: "本月帳單" },
@@ -215,7 +265,7 @@ export default function LedgerPage() {
 
       {/* Header */}
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">日結帳冊</h1>
+        <h1 className="text-2xl font-bold">帳冊流水帳</h1>
         <div className="flex items-center gap-2">
           <button onClick={() => setHelpOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700">
             <span>ℹ️</span> 說明
@@ -322,7 +372,7 @@ export default function LedgerPage() {
                 </th>
               )}
               <th className="px-4 py-3">日期</th>
-              <th className="px-4 py-3">預約編號</th>
+              <th className="px-4 py-3">收據編號</th>
               <th className="px-4 py-3">個案</th>
               <th className="px-4 py-3">心理師</th>
               <th className="px-4 py-3">類型</th>
@@ -330,30 +380,34 @@ export default function LedgerPage() {
               <th className="px-4 py-3">來源</th>
               <th className="px-4 py-3">收款狀態</th>
               <th className="px-4 py-3">核銷案</th>
+              <th className="px-4 py-3">操作</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
             {loading ? (
-              <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">載入中...</td></tr>
+              <tr><td colSpan={11} className="px-4 py-8 text-center text-gray-400">載入中...</td></tr>
             ) : displayRecords.length === 0 ? (
-              <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">
+              <tr><td colSpan={11} className="px-4 py-8 text-center text-gray-400">
                 {tab === "pending" ? "所有帳單皆已歸入核銷案 🎉" : "尚無流水帳資料"}
               </td></tr>
             ) : (
               displayRecords.map((r) => (
-                <tr key={r.id} className="hover:bg-gray-50">
+                <tr key={r.id} className={`hover:bg-gray-50 ${r.is_void ? "opacity-50 line-through" : ""}`}>
                   {tab === "pending" && userRole !== "therapist" && (
                     <td className="px-3 py-3">
-                      <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleSelect(r.id)} className="accent-primary-600" />
+                      <input type="checkbox" disabled={r.is_void} checked={selected.has(r.id)} onChange={() => toggleSelect(r.id)} className="accent-primary-600" />
                     </td>
                   )}
                   <td className="px-4 py-3 whitespace-nowrap">{r.session_date}</td>
-                  <td className="px-4 py-3 font-mono text-xs">{r.appointment_number ?? "-"}</td>
+                  <td className="px-4 py-3 font-mono text-xs">{r.receipt_no ?? "-"}</td>
                   <td className="px-4 py-3">{r.case_name ?? "-"}</td>
                   <td className="px-4 py-3">{r.therapist_name ?? "-"}</td>
                   <td className="px-4 py-3">{sessionTypeLabels[r.session_type] ?? r.session_type}</td>
                   <td className="px-4 py-3">
-                    ${r.amount.toLocaleString()}
+                    ${r.effective_amount.toLocaleString()}
+                    {r.discount_amount > 0 && (
+                      <span className="ml-1 text-xs text-amber-600">(原 ${r.amount.toLocaleString()} 優待 ${r.discount_amount.toLocaleString()})</span>
+                    )}
                     <div className="text-xs text-gray-400">
                       師 ${r.therapist_share.toLocaleString()} / 所 ${r.clinic_share.toLocaleString()}
                     </div>
@@ -377,6 +431,21 @@ export default function LedgerPage() {
                       <span className="text-gray-400">未歸入</span>
                     )}
                   </td>
+                  <td className="px-4 py-3 no-underline">
+                    {r.is_void ? (
+                      <span className="text-xs text-red-500">已作廢</span>
+                    ) : (
+                      <div className="flex gap-2">
+                        {["admin", "staff"].includes(userRole) && r.payment_status === "unpaid" && (
+                          <button onClick={() => openDiscount(r)} className="text-xs text-amber-600 hover:underline">優待</button>
+                        )}
+                        {(["admin", "staff"].includes(userRole) || userRole === "therapist") &&
+                          !["paid", "claimed"].includes(r.payment_status) && (
+                          <button onClick={() => handleVoid(r)} className="text-xs text-red-500 hover:underline">作廢</button>
+                        )}
+                      </div>
+                    )}
+                  </td>
                 </tr>
               ))
             )}
@@ -384,6 +453,51 @@ export default function LedgerPage() {
         </table>
       </div>
 
+      {discountRec && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setDiscountRec(null)}>
+          <div className="w-80 rounded-lg bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="mb-3 text-base font-semibold">設定優待</h3>
+            <p className="mb-3 text-sm text-gray-600">
+              原始金額：<strong>${discountRec.amount.toLocaleString()}</strong>
+            </p>
+            <fieldset className="mb-3">
+              <legend className="mb-1 text-xs font-medium text-gray-700">優待方式</legend>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="radio" checked={discMode === "amount"} onChange={() => setDiscMode("amount")} />
+                優待金額（直接扣除）
+              </label>
+              <label className="mt-1 flex items-center gap-2 text-sm">
+                <input type="radio" checked={discMode === "percent"} onChange={() => setDiscMode("percent")} />
+                打折（百分比）
+              </label>
+            </fieldset>
+            <label className="mb-3 block">
+              <span className="text-xs font-medium text-gray-700">
+                {discMode === "amount" ? "優待金額" : "折扣 %（例：10 = 折抵 10%）"}
+              </span>
+              <input
+                type="number"
+                value={discValue}
+                onChange={(e) => setDiscValue(e.target.value)}
+                className="mt-1 block w-full rounded border px-2 py-1.5 text-sm"
+              />
+            </label>
+            <label className="mb-4 block">
+              <span className="text-xs font-medium text-gray-700">優待事由（選填）</span>
+              <input
+                type="text"
+                value={discNote}
+                onChange={(e) => setDiscNote(e.target.value)}
+                className="mt-1 block w-full rounded border px-2 py-1.5 text-sm"
+              />
+            </label>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setDiscountRec(null)} className="rounded px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100">取消</button>
+              <button onClick={submitDiscount} className="rounded bg-amber-600 px-4 py-1.5 text-sm text-white hover:bg-amber-700">儲存</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
