@@ -115,6 +115,11 @@ interface ReportData {
     petty_cash_total: number;
     net_clinic_income: number;
   };
+  product_sales?: {
+    total: number;
+    count: number;
+    by_payment_method: Record<string, number>;
+  };
   session_type_breakdown: Record<string, { count: number; revenue: number }>;
   funding_breakdown: {
     self_pay_revenue: number;
@@ -313,6 +318,28 @@ function MonthlyReportTab({ token }: { token: string }) {
                     ${report.funding_breakdown.institution_unpaid.toLocaleString()}
                   </span>
                 </div>
+              </div>
+            </div>
+
+            <div>
+              <h2 className="mb-3 text-lg font-semibold">其他商品販售</h2>
+              <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">銷售總額</span>
+                  <span className="text-sm font-medium">
+                    ${(report.product_sales?.total ?? 0).toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">筆數</span>
+                  <span className="text-sm font-medium">{report.product_sales?.count ?? 0}</span>
+                </div>
+                {Object.entries(report.product_sales?.by_payment_method ?? {}).map(([m, v]) => (
+                  <div key={m} className="flex items-center justify-between">
+                    <span className="text-sm text-gray-500">{m === "cash" ? "現金" : m === "transfer" ? "匯款" : m}</span>
+                    <span className="text-sm text-gray-500">${v.toLocaleString()}</span>
+                  </div>
+                ))}
               </div>
             </div>
           </div>

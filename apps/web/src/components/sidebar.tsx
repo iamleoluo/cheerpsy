@@ -10,6 +10,7 @@ const navItems = [
   { href: "/calendar", label: "預約日曆", icon: "📅" },
   { href: "/ledger", label: "帳冊流水帳", icon: "📒", roles: ["admin", "accountant", "staff", "therapist"] },
   { href: "/claims", label: "帳冊管理", icon: "💰", roles: ["admin", "accountant", "staff", "therapist"] },
+  { href: "/products", label: "商品販售", icon: "🛒", roles: ["admin", "accountant", "staff"] },
   { href: "/finance", label: "財務管理", icon: "💳", roles: ["admin", "accountant", "staff"] },
   { href: "/reports", label: "營運報表", icon: "📈", roles: ["admin", "accountant"] },
   { href: "/admin", label: "系統管理", icon: "🔑", roles: ["admin"] },

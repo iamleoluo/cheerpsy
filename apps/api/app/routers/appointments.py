@@ -13,6 +13,7 @@ from app.database import get_db
 from app.models.appointment import Appointment
 from app.models.case import Case
 from app.models.room import Room
+from app.models.session_record import SessionRecord
 from app.models.user import User
 from app.services.audit import write_audit
 from app.schemas.appointment import (
@@ -270,6 +271,72 @@ def cancel_appointment(
     db.refresh(a)
     therapist = db.query(User).filter(User.id == a.therapist_id).first()
     return _to_response(a, therapist)
+
+
+class BatchDeleteRequest(BaseModel):
+    ids: list[int]
+
+
+def _can_delete(a: Appointment, user: User, db: Session) -> str | None:
+    """Return an error message if the appointment cannot be deleted, else None."""
+    if user.role == "therapist" and a.therapist_id != user.id:
+        return "存取被拒"
+    if a.status != "booked":
+        return f"狀態為「{a.status}」的預約無法刪除"
+    sr = db.query(SessionRecord).filter(SessionRecord.appointment_id == a.id).first()
+    if sr:
+        return "已產生帳冊紀錄，無法刪除"
+    return None
+
+
+@router.delete("")
+def batch_delete_appointments(
+    body: BatchDeleteRequest,
+    user: User = Depends(RequireRole(["admin", "staff", "therapist"])),
+    db: Session = Depends(get_db),
+):
+    if not body.ids:
+        raise HTTPException(status_code=400, detail="未選擇任何預約")
+    appts = db.query(Appointment).filter(Appointment.id.in_(body.ids)).all()
+    found_ids = {a.id for a in appts}
+    missing = [i for i in body.ids if i not in found_ids]
+    if missing:
+        raise HTTPException(status_code=404, detail=f"預約不存在：{missing}")
+    for a in appts:
+        err = _can_delete(a, user, db)
+        if err:
+            raise HTTPException(status_code=400, detail=f"預約 {a.appointment_number}: {err}")
+    deleted = []
+    for a in appts:
+        write_audit(db, "appointments", a.id, "DELETE", user.id,
+                    {"appointment_number": a.appointment_number, "status": a.status}, None)
+        deleted.append(a.id)
+        db.delete(a)
+    db.commit()
+    return {"deleted": len(deleted), "ids": deleted}
+
+
+@router.delete("/batch")
+def delete_by_batch_id(
+    batch_id: str = Query(...),
+    user: User = Depends(RequireRole(["admin", "staff", "therapist"])),
+    db: Session = Depends(get_db),
+):
+    appts = db.query(Appointment).filter(Appointment.batch_id == batch_id).all()
+    if not appts:
+        raise HTTPException(status_code=404, detail="找不到此批次預約")
+    for a in appts:
+        err = _can_delete(a, user, db)
+        if err:
+            raise HTTPException(status_code=400, detail=f"預約 {a.appointment_number}: {err}")
+    deleted = []
+    for a in appts:
+        write_audit(db, "appointments", a.id, "DELETE", user.id,
+                    {"appointment_number": a.appointment_number, "batch_id": batch_id}, None)
+        deleted.append(a.id)
+        db.delete(a)
+    db.commit()
+    return {"deleted": len(deleted), "ids": deleted}
 
 
 class AmountUpdate(BaseModel):

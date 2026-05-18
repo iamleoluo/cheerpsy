@@ -10,6 +10,7 @@ from app.database import get_db
 from app.models.appointment import Appointment
 from app.models.case import Case
 from app.models.petty_cash import PettyCash
+from app.models.product_sales import ProductSale
 from app.models.session_record import SessionRecord
 from app.models.user import User
 
@@ -123,6 +124,22 @@ def monthly_report(
     for p in petty:
         by_category[p.category] = by_category.get(p.category, 0) + float(p.amount)
 
+    # Other product sales (separate from session revenue)
+    product_rows = (
+        db.query(ProductSale)
+        .filter(
+            extract("year", ProductSale.sale_date) == year,
+            extract("month", ProductSale.sale_date) == month,
+            ProductSale.is_void.is_(False),
+        )
+        .all()
+    )
+    product_total = sum(float(p.amount) * p.quantity for p in product_rows)
+    product_by_method: dict[str, float] = {}
+    for p in product_rows:
+        m = p.payment_method or "cash"
+        product_by_method[m] = product_by_method.get(m, 0) + float(p.amount) * p.quantity
+
     # Appointment stats
     month_appts = (
         db.query(Appointment)
@@ -161,6 +178,11 @@ def monthly_report(
             "unpaid_count": unpaid_count,
             "petty_cash_total": petty_total,
             "net_clinic_income": total_clinic + petty_total,
+        },
+        "product_sales": {
+            "total": product_total,
+            "count": len(product_rows),
+            "by_payment_method": product_by_method,
         },
         "session_type_breakdown": by_type,
         "funding_breakdown": {

@@ -374,6 +374,30 @@ function RemindersTab({ token }: { token: string }) {
   const [formResult, setFormResult] = useState("confirmed");
   const [formNotes, setFormNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [selectedAppts, setSelectedAppts] = useState<Set<number>>(new Set());
+
+  const toggleAppt = (id: number) => {
+    setSelectedAppts((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const batchDelete = async () => {
+    if (selectedAppts.size === 0) return;
+    if (!confirm(`確定刪除選取的 ${selectedAppts.size} 筆預約？此操作無法復原。`)) return;
+    try {
+      await clientFetch("/appointments", token, {
+        method: "DELETE",
+        body: JSON.stringify({ ids: [...selectedAppts] }),
+      });
+      setSelectedAppts(new Set());
+      fetchAppointments();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
 
   const fetchAppointments = useCallback(async () => {
     setLoading(true);
@@ -441,12 +465,21 @@ function RemindersTab({ token }: { token: string }) {
           <option value={14}>14 天</option>
         </select>
         <span className="text-sm text-gray-500">的預約</span>
+        {selectedAppts.size > 0 && (
+          <button
+            onClick={batchDelete}
+            className="ml-auto rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+          >
+            批次刪除（{selectedAppts.size} 筆）
+          </button>
+        )}
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-gray-200">
         <table className="w-full text-left text-sm">
           <thead className="bg-gray-50 text-xs uppercase text-gray-500">
             <tr>
+              <th className="px-3 py-3"></th>
               <th className="px-4 py-3">時間</th>
               <th className="px-4 py-3">預約編號</th>
               <th className="px-4 py-3">個案</th>
@@ -460,19 +493,27 @@ function RemindersTab({ token }: { token: string }) {
           <tbody className="divide-y divide-gray-200">
             {loading ? (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-gray-400">
+                <td colSpan={9} className="px-4 py-8 text-center text-gray-400">
                   載入中...
                 </td>
               </tr>
             ) : appointments.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-gray-400">
+                <td colSpan={9} className="px-4 py-8 text-center text-gray-400">
                   目前無需提醒的預約
                 </td>
               </tr>
             ) : (
               appointments.map((a) => (
                 <tr key={a.appointment_id} className="hover:bg-gray-50">
+                  <td className="px-3 py-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedAppts.has(a.appointment_id)}
+                      onChange={() => toggleAppt(a.appointment_id)}
+                      className="accent-primary-600"
+                    />
+                  </td>
                   <td className="px-4 py-3 text-xs">
                     {a.start_time
                       ? new Date(a.start_time).toLocaleString("zh-TW", {
