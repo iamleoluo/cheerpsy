@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, Fragment } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch, exportCsv } from "@/lib/client-api";
 import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
@@ -306,6 +306,7 @@ function InstitutionTrackingContent({ token, reconDate }: { token: string; recon
 interface SelfPayRecord {
   id: number;
   session_date: string;
+  paid_at: string | null;
   case_id: number | null;
   case_name: string | null;
   therapist_name: string | null;
@@ -315,7 +316,16 @@ interface SelfPayRecord {
   payment_note: string | null;
 }
 
+const PAY_METHOD_LABEL = (m: string | null) =>
+  m === "cash" ? "現金" : m === "transfer" ? "匯款" : "—";
+const PAY_STATUS_BADGE = (s: string) =>
+  s === "paid" ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700">已付款</span>
+  : s === "claimed" ? <span className="rounded-full bg-cyan-100 px-2 py-0.5 text-xs text-cyan-700">已核銷</span>
+  : <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">待付款</span>;
+
 function SelfPayTrackingContent({ records, loading, reconDate }: { records: SelfPayRecord[]; loading: boolean; reconDate: string }) {
+  const [expandedCase, setExpandedCase] = useState<string | number | null>(null);
+
   if (loading) return <div className="py-12 text-center text-gray-400">載入中...</div>;
 
   if (records.length === 0) {
@@ -363,7 +373,7 @@ function SelfPayTrackingContent({ records, loading, reconDate }: { records: Self
             <span className="h-3 w-3 rounded-full border border-gray-300 bg-gray-200" /> 待付款
           </span>
           <span className="flex items-center gap-1">
-            <span className="h-3 w-3 rounded-full border border-blue-500 bg-blue-400" /> 當日入帳
+            <span className="h-3 w-3 rounded-full border border-blue-500 bg-blue-400" /> 當日入帳（付款日 = 對帳日）
           </span>
         </div>
       </div>
@@ -371,6 +381,7 @@ function SelfPayTrackingContent({ records, loading, reconDate }: { records: Self
         <table className="w-full text-left text-sm">
           <thead className="bg-gray-50 text-xs uppercase text-gray-500">
             <tr>
+              <th className="px-4 py-3 w-8"></th>
               <th className="px-4 py-3">個案</th>
               <th className="px-4 py-3">治療師</th>
               <th className="px-4 py-3">療程付款進度</th>
@@ -378,48 +389,96 @@ function SelfPayTrackingContent({ records, loading, reconDate }: { records: Self
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
-            {groups.map(({ key, caseName, therapistName, recs, paidCount, unpaidAmount, allPaid }) => (
-              <tr key={String(key)} className="hover:bg-gray-50">
-                <td className="px-4 py-3 font-medium text-gray-900">{caseName}</td>
-                <td className="px-4 py-3">
-                  {therapistName
-                    ? <span className="inline-block rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">{therapistName}</span>
-                    : <span className="text-xs text-gray-400">—</span>
-                  }
-                </td>
-                <td className="px-4 py-3">
-                  {/* Dot per session: green = paid, gray = unpaid */}
-                  <div className="flex flex-wrap items-center gap-1">
-                    {recs.map((r) => {
-                      const isPaid = r.payment_status === "paid" || r.payment_status === "claimed";
-                      const isToday = r.session_date === reconDate && isPaid;
-                      return (
-                        <div
-                          key={r.id}
-                          title={`${r.session_date} ${isPaid ? "已付款" : "待付款"} $${r.effective_amount.toLocaleString()}`}
-                          className={`h-3 w-3 rounded-full border ${
-                            isToday
-                              ? "bg-blue-400 border-blue-500"
-                              : isPaid
-                                ? "bg-green-500 border-green-600"
-                                : "bg-gray-200 border-gray-300"
-                          }`}
-                        />
-                      );
-                    })}
-                    <span className="ml-1 text-xs text-gray-400">
-                      {paidCount}/{recs.length} 筆
-                    </span>
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-right font-medium">
-                  {allPaid
-                    ? <span className="text-green-600 text-xs font-medium">全部結清 ✓</span>
-                    : <span className="text-amber-700">${unpaidAmount.toLocaleString()}</span>
-                  }
-                </td>
-              </tr>
-            ))}
+            {groups.map(({ key, caseName, therapistName, recs, paidCount, unpaidAmount, allPaid }) => {
+              const isOpen = expandedCase === key;
+              return (
+                <Fragment key={String(key)}>
+                  <tr
+                    className="cursor-pointer hover:bg-gray-50"
+                    onClick={() => setExpandedCase(isOpen ? null : key)}
+                  >
+                    <td className="px-4 py-3 text-gray-400">
+                      <span className={`inline-block text-xs transition-transform ${isOpen ? "rotate-180" : ""}`}>▼</span>
+                    </td>
+                    <td className="px-4 py-3 font-medium text-gray-900">{caseName}</td>
+                    <td className="px-4 py-3">
+                      {therapistName
+                        ? <span className="inline-block rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">{therapistName}</span>
+                        : <span className="text-xs text-gray-400">—</span>
+                      }
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap items-center gap-1">
+                        {recs.map((r) => {
+                          const isPaid = r.payment_status === "paid" || r.payment_status === "claimed";
+                          const isToday = isPaid && r.paid_at?.slice(0, 10) === reconDate;
+                          return (
+                            <div
+                              key={r.id}
+                              title={`療程 ${r.session_date}${r.paid_at ? ` · 付款 ${r.paid_at.slice(0, 10)}` : ""} · ${isPaid ? "已付款" : "待付款"} $${r.effective_amount.toLocaleString()}`}
+                              className={`h-3 w-3 rounded-full border ${
+                                isToday
+                                  ? "bg-blue-400 border-blue-500"
+                                  : isPaid
+                                    ? "bg-green-500 border-green-600"
+                                    : "bg-gray-200 border-gray-300"
+                              }`}
+                            />
+                          );
+                        })}
+                        <span className="ml-1 text-xs text-gray-400">
+                          {paidCount}/{recs.length} 筆
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right font-medium">
+                      {allPaid
+                        ? <span className="text-green-600 text-xs font-medium">全部結清 ✓</span>
+                        : <span className="text-amber-700">${unpaidAmount.toLocaleString()}</span>
+                      }
+                    </td>
+                  </tr>
+                  {isOpen && (
+                    <tr>
+                      <td colSpan={5} className="bg-gray-50 px-4 py-3">
+                        <table className="w-full text-left text-xs">
+                          <thead className="text-gray-500">
+                            <tr>
+                              <th className="px-3 py-2">預約日期</th>
+                              <th className="px-3 py-2">付款日期</th>
+                              <th className="px-3 py-2 text-right">付款金額</th>
+                              <th className="px-3 py-2">付款狀態</th>
+                              <th className="px-3 py-2">付款方式</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-200">
+                            {recs.map((r) => (
+                              <tr key={r.id} className="bg-white">
+                                <td className="px-3 py-2">{r.session_date}</td>
+                                <td className="px-3 py-2">
+                                  {r.paid_at ? r.paid_at.slice(0, 10) : <span className="text-gray-300">—</span>}
+                                </td>
+                                <td className="px-3 py-2 text-right font-medium">${r.effective_amount.toLocaleString()}</td>
+                                <td className="px-3 py-2">{PAY_STATUS_BADGE(r.payment_status)}</td>
+                                <td className="px-3 py-2">
+                                  {r.payment_status === "unpaid"
+                                    ? <span className="text-gray-300">—</span>
+                                    : <>
+                                        {PAY_METHOD_LABEL(r.payment_method)}
+                                        {r.payment_note && <span className="ml-1 text-gray-400">({r.payment_note})</span>}
+                                      </>
+                                  }
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -439,6 +498,7 @@ function PaymentTrackingTab({ token }: { token: string }) {
   const [instBatches, setInstBatches] = useState<TrackingBatch[]>([]);
 
   const [reconDate, setReconDate] = useState(new Date().toISOString().slice(0, 10));
+  const [reconMethod, setReconMethod] = useState<"all" | "cash" | "transfer">("all");
 
   useEffect(() => {
     clientFetch("/ledger/self-pay-all", token)
@@ -450,13 +510,18 @@ function PaymentTrackingTab({ token }: { token: string }) {
       .catch(() => {});
   }, [token]);
 
+  const methodMatch = (m: string | null) => reconMethod === "all" || m === reconMethod;
+
   // Recon: institution batches closed/received on date
   const reconInstItems = instBatches.filter((b) =>
-    b.closed_at?.slice(0, 10) === reconDate || b.received_at?.slice(0, 10) === reconDate
+    (b.closed_at?.slice(0, 10) === reconDate || b.received_at?.slice(0, 10) === reconDate) &&
+    methodMatch(b.payment_method)
   );
-  // Recon: self-pay records paid on session_date (used as proxy for payment date)
+  // Recon: self-pay records whose payment date (paid_at) matches the recon date
   const reconSpItems = selfPayRecords.filter((r) =>
-    r.session_date === reconDate && (r.payment_status === "paid" || r.payment_status === "claimed")
+    r.paid_at?.slice(0, 10) === reconDate &&
+    (r.payment_status === "paid" || r.payment_status === "claimed") &&
+    methodMatch(r.payment_method)
   );
 
   const reconInstTotal = reconInstItems.reduce((s, b) => s + b.total_amount, 0);
@@ -509,8 +574,24 @@ function PaymentTrackingTab({ token }: { token: string }) {
             type="date"
             value={reconDate}
             onChange={(e) => setReconDate(e.target.value)}
-            className="mb-3 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+            className="mb-2 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
           />
+          {/* Payment method filter */}
+          <div className="mb-3 flex gap-1">
+            {(["all", "cash", "transfer"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setReconMethod(m)}
+                className={`flex-1 rounded px-2 py-1 text-xs font-medium transition-colors ${
+                  reconMethod === m
+                    ? "bg-primary-600 text-white"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                {m === "all" ? "全部" : m === "cash" ? "現金" : "匯款"}
+              </button>
+            ))}
+          </div>
 
           {!hasRecon ? (
             <p className="py-4 text-center text-xs text-gray-400">該日無到帳/結案項目</p>

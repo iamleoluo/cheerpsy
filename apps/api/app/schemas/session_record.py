@@ -26,6 +26,7 @@ class SessionRecordResponse(BaseModel):
     institution_name: str | None = None
     payment_method: str | None = None
     payment_note: str | None = None
+    paid_at: datetime | None = None
     claim_number: str | None = None
     receipt_number: str | None = None
     receipt_no: str | None = None

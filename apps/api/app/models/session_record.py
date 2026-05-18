@@ -20,6 +20,7 @@ class SessionRecord(Base):
     payment_status = Column(String(20), nullable=False, default="unpaid")
     payment_method = Column(String(20), nullable=True)  # cash, transfer
     payment_note = Column(String(200), nullable=True)  # e.g. bank account last 5 digits
+    paid_at = Column(DateTime(timezone=True), nullable=True)  # when payment was recorded
     claim_number = Column(String(100), nullable=True)
     receipt_number = Column(String(100), nullable=True)
     commission_rate_used = Column(Numeric(4, 2), nullable=True)
