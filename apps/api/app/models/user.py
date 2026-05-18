@@ -14,6 +14,7 @@ class User(Base):
     role = Column(String(20), nullable=False)  # admin, accountant, therapist, staff
     user_code = Column(String(10), unique=True, nullable=True)
     commission_rate = Column(Numeric(4, 2), nullable=True)
+    base_price = Column(Numeric(10, 2), nullable=True)  # therapist default appointment fee
     is_active = Column(Boolean, default=True, nullable=False)
 
     cases = relationship("Case", back_populates="therapist", foreign_keys="[Case.therapist_id]")

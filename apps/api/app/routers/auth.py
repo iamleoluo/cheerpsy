@@ -56,8 +56,31 @@ class UserListResponse(BaseModel):
     role: str
     user_code: str | None = None
     commission_rate: float | None = None
+    base_price: float | None = None
     is_active: bool
     model_config = {"from_attributes": True}
+
+
+ROLE_CODE_PREFIX = {"admin": "A", "accountant": "C", "staff": "S", "therapist": "T"}
+
+
+def _next_user_code(role: str, db: Session) -> str:
+    """Generate the next available user_code for a role (e.g. T001, C002).
+    Excludes codes already taken by users or reserved by pending invitations."""
+    prefix = ROLE_CODE_PREFIX.get(role, role[0].upper())
+    used: set[str] = {
+        c for (c,) in db.query(User.user_code).filter(User.user_code.isnot(None)).all()
+    }
+    used |= {
+        c for (c,) in db.query(Invitation.user_code).filter(
+            Invitation.user_code.isnot(None), Invitation.used_at.is_(None)
+        ).all()
+    }
+    for n in range(1, 1000):
+        candidate = f"{prefix}{n:03d}"
+        if candidate not in used:
+            return candidate
+    raise HTTPException(status_code=400, detail=f"角色 {role} 的代號已用盡")
 
 
 @router.get("/users", response_model=list[UserListResponse])
@@ -84,6 +107,7 @@ class UpdateUserRequest(BaseModel):
     name: str | None = None
     role: str | None = None
     user_code: str | None = None
+    base_price: float | None = None
 
 
 @router.put("/users/{user_id}", response_model=UserListResponse)
@@ -98,7 +122,13 @@ def update_user(
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
 
-    before = {"name": target.name, "role": target.role, "user_code": target.user_code}
+    before = {"name": target.name, "role": target.role, "user_code": target.user_code,
+              "base_price": float(target.base_price) if target.base_price is not None else None}
+
+    if body.base_price is not None:
+        if body.base_price < 0:
+            raise HTTPException(status_code=400, detail="基礎價格不可為負")
+        target.base_price = body.base_price
 
     if body.name is not None:
         stripped = body.name.strip()
@@ -123,11 +153,63 @@ def update_user(
                 raise HTTPException(status_code=400, detail=f"User code '{code}' already in use by active user")
         target.user_code = code
 
-    after = {"name": target.name, "role": target.role, "user_code": target.user_code}
+    after = {"name": target.name, "role": target.role, "user_code": target.user_code,
+             "base_price": float(target.base_price) if target.base_price is not None else None}
     write_audit(db, "users", target.id, "UPDATE", user.id, before, after)
     db.commit()
     db.refresh(target)
     return target
+
+
+# ── Self-service profile (any authenticated user) ─────
+
+class UpdateMeRequest(BaseModel):
+    current_password: str
+    email: str | None = None
+    new_password: str | None = None
+    base_price: float | None = None
+
+
+@router.put("/me", response_model=UserResponse)
+def update_me(
+    body: UpdateMeRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Any user updates their own email / password / base price.
+    Current password required as a security check."""
+    if not verify_password(body.current_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="目前密碼不正確")
+
+    before = {"email": user.email,
+              "base_price": float(user.base_price) if user.base_price is not None else None}
+
+    if body.email is not None:
+        new_email = body.email.strip().lower()
+        if not new_email or "@" not in new_email:
+            raise HTTPException(status_code=400, detail="Email 格式不正確")
+        if new_email != user.email:
+            dup = db.query(User).filter(User.email == new_email, User.id != user.id).first()
+            if dup:
+                raise HTTPException(status_code=400, detail="此 Email 已被使用")
+            user.email = new_email
+
+    if body.new_password is not None and body.new_password != "":
+        if len(body.new_password) < 6:
+            raise HTTPException(status_code=400, detail="密碼至少需 6 碼")
+        user.password_hash = hash_password(body.new_password)
+
+    if body.base_price is not None:
+        if body.base_price < 0:
+            raise HTTPException(status_code=400, detail="基礎價格不可為負")
+        user.base_price = body.base_price
+
+    after = {"email": user.email,
+             "base_price": float(user.base_price) if user.base_price is not None else None}
+    write_audit(db, "users", user.id, "UPDATE", user.id, before, after)
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 class CommissionRateRequest(BaseModel):
@@ -158,8 +240,6 @@ def set_commission_rate(
 
 # ── Invitations (admin) ───────────────────────────────
 
-ROLE_CODE_PREFIX = {"admin": "A", "accountant": "C", "staff": "S", "therapist": "T"}
-
 
 class CreateInviteRequest(BaseModel):
     name: str
@@ -189,18 +269,22 @@ def create_invitation(
 ):
     if body.role not in ("therapist", "accountant", "admin", "staff"):
         raise HTTPException(status_code=400, detail="Invalid role")
-    if not body.user_code:
-        raise HTTPException(status_code=400, detail="User code required for all roles")
-    existing = db.query(User).filter(User.user_code == body.user_code, User.is_active == True).first()
-    if existing:
-        raise HTTPException(status_code=400, detail=f"User code '{body.user_code}' already in use by active user")
+
+    code = (body.user_code or "").strip()
+    if not code:
+        # Auto-generate next available code for the role
+        code = _next_user_code(body.role, db)
+    else:
+        existing = db.query(User).filter(User.user_code == code, User.is_active == True).first()
+        if existing:
+            raise HTTPException(status_code=400, detail=f"User code '{code}' already in use by active user")
 
     inv = Invitation(
         invite_key=_generate_key(),
         type="invite",
         name=body.name,
         role=body.role,
-        user_code=body.user_code,
+        user_code=code,
         created_by=user.id,
         expires_at=datetime.now(timezone.utc) + timedelta(hours=INVITE_EXPIRY_HOURS),
     )

@@ -60,6 +60,7 @@ interface UserItem {
   role: string;
   user_code: string | null;
   commission_rate: number | null;
+  base_price: number | null;
   is_active: boolean;
 }
 
@@ -128,6 +129,7 @@ export default function AdminUsersPage() {
   const [editRole, setEditRole] = useState("therapist");
   const [editCode, setEditCode] = useState("");
   const [editRate, setEditRate] = useState("");
+  const [editBase, setEditBase] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
 
   // Result modal (show key)
@@ -174,6 +176,7 @@ export default function AdminUsersPage() {
     setEditRole(u.role);
     setEditCode(u.user_code ?? "");
     setEditRate(u.commission_rate != null ? String(u.commission_rate) : "");
+    setEditBase(u.base_price != null ? String(u.base_price) : "");
   };
 
   const closeEdit = () => setEditUser(null);
@@ -202,14 +205,19 @@ export default function AdminUsersPage() {
     if (!editUser || !token) return;
     setSavingEdit(true);
     try {
-      // Update name/role/code
+      // Update name/role/code/base_price
+      const updateBody: any = {
+        name: editName.trim(),
+        role: editRole,
+        user_code: editCode.trim() || null,
+      };
+      if (editRole === "therapist" && editBase !== "") {
+        const bp = parseFloat(editBase);
+        if (!isNaN(bp) && bp >= 0) updateBody.base_price = bp;
+      }
       await clientFetch(`/auth/users/${editUser.id}`, token, {
         method: "PUT",
-        body: JSON.stringify({
-          name: editName.trim(),
-          role: editRole,
-          user_code: editCode.trim() || null,
-        }),
+        body: JSON.stringify(updateBody),
       });
       // Update commission rate if therapist
       if (editRole === "therapist" && editRate) {
@@ -290,13 +298,15 @@ export default function AdminUsersPage() {
               <th className="px-4 py-3">Email</th>
               <th className="px-4 py-3">角色</th>
               <th className="px-4 py-3">代號</th>
+              <th className="px-4 py-3">抽成比例</th>
+              <th className="px-4 py-3">預設價格</th>
               <th className="px-4 py-3">狀態</th>
               <th className="px-4 py-3">操作</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
             {loading ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">載入中...</td></tr>
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">載入中...</td></tr>
             ) : users.map((u) => (
               <tr key={u.id} className={`hover:bg-gray-50 ${!u.is_active ? "opacity-50" : ""}`}>
                 <td className="px-4 py-3 font-medium">{u.name}</td>
@@ -307,7 +317,19 @@ export default function AdminUsersPage() {
                   </span>
                 </td>
                 <td className="px-4 py-3 font-mono text-xs text-gray-500">
-                  {u.user_code ?? <span className="text-red-400">未設定</span>}
+                  {u.user_code ? u.user_code : <span className="text-red-400">未設定</span>}
+                </td>
+                <td className="px-4 py-3 text-xs text-gray-600">
+                  {u.role === "therapist" && u.commission_rate != null
+                    ? `${Math.round(u.commission_rate * 100)}%`
+                    : <span className="text-gray-300">—</span>}
+                </td>
+                <td className="px-4 py-3 text-xs text-gray-600">
+                  {u.role === "therapist"
+                    ? (u.base_price != null
+                        ? `$${Number(u.base_price).toLocaleString()}`
+                        : <span className="text-red-400">未設定</span>)
+                    : <span className="text-gray-300">—</span>}
                 </td>
                 <td className="px-4 py-3">
                   <span className={`inline-block rounded-full px-2 py-0.5 text-xs ${u.is_active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
@@ -388,13 +410,13 @@ export default function AdminUsersPage() {
                 const reusable = users.filter((u) => u.user_code?.startsWith(prefix) && !u.is_active);
                 return (
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-500">使用者代號 *</label>
+                    <label className="mb-1 block text-xs font-medium text-gray-500">使用者代號（留空自動產生）</label>
                     <input
                       type="text"
                       value={invCode}
                       onChange={(e) => setInvCode(e.target.value.toUpperCase())}
                       className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono"
-                      placeholder={`例如 ${prefix}001`}
+                      placeholder={`留空自動產生（如 ${prefix}001）`}
                     />
                     {reusable.length > 0 && (
                       <div className="mt-2">
@@ -414,7 +436,7 @@ export default function AdminUsersPage() {
             </div>
             <div className="mt-5 flex justify-end gap-2">
               <button onClick={() => setShowInvite(false)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">取消</button>
-              <button onClick={handleCreateInvite} disabled={!invName.trim() || !invCode.trim() || creatingInvite} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">
+              <button onClick={handleCreateInvite} disabled={!invName.trim() || creatingInvite} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">
                 {creatingInvite ? "建立中..." : "建立"}
               </button>
             </div>
@@ -466,6 +488,20 @@ export default function AdminUsersPage() {
                     placeholder="預設 0.70"
                   />
                   <p className="mt-1 text-xs text-gray-400">0.70 = 70%，留空維持現有比例</p>
+                </div>
+              )}
+              {editRole === "therapist" && (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">預約基礎價格（心理師）</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={editBase}
+                    onChange={(e) => setEditBase(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    placeholder="例如 2000"
+                  />
+                  <p className="mt-1 text-xs text-gray-400">建立預約時自動帶入，可於當下調整</p>
                 </div>
               )}
             </div>
