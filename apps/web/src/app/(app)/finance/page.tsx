@@ -306,6 +306,7 @@ function InstitutionTrackingContent({ token, reconDate }: { token: string; recon
 interface SelfPayRecord {
   id: number;
   session_date: string;
+  case_id: number | null;
   case_name: string | null;
   therapist_name: string | null;
   effective_amount: number;
@@ -325,7 +326,24 @@ function SelfPayTrackingContent({ records, loading, reconDate }: { records: Self
     );
   }
 
-  const unpaidTotal = records.filter(r => r.payment_status === "unpaid").reduce((s, r) => s + r.effective_amount, 0);
+  // Group by case_id (fallback to case_name)
+  const caseMap = new Map<string | number, { caseName: string; therapistName: string | null; recs: SelfPayRecord[] }>();
+  for (const r of records) {
+    const key = r.case_id ?? (r.case_name ?? "?");
+    if (!caseMap.has(key)) caseMap.set(key, { caseName: r.case_name ?? `#${r.case_id}`, therapistName: r.therapist_name, recs: [] });
+    caseMap.get(key)!.recs.push(r);
+  }
+
+  // Sort: cases with unpaid first, then by case name
+  const groups = [...caseMap.entries()].map(([key, g]) => {
+    const sorted = [...g.recs].sort((a, b) => a.session_date.localeCompare(b.session_date));
+    const paidCount = sorted.filter(r => r.payment_status === "paid" || r.payment_status === "claimed").length;
+    const unpaidAmount = sorted.filter(r => r.payment_status === "unpaid").reduce((s, r) => s + r.effective_amount, 0);
+    const allPaid = paidCount === sorted.length;
+    return { key, caseName: g.caseName, therapistName: g.therapistName, recs: sorted, paidCount, unpaidAmount, allPaid };
+  }).sort((a, b) => (a.allPaid ? 1 : 0) - (b.allPaid ? 1 : 0) || a.caseName.localeCompare(b.caseName));
+
+  const unpaidTotal = groups.reduce((s, g) => s + g.unpaidAmount, 0);
 
   return (
     <div>
@@ -340,39 +358,55 @@ function SelfPayTrackingContent({ records, loading, reconDate }: { records: Self
         <table className="w-full text-left text-sm">
           <thead className="bg-gray-50 text-xs uppercase text-gray-500">
             <tr>
-              <th className="px-3 py-3">日期</th>
-              <th className="px-3 py-3">個案</th>
-              <th className="px-3 py-3">治療師</th>
-              <th className="px-3 py-3 text-right">金額</th>
-              <th className="px-3 py-3">進度</th>
+              <th className="px-4 py-3">個案</th>
+              <th className="px-4 py-3">治療師</th>
+              <th className="px-4 py-3">療程付款進度</th>
+              <th className="px-4 py-3 text-right">待收金額</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
-            {records.map((r) => {
-              const isPaid = r.payment_status === "paid" || r.payment_status === "claimed";
-              const highlighted = r.session_date === reconDate && isPaid;
-              return (
-                <tr key={r.id} className={`hover:bg-gray-50 ${highlighted ? "bg-green-50" : ""}`}>
-                  <td className="px-3 py-3 text-xs text-gray-500">{r.session_date}</td>
-                  <td className="px-3 py-3 font-medium text-gray-900">{r.case_name ?? "—"}</td>
-                  <td className="px-3 py-3">
-                    {r.therapist_name
-                      ? <span className="inline-block rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">{r.therapist_name}</span>
-                      : <span className="text-xs text-gray-400">—</span>
-                    }
-                  </td>
-                  <td className={`px-3 py-3 text-right font-medium ${isPaid ? "text-green-700" : "text-amber-700"}`}>
-                    ${r.effective_amount.toLocaleString()}
-                  </td>
-                  <td className="px-3 py-3">
-                    <ProgressBar
-                      steps={SELF_PAY_RECORD_STEPS}
-                      timestamps={[r.session_date, isPaid ? r.session_date : null]}
-                    />
-                  </td>
-                </tr>
-              );
-            })}
+            {groups.map(({ key, caseName, therapistName, recs, paidCount, unpaidAmount, allPaid }) => (
+              <tr key={String(key)} className="hover:bg-gray-50">
+                <td className="px-4 py-3 font-medium text-gray-900">{caseName}</td>
+                <td className="px-4 py-3">
+                  {therapistName
+                    ? <span className="inline-block rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">{therapistName}</span>
+                    : <span className="text-xs text-gray-400">—</span>
+                  }
+                </td>
+                <td className="px-4 py-3">
+                  {/* Dot per session: green = paid, gray = unpaid */}
+                  <div className="flex flex-wrap items-center gap-1">
+                    {recs.map((r) => {
+                      const isPaid = r.payment_status === "paid" || r.payment_status === "claimed";
+                      const isToday = r.session_date === reconDate && isPaid;
+                      return (
+                        <div
+                          key={r.id}
+                          title={`${r.session_date} ${isPaid ? "已付款" : "待付款"} $${r.effective_amount.toLocaleString()}`}
+                          className={`h-3 w-3 rounded-full border ${
+                            isToday
+                              ? "bg-blue-400 border-blue-500"
+                              : isPaid
+                                ? "bg-green-500 border-green-600"
+                                : "bg-gray-200 border-gray-300"
+                          }`}
+                        />
+                      );
+                    })}
+                    <span className="ml-1 text-xs text-gray-400">
+                      {paidCount}/{recs.length} 筆
+                    </span>
+                  </div>
+                </td>
+                <td className="px-4 py-3 text-right font-medium">
+                  {allPaid
+                    ? <span className="text-green-600 text-xs font-medium">全部結清 ✓</span>
+                    : <span className="text-amber-700">${unpaidAmount.toLocaleString()}</span>
+                  }
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
