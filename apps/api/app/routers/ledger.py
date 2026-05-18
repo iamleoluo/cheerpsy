@@ -101,6 +101,7 @@ def _to_response(r: SessionRecord, db: Session) -> SessionRecordResponse:
         institution_name=case.institution.name if case and case.institution else None,
         payment_method=r.payment_method,
         payment_note=r.payment_note,
+        paid_at=r.paid_at,
         claim_number=r.claim_number,
         receipt_number=r.receipt_number,
         receipt_no=r.receipt_no,
@@ -355,6 +356,8 @@ def update_payment_status(
 
     before = {"payment_status": r.payment_status, "payment_method": r.payment_method, "claim_number": r.claim_number, "receipt_number": r.receipt_number}
     r.payment_status = body.payment_status
+    if body.payment_status in ("paid", "claimed") and r.paid_at is None:
+        r.paid_at = datetime.now(timezone.utc)
     after = {"payment_status": r.payment_status, "payment_method": r.payment_method, "claim_number": r.claim_number, "receipt_number": r.receipt_number}
     _write_audit(db, "session_records", r.id, "UPDATE", user.id, before, after)
     db.commit()
@@ -581,6 +584,7 @@ def pay_self_pay_record(
     before = {"payment_status": r.payment_status, "payment_method": r.payment_method}
     _validate_and_set_payment(r, body.payment_method, body.payment_note)
     r.payment_status = "paid"
+    r.paid_at = datetime.now(timezone.utc)
     after = {"payment_status": r.payment_status, "payment_method": r.payment_method}
     _write_audit(db, "session_records", r.id, "UPDATE", user.id, before, after)
     db.commit()
@@ -610,6 +614,7 @@ def pay_batch(
         before = {"payment_status": r.payment_status}
         _validate_and_set_payment(r, body.payment_method, body.payment_note)
         r.payment_status = "paid"
+        r.paid_at = datetime.now(timezone.utc)
         _write_audit(db, "session_records", r.id, "UPDATE", user.id, before, {"payment_status": "paid"})
     db.commit()
     return {

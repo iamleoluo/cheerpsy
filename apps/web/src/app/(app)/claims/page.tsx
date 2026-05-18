@@ -366,8 +366,6 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [payIds, setPayIds] = useState<number[] | null>(null);
-  const [showHistory, setShowHistory] = useState(false);
-  const [history, setHistory] = useState<ClaimBatch[]>([]);
   const [expandedCaseId, setExpandedCaseId] = useState<number | string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | "unpaid" | "paid">("all");
 
@@ -385,12 +383,6 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
   }, [token]);
 
   useEffect(() => { fetchRecords(); }, [fetchRecords]);
-
-  useEffect(() => {
-    if (showHistory) {
-      clientFetch("/claim-batches?type=self_pay", token).then(setHistory).catch(() => {});
-    }
-  }, [showHistory, token]);
 
   const isPaid = (r: LedgerRecord) => r.payment_status === "paid" || r.payment_status === "claimed";
 
@@ -453,62 +445,18 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
       )}
 
       <div className="mb-3 flex items-center gap-3">
-        {!showHistory && (
-          <select
-            value={statusFilter}
-            onChange={(e) => { setStatusFilter(e.target.value as "all" | "unpaid" | "paid"); setExpandedCaseId(null); }}
-            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm"
-          >
-            <option value="all">全部狀態</option>
-            <option value="unpaid">待付款</option>
-            <option value="paid">已付款</option>
-          </select>
-        )}
-        <button
-          onClick={() => setShowHistory((v) => !v)}
-          className="ml-auto text-sm text-primary-600 hover:underline"
+        <select
+          value={statusFilter}
+          onChange={(e) => { setStatusFilter(e.target.value as "all" | "unpaid" | "paid"); setExpandedCaseId(null); }}
+          className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm"
         >
-          {showHistory ? "← 回帳冊" : "歷史核銷案"}
-        </button>
+          <option value="all">全部狀態</option>
+          <option value="unpaid">待付款</option>
+          <option value="paid">已付款</option>
+        </select>
       </div>
 
-      {showHistory ? (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-gray-50 text-left text-xs text-gray-500">
-                <th className="px-3 py-2">編號</th>
-                <th className="px-3 py-2">個案</th>
-                <th className="px-3 py-2">期間</th>
-                <th className="px-3 py-2 text-right">金額</th>
-                <th className="px-3 py-2">狀態</th>
-                <th className="px-3 py-2">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {history.length === 0 ? (
-                <tr><td colSpan={6} className="py-6 text-center text-gray-400">無歷史核銷案</td></tr>
-              ) : history.map((b) => (
-                <tr key={b.id} className="border-b hover:bg-gray-50">
-                  <td className="px-3 py-2 font-mono text-xs">{b.batch_number}</td>
-                  <td className="px-3 py-2">{b.case_name}</td>
-                  <td className="px-3 py-2 text-xs">{b.period_start ?? ""} ~ {b.period_end ?? ""}</td>
-                  <td className="px-3 py-2 text-right">${b.total_amount.toLocaleString()}</td>
-                  <td className="px-3 py-2"><StatusBadge status={b.status} /></td>
-                  <td className="px-3 py-2">
-                    <button
-                      onClick={() => downloadPdf(`/claim-batches/${b.id}/receipt`, token, `receipt-${b.batch_number}.pdf`)}
-                      className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-100"
-                    >
-                      重印收據
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : loading ? (
+      {loading ? (
         <div className="py-8 text-center text-gray-400">載入中...</div>
       ) : filtered.length === 0 ? (
         <div className="py-8 text-center text-gray-400">
