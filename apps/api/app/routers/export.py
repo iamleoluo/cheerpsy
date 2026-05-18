@@ -61,6 +61,8 @@ def export_cases(
         rows.append({
             "ID": c.id,
             "案號": c.case_code or "",
+            "正式案號": c.case_number or "",
+            "計費週期": c.billing_cycle or "",
             "姓名": c.name,
             "性別": c.gender or "",
             "出生日期": str(c.birth_date) if c.birth_date else "",
@@ -136,15 +138,32 @@ def export_ledger(
             "ID": r.id,
             "日期": str(r.session_date),
             "心理師": therapist_map.get(r.therapist_id, ""),
+            "心理師ID": r.therapist_id,
             "個案": case_map.get(r.case_id, "") if r.case_id else "",
+            "個案ID": r.case_id or "",
             "類型": r.session_type,
             "空間": room_map.get(r.room_id, "") if r.room_id else "",
             "費用類別": r.fee_category,
             "金額": float(r.amount),
+            "折扣金額": float(r.discount_amount or 0),
+            "折扣備註": r.discount_note or "",
+            "實收金額": float(r.amount) - float(r.discount_amount or 0),
             "收款狀態": r.payment_status,
+            "付款方式": r.payment_method or "",
+            "付款備註": r.payment_note or "",
+            "付款時間": r.paid_at.isoformat() if r.paid_at else "",
+            "收據編號": r.receipt_no or "",
+            "是否作廢": "是" if r.is_void else "否",
+            "作廢原因": r.void_reason or "",
+            "作廢時間": r.voided_at.isoformat() if r.voided_at else "",
+            "作廢者ID": r.voided_by or "",
+            "經費來源": r.funding_source or "",
+            "抽成比例": float(r.commission_rate_used) if r.commission_rate_used else "",
+            "核銷案ID": r.claim_batch_id or "",
             "請款單號": r.claim_number or "",
             "到款收據": r.receipt_number or "",
             "鎖定時間": str(r.locked_at) if r.locked_at else "",
+            "預約ID": r.appointment_id or "",
         })
     return _csv_response(rows, "ledger.csv")
 
@@ -204,6 +223,8 @@ def export_users(
             "角色": u.role,
             "代碼": u.user_code or "",
             "啟用": "是" if u.is_active else "否",
+            "抽成比例": float(u.commission_rate) if u.commission_rate else "",
+            "預設價格": float(u.base_price) if u.base_price else "",
         })
     return _csv_response(rows, "users.csv")
 
@@ -263,29 +284,16 @@ def export_claim_batches(
             "期間迄": str(b.period_end) if b.period_end else "",
             "金額": str(b.total_amount) if b.total_amount else "0",
             "外部參考": b.external_ref or "",
+            "付款方式": b.payment_method or "",
+            "付款備註": b.payment_note or "",
+            "計費週期": b.billing_cycle or "",
+            "預計次數": b.expected_sessions or "",
+            "提交時間": b.submitted_at.isoformat() if b.submitted_at else "",
+            "到款時間": b.received_at.isoformat() if b.received_at else "",
+            "結清時間": b.closed_at.isoformat() if b.closed_at else "",
             "建立時間": str(b.created_at) if b.created_at else "",
         })
     return _csv_response(rows, "claim_batches.csv")
-
-
-@router.get("/petty-cash")
-def export_petty_cash(
-    user: User = Depends(RequireRole(["admin"])),
-    db: Session = Depends(get_db),
-):
-    items = db.query(PettyCash).order_by(PettyCash.id.desc()).all()
-    rows = []
-    for p in items:
-        rows.append({
-            "ID": p.id,
-            "日期": str(p.date),
-            "類別": p.category,
-            "說明": p.description,
-            "金額": str(p.amount),
-            "建立者": p.created_by or "",
-            "建立時間": str(p.created_at) if p.created_at else "",
-        })
-    return _csv_response(rows, "petty_cash.csv")
 
 
 @router.get("/audit-log")
@@ -318,7 +326,7 @@ def list_exportable_tables(
     return [
         {"key": "cases", "label": "個案", "endpoint": "/export/cases"},
         {"key": "appointments", "label": "預約", "endpoint": "/export/appointments"},
-        {"key": "ledger", "label": "日結帳冊", "endpoint": "/export/ledger"},
+        {"key": "ledger", "label": "帳冊流水帳", "endpoint": "/export/ledger"},
         {"key": "claim-batches", "label": "核銷案", "endpoint": "/export/claim-batches"},
         {"key": "invoices", "label": "收據", "endpoint": "/export/invoices"},
         {"key": "petty-cash", "label": "零用金", "endpoint": "/export/petty-cash"},
