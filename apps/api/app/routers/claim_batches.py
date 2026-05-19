@@ -20,6 +20,8 @@ from app.schemas.claim_batch import (
 )
 from app.services.claim_batch import (
     auto_transition_to_ready,
+    check_readiness,
+    docs_required,
     generate_batch_number,
     recalculate_total,
 )
@@ -71,6 +73,9 @@ def _to_response(db: Session, b: ClaimBatch) -> ClaimBatchResponse:
         submitted_at=b.submitted_at.isoformat() if b.submitted_at else None,
         received_at=b.received_at.isoformat() if b.received_at else None,
         closed_at=b.closed_at.isoformat() if b.closed_at else None,
+        docs_waived_at=b.docs_waived_at,
+        docs_waived_by=b.docs_waived_by,
+        docs_required=docs_required(db, b),
     )
 
 
@@ -105,10 +110,14 @@ def list_eligible_cases(
     """Return cases that have unassigned session_records, filtered by funding source."""
     from sqlalchemy import distinct
 
-    # Find case_ids with at least one unassigned session_record
+    # Find case_ids with at least one unassigned (non-void) session_record
     case_ids_with_records = (
         db.query(distinct(SessionRecord.case_id))
-        .filter(SessionRecord.claim_batch_id.is_(None), SessionRecord.case_id.isnot(None))
+        .filter(
+            SessionRecord.claim_batch_id.is_(None),
+            SessionRecord.case_id.isnot(None),
+            SessionRecord.is_void.is_(False),
+        )
         .all()
     )
     cids = [row[0] for row in case_ids_with_records]
@@ -143,10 +152,14 @@ def list_eligible_institutions(
     """Return institutions that have cases with unassigned session_records."""
     from sqlalchemy import distinct
 
-    # case_ids with unassigned records
+    # case_ids with unassigned (non-void) records
     case_ids_with_records = (
         db.query(distinct(SessionRecord.case_id))
-        .filter(SessionRecord.claim_batch_id.is_(None), SessionRecord.case_id.isnot(None))
+        .filter(
+            SessionRecord.claim_batch_id.is_(None),
+            SessionRecord.case_id.isnot(None),
+            SessionRecord.is_void.is_(False),
+        )
         .all()
     )
     cids = [row[0] for row in case_ids_with_records]
@@ -177,7 +190,10 @@ def list_unassigned_records(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    q = db.query(SessionRecord).filter(SessionRecord.claim_batch_id.is_(None))
+    q = db.query(SessionRecord).filter(
+        SessionRecord.claim_batch_id.is_(None),
+        SessionRecord.is_void.is_(False),
+    )
 
     if case_id:
         q = q.filter(SessionRecord.case_id == case_id)
@@ -439,6 +455,53 @@ def receive_batch(
             r.payment_status = "claimed"
     db.commit()
     return {"status": "received"}
+
+
+@router.put("/{batch_id}/waive-docs", response_model=ClaimBatchResponse)
+def waive_docs(
+    batch_id: int,
+    user: User = Depends(RequireRole(["admin", "staff"])),
+    db: Session = Depends(get_db),
+):
+    batch = db.query(ClaimBatch).filter(ClaimBatch.id == batch_id).first()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Claim batch not found")
+    if batch.type != "institution":
+        raise HTTPException(status_code=400, detail="Only institution batches can waive docs")
+
+    from datetime import datetime, timezone
+    batch.docs_waived_at = datetime.now(timezone.utc)
+    batch.docs_waived_by = user.id
+    db.flush()
+    auto_transition_to_ready(db, batch.id)
+    write_audit(db, "claim_batches", batch.id, "WAIVE_DOCS", user.id,
+                {"docs_waived_at": None}, {"docs_waived_at": batch.docs_waived_at.isoformat()})
+    db.commit()
+    db.refresh(batch)
+    return _to_response(db, batch)
+
+
+@router.put("/{batch_id}/unwaive-docs", response_model=ClaimBatchResponse)
+def unwaive_docs(
+    batch_id: int,
+    user: User = Depends(RequireRole(["admin", "staff"])),
+    db: Session = Depends(get_db),
+):
+    batch = db.query(ClaimBatch).filter(ClaimBatch.id == batch_id).first()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Claim batch not found")
+
+    before = {"docs_waived_at": batch.docs_waived_at.isoformat() if batch.docs_waived_at else None}
+    batch.docs_waived_at = None
+    batch.docs_waived_by = None
+    db.flush()
+    if batch.status == "ready" and not check_readiness(db, batch.id):
+        batch.status = "collecting"
+    write_audit(db, "claim_batches", batch.id, "UNWAIVE_DOCS", user.id,
+                before, {"docs_waived_at": None})
+    db.commit()
+    db.refresh(batch)
+    return _to_response(db, batch)
 
 
 @router.put("/{batch_id}/close")

@@ -466,13 +466,22 @@ def confirm_doc_submission(
         raise HTTPException(status_code=404, detail="Record not found")
     if user.role == "therapist" and r.therapist_id != user.id:
         raise HTTPException(status_code=403, detail="Only the assigned therapist can confirm")
-    if user.role not in ("therapist", "admin"):
+    if user.role not in ("therapist", "admin", "staff"):
         raise HTTPException(status_code=403, detail="Access denied")
     if r.therapist_doc_submitted_at:
         raise HTTPException(status_code=400, detail="Already confirmed")
 
+    before = {
+        "therapist_doc_submitted_at": None,
+        "therapist_doc_submitted_by": None,
+    }
     r.therapist_doc_submitted_at = datetime.now(timezone.utc)
     r.therapist_doc_submitted_by = user.id
+    after = {
+        "therapist_doc_submitted_at": r.therapist_doc_submitted_at.isoformat(),
+        "therapist_doc_submitted_by": r.therapist_doc_submitted_by,
+    }
+    _write_audit(db, "session_records", r.id, "CONFIRM_DOC", user.id, before, after)
     db.flush()
 
     if r.claim_batch_id:
@@ -484,6 +493,41 @@ def confirm_doc_submission(
             ).count()
             if unconfirmed == 0:
                 batch.status = "ready"
+
+    db.commit()
+    db.refresh(r)
+    return _to_response(r, db)
+
+
+@router.put("/{record_id}/cancel-doc", response_model=SessionRecordResponse)
+def cancel_doc_submission(
+    record_id: int,
+    user: User = Depends(RequireRole(["admin", "staff"])),
+    db: Session = Depends(get_db),
+):
+    r = db.query(SessionRecord).filter(SessionRecord.id == record_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Record not found")
+    if r.therapist_doc_submitted_at is None:
+        raise HTTPException(status_code=400, detail="尚未確認")
+
+    before = {
+        "therapist_doc_submitted_at": r.therapist_doc_submitted_at.isoformat(),
+        "therapist_doc_submitted_by": r.therapist_doc_submitted_by,
+    }
+    r.therapist_doc_submitted_at = None
+    r.therapist_doc_submitted_by = None
+    after = {
+        "therapist_doc_submitted_at": None,
+        "therapist_doc_submitted_by": None,
+    }
+    _write_audit(db, "session_records", r.id, "CANCEL_DOC", user.id, before, after)
+    db.flush()
+
+    if r.claim_batch_id:
+        batch = db.query(ClaimBatch).filter(ClaimBatch.id == r.claim_batch_id).first()
+        if batch and batch.status == "ready":
+            batch.status = "collecting"
 
     db.commit()
     db.refresh(r)

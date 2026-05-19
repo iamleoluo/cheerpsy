@@ -48,6 +48,7 @@ interface Institution {
   name: string;
   code: string | null;
   is_active: boolean;
+  requires_therapist_docs: boolean;
 }
 
 const roleLabels: Record<string, string> = {
@@ -670,11 +671,13 @@ function InstitutionsTab({ token }: { token: string }) {
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState("");
   const [newCode, setNewCode] = useState("");
+  const [newRequiresDocs, setNewRequiresDocs] = useState(true);
   const [adding, setAdding] = useState(false);
 
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
   const [editCode, setEditCode] = useState("");
+  const [editRequiresDocs, setEditRequiresDocs] = useState(true);
 
   const [search, setSearch] = useState("");
 
@@ -699,7 +702,7 @@ function InstitutionsTab({ token }: { token: string }) {
     setAdding(true);
     setError("");
     try {
-      const body: any = { name: newName.trim() };
+      const body: any = { name: newName.trim(), requires_therapist_docs: newRequiresDocs };
       if (newCode.trim()) body.code = newCode.trim();
       await clientFetch("/institutions", token, {
         method: "POST",
@@ -708,6 +711,7 @@ function InstitutionsTab({ token }: { token: string }) {
       setShowAdd(false);
       setNewName("");
       setNewCode("");
+      setNewRequiresDocs(true);
       fetchInstitutions();
     } catch (e: any) {
       setError(e.message);
@@ -722,6 +726,7 @@ function InstitutionsTab({ token }: { token: string }) {
       const body: any = {};
       if (editName.trim()) body.name = editName.trim();
       body.code = editCode.trim() || "";
+      body.requires_therapist_docs = editRequiresDocs;
       await clientFetch(`/institutions/${id}`, token, {
         method: "PUT",
         body: JSON.stringify(body),
@@ -815,6 +820,7 @@ function InstitutionsTab({ token }: { token: string }) {
               <tr>
                 <th className="px-4 py-3">機構代號</th>
                 <th className="px-4 py-3">機構名稱</th>
+                <th className="px-4 py-3">繳交資料</th>
                 <th className="px-4 py-3">狀態</th>
                 <th className="px-4 py-3">操作</th>
               </tr>
@@ -842,6 +848,16 @@ function InstitutionsTab({ token }: { token: string }) {
                           onChange={(e) => setEditName(e.target.value)}
                           className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
                         />
+                      </td>
+                      <td className="px-4 py-3">
+                        <label className="flex items-center gap-1 text-xs text-gray-600">
+                          <input
+                            type="checkbox"
+                            checked={editRequiresDocs}
+                            onChange={(e) => setEditRequiresDocs(e.target.checked)}
+                          />
+                          需心理師繳交資料
+                        </label>
                       </td>
                       <td className="px-4 py-3">
                         <span className={`inline-block rounded-full px-2 py-0.5 text-xs ${inst.is_active ? "bg-green-100 text-green-700" : "bg-gray-200 text-gray-500"}`}>
@@ -872,6 +888,13 @@ function InstitutionsTab({ token }: { token: string }) {
                       </td>
                       <td className="px-4 py-3 font-medium">{inst.name}</td>
                       <td className="px-4 py-3">
+                        {inst.requires_therapist_docs ? (
+                          <span className="text-xs text-gray-400">需繳資料</span>
+                        ) : (
+                          <span className="inline-block rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">免繳資料</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
                         <span className={`inline-block rounded-full px-2 py-0.5 text-xs ${inst.is_active ? "bg-green-100 text-green-700" : "bg-gray-200 text-gray-500"}`}>
                           {inst.is_active ? "啟用" : "停用"}
                         </span>
@@ -883,6 +906,7 @@ function InstitutionsTab({ token }: { token: string }) {
                               setEditingId(inst.id);
                               setEditName(inst.name);
                               setEditCode(inst.code ?? "");
+                              setEditRequiresDocs(inst.requires_therapist_docs);
                             }}
                             className="text-xs text-blue-600 hover:underline"
                           >
@@ -933,10 +957,20 @@ function InstitutionsTab({ token }: { token: string }) {
                   maxLength={5}
                 />
               </div>
+              <div>
+                <label className="flex items-center gap-2 text-sm text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={newRequiresDocs}
+                    onChange={(e) => setNewRequiresDocs(e.target.checked)}
+                  />
+                  需心理師繳交資料
+                </label>
+              </div>
             </div>
             <div className="mt-5 flex justify-end gap-2">
               <button
-                onClick={() => { setShowAdd(false); setNewName(""); setNewCode(""); }}
+                onClick={() => { setShowAdd(false); setNewName(""); setNewCode(""); setNewRequiresDocs(true); }}
                 className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
               >
                 取消

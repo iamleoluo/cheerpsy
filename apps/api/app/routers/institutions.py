@@ -14,11 +14,13 @@ router = APIRouter(prefix="/institutions", tags=["institutions"])
 class InstitutionCreate(BaseModel):
     name: str
     code: str | None = None
+    requires_therapist_docs: bool = True
 
 
 class InstitutionUpdate(BaseModel):
     name: str | None = None
     code: str | None = None
+    requires_therapist_docs: bool | None = None
 
 
 class InstitutionResponse(BaseModel):
@@ -26,6 +28,7 @@ class InstitutionResponse(BaseModel):
     name: str
     code: str | None = None
     is_active: bool
+    requires_therapist_docs: bool = True
 
     model_config = {"from_attributes": True}
 
@@ -54,6 +57,7 @@ def create_institution(
             existing.is_active = True
             if body.code:
                 existing.code = body.code.strip().upper()
+            existing.requires_therapist_docs = body.requires_therapist_docs
             db.commit()
             db.refresh(existing)
             return existing
@@ -69,7 +73,12 @@ def create_institution(
     else:
         code = None
 
-    inst = Institution(name=body.name.strip(), code=code, created_by=user.id)
+    inst = Institution(
+        name=body.name.strip(),
+        code=code,
+        requires_therapist_docs=body.requires_therapist_docs,
+        created_by=user.id,
+    )
     db.add(inst)
     db.commit()
     db.refresh(inst)
@@ -86,7 +95,7 @@ def update_institution(
     inst = db.query(Institution).filter(Institution.id == inst_id).first()
     if not inst:
         raise HTTPException(status_code=404, detail="Not found")
-    before_data = {"name": inst.name, "code": inst.code}
+    before_data = {"name": inst.name, "code": inst.code, "requires_therapist_docs": inst.requires_therapist_docs}
     if body.name is not None:
         inst.name = body.name.strip()
     if body.code is not None:
@@ -97,7 +106,9 @@ def update_institution(
         if dup:
             raise HTTPException(status_code=400, detail=f"Code '{code}' already in use")
         inst.code = code
-    after_data = {"name": inst.name, "code": inst.code}
+    if body.requires_therapist_docs is not None:
+        inst.requires_therapist_docs = body.requires_therapist_docs
+    after_data = {"name": inst.name, "code": inst.code, "requires_therapist_docs": inst.requires_therapist_docs}
     write_audit(db, "institutions", inst.id, "UPDATE", user.id, before_data, after_data)
     db.commit()
     db.refresh(inst)

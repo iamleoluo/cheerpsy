@@ -135,6 +135,7 @@ def _compute_live_alerts(user: User, db: Session) -> list[dict]:
                 SessionRecord.therapist_id == user.id,
                 SessionRecord.claim_batch_id.isnot(None),
                 SessionRecord.therapist_doc_submitted_at.is_(None),
+                SessionRecord.is_void.is_(False),
             )
             .count()
         )
@@ -153,6 +154,7 @@ def _compute_live_alerts(user: User, db: Session) -> list[dict]:
             .filter(
                 SessionRecord.payment_status == "unpaid",
                 SessionRecord.claim_batch_id.is_(None),
+                SessionRecord.is_void.is_(False),
             )
             .count()
         )

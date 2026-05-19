@@ -10,4 +10,5 @@ class Institution(Base):
     name = Column(String(200), unique=True, nullable=False)
     code = Column(String(5), unique=True, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
+    requires_therapist_docs = Column(Boolean, nullable=False, default=True, server_default="true")
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)

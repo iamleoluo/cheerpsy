@@ -41,10 +41,35 @@ def recalculate_total(db: Session, batch_id: int) -> float:
     return total
 
 
+def _resolve_institution(db: Session, batch: ClaimBatch) -> Institution | None:
+    if batch.institution_id:
+        return db.query(Institution).filter(Institution.id == batch.institution_id).first()
+    if batch.case_id:
+        case = db.query(Case).filter(Case.id == batch.case_id).first()
+        if case and case.institution_id:
+            return db.query(Institution).filter(Institution.id == case.institution_id).first()
+    return None
+
+
+def docs_required(db: Session, batch: ClaimBatch) -> bool:
+    """Whether therapist docs gate this batch's readiness."""
+    if batch.docs_waived_at is not None:
+        return False
+    inst = _resolve_institution(db, batch)
+    if inst is not None and inst.requires_therapist_docs is False:
+        return False
+    return True
+
+
 def check_readiness(db: Session, batch_id: int) -> bool:
+    batch = db.query(ClaimBatch).filter(ClaimBatch.id == batch_id).first()
+    if not batch:
+        return False
     records = db.query(SessionRecord).filter(SessionRecord.claim_batch_id == batch_id).all()
     if not records:
         return False
+    if not docs_required(db, batch):
+        return True
     return all(r.therapist_doc_submitted_at is not None for r in records)
 
 

@@ -245,7 +245,7 @@ export default function LedgerPage() {
 
   // Filter pending: unpaid AND not in any claim batch
   const pendingRecords = tab === "pending"
-    ? records.filter((r) => r.payment_status === "unpaid" && !r.claim_batch_id)
+    ? records.filter((r) => r.payment_status === "unpaid" && !r.claim_batch_id && !r.is_void)
     : records;
 
   const displayRecords = tab === "pending" ? pendingRecords : records;

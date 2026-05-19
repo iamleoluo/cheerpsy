@@ -25,3 +25,5 @@ class ClaimBatch(Base):
     submitted_at = Column(DateTime(timezone=True), nullable=True)
     received_at = Column(DateTime(timezone=True), nullable=True)
     closed_at = Column(DateTime(timezone=True), nullable=True)
+    docs_waived_at = Column(DateTime(timezone=True), nullable=True)
+    docs_waived_by = Column(Integer, ForeignKey("users.id"), nullable=True)

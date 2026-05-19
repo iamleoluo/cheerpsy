@@ -73,6 +73,9 @@ interface ClaimBatch {
   record_count: number;
   confirmed_count: number;
   created_at: string | null;
+  docs_waived_at: string | null;
+  docs_waived_by: number | null;
+  docs_required: boolean;
 }
 
 interface BatchRecord {
@@ -84,6 +87,7 @@ interface BatchRecord {
   amount: number;
   payment_status: string;
   therapist_doc_submitted_at: string | null;
+  therapist_doc_submitted_by: number | null;
 }
 
 interface UnassignedRecord {
@@ -276,7 +280,7 @@ function SelfPayPaymentModal({
     setSaving(true);
     try {
       if (isBatch) {
-        await clientFetch("/ledger/pay-batch", token, {
+        const res = await clientFetch("/ledger/pay-batch", token, {
           method: "POST",
           body: JSON.stringify({
             record_ids: recordIds,
@@ -286,13 +290,14 @@ function SelfPayPaymentModal({
             paid_date: paidDate,
           }),
         });
+        onDone(res?.record_ids ?? recordIds, res?.combine_receipt ?? combine);
       } else {
         await clientFetch(`/ledger/${recordIds[0]}/pay`, token, {
           method: "PUT",
           body: JSON.stringify({ payment_method: method, payment_note: note.trim() || null, paid_date: paidDate }),
         });
+        onDone(recordIds, false);
       }
-      onDone(recordIds, isBatch ? combine : false);
     } catch (e: any) {
       alert(e.message);
     } finally {
@@ -766,14 +771,31 @@ function BatchRow({
         <td className="px-3 py-2 text-xs">{b.period_start ?? ""} ~ {b.period_end ?? ""}</td>
         <td className="px-3 py-2 text-right">${b.total_amount.toLocaleString()}</td>
         <td className="px-3 py-2 text-xs">
-          {b.confirmed_count}/{b.record_count}
-          {b.record_count > 0 && b.confirmed_count === b.record_count && (
-            <span className="ml-1 text-green-600">&#10003;</span>
+          {b.docs_required === false ? (
+            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-500">免繳資料</span>
+          ) : (
+            <>
+              {b.confirmed_count}/{b.record_count}
+              {b.record_count > 0 && b.confirmed_count === b.record_count && (
+                <span className="ml-1 text-green-600">&#10003;</span>
+              )}
+            </>
           )}
         </td>
         <td className="px-3 py-2"><StatusBadge status={b.status} /></td>
         <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
           <div className="flex flex-wrap gap-1">
+            {canEdit && !["submitted", "received", "closed"].includes(b.status) && (
+              b.docs_waived_at ? (
+                <button onClick={() => transition("unwaive-docs")} className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-100">
+                  恢復需繳資料
+                </button>
+              ) : (
+                <button onClick={() => transition("waive-docs")} className="rounded border border-amber-300 px-2 py-0.5 text-xs text-amber-700 hover:bg-amber-50">
+                  豁免本案資料
+                </button>
+              )
+            )}
             {canEdit && (b.status === "collecting" || b.status === "ready") && (
               <button onClick={() => transition("submit")} className="rounded bg-blue-600 px-2 py-0.5 text-xs text-white hover:bg-blue-700">
                 提交請款
@@ -1075,7 +1097,10 @@ function CreateBatchModal({
 
 function DocConfirmTab({ token, userRole }: { token: string; userRole: string }) {
   const [records, setRecords] = useState<any[]>([]);
+  const [confirmed, setConfirmed] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const canCancel = ["admin", "staff"].includes(userRole);
 
   const fetchPending = useCallback(async () => {
     setLoading(true);
@@ -1085,6 +1110,9 @@ function DocConfirmTab({ token, userRole }: { token: string; userRole: string })
         (r: any) => r.claim_batch_id && !r.therapist_doc_submitted_at
       );
       setRecords(pending);
+      setConfirmed(
+        data.filter((r: any) => r.claim_batch_id && r.therapist_doc_submitted_at)
+      );
     } catch { /* ignore */ } finally {
       setLoading(false);
     }
@@ -1095,6 +1123,16 @@ function DocConfirmTab({ token, userRole }: { token: string; userRole: string })
   const confirmDoc = async (recordId: number) => {
     try {
       await clientFetch(`/ledger/${recordId}/confirm-doc`, token, { method: "PUT" });
+      fetchPending();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
+  const cancelDoc = async (recordId: number) => {
+    if (!confirm("確定要撤回此筆文件確認？")) return;
+    try {
+      await clientFetch(`/ledger/${recordId}/cancel-doc`, token, { method: "PUT" });
       fetchPending();
     } catch (e: any) {
       alert(e.message);
@@ -1144,6 +1182,45 @@ function DocConfirmTab({ token, userRole }: { token: string; userRole: string })
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {canCancel && confirmed.length > 0 && (
+        <div className="mt-8">
+          <p className="mb-3 text-sm font-medium text-gray-600">已確認文件（可撤回）</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-gray-50 text-left text-xs text-gray-500">
+                  <th className="px-3 py-2">日期</th>
+                  <th className="px-3 py-2">個案</th>
+                  <th className="px-3 py-2">類型</th>
+                  <th className="px-3 py-2 text-right">金額</th>
+                  <th className="px-3 py-2">核銷案</th>
+                  <th className="px-3 py-2">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {confirmed.map((r: any) => (
+                  <tr key={r.id} className="border-b hover:bg-gray-50">
+                    <td className="px-3 py-2">{r.session_date}</td>
+                    <td className="px-3 py-2">{r.case_name}</td>
+                    <td className="px-3 py-2">{SESSION_TYPE_LABELS[r.session_type] ?? r.session_type}</td>
+                    <td className="px-3 py-2 text-right">${r.amount?.toLocaleString()}</td>
+                    <td className="px-3 py-2 font-mono text-xs">{r.claim_batch_number ?? `#${r.claim_batch_id}`}</td>
+                    <td className="px-3 py-2">
+                      <button
+                        onClick={() => cancelDoc(r.id)}
+                        className="rounded border border-red-300 px-3 py-1 text-xs text-red-600 hover:bg-red-50"
+                      >
+                        撤回確認
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

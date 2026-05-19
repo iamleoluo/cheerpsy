@@ -166,14 +166,8 @@ def activate_case(
         missing.append("身份證字號")
     if not c.birth_date:
         missing.append("出生日期")
-    if not c.gender:
-        missing.append("性別")
     if not c.phone:
         missing.append("連絡電話")
-    if not c.emergency_contact:
-        missing.append("緊急聯絡人")
-    if not c.emergency_phone:
-        missing.append("緊急聯絡人電話")
     if missing:
         raise HTTPException(status_code=400, detail=f"轉正式前需填寫：{'、'.join(missing)}")
 

@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 
 from pydantic import BaseModel
 
@@ -42,6 +42,9 @@ class ClaimBatchResponse(BaseModel):
     submitted_at: str | None = None
     received_at: str | None = None
     closed_at: str | None = None
+    docs_waived_at: datetime | None = None
+    docs_waived_by: int | None = None
+    docs_required: bool = True
 
 
 class ClaimBatchRecordResponse(BaseModel):

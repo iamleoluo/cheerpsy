@@ -833,7 +833,7 @@ function CaseForm({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">電話</span>
+              <span className="mb-1 block text-xs text-gray-500">電話<span className="text-red-500"> *</span><span className="text-gray-400">（轉正式必填）</span></span>
               <input value={form.phone} onChange={(e) => sf("phone", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
             </label>
             <label className="block">
@@ -875,7 +875,10 @@ function CaseForm({
           {isEditing && (
             <>
               <hr className="my-2 border-gray-200" />
-              <p className="text-xs font-medium text-gray-500">轉正式所需資料（初診後補填）</p>
+              <p className="text-xs font-medium text-gray-500">
+                轉正式所需資料（初診後補填）
+                <span className="ml-1 font-normal text-gray-400">— 僅需 身份證字號、出生日期、電話 三項</span>
+              </p>
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
                   <span className="mb-1 block text-xs text-gray-500">性別</span>
@@ -886,7 +889,7 @@ function CaseForm({
                   </select>
                 </label>
                 <label className="block">
-                  <span className="mb-1 block text-xs text-gray-500">出生日期</span>
+                  <span className="mb-1 block text-xs text-gray-500">出生日期<span className="text-red-500"> *</span></span>
                   <input type="date" value={form.birth_date} onChange={(e) => sf("birth_date", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
                 </label>
               </div>
