@@ -79,3 +79,42 @@ def auto_transition_to_ready(db: Session, batch_id: int):
         return
     if check_readiness(db, batch_id):
         batch.status = "ready"
+
+
+def apply_doc_waiver(db: Session, batch: ClaimBatch, by_user_id: int, at: datetime) -> int:
+    """Mark every still-unconfirmed record in the batch as doc-submitted (a system
+    waiver, attributed to the acting admin/staff). This makes per-record doc
+    confirmation requests disappear so payment can proceed. Returns count touched."""
+    recs = (
+        db.query(SessionRecord)
+        .filter(
+            SessionRecord.claim_batch_id == batch.id,
+            SessionRecord.therapist_doc_submitted_at.is_(None),
+        )
+        .all()
+    )
+    for r in recs:
+        r.therapist_doc_submitted_at = at
+        r.therapist_doc_submitted_by = by_user_id
+    return len(recs)
+
+
+def revert_doc_waiver(db: Session, batch: ClaimBatch, at: datetime | None, by_user_id: int | None) -> int:
+    """Reverse a prior waiver: clear only the records that were auto-confirmed by
+    that exact waiver (matching timestamp + actor), leaving genuine therapist
+    confirmations intact. Returns count touched."""
+    if at is None or by_user_id is None:
+        return 0
+    recs = (
+        db.query(SessionRecord)
+        .filter(
+            SessionRecord.claim_batch_id == batch.id,
+            SessionRecord.therapist_doc_submitted_at == at,
+            SessionRecord.therapist_doc_submitted_by == by_user_id,
+        )
+        .all()
+    )
+    for r in recs:
+        r.therapist_doc_submitted_at = None
+        r.therapist_doc_submitted_by = None
+    return len(recs)

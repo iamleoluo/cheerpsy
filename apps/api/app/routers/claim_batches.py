@@ -19,11 +19,13 @@ from app.schemas.claim_batch import (
     ClaimBatchUpdate,
 )
 from app.services.claim_batch import (
+    apply_doc_waiver,
     auto_transition_to_ready,
     check_readiness,
     docs_required,
     generate_batch_number,
     recalculate_total,
+    revert_doc_waiver,
 )
 from app.services.pdf_generator import (
     generate_institution_claim_form,
@@ -315,6 +317,12 @@ def create_claim_batch(
         sr.claim_batch_id = batch.id
 
     recalculate_total(db, batch.id)
+    # Institution that doesn't require docs → waive every record up front so no
+    # per-record confirmation request blocks payment.
+    if not docs_required(db, batch):
+        from datetime import datetime, timezone
+        apply_doc_waiver(db, batch, user.id, datetime.now(timezone.utc))
+        db.flush()
     auto_transition_to_ready(db, batch.id)
     db.commit()
     db.refresh(batch)
@@ -373,6 +381,10 @@ def add_records_to_batch(
 
     recalculate_total(db, batch_id)
     batch.status = "collecting"
+    if not docs_required(db, batch):
+        from datetime import datetime, timezone
+        apply_doc_waiver(db, batch, user.id, datetime.now(timezone.utc))
+        db.flush()
     auto_transition_to_ready(db, batch_id)
     db.commit()
     return {"added": added}
@@ -473,9 +485,13 @@ def waive_docs(
     batch.docs_waived_at = datetime.now(timezone.utc)
     batch.docs_waived_by = user.id
     db.flush()
+    # Write the waiver onto every record so per-record doc requests disappear
+    waived = apply_doc_waiver(db, batch, user.id, batch.docs_waived_at)
+    db.flush()
     auto_transition_to_ready(db, batch.id)
     write_audit(db, "claim_batches", batch.id, "WAIVE_DOCS", user.id,
-                {"docs_waived_at": None}, {"docs_waived_at": batch.docs_waived_at.isoformat()})
+                {"docs_waived_at": None},
+                {"docs_waived_at": batch.docs_waived_at.isoformat(), "records_waived": waived})
     db.commit()
     db.refresh(batch)
     return _to_response(db, batch)
@@ -492,13 +508,17 @@ def unwaive_docs(
         raise HTTPException(status_code=404, detail="Claim batch not found")
 
     before = {"docs_waived_at": batch.docs_waived_at.isoformat() if batch.docs_waived_at else None}
+    old_at = batch.docs_waived_at
+    old_by = batch.docs_waived_by
     batch.docs_waived_at = None
     batch.docs_waived_by = None
+    # Undo only the records auto-confirmed by this exact waiver
+    reverted = revert_doc_waiver(db, batch, old_at, old_by)
     db.flush()
     if batch.status == "ready" and not check_readiness(db, batch.id):
         batch.status = "collecting"
     write_audit(db, "claim_batches", batch.id, "UNWAIVE_DOCS", user.id,
-                before, {"docs_waived_at": None})
+                before, {"docs_waived_at": None, "records_reverted": reverted})
     db.commit()
     db.refresh(batch)
     return _to_response(db, batch)
