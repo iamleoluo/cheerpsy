@@ -57,14 +57,35 @@ class DocumentSpec:
     table_total_row: list[str] | None
     table_col_widths: list[float]          # cm widths
     table_font_size: int = 10
+    table_row_height: float | None = None  # cm; None = auto (set for signature sheets)
     signature: bool = True
     footer: str = ""
+    corner_tag: str = ""                   # top-left corner label e.g. "附件四"
+    corner_note: str = ""                  # top-right corner note e.g. "106.04修"
 
 
-def render(spec: DocumentSpec) -> bytes:
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=2 * cm, bottomMargin=2 * cm)
+def _build_page_elements(spec: DocumentSpec) -> list:
+    """Build the ReportLab flowable elements for one page / one DocumentSpec."""
+    from reportlab.platypus import PageBreak  # noqa – imported here to keep top-level imports clean
+
     elements = []
+
+    # ── Corner tags (附件四 style) ──
+    if spec.corner_tag or spec.corner_note:
+        tag_rows = [[
+            Paragraph(spec.corner_tag, BODY_STYLE),
+            "",
+            Paragraph(spec.corner_note, SMALL_STYLE),
+        ]]
+        tag_table = Table(tag_rows, colWidths=[3 * cm, 10 * cm, 3 * cm])
+        tag_table.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, -1), FONT),
+            ("ALIGN", (2, 0), (2, 0), "RIGHT"),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ]))
+        elements.append(tag_table)
+        elements.append(Spacer(1, 4))
 
     elements.append(Paragraph(spec.title, TITLE_STYLE))
     elements.append(Spacer(1, 4))
@@ -88,26 +109,43 @@ def render(spec: DocumentSpec) -> bytes:
 
     fs = spec.table_font_size
     pad = 4 if fs >= 10 else 3
-    detail_table = Table(rows, colWidths=[w * cm for w in spec.table_col_widths])
-    detail_table.setStyle(TableStyle([
+
+    # Fixed row height for signature sheets; header row stays auto
+    if spec.table_row_height is not None:
+        n_data = len(spec.table_rows)
+        n_total = 1 if spec.table_total_row is not None else 0
+        row_heights = [None] + [spec.table_row_height * cm] * n_data + ([None] * n_total)
+    else:
+        row_heights = None
+
+    detail_table = Table(
+        rows,
+        colWidths=[w * cm for w in spec.table_col_widths],
+        rowHeights=row_heights,
+    )
+    ts_cmds = [
         ("FONTNAME", (0, 0), (-1, -1), FONT),
         ("FONTSIZE", (0, 0), (-1, -1), fs),
         ("BACKGROUND", (0, 0), (-1, 0), colors.Color(0.93, 0.93, 0.93)),
-        ("GRID", (0, 0), (-1, -2), 0.5, colors.grey),
-        ("LINEABOVE", (0, -1), (-1, -1), 1, colors.black),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
         ("ALIGN", (0, 0), (0, -1), "CENTER"),
-        ("ALIGN", (-1, 0), (-1, -1), "RIGHT"),
-        ("FONTSIZE", (0, -1), (-1, -1), fs + 1),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("BOTTOMPADDING", (0, 0), (-1, -1), pad),
         ("TOPPADDING", (0, 0), (-1, -1), pad),
-    ]))
+    ]
+    if spec.table_total_row is not None:
+        ts_cmds += [
+            ("GRID", (0, 0), (-1, -2), 0.5, colors.grey),
+            ("LINEABOVE", (0, -1), (-1, -1), 1, colors.black),
+            ("ALIGN", (-1, 0), (-1, -1), "RIGHT"),
+            ("FONTSIZE", (0, -1), (-1, -1), fs + 1),
+        ]
+    detail_table.setStyle(TableStyle(ts_cmds))
     elements.append(detail_table)
     elements.append(Spacer(1, 24))
 
     if spec.signature:
-        sig_rows = [
-            ["經辦人：＿＿＿＿＿＿＿", "", "負責人：＿＿＿＿＿＿＿"],
-        ]
+        sig_rows = [["經辦人：＿＿＿＿＿＿＿", "", "負責人：＿＿＿＿＿＿＿"]]
         sig_table = Table(sig_rows, colWidths=[7 * cm, 3 * cm, 7 * cm])
         sig_table.setStyle(TableStyle([
             ("FONTNAME", (0, 0), (-1, -1), FONT),
@@ -119,5 +157,26 @@ def render(spec: DocumentSpec) -> bytes:
     elements.append(Spacer(1, 16))
     elements.append(Paragraph(spec.footer, SMALL_STYLE))
 
+    return elements
+
+
+def render(spec: DocumentSpec) -> bytes:
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=2 * cm, bottomMargin=2 * cm)
+    doc.build(_build_page_elements(spec))
+    return buf.getvalue()
+
+
+def render_multi(specs: list[DocumentSpec]) -> bytes:
+    """Render multiple DocumentSpecs into a single multi-page PDF."""
+    from reportlab.platypus import PageBreak
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=2 * cm, bottomMargin=2 * cm)
+    elements = []
+    for i, spec in enumerate(specs):
+        if i > 0:
+            elements.append(PageBreak())
+        elements.extend(_build_page_elements(spec))
     doc.build(elements)
     return buf.getvalue()

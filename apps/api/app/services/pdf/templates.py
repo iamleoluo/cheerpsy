@@ -90,9 +90,105 @@ def build_institution_claim_form_spec(data: dict) -> DocumentSpec:
     )
 
 
+def build_jiafuzongxin_attendance_spec(data: dict) -> DocumentSpec:
+    """台灣兒童暨家庭扶助基金會南台南家扶中心 — 心理諮商服務簽到表.
+
+    data keys:
+      case_name: str
+      therapist_name: str
+      records: list[{"session_date": date|str, "time_str": str}]
+      max_rows: int = 12
+    """
+    records = data.get("records", [])
+    max_rows = data.get("max_rows", 12)
+    case_name = data.get("case_name", "")
+    therapist_name = data.get("therapist_name", "")
+
+    meta_rows = [[
+        "受服務者姓名：", case_name,
+        "心理師：", therapist_name,
+    ]]
+
+    table_rows = []
+    for i in range(1, max_rows + 1):
+        if i <= len(records):
+            r = records[i - 1]
+            table_rows.append([str(i), _fmt_date(r.get("session_date")), r.get("time_str", ""), "", "", ""])
+        else:
+            table_rows.append([str(i), "", "", "", "", ""])
+
+    return DocumentSpec(
+        title="台灣兒童暨家庭扶助基金會南台南家扶中心",
+        subtitle="心理諮商服務簽到表",
+        meta_rows=meta_rows,
+        meta_col_widths=[3.5, 5, 2.5, 5],
+        table_header=["次數", "日期", "時間", "受服務者簽名", "諮商師簽名", "備註"],
+        table_rows=table_rows,
+        table_total_row=None,
+        table_col_widths=[1.5, 2.8, 2.8, 3.8, 3.8, 1.8],
+        table_font_size=10,
+        table_row_height=1.5,
+        signature=False,
+        footer="備註：本表請於核銷經費時一併附上。",
+    )
+
+
+def build_jiafangzhongxin_attendance_spec(data: dict) -> DocumentSpec:
+    """臺南市政府家庭暴力暨性侵害防治中心 — 心理輔導個案簽到表（附件四）.
+
+    data keys:
+      case_name: str
+      case_number: str        # 系統案號（可空）
+      social_worker: str      # 家防中心社工（可空）
+      referral_unit: str      # 委託單位/外轄社工（可空）
+      records: list[{"session_date": date|str, "time_str": str}]
+      max_rows: int = 15
+    """
+    records = data.get("records", [])
+    max_rows = data.get("max_rows", 15)
+    case_name = data.get("case_name", "")
+    case_number = data.get("case_number", "")
+    social_worker = data.get("social_worker", "")
+    referral_unit = data.get("referral_unit", "")
+
+    name_display = f"{case_name}（{case_number}）" if case_number else case_name
+
+    meta_rows = [
+        ["個案姓名\n（系統案號）", name_display, "家防中心社工", social_worker],
+        ["", "", "委託單位/外轄社工", referral_unit],
+    ]
+
+    table_rows = []
+    for i in range(1, max_rows + 1):
+        if i <= len(records):
+            r = records[i - 1]
+            table_rows.append([str(i), _fmt_date(r.get("session_date")), r.get("time_str", ""), "", "", ""])
+        else:
+            table_rows.append([str(i), "", "", "", "", ""])
+
+    return DocumentSpec(
+        title="臺南市政府家庭暴力暨性侵害防治中心",
+        subtitle="心理輔導個案簽到表",
+        meta_rows=meta_rows,
+        meta_col_widths=[3.5, 4, 3.5, 5],
+        table_header=["次數", "日期", "時間", "受輔導者簽名", "諮商師簽名", "備註"],
+        table_rows=table_rows,
+        table_total_row=None,
+        table_col_widths=[1.5, 2.8, 2.8, 3.8, 3.8, 1.8],
+        table_font_size=10,
+        table_row_height=1.3,
+        signature=False,
+        footer="備註：本表請於核銷經費時一併附上。",
+        corner_tag="附件四",
+        corner_note="106.04修",
+    )
+
+
 TEMPLATES = {
-    "self_pay_receipt": build_self_pay_receipt_spec,
-    "institution_claim_form": build_institution_claim_form_spec,
+    "self_pay_receipt":           build_self_pay_receipt_spec,
+    "institution_claim_form":     build_institution_claim_form_spec,
+    "jiafuzongxin_attendance":    build_jiafuzongxin_attendance_spec,
+    "jiafangzhongxin_attendance": build_jiafangzhongxin_attendance_spec,
 }
 
 
