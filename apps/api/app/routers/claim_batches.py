@@ -31,6 +31,7 @@ from app.services.pdf_generator import (
     generate_institution_claim_form,
     generate_self_pay_receipt,
 )
+from app.services.pdf import generate_pdf, render_multi
 
 router = APIRouter(prefix="/claim-batches", tags=["claim-batches"])
 
@@ -549,6 +550,65 @@ def close_batch(
                 r.payment_status = "paid"
     db.commit()
     return {"status": "closed"}
+
+
+# ── Attendance sheet PDF preview (no DB required) ──
+
+@router.get("/attendance-sheet/preview")
+def preview_attendance_sheet(
+    template: str = Query("jiafuzongxin_attendance", description="jiafuzongxin_attendance | jiafangzhongxin_attendance"),
+    pages: int = Query(2, ge=1, le=5, description="How many fake case pages to generate"),
+    user: User = Depends(get_current_user),
+):
+    """Generate a sample attendance sheet PDF with fake data — for layout testing."""
+    from datetime import date
+    from app.services.pdf.templates import TEMPLATES
+
+    if template not in ("jiafuzongxin_attendance", "jiafangzhongxin_attendance"):
+        raise HTTPException(status_code=400, detail=f"Unknown template: {template!r}. Use jiafuzongxin_attendance or jiafangzhongxin_attendance")
+
+    builder = TEMPLATES[template]
+
+    fake_cases = [
+        {"case_name": "王小明", "case_number": "26000101", "therapist_name": "陳怡君 心理師",
+         "social_worker": "林美惠社工", "referral_unit": "南台南家扶中心"},
+        {"case_name": "李小花", "case_number": "26000102", "therapist_name": "張文雄 心理師",
+         "social_worker": "", "referral_unit": ""},
+        {"case_name": "黃大偉", "case_number": "26000103", "therapist_name": "陳怡君 心理師",
+         "social_worker": "劉志明社工", "referral_unit": ""},
+        {"case_name": "林小芳", "case_number": "26000104", "therapist_name": "周麗華 心理師",
+         "social_worker": "", "referral_unit": ""},
+        {"case_name": "吳建國", "case_number": "26000105", "therapist_name": "張文雄 心理師",
+         "social_worker": "陳美玲社工", "referral_unit": ""},
+    ]
+
+    fake_sessions = [
+        {"session_date": date(2026, 3, 5), "time_str": "14:00"},
+        {"session_date": date(2026, 3, 12), "time_str": "14:00"},
+        {"session_date": date(2026, 3, 19), "time_str": "14:00"},
+        {"session_date": date(2026, 4, 2),  "time_str": "14:00"},
+        {"session_date": date(2026, 4, 9),  "time_str": "15:30"},
+    ]
+
+    specs = []
+    for i in range(min(pages, len(fake_cases))):
+        c = fake_cases[i]
+        data = {
+            "case_name": c["case_name"],
+            "case_number": c["case_number"],
+            "therapist_name": c["therapist_name"],
+            "social_worker": c.get("social_worker", ""),
+            "referral_unit": c.get("referral_unit", ""),
+            "records": fake_sessions[:3 + i],  # vary session count per case
+        }
+        specs.append(builder(data))
+
+    pdf_bytes = render_multi(specs)
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="attendance-preview-{template}.pdf"'},
+    )
 
 
 # ── PDF download ──

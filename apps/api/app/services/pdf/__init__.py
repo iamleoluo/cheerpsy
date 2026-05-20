@@ -6,7 +6,7 @@ template-registry entrypoint.
 """
 from datetime import date
 
-from .engine import DocumentSpec, render
+from .engine import DocumentSpec, render, render_multi
 from .templates import TEMPLATES, generate_pdf
 
 __all__ = [
@@ -15,6 +15,7 @@ __all__ = [
     "generate_pdf",
     "DocumentSpec",
     "render",
+    "render_multi",
     "TEMPLATES",
 ]
 

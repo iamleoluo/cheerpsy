@@ -21,11 +21,13 @@ from app.schemas.session_record import (
     SessionRecordResponse,
     SessionRecordUpdatePayment,
     DiscountRequest,
+    OutcallBonusRequest,
     PayBatchRequest,
     PayRequest,
     SelfPayCaseStat,
     SettlementRequest,
     SettlementResponse,
+    SplitRequest,
     VoidRequest,
 )
 from app.services.pdf_generator import generate_self_pay_receipt
@@ -85,6 +87,7 @@ def _to_response(r: SessionRecord, db: Session) -> SessionRecordResponse:
     amount = float(r.amount)
     discount = float(r.discount_amount or 0)
     effective = round(amount - discount, 2)
+    bonus = float(r.outcall_bonus or 0)
     funding = r.funding_source or (case.funding_source if case else None)
     return SessionRecordResponse(
         id=r.id,
@@ -102,8 +105,8 @@ def _to_response(r: SessionRecord, db: Session) -> SessionRecordResponse:
         discount_amount=discount,
         discount_note=r.discount_note,
         effective_amount=effective,
-        therapist_share=round(effective * float(rate), 2),
-        clinic_share=round(effective * float(1 - rate), 2),
+        therapist_share=round(effective * float(rate) + bonus, 2),
+        clinic_share=round(effective * float(1 - rate) - bonus, 2),
         payment_status=r.payment_status,
         funding_source=funding,
         institution_name=case.institution.name if case and case.institution else None,
@@ -119,6 +122,9 @@ def _to_response(r: SessionRecord, db: Session) -> SessionRecordResponse:
         locked_at=r.locked_at,
         is_void=bool(r.is_void),
         void_reason=r.void_reason,
+        parent_record_id=r.parent_record_id,
+        outcall_bonus=float(r.outcall_bonus or 0),
+        outcall_note=r.outcall_note,
     )
 
 
@@ -155,6 +161,49 @@ def list_records(
     limit = None if month else 200
     q = query.order_by(SessionRecord.session_date.desc())
     records = (q.all() if limit is None else q.limit(limit).all())
+    return [_to_response(r, db) for r in records]
+
+
+@router.get("/pending-docs", response_model=list[SessionRecordResponse])
+def list_pending_docs(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Records inside a claim batch needing therapist doc confirmation.
+
+    Scoped: therapist sees own; admin/staff/accountant see all.
+    Not capped — pending docs may span multiple months.
+    """
+    materialize_due_appointments(db)
+    q = db.query(SessionRecord).options(
+        joinedload(SessionRecord.appointment).joinedload(Appointment.case).joinedload(Case.institution),
+        joinedload(SessionRecord.appointment).joinedload(Appointment.therapist),
+    ).filter(
+        SessionRecord.claim_batch_id.isnot(None),
+        SessionRecord.therapist_doc_submitted_at.is_(None),
+    )
+    if user.role == "therapist":
+        q = q.filter(SessionRecord.therapist_id == user.id)
+    records = q.order_by(SessionRecord.session_date.desc()).all()
+    return [_to_response(r, db) for r in records]
+
+
+@router.get("/confirmed-docs", response_model=list[SessionRecordResponse])
+def list_confirmed_docs(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Records whose therapist doc is already confirmed (for cancel-doc UI)."""
+    q = db.query(SessionRecord).options(
+        joinedload(SessionRecord.appointment).joinedload(Appointment.case).joinedload(Case.institution),
+        joinedload(SessionRecord.appointment).joinedload(Appointment.therapist),
+    ).filter(
+        SessionRecord.claim_batch_id.isnot(None),
+        SessionRecord.therapist_doc_submitted_at.isnot(None),
+    )
+    if user.role == "therapist":
+        q = q.filter(SessionRecord.therapist_id == user.id)
+    records = q.order_by(SessionRecord.therapist_doc_submitted_at.desc()).limit(200).all()
     return [_to_response(r, db) for r in records]
 
 
@@ -481,7 +530,7 @@ def confirm_doc_submission(
         "therapist_doc_submitted_at": r.therapist_doc_submitted_at.isoformat(),
         "therapist_doc_submitted_by": r.therapist_doc_submitted_by,
     }
-    _write_audit(db, "session_records", r.id, "CONFIRM_DOC", user.id, before, after)
+    _write_audit(db, "session_records", r.id, "UPDATE", user.id, before, after)
     db.flush()
 
     if r.claim_batch_id:
@@ -521,7 +570,7 @@ def cancel_doc_submission(
         "therapist_doc_submitted_at": None,
         "therapist_doc_submitted_by": None,
     }
-    _write_audit(db, "session_records", r.id, "CANCEL_DOC", user.id, before, after)
+    _write_audit(db, "session_records", r.id, "UPDATE", user.id, before, after)
     db.flush()
 
     if r.claim_batch_id:
@@ -612,6 +661,126 @@ def void_record(
     r.voided_by = user.id
     after = {"is_void": r.is_void, "void_reason": r.void_reason}
     _write_audit(db, "session_records", r.id, "VOID", user.id, before, after, reason=r.void_reason)
+    db.commit()
+    db.refresh(r)
+    return _to_response(r, db)
+
+
+@router.post("/{record_id}/split", response_model=list[SessionRecordResponse])
+def split_record(
+    record_id: int,
+    body: SplitRequest,
+    user: User = Depends(RequireRole(["admin", "staff"])),
+    db: Session = Depends(get_db),
+):
+    """Split a machine-fundable record: take `self_pay_amount` off the institution
+    record and create a paid self-pay sibling. Receipt no gets -A/-B suffixes.
+    """
+    r = db.query(SessionRecord).filter(SessionRecord.id == record_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Record not found")
+    if r.is_void:
+        raise HTTPException(status_code=400, detail="Record is void")
+    if r.parent_record_id is not None:
+        raise HTTPException(status_code=400, detail="拆帳子紀錄不可再拆")
+    if (r.funding_source or "self_pay") != "institution":
+        raise HTTPException(status_code=400, detail="僅機構款可拆帳")
+    if r.locked_at is not None:
+        raise HTTPException(status_code=400, detail="已鎖定的紀錄不可拆帳")
+    if r.claim_batch_id:
+        batch = db.query(ClaimBatch).filter(ClaimBatch.id == r.claim_batch_id).first()
+        if batch and batch.status not in ("collecting", "ready"):
+            raise HTTPException(status_code=400, detail=f"批次狀態為「{batch.status}」，不可拆帳")
+    if body.self_pay_amount <= 0:
+        raise HTTPException(status_code=400, detail="自費金額需大於 0")
+    full = float(r.amount)
+    if body.self_pay_amount >= full:
+        raise HTTPException(status_code=400, detail=f"自費金額需小於原金額 {full}")
+    if body.payment_method not in ("cash", "transfer"):
+        raise HTTPException(status_code=400, detail="付款方式僅支援現金或匯款")
+
+    # Adjust original (institution side) — append -A suffix if not already
+    before = {
+        "amount": full,
+        "receipt_no": r.receipt_no,
+    }
+    inst_amount = round(full - body.self_pay_amount, 2)
+    original_receipt = r.receipt_no
+    r.amount = inst_amount
+    if r.receipt_no and not r.receipt_no.endswith("-A"):
+        r.receipt_no = f"{r.receipt_no}-A"
+
+    # Build self-pay child
+    child = SessionRecord(
+        appointment_id=None,  # split doesn't reuse appointment unique constraint
+        invoice_id=None,
+        session_date=r.session_date,
+        case_id=r.case_id,
+        therapist_id=r.therapist_id,
+        session_type=r.session_type,
+        room_id=r.room_id,
+        fee_category=r.fee_category,
+        amount=body.self_pay_amount,
+        commission_rate_used=r.commission_rate_used,
+        funding_source="self_pay",
+        payment_status="paid",
+        payment_method=body.payment_method,
+        payment_note=body.payment_note,
+        paid_at=datetime.now(timezone.utc),
+        parent_record_id=r.id,
+        receipt_no=f"{original_receipt}-B" if original_receipt else None,
+        created_by=user.id,
+    )
+    db.add(child)
+    db.flush()
+
+    _write_audit(
+        db, "session_records", r.id, "SPLIT", user.id,
+        before,
+        {
+            "amount": float(r.amount),
+            "receipt_no": r.receipt_no,
+            "child_id": child.id,
+            "child_amount": body.self_pay_amount,
+        },
+    )
+    db.commit()
+    db.refresh(r)
+    db.refresh(child)
+    return [_to_response(r, db), _to_response(child, db)]
+
+
+@router.put("/{record_id}/outcall-bonus", response_model=SessionRecordResponse)
+def set_outcall_bonus(
+    record_id: int,
+    body: OutcallBonusRequest,
+    user: User = Depends(RequireRole(["admin", "staff"])),
+    db: Session = Depends(get_db),
+):
+    """Set or clear the outcall bonus (default 1000) for a record.
+
+    `amount=0` clears it. Staff can only modify same-day records.
+    """
+    r = db.query(SessionRecord).filter(SessionRecord.id == record_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Record not found")
+    if r.is_void:
+        raise HTTPException(status_code=400, detail="Record is void")
+    if r.locked_at is not None:
+        raise HTTPException(status_code=400, detail="已鎖定的紀錄不可調整保底")
+    if body.amount < 0:
+        raise HTTPException(status_code=400, detail="保底金額不可為負")
+    if user.role == "staff" and r.session_date != date.today():
+        raise HTTPException(status_code=403, detail="行政人員僅能於當日調整保底，逾期請洽管理員")
+
+    before = {"outcall_bonus": float(r.outcall_bonus or 0), "outcall_note": r.outcall_note}
+    r.outcall_bonus = body.amount
+    r.outcall_note = body.note.strip() if body.note else None
+    _write_audit(
+        db, "session_records", r.id, "UPDATE", user.id,
+        before,
+        {"outcall_bonus": float(r.outcall_bonus), "outcall_note": r.outcall_note},
+    )
     db.commit()
     db.refresh(r)
     return _to_response(r, db)

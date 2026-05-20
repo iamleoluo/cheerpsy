@@ -104,6 +104,9 @@ interface Appointment {
   start_time: string | null;
   end_time: string | null;
   amount: number;
+  funding_source: string;
+  quota_id: number | null;
+  quota_institution_name: string | null;
   therapist_share: number | null;
   clinic_share: number | null;
   visit_seq: number | null;
@@ -172,7 +175,7 @@ export default function CasesPage() {
   const token = (session?.user as any)?.accessToken;
   const userRole = (session?.user as any)?.role;
 
-  const [mainTab, setMainTab] = useState<"cases" | "appointments">("cases");
+  const [mainTab, setMainTab] = useState<"cases" | "appointments" | "quotas">("cases");
   const [helpOpen, setHelpOpen] = useState(false);
 
   if (!token) return <p className="p-6 text-gray-400">載入中...</p>;
@@ -204,13 +207,19 @@ export default function CasesPage() {
         >
           預約總表
         </button>
+        <button
+          onClick={() => setMainTab("quotas")}
+          className={`px-4 py-2.5 text-sm font-medium transition-colors ${
+            mainTab === "quotas" ? "border-b-2 border-primary-600 text-primary-700" : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          機構額度
+        </button>
       </div>
 
-      {mainTab === "cases" ? (
-        <CasesTab token={token} userRole={userRole} />
-      ) : (
-        <AppointmentsTab token={token} userRole={userRole} />
-      )}
+      {mainTab === "cases" && <CasesTab token={token} userRole={userRole} />}
+      {mainTab === "appointments" && <AppointmentsTab token={token} userRole={userRole} />}
+      {mainTab === "quotas" && <QuotasTab token={token} userRole={userRole} />}
     </div>
   );
 }
@@ -438,6 +447,8 @@ function CaseDetailPanel({
     } catch (e: any) { alert(e.message); }
   };
 
+  const [paymentModal, setPaymentModal] = useState<Appointment | null>(null);
+
   const c = caseItem;
   const displayId = caseDisplayId(c);
 
@@ -524,7 +535,18 @@ function CaseDetailPanel({
                       </td>
                       <td className="px-3 py-2">
                         {a.status === "booked" && (
-                          <button onClick={() => handleCancelAppt(a.id)} className="text-xs text-red-500 hover:underline">取消</button>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setPaymentModal(a)}
+                              className="text-xs text-primary-600 hover:underline"
+                              title={a.funding_source === "institution"
+                                ? `機構：${a.quota_institution_name ?? "—"}`
+                                : "自費"}
+                            >
+                              付款（{a.funding_source === "institution" ? "機構" : "自費"}）
+                            </button>
+                            <button onClick={() => handleCancelAppt(a.id)} className="text-xs text-red-500 hover:underline">取消</button>
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -532,6 +554,14 @@ function CaseDetailPanel({
                 </tbody>
               </table>
             </div>
+          )}
+          {paymentModal && (
+            <AppointmentPaymentModal
+              token={token}
+              appointment={paymentModal}
+              onClose={() => setPaymentModal(null)}
+              onSaved={() => { setPaymentModal(null); fetchAppts(); }}
+            />
           )}
         </>
       )}
@@ -992,7 +1022,10 @@ function AppointmentForm({
     start_time: "10:00",
     end_time: "11:00",
     amount: "2000",
+    funding_source: "self_pay",
+    quota_id: "",
   });
+  const [availableQuotas, setAvailableQuotas] = useState<QuotaRow[]>([]);
 
   useEffect(() => {
     clientFetch("/auth/therapists", token).then(setTherapists).catch(() => {});
@@ -1003,6 +1036,25 @@ function AppointmentForm({
       clientFetch("/cases", token).then(setCases).catch(() => {});
     }
   }, [token, fixedCaseId]);
+
+  useEffect(() => {
+    if (form.funding_source !== "institution" || !form.case_id || !form.start_date) {
+      setAvailableQuotas([]);
+      return;
+    }
+    clientFetch(
+      `/cases/${form.case_id}/quotas/available?on_date=${form.start_date}`,
+      token,
+    )
+      .then((rows: QuotaRow[]) => {
+        setAvailableQuotas(rows);
+        setForm((prev) => {
+          if (prev.quota_id && rows.some((r) => r.id === Number(prev.quota_id))) return prev;
+          return { ...prev, quota_id: rows[0] ? String(rows[0].id) : "" };
+        });
+      })
+      .catch(() => setAvailableQuotas([]));
+  }, [token, form.funding_source, form.case_id, form.start_date]);
 
   // Resolve a case's therapist base price (default 2000 if unset)
   const basePriceFor = (caseId: string) => {
@@ -1028,6 +1080,11 @@ function AppointmentForm({
     setSaving(true);
     setError("");
     try {
+      if (form.funding_source === "institution" && !form.quota_id) {
+        setError("請選擇機構 Quota，或改回自費");
+        setSaving(false);
+        return;
+      }
       await clientFetch("/appointments", token, {
         method: "POST",
         body: JSON.stringify({
@@ -1037,6 +1094,10 @@ function AppointmentForm({
           start_time: `${form.start_date}T${form.start_time}:00+08:00`,
           end_time: `${form.start_date}T${form.end_time}:00+08:00`,
           amount: parseFloat(form.amount),
+          funding_source: form.funding_source,
+          quota_id: form.funding_source === "institution" && form.quota_id
+            ? Number(form.quota_id)
+            : null,
         }),
       });
       onSaved();
@@ -1101,6 +1162,45 @@ function AppointmentForm({
               <span className="mb-1 block text-xs text-gray-500">金額 <span className="text-red-500">*</span></span>
               <input required type="number" value={form.amount} onChange={(e) => sf("amount", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
             </label>
+            <div>
+              <span className="mb-1 block text-xs text-gray-500">付款方式</span>
+              <div className="flex gap-3 text-sm">
+                <label className="inline-flex items-center gap-1">
+                  <input
+                    type="radio"
+                    checked={form.funding_source === "self_pay"}
+                    onChange={() => setForm((p) => ({ ...p, funding_source: "self_pay", quota_id: "" }))}
+                  />
+                  自費
+                </label>
+                <label className="inline-flex items-center gap-1">
+                  <input
+                    type="radio"
+                    checked={form.funding_source === "institution"}
+                    onChange={() => setForm((p) => ({ ...p, funding_source: "institution" }))}
+                  />
+                  機構
+                </label>
+              </div>
+            </div>
+            {form.funding_source === "institution" && (
+              <label className="block">
+                <span className="mb-1 block text-xs text-gray-500">機構 Quota <span className="text-red-500">*</span></span>
+                <select
+                  required
+                  value={form.quota_id}
+                  onChange={(e) => sf("quota_id", e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                >
+                  <option value="">{availableQuotas.length === 0 ? "該日無可用 Quota" : "請選擇"}</option>
+                  {availableQuotas.map((q) => (
+                    <option key={q.id} value={q.id}>
+                      {q.institution_name}｜剩餘 {q.remaining}/{q.total_count}｜到期 {q.valid_until}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">取消</button>
               <button type="submit" disabled={saving} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">{saving ? "儲存中..." : "儲存"}</button>
@@ -1207,7 +1307,10 @@ function BatchForm({
     room_id: "",
     session_type: "in_person",
     amount: "2000",
+    funding_source: "self_pay",
+    quota_id: "",
   });
+  const [allQuotas, setAllQuotas] = useState<QuotaRow[]>([]);
 
   // recurrence settings
   const [recurrence, setRecurrence] = useState<"weekly" | "monthly">("weekly");
@@ -1250,6 +1353,26 @@ function BatchForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.case_id, cases, therapists]);
 
+  useEffect(() => {
+    if (form.funding_source !== "institution" || !form.case_id) {
+      setAllQuotas([]);
+      return;
+    }
+    clientFetch(`/cases/${form.case_id}/quotas`, token)
+      .then((rows: QuotaRow[]) => {
+        const today = new Date().toISOString().slice(0, 10);
+        const active = rows.filter(
+          (r) => r.valid_until >= today && r.remaining > 0,
+        );
+        setAllQuotas(active);
+        setForm((prev) => {
+          if (prev.quota_id && active.some((r) => r.id === Number(prev.quota_id))) return prev;
+          return { ...prev, quota_id: active[0] ? String(active[0].id) : "" };
+        });
+      })
+      .catch(() => setAllQuotas([]));
+  }, [token, form.funding_source, form.case_id]);
+
   const sf = (key: string, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
 
   const handleGenerate = () => {
@@ -1272,6 +1395,11 @@ function BatchForm({
     setSaving(true);
     setError("");
     try {
+      if (form.funding_source === "institution" && !form.quota_id) {
+        setError("請選擇機構 Quota，或改回自費");
+        setSaving(false);
+        return;
+      }
       await clientFetch("/appointments/batch", token, {
         method: "POST",
         body: JSON.stringify({
@@ -1279,6 +1407,10 @@ function BatchForm({
           room_id: form.room_id ? parseInt(form.room_id) : null,
           session_type: form.session_type,
           amount: parseFloat(form.amount),
+          funding_source: form.funding_source,
+          quota_id: form.funding_source === "institution" && form.quota_id
+            ? Number(form.quota_id)
+            : null,
           slots: slots.map((s) => ({
             start_time: `${s.date}T${s.start}:00+08:00`,
             end_time: `${s.date}T${s.end}:00+08:00`,
@@ -1343,6 +1475,50 @@ function BatchForm({
                 <span className="mb-1 block text-xs text-gray-500">每次金額 <span className="text-red-500">*</span></span>
                 <input required type="number" value={form.amount} onChange={(e) => sf("amount", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
               </label>
+
+              {/* funding source */}
+              <div>
+                <span className="mb-1 block text-xs text-gray-500">付款方式（套用全部時段）</span>
+                <div className="flex gap-3 text-sm">
+                  <label className="inline-flex items-center gap-1">
+                    <input
+                      type="radio"
+                      checked={form.funding_source === "self_pay"}
+                      onChange={() => setForm((p) => ({ ...p, funding_source: "self_pay", quota_id: "" }))}
+                    />
+                    自費
+                  </label>
+                  <label className="inline-flex items-center gap-1">
+                    <input
+                      type="radio"
+                      checked={form.funding_source === "institution"}
+                      onChange={() => setForm((p) => ({ ...p, funding_source: "institution" }))}
+                    />
+                    機構
+                  </label>
+                </div>
+              </div>
+              {form.funding_source === "institution" && (
+                <label className="block">
+                  <span className="mb-1 block text-xs text-gray-500">機構 Quota <span className="text-red-500">*</span></span>
+                  <select
+                    required
+                    value={form.quota_id}
+                    onChange={(e) => sf("quota_id", e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  >
+                    <option value="">{allQuotas.length === 0 ? "尚無有效 Quota" : "請選擇"}</option>
+                    {allQuotas.map((q) => (
+                      <option key={q.id} value={q.id}>
+                        {q.institution_name}｜剩餘 {q.remaining}/{q.total_count}｜到期 {q.valid_until}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-amber-600">
+                    注意：批次所有時段共用同一 Quota；若預約日超過該 Quota 期限或剩餘不足，後端會拒絕建立。
+                  </p>
+                </label>
+              )}
 
               {/* recurrence panel */}
               <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
@@ -1507,6 +1683,490 @@ function BatchForm({
             />
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   付款方式編輯 modal（既有預約改自費/機構）
+   ═══════════════════════════════════════════════════ */
+
+function AppointmentPaymentModal({
+  token, appointment, onClose, onSaved,
+}: {
+  token: string;
+  appointment: Appointment;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [fundingSource, setFundingSource] = useState<"self_pay" | "institution">(
+    (appointment.funding_source as any) ?? "self_pay",
+  );
+  const [quotaId, setQuotaId] = useState<string>(
+    appointment.quota_id ? String(appointment.quota_id) : "",
+  );
+  const [availableQuotas, setAvailableQuotas] = useState<QuotaRow[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const apptDate = appointment.start_time?.slice(0, 10) ?? "";
+
+  useEffect(() => {
+    if (fundingSource !== "institution" || !apptDate) {
+      setAvailableQuotas([]);
+      return;
+    }
+    clientFetch(
+      `/cases/${appointment.case_id}/quotas/available?on_date=${apptDate}`,
+      token,
+    )
+      .then((rows: QuotaRow[]) => {
+        setAvailableQuotas(rows);
+        setQuotaId((cur) => {
+          if (cur && rows.some((r) => r.id === Number(cur))) return cur;
+          return rows[0] ? String(rows[0].id) : "";
+        });
+      })
+      .catch(() => setAvailableQuotas([]));
+  }, [token, fundingSource, appointment.case_id, apptDate]);
+
+  const submit = async () => {
+    setError("");
+    if (fundingSource === "institution" && !quotaId) {
+      setError("請選擇 Quota，或改回自費");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await clientFetch(`/appointments/${appointment.id}/payment`, token, {
+        method: "PUT",
+        body: JSON.stringify({
+          funding_source: fundingSource,
+          quota_id: fundingSource === "institution" && quotaId ? Number(quotaId) : null,
+        }),
+      });
+      onSaved();
+    } catch (e: any) {
+      setError(e.message ?? "儲存失敗");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+      <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+        <h3 className="mb-4 text-lg font-bold">編輯付款方式</h3>
+        <p className="mb-3 text-xs text-gray-500">
+          預約 {appointment.appointment_number} · {apptDate}
+        </p>
+
+        {error && <div className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+
+        <div className="space-y-3 text-sm">
+          <div className="flex gap-3">
+            <label className="inline-flex items-center gap-1">
+              <input
+                type="radio"
+                checked={fundingSource === "self_pay"}
+                onChange={() => { setFundingSource("self_pay"); setQuotaId(""); }}
+              />
+              自費
+            </label>
+            <label className="inline-flex items-center gap-1">
+              <input
+                type="radio"
+                checked={fundingSource === "institution"}
+                onChange={() => setFundingSource("institution")}
+              />
+              機構
+            </label>
+          </div>
+
+          {fundingSource === "institution" && (
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">機構 Quota</label>
+              <select
+                value={quotaId}
+                onChange={(e) => setQuotaId(e.target.value)}
+                className="w-full rounded border border-gray-300 px-3 py-2"
+              >
+                <option value="">{availableQuotas.length === 0 ? "該日無可用 Quota" : "請選擇"}</option>
+                {availableQuotas.map((q) => (
+                  <option key={q.id} value={q.id}>
+                    {q.institution_name}｜剩餘 {q.remaining}/{q.total_count}｜到期 {q.valid_until}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">取消</button>
+          <button
+            onClick={submit}
+            disabled={submitting}
+            className="rounded bg-primary-600 px-4 py-2 text-sm text-white hover:bg-primary-700 disabled:opacity-50"
+          >
+            {submitting ? "儲存中..." : "儲存"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   Tab 3: 機構額度（Quota）
+   ═══════════════════════════════════════════════════ */
+
+interface QuotaRow {
+  id: number;
+  case_id: number;
+  case_name: string | null;
+  institution_id: number;
+  institution_name: string | null;
+  total_count: number;
+  used_count: number;
+  remaining: number;
+  valid_from: string;
+  valid_until: string;
+  note: string | null;
+}
+
+function QuotasTab({ token, userRole }: { token: string; userRole: string }) {
+  const [rows, setRows] = useState<QuotaRow[]>([]);
+  const [cases, setCases] = useState<CaseItem[]>([]);
+  const [institutions, setInstitutions] = useState<InstitutionItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [filterStatus, setFilterStatus] = useState<"all" | "active" | "expired">("all");
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<QuotaRow | null>(null);
+  const [error, setError] = useState("");
+
+  const canWrite = ["admin", "staff"].includes(userRole);
+
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [q, c, i] = await Promise.all([
+        clientFetch("/quotas", token),
+        clientFetch("/cases?limit=500", token),
+        clientFetch("/institutions", token),
+      ]);
+      setRows(q);
+      setCases(c);
+      setInstitutions(i);
+    } catch (e: any) {
+      setError(e.message ?? "載入失敗");
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    fetchAll();
+  }, [fetchAll]);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const filtered = rows.filter((r) => {
+    if (search) {
+      const s = search.toLowerCase();
+      if (
+        !(r.case_name ?? "").toLowerCase().includes(s) &&
+        !(r.institution_name ?? "").toLowerCase().includes(s)
+      ) {
+        return false;
+      }
+    }
+    if (filterStatus === "active") {
+      return r.valid_from <= today && r.valid_until >= today && r.remaining > 0;
+    }
+    if (filterStatus === "expired") {
+      return r.valid_until < today || r.remaining === 0;
+    }
+    return true;
+  });
+
+  const handleDelete = async (id: number) => {
+    if (!confirm("確定刪除這筆 Quota？")) return;
+    try {
+      await clientFetch(`/quotas/${id}`, token, { method: "DELETE" });
+      fetchAll();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
+  return (
+    <div>
+      {error && <div className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex flex-1 gap-2">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="搜尋個案 / 機構"
+            className="w-64 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          />
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value as any)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          >
+            <option value="all">全部</option>
+            <option value="active">有效中</option>
+            <option value="expired">已過期/用罄</option>
+          </select>
+        </div>
+        {canWrite && (
+          <button
+            onClick={() => { setEditing(null); setShowForm(true); }}
+            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+          >
+            ＋新增 Quota
+          </button>
+        )}
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border border-gray-200">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+            <tr>
+              <th className="px-3 py-3">個案</th>
+              <th className="px-3 py-3">機構</th>
+              <th className="px-3 py-3 text-right">已用 / 總</th>
+              <th className="px-3 py-3 text-right">剩餘</th>
+              <th className="px-3 py-3">有效期間</th>
+              <th className="px-3 py-3">備註</th>
+              <th className="px-3 py-3">狀態</th>
+              {canWrite && <th className="px-3 py-3">操作</th>}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200">
+            {loading ? (
+              <tr><td colSpan={canWrite ? 8 : 7} className="px-4 py-8 text-center text-gray-400">載入中...</td></tr>
+            ) : filtered.length === 0 ? (
+              <tr><td colSpan={canWrite ? 8 : 7} className="px-4 py-8 text-center text-gray-400">尚無 Quota</td></tr>
+            ) : filtered.map((r) => {
+              const expired = r.valid_until < today;
+              const exhausted = r.remaining === 0;
+              const active = !expired && !exhausted;
+              return (
+                <tr key={r.id} className="hover:bg-gray-50">
+                  <td className="px-3 py-3 font-medium">{r.case_name ?? `#${r.case_id}`}</td>
+                  <td className="px-3 py-3">{r.institution_name ?? `#${r.institution_id}`}</td>
+                  <td className="px-3 py-3 text-right">{r.used_count} / {r.total_count}</td>
+                  <td className="px-3 py-3 text-right font-medium">
+                    <span className={r.remaining === 0 ? "text-gray-400" : "text-emerald-700"}>
+                      {r.remaining}
+                    </span>
+                  </td>
+                  <td className="px-3 py-3 text-xs text-gray-600">{r.valid_from} ~ {r.valid_until}</td>
+                  <td className="px-3 py-3 text-xs text-gray-500">{r.note ?? "—"}</td>
+                  <td className="px-3 py-3">
+                    {active && <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700">有效</span>}
+                    {expired && <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">已過期</span>}
+                    {!expired && exhausted && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">已用罄</span>}
+                  </td>
+                  {canWrite && (
+                    <td className="px-3 py-3">
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => { setEditing(r); setShowForm(true); }}
+                          className="rounded bg-gray-100 px-2 py-1 text-xs text-gray-700 hover:bg-gray-200"
+                        >
+                          編輯
+                        </button>
+                        {r.used_count === 0 && (
+                          <button
+                            onClick={() => handleDelete(r.id)}
+                            className="rounded bg-red-50 px-2 py-1 text-xs text-red-600 hover:bg-red-100"
+                          >
+                            刪除
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {showForm && (
+        <QuotaFormModal
+          token={token}
+          cases={cases}
+          institutions={institutions}
+          editing={editing}
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); fetchAll(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function QuotaFormModal({
+  token, cases, institutions, editing, onClose, onSaved,
+}: {
+  token: string;
+  cases: CaseItem[];
+  institutions: InstitutionItem[];
+  editing: QuotaRow | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [caseId, setCaseId] = useState<number | "">(editing?.case_id ?? "");
+  const [institutionId, setInstitutionId] = useState<number | "">(editing?.institution_id ?? "");
+  const [totalCount, setTotalCount] = useState(editing?.total_count ?? 1);
+  const [validFrom, setValidFrom] = useState(editing?.valid_from ?? new Date().toISOString().slice(0, 10));
+  const [validUntil, setValidUntil] = useState(editing?.valid_until ?? "");
+  const [note, setNote] = useState(editing?.note ?? "");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const isEdit = !!editing;
+
+  const submit = async () => {
+    setError("");
+    if (!caseId) { setError("請選擇個案"); return; }
+    if (!institutionId) { setError("請選擇機構"); return; }
+    if (!validUntil) { setError("請填寫有效迄日"); return; }
+    if (totalCount <= 0) { setError("總次數需大於 0"); return; }
+    if (validFrom > validUntil) { setError("起日不可晚於迄日"); return; }
+
+    setSubmitting(true);
+    try {
+      if (isEdit) {
+        await clientFetch(`/quotas/${editing!.id}`, token, {
+          method: "PUT",
+          body: JSON.stringify({
+            total_count: totalCount,
+            valid_from: validFrom,
+            valid_until: validUntil,
+            note: note || null,
+          }),
+        });
+      } else {
+        await clientFetch(`/cases/${caseId}/quotas`, token, {
+          method: "POST",
+          body: JSON.stringify({
+            institution_id: institutionId,
+            total_count: totalCount,
+            valid_from: validFrom,
+            valid_until: validUntil,
+            note: note || null,
+          }),
+        });
+      }
+      onSaved();
+    } catch (e: any) {
+      setError(e.message ?? "儲存失敗");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+      <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
+        <h3 className="mb-4 text-lg font-bold">{isEdit ? "編輯 Quota" : "新增機構額度"}</h3>
+
+        {error && <div className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+
+        <div className="space-y-3 text-sm">
+          <div>
+            <label className="mb-1 block text-xs text-gray-500">個案</label>
+            <select
+              value={caseId}
+              onChange={(e) => setCaseId(e.target.value ? Number(e.target.value) : "")}
+              disabled={isEdit}
+              className="w-full rounded border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+            >
+              <option value="">— 選擇個案 —</option>
+              {cases.map((c) => (
+                <option key={c.id} value={c.id}>{caseDisplayId(c)} {c.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-gray-500">機構</label>
+            <select
+              value={institutionId}
+              onChange={(e) => setInstitutionId(e.target.value ? Number(e.target.value) : "")}
+              disabled={isEdit}
+              className="w-full rounded border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+            >
+              <option value="">— 選擇機構 —</option>
+              {institutions.filter((i) => i.is_active).map((i) => (
+                <option key={i.id} value={i.id}>{i.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-gray-500">總次數</label>
+            <input
+              type="number"
+              min={1}
+              value={totalCount}
+              onChange={(e) => setTotalCount(Number(e.target.value))}
+              className="w-full rounded border border-gray-300 px-3 py-2"
+            />
+          </div>
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="mb-1 block text-xs text-gray-500">有效起日</label>
+              <input
+                type="date"
+                value={validFrom}
+                onChange={(e) => setValidFrom(e.target.value)}
+                className="w-full rounded border border-gray-300 px-3 py-2"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="mb-1 block text-xs text-gray-500">有效迄日</label>
+              <input
+                type="date"
+                value={validUntil}
+                onChange={(e) => setValidUntil(e.target.value)}
+                className="w-full rounded border border-gray-300 px-3 py-2"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-gray-500">備註</label>
+            <input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="選填"
+              className="w-full rounded border border-gray-300 px-3 py-2"
+            />
+          </div>
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+          >
+            取消
+          </button>
+          <button
+            onClick={submit}
+            disabled={submitting}
+            className="rounded bg-primary-600 px-4 py-2 text-sm text-white hover:bg-primary-700 disabled:opacity-50"
+          >
+            {submitting ? "儲存中..." : "儲存"}
+          </button>
+        </div>
       </div>
     </div>
   );

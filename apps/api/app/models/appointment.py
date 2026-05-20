@@ -17,6 +17,8 @@ class Appointment(Base):
     time_range = Column(TSTZRANGE, nullable=False)
     amount = Column(Numeric(10, 2), nullable=False)
     status = Column(String(20), nullable=False, default="booked")  # booked, executed, cancelled
+    funding_source = Column(String(20), nullable=False, default="self_pay", server_default="self_pay")  # self_pay | institution
+    quota_id = Column(Integer, ForeignKey("case_institution_quotas.id"), nullable=True)
     visit_seq = Column(Integer, nullable=True)
     batch_id = Column(String(50), nullable=True, index=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
