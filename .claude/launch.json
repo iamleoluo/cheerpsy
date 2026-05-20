@@ -6,7 +6,16 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 3000,
+      "autoPort": false,
       "cwd": "apps/web"
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": ".venv/bin/uvicorn",
+      "runtimeArgs": ["app.main:app", "--host", "127.0.0.1", "--port", "8000", "--reload"],
+      "port": 8000,
+      "autoPort": false,
+      "cwd": "apps/api"
     }
   ]
 }

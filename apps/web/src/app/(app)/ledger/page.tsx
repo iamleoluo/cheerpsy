@@ -130,6 +130,15 @@ export default function LedgerPage() {
   const [discValue, setDiscValue] = useState("");
   const [discNote, setDiscNote] = useState("");
 
+  const [splitRec, setSplitRec] = useState<SessionRecord | null>(null);
+  const [splitAmount, setSplitAmount] = useState("");
+  const [splitMethod, setSplitMethod] = useState<"cash" | "transfer">("cash");
+  const [splitNote, setSplitNote] = useState("");
+
+  const [bonusRec, setBonusRec] = useState<SessionRecord | null>(null);
+  const [bonusAmount, setBonusAmount] = useState("1000");
+  const [bonusNote, setBonusNote] = useState("");
+
   const fetchRecords = useCallback(async () => {
     if (!token) return;
     setLoading(true);
@@ -221,6 +230,61 @@ export default function LedgerPage() {
         body: JSON.stringify(body),
       });
       setDiscountRec(null);
+      fetchRecords();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
+  const openSplit = (r: SessionRecord) => {
+    setSplitRec(r);
+    setSplitAmount("");
+    setSplitMethod("cash");
+    setSplitNote("");
+  };
+
+  const submitSplit = async () => {
+    if (!splitRec) return;
+    const amt = parseFloat(splitAmount);
+    if (!amt || amt <= 0 || amt >= splitRec.amount) {
+      alert("自費金額需 > 0 且 < 原金額");
+      return;
+    }
+    try {
+      await clientFetch(`/ledger/${splitRec.id}/split`, token, {
+        method: "POST",
+        body: JSON.stringify({
+          self_pay_amount: amt,
+          payment_method: splitMethod,
+          payment_note: splitNote || null,
+        }),
+      });
+      setSplitRec(null);
+      fetchRecords();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
+  const openBonus = (r: SessionRecord) => {
+    setBonusRec(r);
+    setBonusAmount(String((r as any).outcall_bonus ?? 1000));
+    setBonusNote((r as any).outcall_note ?? "");
+  };
+
+  const submitBonus = async () => {
+    if (!bonusRec) return;
+    const amt = parseFloat(bonusAmount);
+    if (isNaN(amt) || amt < 0) {
+      alert("保底金額需 ≥ 0");
+      return;
+    }
+    try {
+      await clientFetch(`/ledger/${bonusRec.id}/outcall-bonus`, token, {
+        method: "PUT",
+        body: JSON.stringify({ amount: amt, note: bonusNote || null }),
+      });
+      setBonusRec(null);
       fetchRecords();
     } catch (e: any) {
       alert(e.message);
@@ -435,9 +499,20 @@ export default function LedgerPage() {
                     {r.is_void ? (
                       <span className="text-xs text-red-500">已作廢</span>
                     ) : (
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         {["admin", "staff"].includes(userRole) && r.payment_status === "unpaid" && (
                           <button onClick={() => openDiscount(r)} className="text-xs text-amber-600 hover:underline">優待</button>
+                        )}
+                        {["admin", "staff"].includes(userRole) &&
+                          r.funding_source === "institution" &&
+                          !r.locked_at &&
+                          r.payment_status !== "claimed" && (
+                          <button onClick={() => openSplit(r)} className="text-xs text-indigo-600 hover:underline">拆帳</button>
+                        )}
+                        {["admin", "staff"].includes(userRole) && !r.locked_at && (
+                          <button onClick={() => openBonus(r)} className="text-xs text-emerald-600 hover:underline">
+                            {(r as any).outcall_bonus > 0 ? `保底 $${(r as any).outcall_bonus}` : "外出保底"}
+                          </button>
                         )}
                         {(["admin", "staff"].includes(userRole) || userRole === "therapist") &&
                           !["paid", "claimed"].includes(r.payment_status) && (
@@ -494,6 +569,88 @@ export default function LedgerPage() {
             <div className="flex justify-end gap-2">
               <button onClick={() => setDiscountRec(null)} className="rounded px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100">取消</button>
               <button onClick={submitDiscount} className="rounded bg-amber-600 px-4 py-1.5 text-sm text-white hover:bg-amber-700">儲存</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {splitRec && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setSplitRec(null)}>
+          <div className="w-96 rounded-lg bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="mb-3 text-base font-semibold">拆帳</h3>
+            <p className="mb-3 text-sm text-gray-600">
+              原始金額：<strong>${splitRec.amount.toLocaleString()}</strong>（機構款）
+            </p>
+            <label className="mb-3 block">
+              <span className="text-xs font-medium text-gray-700">自費金額（個案現場支付）</span>
+              <input
+                type="number"
+                value={splitAmount}
+                onChange={(e) => setSplitAmount(e.target.value)}
+                placeholder="例如 400"
+                className="mt-1 block w-full rounded border px-2 py-1.5 text-sm"
+              />
+              {splitAmount && parseFloat(splitAmount) > 0 && parseFloat(splitAmount) < splitRec.amount && (
+                <p className="mt-1 text-xs text-gray-500">
+                  拆完：機構 ${(splitRec.amount - parseFloat(splitAmount)).toLocaleString()}（-A） / 自費 ${parseFloat(splitAmount).toLocaleString()}（-B）
+                </p>
+              )}
+            </label>
+            <fieldset className="mb-3">
+              <legend className="mb-1 text-xs font-medium text-gray-700">自費收款方式</legend>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="radio" checked={splitMethod === "cash"} onChange={() => setSplitMethod("cash")} /> 現金
+              </label>
+              <label className="mt-1 flex items-center gap-2 text-sm">
+                <input type="radio" checked={splitMethod === "transfer"} onChange={() => setSplitMethod("transfer")} /> 匯款
+              </label>
+            </fieldset>
+            <label className="mb-4 block">
+              <span className="text-xs font-medium text-gray-700">備註（選填）</span>
+              <input
+                type="text"
+                value={splitNote}
+                onChange={(e) => setSplitNote(e.target.value)}
+                className="mt-1 block w-full rounded border px-2 py-1.5 text-sm"
+              />
+            </label>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setSplitRec(null)} className="rounded px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100">取消</button>
+              <button onClick={submitSplit} className="rounded bg-indigo-600 px-4 py-1.5 text-sm text-white hover:bg-indigo-700">確認拆帳</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {bonusRec && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setBonusRec(null)}>
+          <div className="w-80 rounded-lg bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="mb-3 text-base font-semibold">心理師外出保底</h3>
+            <p className="mb-3 text-xs text-gray-500">
+              用於跨區家訪 / 外出諮商；金額會加入心理師月結酬勞。設 0 可取消。
+            </p>
+            <label className="mb-3 block">
+              <span className="text-xs font-medium text-gray-700">保底金額</span>
+              <input
+                type="number"
+                value={bonusAmount}
+                onChange={(e) => setBonusAmount(e.target.value)}
+                className="mt-1 block w-full rounded border px-2 py-1.5 text-sm"
+              />
+            </label>
+            <label className="mb-4 block">
+              <span className="text-xs font-medium text-gray-700">備註（選填）</span>
+              <input
+                type="text"
+                value={bonusNote}
+                onChange={(e) => setBonusNote(e.target.value)}
+                placeholder="例：北區家訪"
+                className="mt-1 block w-full rounded border px-2 py-1.5 text-sm"
+              />
+            </label>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setBonusRec(null)} className="rounded px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100">取消</button>
+              <button onClick={submitBonus} className="rounded bg-emerald-600 px-4 py-1.5 text-sm text-white hover:bg-emerald-700">儲存</button>
             </div>
           </div>
         </div>

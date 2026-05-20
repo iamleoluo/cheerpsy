@@ -12,6 +12,7 @@ from app.models.reminder_log import ReminderLog
 from app.models.invitation import Invitation
 from app.models.claim_batch import ClaimBatch
 from app.models.product_sales import ProductSale
+from app.models.case_institution_quota import CaseInstitutionQuota
 
 __all__ = [
     "User",
@@ -29,4 +30,5 @@ __all__ = [
     "Invitation",
     "ClaimBatch",
     "ProductSale",
+    "CaseInstitutionQuota",
 ]

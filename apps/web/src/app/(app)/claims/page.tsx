@@ -1105,15 +1105,15 @@ function DocConfirmTab({ token, userRole }: { token: string; userRole: string })
   const fetchPending = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await clientFetch("/ledger", token);
-      const pending = data.filter(
-        (r: any) => r.claim_batch_id && !r.therapist_doc_submitted_at
-      );
+      const [pending, done] = await Promise.all([
+        clientFetch("/ledger/pending-docs", token),
+        clientFetch("/ledger/confirmed-docs", token),
+      ]);
       setRecords(pending);
-      setConfirmed(
-        data.filter((r: any) => r.claim_batch_id && r.therapist_doc_submitted_at)
-      );
-    } catch { /* ignore */ } finally {
+      setConfirmed(done);
+    } catch (e: any) {
+      alert(`載入失敗：${e.message}`);
+    } finally {
       setLoading(false);
     }
   }, [token]);

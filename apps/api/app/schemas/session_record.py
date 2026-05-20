@@ -36,8 +36,22 @@ class SessionRecordResponse(BaseModel):
     locked_at: datetime | None = None
     is_void: bool = False
     void_reason: str | None = None
+    parent_record_id: int | None = None
+    outcall_bonus: float = 0
+    outcall_note: str | None = None
 
     model_config = {"from_attributes": True}
+
+
+class SplitRequest(BaseModel):
+    self_pay_amount: float
+    payment_method: str  # cash | transfer
+    payment_note: str | None = None
+
+
+class OutcallBonusRequest(BaseModel):
+    amount: float  # set to 0 to clear
+    note: str | None = None
 
 
 class SessionRecordUpdatePayment(BaseModel):

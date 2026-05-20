@@ -20,6 +20,8 @@ from app.models.user import User
 
 DEFAULT_COMMISSION_RATE = Decimal("0.70")
 
+SETTLEMENT_LEAD_MINUTES = 20
+
 
 def next_receipt_no(db: Session, d: date) -> str:
     """Clinic-wide receipt number: R{YYYYMMDD}{seq:04d} (seq per session_date)."""
@@ -40,7 +42,8 @@ def materialize_due_appointments(db: Session, up_to: datetime | None = None) -> 
         db.query(Appointment)
         .filter(
             Appointment.status == "booked",
-            text("upper(time_range) <= :u").bindparams(u=up_to),
+            text("upper(time_range) - (:lead || ' minutes')::interval <= :u")
+            .bindparams(lead=str(SETTLEMENT_LEAD_MINUTES), u=up_to),
         )
         .all()
     )
@@ -72,8 +75,23 @@ def materialize_due_appointments(db: Session, up_to: datetime | None = None) -> 
         if therapist and therapist.commission_rate is not None:
             rate = Decimal(str(therapist.commission_rate))
 
-        funding = case.funding_source if case else "self_pay"
+        # funding source priority: appointment field > case fallback > self_pay
+        funding = appt.funding_source or (case.funding_source if case else "self_pay")
         session_date = appt.time_range.lower.date()
+
+        # Atomic quota deduction if institution-funded with quota
+        if funding == "institution" and appt.quota_id:
+            updated = db.execute(
+                text(
+                    "UPDATE case_institution_quotas SET used_count = used_count + 1 "
+                    "WHERE id = :qid AND used_count < total_count"
+                ),
+                {"qid": appt.quota_id},
+            ).rowcount
+            if updated == 0:
+                # Quota exhausted or missing; skip materialization for human review
+                skipped += 1
+                continue
 
         appt.status = "executed"
         record = SessionRecord(

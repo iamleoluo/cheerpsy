@@ -88,11 +88,13 @@ def payout_details(
         sr = db.query(SessionRecord).filter(SessionRecord.id == d.session_id).first()
         if sr:
             rate = _get_rate(sr)
+            bonus = float(sr.outcall_bonus or 0)
             sessions.append({
                 "session_id": sr.id,
                 "session_date": sr.session_date.isoformat(),
                 "amount": float(sr.amount),
-                "therapist_share": round(float(sr.amount) * float(rate), 2),
+                "therapist_share": round(float(sr.amount) * float(rate) + bonus, 2),
+                "outcall_bonus": bonus,
                 "fee_category": sr.fee_category,
                 "session_type": sr.session_type,
             })
@@ -129,7 +131,10 @@ def generate_payouts(
 
     created = updated = 0
     for tid, recs in by_therapist.items():
-        total = sum(round(float(r.amount) * float(_get_rate(r)), 2) for r in recs)
+        total = sum(
+            round(float(r.amount) * float(_get_rate(r)) + float(r.outcall_bonus or 0), 2)
+            for r in recs
+        )
 
         existing = db.query(TherapistPayout).filter(
             TherapistPayout.therapist_id == tid,

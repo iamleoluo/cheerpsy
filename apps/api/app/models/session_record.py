@@ -36,6 +36,9 @@ class SessionRecord(Base):
     therapist_doc_submitted_at = Column(DateTime(timezone=True), nullable=True)
     therapist_doc_submitted_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     locked_at = Column(DateTime(timezone=True), nullable=True)
+    parent_record_id = Column(Integer, ForeignKey("session_records.id"), nullable=True)
+    outcall_bonus = Column(Numeric(10, 2), nullable=False, default=0, server_default="0")
+    outcall_note = Column(String(200), nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
 
     appointment = _rel("Appointment", back_populates="session_record")

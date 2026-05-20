@@ -486,6 +486,17 @@ function SelfPayTrackingContent({ records, loading, reconDate }: { records: Self
   );
 }
 
+interface ProductSaleRow {
+  id: number;
+  sale_date: string;
+  product_name: string;
+  amount: number;
+  quantity: number;
+  payment_method: string | null;
+  payment_note: string | null;
+  is_void: boolean;
+}
+
 /* ── Main PaymentTrackingTab — sub-tabs + shared 每日對帳 panel ── */
 function PaymentTrackingTab({ token }: { token: string }) {
   const [trackingSubTab, setTrackingSubTab] = useState<"institution" | "self_pay">("institution");
@@ -497,6 +508,9 @@ function PaymentTrackingTab({ token }: { token: string }) {
   // Institution batches fetched at top level for recon panel (unfiltered)
   const [instBatches, setInstBatches] = useState<TrackingBatch[]>([]);
 
+  // Product sales for recon panel
+  const [productSales, setProductSales] = useState<ProductSaleRow[]>([]);
+
   const [reconDate, setReconDate] = useState(new Date().toISOString().slice(0, 10));
   const [reconMethod, setReconMethod] = useState<"all" | "cash" | "transfer">("all");
 
@@ -507,6 +521,9 @@ function PaymentTrackingTab({ token }: { token: string }) {
       .finally(() => setSpLoading(false));
     clientFetch("/claim-batches?type=institution", token)
       .then(setInstBatches)
+      .catch(() => {});
+    clientFetch("/product-sales", token)
+      .then(setProductSales)
       .catch(() => {});
   }, [token]);
 
@@ -523,20 +540,27 @@ function PaymentTrackingTab({ token }: { token: string }) {
     (r.payment_status === "paid" || r.payment_status === "claimed") &&
     methodMatch(r.payment_method)
   );
+  // Recon: product sales on the recon date (exclude voided)
+  const reconProductItems = productSales.filter((p) =>
+    !p.is_void && p.sale_date === reconDate && methodMatch(p.payment_method)
+  );
 
   const reconInstTotal = reconInstItems.reduce((s, b) => s + b.total_amount, 0);
   const reconSpTotal = reconSpItems.reduce((s, r) => s + r.effective_amount, 0);
-  const reconTotal = reconInstTotal + reconSpTotal;
+  const reconProductTotal = reconProductItems.reduce((s, p) => s + p.amount * p.quantity, 0);
+  const reconTotal = reconInstTotal + reconSpTotal + reconProductTotal;
   const reconCash = [
     ...reconInstItems.filter((b) => b.payment_method === "cash").map((b) => b.total_amount),
     ...reconSpItems.filter((r) => r.payment_method === "cash").map((r) => r.effective_amount),
+    ...reconProductItems.filter((p) => p.payment_method === "cash").map((p) => p.amount * p.quantity),
   ].reduce((s, v) => s + v, 0);
   const reconTransfer = [
     ...reconInstItems.filter((b) => b.payment_method === "transfer").map((b) => b.total_amount),
     ...reconSpItems.filter((r) => r.payment_method === "transfer").map((r) => r.effective_amount),
+    ...reconProductItems.filter((p) => p.payment_method === "transfer").map((p) => p.amount * p.quantity),
   ].reduce((s, v) => s + v, 0);
   const reconOther = reconTotal - reconCash - reconTransfer;
-  const hasRecon = reconInstItems.length > 0 || reconSpItems.length > 0;
+  const hasRecon = reconInstItems.length > 0 || reconSpItems.length > 0 || reconProductItems.length > 0;
 
   return (
     <div className="flex gap-4">
@@ -630,7 +654,7 @@ function PaymentTrackingTab({ token }: { token: string }) {
               {/* Institution items */}
               {reconInstItems.length > 0 && (
                 <div className="mb-2">
-                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-indigo-500">機構</p>
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-indigo-500">機構撥款</p>
                   <div className="space-y-1.5">
                     {reconInstItems.map((b) => (
                       <div key={b.id} className="rounded border border-gray-100 bg-gray-50 px-3 py-2">
@@ -652,8 +676,8 @@ function PaymentTrackingTab({ token }: { token: string }) {
 
               {/* Self-pay items */}
               {reconSpItems.length > 0 && (
-                <div>
-                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-purple-500">自費</p>
+                <div className="mb-2">
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-purple-500">自費到款</p>
                   <div className="space-y-1.5">
                     {reconSpItems.map((r) => (
                       <div key={r.id} className="rounded border border-gray-100 bg-gray-50 px-3 py-2">
@@ -664,6 +688,30 @@ function PaymentTrackingTab({ token }: { token: string }) {
                             {r.payment_note && <span className="ml-1">({r.payment_note})</span>}
                           </span>
                           <span className="text-sm font-bold">${r.effective_amount.toLocaleString()}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Product sales items */}
+              {reconProductItems.length > 0 && (
+                <div>
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-500">商品販售</p>
+                  <div className="space-y-1.5">
+                    {reconProductItems.map((p) => (
+                      <div key={p.id} className="rounded border border-gray-100 bg-gray-50 px-3 py-2">
+                        <div className="text-xs font-medium text-gray-800">
+                          {p.product_name}
+                          {p.quantity > 1 && <span className="ml-1 text-gray-400">× {p.quantity}</span>}
+                        </div>
+                        <div className="mt-1 flex items-center justify-between">
+                          <span className="text-xs text-gray-400">
+                            {p.payment_method === "cash" ? "現金" : p.payment_method === "transfer" ? "匯款" : "—"}
+                            {p.payment_note && <span className="ml-1">({p.payment_note})</span>}
+                          </span>
+                          <span className="text-sm font-bold">${(p.amount * p.quantity).toLocaleString()}</span>
                         </div>
                       </div>
                     ))}

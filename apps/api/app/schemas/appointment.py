@@ -10,6 +10,16 @@ class AppointmentCreate(BaseModel):
     start_time: datetime
     end_time: datetime
     amount: float
+    funding_source: str = "self_pay"  # self_pay | institution
+    quota_id: int | None = None
+
+
+class BatchSlot(BaseModel):
+    start_time: datetime
+    end_time: datetime
+    amount: float | None = None
+    funding_source: str | None = None
+    quota_id: int | None = None
 
 
 class AppointmentBatchCreate(BaseModel):
@@ -17,13 +27,14 @@ class AppointmentBatchCreate(BaseModel):
     room_id: int | None = None
     session_type: str = "in_person"
     amount: float
-    slots: list["BatchSlot"]
+    funding_source: str = "self_pay"
+    quota_id: int | None = None
+    slots: list[BatchSlot]
 
 
-class BatchSlot(BaseModel):
-    start_time: datetime
-    end_time: datetime
-    amount: float | None = None
+class AppointmentPaymentUpdate(BaseModel):
+    funding_source: str  # self_pay | institution
+    quota_id: int | None = None
 
 
 class AppointmentResponse(BaseModel):
@@ -39,6 +50,9 @@ class AppointmentResponse(BaseModel):
     start_time: datetime | None = None
     end_time: datetime | None = None
     amount: float
+    funding_source: str = "self_pay"
+    quota_id: int | None = None
+    quota_institution_name: str | None = None
     therapist_share: float | None = None
     clinic_share: float | None = None
     visit_seq: int | None = None
