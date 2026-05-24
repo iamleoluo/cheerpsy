@@ -80,10 +80,13 @@ interface CalendarAppointment {
   appointment_number: string;
   case_name: string | null;
   therapist_name: string | null;
+  room_id: number | null;
+  room_name: string | null;
   start_time: string | null;
   end_time: string | null;
   status: string;
   session_type: string;
+  amount: number | null;
 }
 
 interface UpcomingAppointment {
@@ -360,10 +363,9 @@ function RoomCalendarTab({ token }: { token: string }) {
 }
 
 /* ═══════════════════════════════════════════════
-   Tab 2 — 時段週表
+   Tab 2 — 診間時段表（空間使用檢視）
    ═══════════════════════════════════════════════ */
 
-const DOW_ZH = ["日", "一", "二", "三", "四", "五", "六"];
 const SLOT_HOURS = Array.from({ length: 22 }, (_, i) => {
   const totalMin = 9 * 60 + i * 30;
   const h = Math.floor(totalMin / 60).toString().padStart(2, "0");
@@ -371,122 +373,161 @@ const SLOT_HOURS = Array.from({ length: 22 }, (_, i) => {
   return `${h}:${m}`;
 }); // 09:00 ~ 19:30
 
-function getWeekStart(d: Date): Date {
-  const s = new Date(d);
-  s.setDate(s.getDate() - s.getDay() + 1); // Monday
-  s.setHours(0, 0, 0, 0);
-  return s;
+const DOW_ZH = ["日", "一", "二", "三", "四", "五", "六"];
+
+function toLocalDateString(d: Date): string {
+  const y = d.getFullYear();
+  const m = (d.getMonth() + 1).toString().padStart(2, "0");
+  const day = d.getDate().toString().padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function SlotCalendarTab({ token }: { token: string }) {
-  const [weekStart, setWeekStart] = useState<Date>(() => getWeekStart(new Date()));
+  const [selectedDate, setSelectedDate] = useState<Date>(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  });
+  const [rooms, setRooms] = useState<Room[]>([]);
   const [appts, setAppts] = useState<CalendarAppointment[]>([]);
   const [loading, setLoading] = useState(false);
   const [popover, setPopover] = useState<CalendarAppointment | null>(null);
 
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekStart.getDate() + 7);
+  useEffect(() => {
+    clientFetch("/rooms", token).then(setRooms).catch(() => {});
+  }, [token]);
 
-  const fetch = useCallback(async () => {
+  const fetchAppts = useCallback(async () => {
     setLoading(true);
     try {
-      const start = weekStart.toISOString();
-      const end = weekEnd.toISOString();
-      const data = await clientFetch(`/appointments?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&status=booked`, token);
+      const start = new Date(selectedDate);
+      const end = new Date(selectedDate);
+      end.setDate(end.getDate() + 1);
+      const data = await clientFetch(
+        `/appointments?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`,
+        token,
+      );
       setAppts(data);
     } catch { /* ignore */ } finally { setLoading(false); }
-  }, [token, weekStart.toISOString()]);
+  }, [token, selectedDate]);
 
-  useEffect(() => { fetch(); }, [fetch]);
+  useEffect(() => { fetchAppts(); }, [fetchAppts]);
 
-  // Build slot matrix: slotKey ("HH:MM") → dayOfWeek(1..7, Mon=1) → appts[]
-  type SlotMatrix = Record<string, Record<number, CalendarAppointment[]>>;
-  const matrix: SlotMatrix = {};
-  for (const slot of SLOT_HOURS) {
-    matrix[slot] = {};
-    for (let d = 1; d <= 7; d++) matrix[slot][d] = [];
-  }
+  // Build matrix: slotKey → room_id → appointment (first occupant)
+  type RoomMatrix = Record<string, Record<number, CalendarAppointment>>;
+  const matrix: RoomMatrix = {};
+  for (const slot of SLOT_HOURS) matrix[slot] = {};
   for (const a of appts) {
-    if (!a.start_time) continue;
-    const dt = new Date(a.start_time);
-    const dow = dt.getDay() === 0 ? 7 : dt.getDay(); // Mon=1..Sun=7
-    const slotH = dt.getHours().toString().padStart(2, "0");
-    const slotM = dt.getMinutes() < 30 ? "00" : "30";
-    const slotKey = `${slotH}:${slotM}`;
-    if (matrix[slotKey]?.[dow]) matrix[slotKey][dow].push(a);
+    if (a.status === "cancelled") continue;
+    if (!a.start_time || !a.end_time || !a.room_id) continue;
+    const start = new Date(a.start_time);
+    const end = new Date(a.end_time);
+    const cur = new Date(start);
+    while (cur < end) {
+      const slotH = cur.getHours().toString().padStart(2, "0");
+      const slotM = cur.getMinutes() < 30 ? "00" : "30";
+      const key = `${slotH}:${slotM}`;
+      if (matrix[key] && !matrix[key][a.room_id]) matrix[key][a.room_id] = a;
+      cur.setMinutes(cur.getMinutes() + 30);
+    }
   }
 
-  const days: Date[] = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(weekStart);
-    d.setDate(weekStart.getDate() + i);
-    return d;
+  const prevDay = () => setSelectedDate(d => { const n = new Date(d); n.setDate(n.getDate() - 1); return n; });
+  const nextDay = () => setSelectedDate(d => { const n = new Date(d); n.setDate(n.getDate() + 1); return n; });
+  const goToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); setSelectedDate(d); };
+
+  const dateLabel = selectedDate.toLocaleDateString("zh-TW", {
+    year: "numeric", month: "long", day: "numeric", weekday: "short",
   });
 
-  const fmt = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`;
+  // Group rooms by floor for header display
+  const floorGroups = rooms.reduce<Record<number, Room[]>>((acc, r) => {
+    (acc[r.floor] ??= []).push(r);
+    return acc;
+  }, {});
 
   return (
     <div>
-      {/* week nav */}
-      <div className="mb-4 flex items-center gap-3">
-        <button onClick={() => setWeekStart(d => { const n = new Date(d); n.setDate(n.getDate() - 7); return n; })} className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm hover:bg-gray-50">← 上週</button>
-        <button onClick={() => setWeekStart(getWeekStart(new Date()))} className="rounded-lg border border-primary-300 px-3 py-1.5 text-sm text-primary-600 hover:bg-primary-50">本週</button>
-        <button onClick={() => setWeekStart(d => { const n = new Date(d); n.setDate(n.getDate() + 7); return n; })} className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm hover:bg-gray-50">下週 →</button>
-        <span className="text-sm text-gray-500">{fmt(days[0])} ～ {fmt(days[6])}</span>
+      {/* date nav */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <button onClick={prevDay} className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm hover:bg-gray-50">← 前一天</button>
+        <button onClick={goToday} className="rounded-lg border border-primary-300 px-3 py-1.5 text-sm text-primary-600 hover:bg-primary-50">今天</button>
+        <button onClick={nextDay} className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm hover:bg-gray-50">後一天 →</button>
+        <span className="text-sm font-medium text-gray-700">{dateLabel}</span>
+        <input
+          type="date"
+          value={toLocalDateString(selectedDate)}
+          onChange={(e) => {
+            if (!e.target.value) return;
+            const [y, m, d] = e.target.value.split("-").map(Number);
+            const nd = new Date(y, m - 1, d);
+            nd.setHours(0, 0, 0, 0);
+            setSelectedDate(nd);
+          }}
+          className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:border-primary-400 focus:outline-none"
+        />
         {loading && <span className="text-xs text-gray-400">載入中...</span>}
       </div>
 
-      {/* grid */}
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
-        <table className="w-full text-xs border-collapse">
-          <thead>
-            <tr className="bg-gray-50">
-              <th className="w-16 border-b border-r border-gray-200 px-2 py-2 text-gray-500">時段</th>
-              {days.map((d, i) => (
-                <th key={i} className="border-b border-r border-gray-200 px-2 py-2 text-center font-medium">
-                  <div>{DOW_ZH[d.getDay()]}</div>
-                  <div className="text-gray-500 font-normal">{fmt(d)}</div>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {SLOT_HOURS.map((slot) => (
-              <tr key={slot} className="hover:bg-gray-50/50">
-                <td className="border-b border-r border-gray-200 px-2 py-1.5 text-gray-400 whitespace-nowrap">{slot}</td>
-                {Array.from({ length: 7 }, (_, i) => i + 1).map((dow) => {
-                  const cellAppts = matrix[slot][dow] ?? [];
-                  return (
-                    <td key={dow} className="border-b border-r border-gray-200 px-1 py-1 align-top min-w-[80px]">
-                      {cellAppts.map((a) => (
-                        <button
-                          key={a.id}
-                          onClick={() => setPopover(a)}
-                          className="mb-0.5 block w-full rounded bg-primary-100 px-1.5 py-0.5 text-left text-xs text-primary-800 hover:bg-primary-200 truncate"
-                          title={`${a.case_name ?? ""} / ${a.therapist_name ?? ""}`}
-                        >
-                          {a.case_name ?? "—"}
-                        </button>
-                      ))}
-                    </td>
-                  );
-                })}
+      {rooms.length === 0 ? (
+        <div className="py-12 text-center text-sm text-gray-400">載入診間中…</div>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-gray-200">
+          <table className="w-full border-collapse text-xs">
+            <thead>
+              <tr className="bg-gray-50">
+                <th className="w-14 border-b border-r border-gray-200 px-2 py-2 text-gray-500 text-left">時段</th>
+                {rooms.map((r) => (
+                  <th key={r.id} className="border-b border-r border-gray-200 px-2 py-2 text-center font-medium min-w-[80px]">
+                    <div className="leading-tight">{r.name}</div>
+                    <div className="text-gray-400 font-normal text-[10px]">{r.floor}F · {r.room_code}</div>
+                  </th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {SLOT_HOURS.map((slot) => {
+                const rowHasAny = rooms.some((r) => matrix[slot]?.[r.id]);
+                return (
+                  <tr key={slot} className={rowHasAny ? "bg-white" : "bg-gray-50/30"}>
+                    <td className="border-b border-r border-gray-200 px-2 py-1 text-gray-400 whitespace-nowrap font-mono">{slot}</td>
+                    {rooms.map((r) => {
+                      const appt = matrix[slot]?.[r.id];
+                      return (
+                        <td
+                          key={r.id}
+                          className={`border-b border-r border-gray-200 px-1 py-1 align-middle ${appt ? "bg-primary-50" : ""}`}
+                        >
+                          {appt && (
+                            <button
+                              onClick={() => setPopover(appt)}
+                              title={`${appt.therapist_name ?? ""} | ${appt.start_time?.slice(11, 16)}~${appt.end_time?.slice(11, 16)}`}
+                              className="block w-full rounded px-1 py-0.5 text-left text-primary-700 hover:bg-primary-100 truncate leading-tight"
+                            >
+                              {appt.therapist_name?.slice(0, 4) ?? "—"}
+                            </button>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* popover */}
       {popover && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setPopover(null)}>
           <div className="w-72 rounded-lg bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h4 className="mb-2 font-semibold">{popover.appointment_number}</h4>
+            <h4 className="mb-2 font-semibold text-sm">{popover.appointment_number}</h4>
             <dl className="space-y-1 text-sm">
-              <div className="flex gap-2"><dt className="text-gray-500 w-16">個案</dt><dd>{popover.case_name ?? "—"}</dd></div>
-              <div className="flex gap-2"><dt className="text-gray-500 w-16">心理師</dt><dd>{popover.therapist_name ?? "—"}</dd></div>
-              <div className="flex gap-2"><dt className="text-gray-500 w-16">診間</dt><dd>{popover.room_name ?? "—"}</dd></div>
-              <div className="flex gap-2"><dt className="text-gray-500 w-16">時間</dt><dd>{popover.start_time?.slice(11, 16)} ~ {popover.end_time?.slice(11, 16)}</dd></div>
-              <div className="flex gap-2"><dt className="text-gray-500 w-16">費用</dt><dd>${popover.amount?.toLocaleString()}</dd></div>
+              <div className="flex gap-2"><dt className="w-14 text-gray-500">心理師</dt><dd>{popover.therapist_name ?? "—"}</dd></div>
+              <div className="flex gap-2"><dt className="w-14 text-gray-500">診間</dt><dd>{popover.room_name ?? "—"}</dd></div>
+              <div className="flex gap-2"><dt className="w-14 text-gray-500">時間</dt><dd>{popover.start_time?.slice(11, 16)} ~ {popover.end_time?.slice(11, 16)}</dd></div>
+              <div className="flex gap-2"><dt className="w-14 text-gray-500">類型</dt><dd>{popover.session_type}</dd></div>
             </dl>
             <button onClick={() => setPopover(null)} className="mt-3 w-full rounded bg-gray-100 py-1.5 text-sm hover:bg-gray-200">關閉</button>
           </div>

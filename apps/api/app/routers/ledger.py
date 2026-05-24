@@ -183,6 +183,7 @@ def list_pending_docs(
         joinedload(SessionRecord.appointment).joinedload(Appointment.therapist),
     ).filter(
         SessionRecord.claim_batch_id.isnot(None),
+        SessionRecord.funding_source == "institution",
         SessionRecord.therapist_doc_submitted_at.is_(None),
     )
     if user.role == "therapist":
@@ -202,6 +203,7 @@ def list_confirmed_docs(
         joinedload(SessionRecord.appointment).joinedload(Appointment.therapist),
     ).filter(
         SessionRecord.claim_batch_id.isnot(None),
+        SessionRecord.funding_source == "institution",
         SessionRecord.therapist_doc_submitted_at.isnot(None),
     )
     if user.role == "therapist":
