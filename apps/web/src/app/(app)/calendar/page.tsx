@@ -139,7 +139,7 @@ const contactResultColors: Record<string, string> = {
 export default function CalendarPage() {
   const { data: session } = useSession();
   const token = (session?.user as any)?.accessToken;
-  const [tab, setTab] = useState<"calendar" | "reminders">("calendar");
+  const [tab, setTab] = useState<"by_room" | "by_slot" | "reminders">("by_room");
   const [helpOpen, setHelpOpen] = useState(false);
 
   if (!token) return <p>Loading...</p>;
@@ -157,7 +157,8 @@ export default function CalendarPage() {
       <div className="mb-4 flex gap-1 border-b border-gray-200">
         {(
           [
-            ["calendar", "診間日曆"],
+            ["by_room", "診間日曆（空間）"],
+            ["by_slot", "診間日曆（時段）"],
             ["reminders", "預約提醒"],
           ] as const
         ).map(([key, label]) => (
@@ -175,11 +176,9 @@ export default function CalendarPage() {
         ))}
       </div>
 
-      {tab === "calendar" ? (
-        <RoomCalendarTab token={token} />
-      ) : (
-        <RemindersTab token={token} />
-      )}
+      {tab === "by_room" && <RoomCalendarTab token={token} />}
+      {tab === "by_slot" && <SlotCalendarTab token={token} />}
+      {tab === "reminders" && <RemindersTab token={token} />}
     </div>
   );
 }
@@ -361,7 +360,144 @@ function RoomCalendarTab({ token }: { token: string }) {
 }
 
 /* ═══════════════════════════════════════════════
-   Tab 2 — 預約提醒 / 電訪追蹤
+   Tab 2 — 時段週表
+   ═══════════════════════════════════════════════ */
+
+const DOW_ZH = ["日", "一", "二", "三", "四", "五", "六"];
+const SLOT_HOURS = Array.from({ length: 22 }, (_, i) => {
+  const totalMin = 9 * 60 + i * 30;
+  const h = Math.floor(totalMin / 60).toString().padStart(2, "0");
+  const m = (totalMin % 60).toString().padStart(2, "0");
+  return `${h}:${m}`;
+}); // 09:00 ~ 19:30
+
+function getWeekStart(d: Date): Date {
+  const s = new Date(d);
+  s.setDate(s.getDate() - s.getDay() + 1); // Monday
+  s.setHours(0, 0, 0, 0);
+  return s;
+}
+
+function SlotCalendarTab({ token }: { token: string }) {
+  const [weekStart, setWeekStart] = useState<Date>(() => getWeekStart(new Date()));
+  const [appts, setAppts] = useState<CalendarAppointment[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [popover, setPopover] = useState<CalendarAppointment | null>(null);
+
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 7);
+
+  const fetch = useCallback(async () => {
+    setLoading(true);
+    try {
+      const start = weekStart.toISOString();
+      const end = weekEnd.toISOString();
+      const data = await clientFetch(`/appointments?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&status=booked`, token);
+      setAppts(data);
+    } catch { /* ignore */ } finally { setLoading(false); }
+  }, [token, weekStart.toISOString()]);
+
+  useEffect(() => { fetch(); }, [fetch]);
+
+  // Build slot matrix: slotKey ("HH:MM") → dayOfWeek(1..7, Mon=1) → appts[]
+  type SlotMatrix = Record<string, Record<number, CalendarAppointment[]>>;
+  const matrix: SlotMatrix = {};
+  for (const slot of SLOT_HOURS) {
+    matrix[slot] = {};
+    for (let d = 1; d <= 7; d++) matrix[slot][d] = [];
+  }
+  for (const a of appts) {
+    if (!a.start_time) continue;
+    const dt = new Date(a.start_time);
+    const dow = dt.getDay() === 0 ? 7 : dt.getDay(); // Mon=1..Sun=7
+    const slotH = dt.getHours().toString().padStart(2, "0");
+    const slotM = dt.getMinutes() < 30 ? "00" : "30";
+    const slotKey = `${slotH}:${slotM}`;
+    if (matrix[slotKey]?.[dow]) matrix[slotKey][dow].push(a);
+  }
+
+  const days: Date[] = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart);
+    d.setDate(weekStart.getDate() + i);
+    return d;
+  });
+
+  const fmt = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}`;
+
+  return (
+    <div>
+      {/* week nav */}
+      <div className="mb-4 flex items-center gap-3">
+        <button onClick={() => setWeekStart(d => { const n = new Date(d); n.setDate(n.getDate() - 7); return n; })} className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm hover:bg-gray-50">← 上週</button>
+        <button onClick={() => setWeekStart(getWeekStart(new Date()))} className="rounded-lg border border-primary-300 px-3 py-1.5 text-sm text-primary-600 hover:bg-primary-50">本週</button>
+        <button onClick={() => setWeekStart(d => { const n = new Date(d); n.setDate(n.getDate() + 7); return n; })} className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm hover:bg-gray-50">下週 →</button>
+        <span className="text-sm text-gray-500">{fmt(days[0])} ～ {fmt(days[6])}</span>
+        {loading && <span className="text-xs text-gray-400">載入中...</span>}
+      </div>
+
+      {/* grid */}
+      <div className="overflow-x-auto rounded-lg border border-gray-200">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="bg-gray-50">
+              <th className="w-16 border-b border-r border-gray-200 px-2 py-2 text-gray-500">時段</th>
+              {days.map((d, i) => (
+                <th key={i} className="border-b border-r border-gray-200 px-2 py-2 text-center font-medium">
+                  <div>{DOW_ZH[d.getDay()]}</div>
+                  <div className="text-gray-500 font-normal">{fmt(d)}</div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {SLOT_HOURS.map((slot) => (
+              <tr key={slot} className="hover:bg-gray-50/50">
+                <td className="border-b border-r border-gray-200 px-2 py-1.5 text-gray-400 whitespace-nowrap">{slot}</td>
+                {Array.from({ length: 7 }, (_, i) => i + 1).map((dow) => {
+                  const cellAppts = matrix[slot][dow] ?? [];
+                  return (
+                    <td key={dow} className="border-b border-r border-gray-200 px-1 py-1 align-top min-w-[80px]">
+                      {cellAppts.map((a) => (
+                        <button
+                          key={a.id}
+                          onClick={() => setPopover(a)}
+                          className="mb-0.5 block w-full rounded bg-primary-100 px-1.5 py-0.5 text-left text-xs text-primary-800 hover:bg-primary-200 truncate"
+                          title={`${a.case_name ?? ""} / ${a.therapist_name ?? ""}`}
+                        >
+                          {a.case_name ?? "—"}
+                        </button>
+                      ))}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* popover */}
+      {popover && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setPopover(null)}>
+          <div className="w-72 rounded-lg bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h4 className="mb-2 font-semibold">{popover.appointment_number}</h4>
+            <dl className="space-y-1 text-sm">
+              <div className="flex gap-2"><dt className="text-gray-500 w-16">個案</dt><dd>{popover.case_name ?? "—"}</dd></div>
+              <div className="flex gap-2"><dt className="text-gray-500 w-16">心理師</dt><dd>{popover.therapist_name ?? "—"}</dd></div>
+              <div className="flex gap-2"><dt className="text-gray-500 w-16">診間</dt><dd>{popover.room_name ?? "—"}</dd></div>
+              <div className="flex gap-2"><dt className="text-gray-500 w-16">時間</dt><dd>{popover.start_time?.slice(11, 16)} ~ {popover.end_time?.slice(11, 16)}</dd></div>
+              <div className="flex gap-2"><dt className="text-gray-500 w-16">費用</dt><dd>${popover.amount?.toLocaleString()}</dd></div>
+            </dl>
+            <button onClick={() => setPopover(null)} className="mt-3 w-full rounded bg-gray-100 py-1.5 text-sm hover:bg-gray-200">關閉</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════
+   Tab 3 — 預約提醒 / 電訪追蹤
    ═══════════════════════════════════════════════ */
 
 function RemindersTab({ token }: { token: string }) {
