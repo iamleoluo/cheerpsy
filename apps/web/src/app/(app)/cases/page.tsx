@@ -319,17 +319,16 @@ function CasesTab({ token, userRole }: { token: string; userRole: string }) {
               <th className="px-4 py-3">編號</th>
               <th className="px-4 py-3">姓名</th>
               <th className="px-4 py-3">心理師</th>
-              <th className="px-4 py-3">付費 / 機構</th>
-              <th className="px-4 py-3">結帳週期</th>
+              <th className="px-4 py-3">結帳方式</th>
               <th className="px-4 py-3">狀態</th>
               <th className="px-4 py-3">操作</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
             {loading ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">載入中...</td></tr>
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">載入中...</td></tr>
             ) : cases.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">尚無個案資料</td></tr>
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">尚無個案資料</td></tr>
             ) : cases.map((c) => (
               <React.Fragment key={c.id}>
                 <tr
@@ -350,9 +349,6 @@ function CasesTab({ token, userRole }: { token: string; userRole: string }) {
                     {c.age && !c.birth_date && <span className="ml-1 text-xs text-gray-400">({c.age}歲)</span>}
                   </td>
                   <td className="px-4 py-3">{c.therapist_name ?? "—"}</td>
-                  <td className="px-4 py-3">
-                    {c.funding_source === "institution" ? c.institution_name ?? "機構" : "自費"}
-                  </td>
                   <td className="px-4 py-3">
                     <span className="text-xs">{billingLabels[c.billing_cycle ?? "once"] ?? c.billing_cycle}</span>
                   </td>
@@ -464,7 +460,6 @@ function CaseDetailPanel({
           </h3>
           <p className="mt-1 text-sm text-gray-500">
             心理師：{c.therapist_name} ・
-            {c.funding_source === "institution" ? c.institution_name : "自費"} ・
             {billingLabels[c.billing_cycle ?? "once"]} ・
             <span className={`${statusColors[c.status]} rounded-full px-1.5 py-0.5 text-xs`}>
               {statusLabels[c.status]}
@@ -805,8 +800,6 @@ function CaseForm({
     emergency_phone2: editingCase?.emergency_phone2 ?? "",
     birth_date: editingCase?.birth_date ?? "",
     initial_visit_date: editingCase?.initial_visit_date ?? "",
-    funding_source: editingCase?.funding_source ?? "self_pay",
-    institution_id: editingCase?.institution_id?.toString() ?? "",
     therapist_id: editingCase?.therapist_id?.toString() ?? "",
     billing_cycle: editingCase?.billing_cycle ?? "once",
     referral_source: editingCase?.referral_source ?? "",
@@ -835,8 +828,8 @@ function CaseForm({
         emergency_phone2: form.emergency_phone2 || null,
         birth_date: form.birth_date || null,
         initial_visit_date: form.initial_visit_date || null,
-        funding_source: form.funding_source,
-        institution_id: form.funding_source === "institution" && form.institution_id ? parseInt(form.institution_id) : null,
+        funding_source: "self_pay",
+        institution_id: null,
         therapist_id: parseInt(form.therapist_id),
         billing_cycle: form.billing_cycle,
         referral_source: form.referral_source || null,
@@ -896,25 +889,9 @@ function CaseForm({
               </select>
             </label>
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">付費方式</span>
-              <select value={form.funding_source} onChange={(e) => sf("funding_source", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
-                <option value="self_pay">自費</option>
-                <option value="institution">機構</option>
-              </select>
-            </label>
-            {form.funding_source === "institution" && (
-              <label className="block">
-                <span className="mb-1 block text-xs text-gray-500">機構</span>
-                <select value={form.institution_id} onChange={(e) => sf("institution_id", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
-                  <option value="">請選擇</option>
-                  {institutions.map((inst) => <option key={inst.id} value={inst.id}>{inst.name}</option>)}
-                </select>
-              </label>
-            )}
-            <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">結帳週期</span>
+              <span className="mb-1 block text-xs text-gray-500">結帳方式</span>
               <select value={form.billing_cycle} onChange={(e) => sf("billing_cycle", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
                 <option value="once">次結</option>
                 <option value="monthly">月結</option>
