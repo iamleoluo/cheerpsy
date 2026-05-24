@@ -1917,24 +1917,26 @@ function AppointmentEditModal({
         <h3 className="mb-4 text-base font-semibold">編輯預約 #{appt.appointment_number}</h3>
         <p className="mb-4 text-xs text-gray-500">個案：{appt.case_name}　心理師：{appt.therapist_name}（唯讀）</p>
         <form onSubmit={handleSubmit} className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className={`grid gap-3 ${sessionType === "in_person" ? "grid-cols-2" : "grid-cols-1"}`}>
             <label className="block">
               <span className="text-xs font-medium text-gray-700">類型</span>
-              <select value={sessionType} onChange={(e) => setSessionType(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+              <select value={sessionType} onChange={(e) => { setSessionType(e.target.value); if (e.target.value !== "in_person") setRoomId(""); }} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
                 <option value="in_person">現場</option>
                 <option value="online">線上</option>
                 <option value="outdoor">外出</option>
               </select>
             </label>
-            <label className="block">
-              <span className="text-xs font-medium text-gray-700">診間</span>
-              <select value={roomId} onChange={(e) => setRoomId(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
-                <option value="">— 不指定 —</option>
-                {rooms.map((r) => (
-                  <option key={r.id} value={r.id}>{r.name}（{r.room_code}）</option>
-                ))}
-              </select>
-            </label>
+            {sessionType === "in_person" && (
+              <label className="block">
+                <span className="text-xs font-medium text-gray-700">診間</span>
+                <select value={roomId} onChange={(e) => setRoomId(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                  <option value="">— 不指定 —</option>
+                  {rooms.map((r) => (
+                    <option key={r.id} value={r.id}>{r.name}（{r.room_code}）</option>
+                  ))}
+                </select>
+              </label>
+            )}
           </div>
           <label className="block">
             <span className="text-xs font-medium text-gray-700">日期</span>
