@@ -288,8 +288,9 @@ def _draw_section(
         c.setFillColorRGB(0, 0, 0)
         y -= 0.32 * cm
 
-        # 正本表格（不含收據編號，收據編號只在副本顯示）
+        # 正本表格
         main_rows: list[tuple[str, str, bool]] = [
+            ("收據編號：", data.receipt_number, False),
             ("開立日期：", data.issue_date, False),
         ]
         if data.payee and data.payee.strip():
@@ -463,8 +464,9 @@ def render_multi_item_receipt(data: MultiItemReceiptData) -> bytes:
     _draw_mixed(c, ML, y, "正本（客戶收據聯）", 9)
     y -= 0.32 * cm
 
-    # 上方資訊行（正本不含收據編號）
+    # 上方資訊行（正本含收據編號）
     header_rows: list[tuple[str, str, bool]] = [
+        ("收據編號：", data.receipt_number, False),
         ("開立日期：", data.issue_date, False),
     ]
     if data.payee and data.payee.strip():
@@ -473,11 +475,10 @@ def render_multi_item_receipt(data: MultiItemReceiptData) -> bytes:
         header_rows.append(("統一編號：", data.tax_id, False))
     y = _draw_receipt_table(c, header_rows, ML, y, label_w, value_w, _ROW_H, _FONT_SIZE)
 
-    # 明細表格
+    # 明細表格（正本不顯示各筆收據編號，僅顯示日期、諮商方式、金額）
     y -= 0.3 * cm
-    col_widths = [2.4 * cm, 2.0 * cm, 6.5 * cm, 2.8 * cm]
-    headers = ["日期", "類型", "收據編號", "金額"]
-    col_x = ML
+    col_widths = [2.5 * cm, 8.4 * cm, 2.8 * cm]
+    col_headers = ["日期", "諮商方式", "金額"]
     fs = 9
 
     # 表頭
@@ -485,12 +486,12 @@ def render_multi_item_receipt(data: MultiItemReceiptData) -> bytes:
     c.setFillColorRGB(0.92, 0.92, 0.92)
     c.rect(ML, y - row_h, sum(col_widths), row_h, fill=1)
     c.setFillColorRGB(0, 0, 0)
-    for i, (header, cw) in enumerate(zip(headers, col_widths)):
+    for i, (hdr, cw) in enumerate(zip(col_headers, col_widths)):
         cx = ML + sum(col_widths[:i])
         c.setStrokeColorRGB(0.45, 0.45, 0.45)
         c.setLineWidth(0.5)
         c.rect(cx, y - row_h, cw, row_h)
-        _draw_mixed_centred(c, cx + cw / 2, y - row_h + 3, header, fs)
+        _draw_mixed_centred(c, cx + cw / 2, y - row_h + 3, hdr, fs)
     y -= row_h
 
     # 明細列
@@ -499,7 +500,6 @@ def render_multi_item_receipt(data: MultiItemReceiptData) -> bytes:
         vals = [
             item.get("date", ""),
             item.get("name", ""),
-            item.get("receipt_no", ""),
             f"${int(item.get('amount', 0)):,}",
         ]
         for i, (val, cw) in enumerate(zip(vals, col_widths)):
@@ -507,7 +507,7 @@ def render_multi_item_receipt(data: MultiItemReceiptData) -> bytes:
             c.setStrokeColorRGB(0.45, 0.45, 0.45)
             c.setLineWidth(0.4)
             c.rect(cx, y - item_h, cw, item_h)
-            if i == 3:
+            if i == 2:
                 _draw_mixed_right(c, cx + cw - 3, y - item_h + 3, val, fs)
             else:
                 _draw_mixed(c, cx + 3, y - item_h + 3, val, fs)
@@ -532,8 +532,8 @@ def render_multi_item_receipt(data: MultiItemReceiptData) -> bytes:
         amount_rows.append(("備註：", data.note, True))
     y = _draw_receipt_table(c, amount_rows, ML, y, label_w, value_w, _ROW_H, _FONT_SIZE)
 
-    # 簽名行
-    sig_y = y - 1.1 * cm
+    # 簽名行（保持在正本區域內，不超過分隔線）
+    sig_y = max(y - 1.1 * cm, H / 2 + 0.9 * cm)
     _draw_mixed(c, ML, sig_y, "開立行政：＿＿＿＿＿＿＿＿", 10)
     _draw_mixed_right(c, W - MR, sig_y, "診療所章", 10)
 
@@ -553,6 +553,10 @@ def render_multi_item_receipt(data: MultiItemReceiptData) -> bytes:
     y -= 0.5 * cm
 
     stub_fee = f"{data.fee_category}  共 {len(data.items)} 筆  總計：{amount_ntd}"
+    # 各筆收據編號（存根聯保留，供對帳用）
+    item_receipt_nos = "、".join(
+        item.get("receipt_no", "") for item in data.items if item.get("receipt_no")
+    )
     stub_rows: list[tuple[str, str, bool]] = [
         ("收據編號：", data.receipt_number, False),
         ("開立日期：", data.issue_date, False),
@@ -563,6 +567,8 @@ def render_multi_item_receipt(data: MultiItemReceiptData) -> bytes:
         ("收費項目：", stub_fee, True),
         ("金  額：", amount_zh, False),
     ]
+    if item_receipt_nos:
+        stub_rows.append(("各筆編號：", item_receipt_nos, True))
     _draw_receipt_table(c, stub_rows, ML, y, label_w, value_w, _ROW_H, _FONT_SIZE)
 
     c.save()
