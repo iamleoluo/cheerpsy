@@ -78,12 +78,16 @@ interface SessionRecord {
   claim_number: string | null;
   receipt_number: string | null;
   claim_batch_id: number | null;
+  claim_batch_number: string | null;
   parent_record_id: number | null;
   therapist_doc_submitted_at: string | null;
   locked_at: string | null;
   commission_rate_used: number | null;
+  billing_cycle: string | null;
+  outcall_bonus: number;
 }
 
+const BILLING_CYCLE_LABEL: Record<string, string> = { monthly: "月結", once: "次結", multiple: "多次結" };
 const selfPayLabels: Record<string, string> = { unpaid: "未收款", paid: "已收款" };
 const institutionLabels: Record<string, string> = { unpaid: "未請款", claiming: "請款中", claimed: "已請款" };
 const paymentColors: Record<string, string> = {
@@ -136,6 +140,9 @@ export default function LedgerPage() {
   const [splitAmount, setSplitAmount] = useState("");
   const [splitMethod, setSplitMethod] = useState<"cash" | "transfer">("cash");
   const [splitNote, setSplitNote] = useState("");
+  const [splitFeeCategory, setSplitFeeCategory] = useState("行政規費");
+
+  const [ledgerBatchId, setLedgerBatchId] = useState<number | null>(null);
 
   const [bonusRec, setBonusRec] = useState<SessionRecord | null>(null);
   const [bonusAmount, setBonusAmount] = useState("1000");
@@ -245,6 +252,7 @@ export default function LedgerPage() {
     setSplitAmount("");
     setSplitMethod("cash");
     setSplitNote("");
+    setSplitFeeCategory("行政規費");
   };
 
   const submitSplit = async () => {
@@ -261,6 +269,7 @@ export default function LedgerPage() {
           self_pay_amount: amt,
           payment_method: splitMethod,
           payment_note: splitNote || null,
+          fee_category: splitFeeCategory,
         }),
       });
       setSplitRec(null);
@@ -332,6 +341,9 @@ export default function LedgerPage() {
       <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} content={helpContent} />
       {receiptRecordId !== null && (
         <ReceiptModal token={token} type="single_session" sourceId={receiptRecordId} onClose={() => setReceiptRecordId(null)} />
+      )}
+      {ledgerBatchId !== null && (
+        <ReceiptModal token={token} type="self_pay_batch" sourceId={ledgerBatchId} onClose={() => setLedgerBatchId(null)} />
       )}
 
       {/* Header */}
@@ -485,8 +497,8 @@ export default function LedgerPage() {
                   </td>
                   <td className="px-4 py-3 text-xs">
                     {r.funding_source === "institution"
-                      ? `機構${r.institution_name ? `(${r.institution_name})` : ""}`
-                      : "自費"}
+                      ? `機構（${r.institution_name ?? ""}）`
+                      : `自費（${BILLING_CYCLE_LABEL[r.billing_cycle ?? ""] ?? r.billing_cycle ?? ""}）`}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${paymentColors[r.payment_status] ?? "bg-gray-100"}`}>
@@ -522,11 +534,24 @@ export default function LedgerPage() {
                           r.payment_status === "unpaid" &&
                           !r.locked_at && (
                           <button onClick={() => openBonus(r)} className="text-xs text-emerald-600 hover:underline">
-                            {(r as any).outcall_bonus > 0 ? `保底 $${(r as any).outcall_bonus}` : "外出保底"}
+                            {r.outcall_bonus > 0 ? `保底 $${r.outcall_bonus}` : "外出保底"}
                           </button>
                         )}
                         {["admin", "staff"].includes(userRole) &&
-                          r.payment_status === "paid" && (
+                          r.funding_source === "institution" &&
+                          r.claim_batch_id && (
+                          <a href={`/claims?batch=${r.claim_batch_id}`} className="text-xs text-primary-600 hover:underline">核銷案收據</a>
+                        )}
+                        {["admin", "staff"].includes(userRole) &&
+                          r.funding_source === "self_pay" &&
+                          r.payment_status === "paid" &&
+                          r.claim_batch_id && (
+                          <button onClick={() => setLedgerBatchId(r.claim_batch_id!)} className="text-xs text-primary-600 hover:underline">整體收據</button>
+                        )}
+                        {["admin", "staff"].includes(userRole) &&
+                          r.funding_source === "self_pay" &&
+                          r.payment_status === "paid" &&
+                          !r.claim_batch_id && (
                           <button onClick={() => setReceiptRecordId(r.id)} className="text-xs text-primary-600 hover:underline">開立收據</button>
                         )}
                         {(["admin", "staff"].includes(userRole) || userRole === "therapist") &&
@@ -620,6 +645,16 @@ export default function LedgerPage() {
                 <input type="radio" checked={splitMethod === "transfer"} onChange={() => setSplitMethod("transfer")} /> 匯款
               </label>
             </fieldset>
+            <label className="mb-3 block">
+              <span className="text-xs font-medium text-gray-700">費用名稱（收據顯示）</span>
+              <input
+                type="text"
+                value={splitFeeCategory}
+                onChange={(e) => setSplitFeeCategory(e.target.value)}
+                placeholder="行政規費"
+                className="mt-1 block w-full rounded border px-2 py-1.5 text-sm"
+              />
+            </label>
             <label className="mb-4 block">
               <span className="text-xs font-medium text-gray-700">備註（選填）</span>
               <input

@@ -40,6 +40,7 @@ class SessionRecordResponse(BaseModel):
     parent_record_id: int | None = None
     outcall_bonus: float = 0
     outcall_note: str | None = None
+    billing_cycle: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -48,6 +49,7 @@ class SplitRequest(BaseModel):
     self_pay_amount: float
     payment_method: str  # cash | transfer
     payment_note: str | None = None
+    fee_category: str = "行政規費"
 
 
 class OutcallBonusRequest(BaseModel):

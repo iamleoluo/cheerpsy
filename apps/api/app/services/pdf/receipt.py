@@ -372,15 +372,19 @@ def render_receipt(data: ReceiptData) -> bytes:
 
 # ── 4 種類型 Builder ────────────────────────────────────────────────────────
 
+_FEE_CATEGORY_ZH = {"counseling": "心理諮商"}
+
+
 def build_single_session_receipt(record, case) -> ReceiptData:
     """單次諮商收據。"""
     amount = int(record.amount or 0)
     st_label = _SESSION_TYPE_ZH.get(record.session_type or "", "")
+    fee_cat = _FEE_CATEGORY_ZH.get(record.fee_category or "counseling", record.fee_category or "心理諮商")
     return ReceiptData(
         receipt_number=record.receipt_no or f"R{record.id}",
         issue_date=_tw_date(date.today()),
         payee=case.name if case else "",
-        fee_category="心理諮商",
+        fee_category=fee_cat,
         quantity_label="數量/諮商次數",
         quantity="1",
         total_amount=amount,
@@ -534,6 +538,7 @@ def render_multi_item_receipt(data: MultiItemReceiptData) -> bytes:
 
     # 簽名行（保持在正本區域內，不超過分隔線）
     sig_y = max(y - 1.1 * cm, H / 2 + 0.9 * cm)
+    c.setFillColorRGB(0, 0, 0)
     _draw_mixed(c, ML, sig_y, "開立行政：＿＿＿＿＿＿＿＿", 10)
     _draw_mixed_right(c, W - MR, sig_y, "診療所章", 10)
 
