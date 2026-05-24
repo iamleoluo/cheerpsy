@@ -14,7 +14,7 @@ const helpContent: HelpContent = {
       type: "steps",
       items: [
         "點「款項追蹤」頁籤",
-        "以進度條查看每筆核銷案的狀態（建立 → 提交 → 到款 → 結案）",
+        "以進度條查看每筆核銷案的狀態（建立 → 提交 → 到款）",
         "右側選擇日期，查看當天結案或到款的核銷案清單",
         "直接與銀行明細或現金對帳，確認金額與付款方式",
       ],
@@ -141,14 +141,12 @@ const TRACK_STATUS_LABELS: Record<string, string> = {
   ready: "文件備妥",
   submitted: "已提交",
   received: "款項到帳",
-  closed: "已結案",
 };
 const TRACK_STATUS_COLORS: Record<string, string> = {
   collecting: "bg-blue-100 text-blue-700",
   ready: "bg-cyan-100 text-cyan-700",
   submitted: "bg-amber-100 text-amber-700",
   received: "bg-green-100 text-green-700",
-  closed: "bg-gray-100 text-gray-600",
 };
 
 function fmtTs(iso: string | null) {
@@ -166,7 +164,7 @@ function fmtDateOnly(iso: string | null) {
 /** Self-pay progress steps */
 const SELF_PAY_STEPS = ["建立", "付款結案"] as const;
 /** Institution progress steps */
-const INST_STEPS = ["建立", "提交", "到帳", "結案"] as const;
+const INST_STEPS = ["建立", "提交", "到帳"] as const;
 
 function ProgressBar({ steps, timestamps }: { steps: readonly string[]; timestamps: (string | null)[] }) {
   const completed = timestamps.filter(Boolean).length;
@@ -230,7 +228,7 @@ function InstitutionTrackingContent({ token, reconDate }: { token: string; recon
   useEffect(() => { fetchBatches(); }, [fetchBatches]);
 
   const totalAmount = batches.reduce((s, b) => s + b.total_amount, 0);
-  const openCount = batches.filter((b) => b.status !== "closed").length;
+  const openCount = batches.filter((b) => b.status !== "received").length;
 
   return (
     <div>
@@ -272,8 +270,8 @@ function InstitutionTrackingContent({ token, reconDate }: { token: string; recon
             ) : batches.length === 0 ? (
               <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">尚無機構核銷案</td></tr>
             ) : batches.map((b) => {
-              const timestamps = [b.created_at, b.submitted_at, b.received_at, b.closed_at];
-              const highlighted = b.closed_at?.slice(0, 10) === reconDate || b.received_at?.slice(0, 10) === reconDate;
+              const timestamps = [b.created_at, b.submitted_at, b.received_at];
+              const highlighted = b.received_at?.slice(0, 10) === reconDate;
               return (
                 <tr key={b.id} className={`hover:bg-gray-50 ${highlighted ? "bg-green-50" : ""}`}>
                   <td className="px-3 py-3 font-mono text-xs">{b.batch_number}</td>
@@ -529,9 +527,9 @@ function PaymentTrackingTab({ token }: { token: string }) {
 
   const methodMatch = (m: string | null) => reconMethod === "all" || m === reconMethod;
 
-  // Recon: institution batches closed/received on date
+  // Recon: institution batches received on date
   const reconInstItems = instBatches.filter((b) =>
-    (b.closed_at?.slice(0, 10) === reconDate || b.received_at?.slice(0, 10) === reconDate) &&
+    b.received_at?.slice(0, 10) === reconDate &&
     methodMatch(b.payment_method)
   );
   // Recon: self-pay records whose payment date (paid_at) matches the recon date

@@ -450,7 +450,7 @@ export default function LedgerPage() {
               <th className="px-4 py-3">金額</th>
               <th className="px-4 py-3">來源</th>
               <th className="px-4 py-3">收款狀態</th>
-              <th className="px-4 py-3">核銷案</th>
+              <th className="px-4 py-3">結帳批次</th>
               <th className="px-4 py-3">操作</th>
             </tr>
           </thead>
@@ -495,8 +495,8 @@ export default function LedgerPage() {
                   </td>
                   <td className="px-4 py-3 text-xs">
                     {r.claim_batch_id ? (
-                      <a href={`/claims?batch=${r.claim_batch_id}`} className="text-primary-600 hover:underline">
-                        核銷案 #{r.claim_batch_id}
+                      <a href={`/claims?batch=${r.claim_batch_id}`} className="font-mono text-primary-600 hover:underline">
+                        {r.claim_batch_number ?? `#${r.claim_batch_id}`}
                       </a>
                     ) : (
                       <span className="text-gray-400">未歸入</span>
