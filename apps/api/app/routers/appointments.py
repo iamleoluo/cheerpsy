@@ -58,7 +58,12 @@ def _get_commission_rate(therapist: User) -> Decimal:
     return DEFAULT_COMMISSION_RATE
 
 
-def _to_response(a: Appointment, therapist: User | None = None, db: Session | None = None) -> AppointmentResponse:
+def _to_response(
+    a: Appointment,
+    therapist: User | None = None,
+    db: Session | None = None,
+    viewer: User | None = None,
+) -> AppointmentResponse:
     start = end = None
     if a.time_range:
         start = a.time_range.lower
@@ -68,11 +73,15 @@ def _to_response(a: Appointment, therapist: User | None = None, db: Session | No
     if a.quota_id and db is not None:
         q = db.query(CaseInstitutionQuota).filter(CaseInstitutionQuota.id == a.quota_id).first()
         quota_inst_name = q.institution.name if q and q.institution else None
+    # 個案名稱隱私：管理員/行政可見；治療師只見自己的；其他角色（會計等）不可見
+    can_see_name = viewer is None or viewer.role in ("admin", "staff") or (
+        viewer.role == "therapist" and a.therapist_id == viewer.id
+    )
     return AppointmentResponse(
         id=a.id,
         appointment_number=a.appointment_number,
         case_id=a.case_id,
-        case_name=a.case.name if a.case else None,
+        case_name=(a.case.name if a.case else None) if can_see_name else None,
         therapist_id=a.therapist_id,
         therapist_name=a.therapist.name if a.therapist else None,
         room_id=a.room_id,
@@ -118,12 +127,16 @@ def _resolve_quota(
             raise HTTPException(status_code=400, detail="Quota 不屬於此個案")
         if not (q.valid_from <= appt_date <= q.valid_until):
             raise HTTPException(status_code=400, detail=f"預約日 {appt_date} 不在 Quota 有效期間 {q.valid_from} ~ {q.valid_until}")
-        if q.used_count >= q.total_count:
-            raise HTTPException(status_code=400, detail="Quota 已用罄")
+        reserved = db.query(Appointment).filter(
+            Appointment.quota_id == q.id,
+            Appointment.status == "booked",
+        ).count()
+        if q.used_count + reserved >= q.total_count:
+            raise HTTPException(status_code=400, detail="該扣額已用完或被預約鎖定")
         return q.id
 
-    # Auto-pick FIFO by valid_until
-    candidate = (
+    # Auto-pick FIFO by valid_until (also check reserved)
+    candidates = (
         db.query(CaseInstitutionQuota)
         .filter(
             CaseInstitutionQuota.case_id == case_id,
@@ -132,8 +145,17 @@ def _resolve_quota(
             CaseInstitutionQuota.used_count < CaseInstitutionQuota.total_count,
         )
         .order_by(CaseInstitutionQuota.valid_until.asc(), CaseInstitutionQuota.id.asc())
-        .first()
+        .all()
     )
+    candidate = None
+    for cq in candidates:
+        reserved = db.query(Appointment).filter(
+            Appointment.quota_id == cq.id,
+            Appointment.status == "booked",
+        ).count()
+        if cq.used_count + reserved < cq.total_count:
+            candidate = cq
+            break
     if not candidate:
         raise HTTPException(status_code=400, detail=f"該個案於 {appt_date} 無可用機構額度")
     return candidate.id
@@ -175,7 +197,7 @@ def list_appointments(
         users = db.query(User).filter(User.id.in_(therapist_ids)).all()
         therapists = {u.id: u for u in users}
 
-    return [_to_response(a, therapists.get(a.therapist_id), db) for a in appointments]
+    return [_to_response(a, therapists.get(a.therapist_id), db, viewer=user) for a in appointments]
 
 
 @router.get("/{appointment_id}", response_model=AppointmentResponse)
@@ -190,7 +212,7 @@ def get_appointment(
     if user.role == "therapist" and a.therapist_id != user.id:
         raise HTTPException(status_code=403, detail="Access denied")
     therapist = db.query(User).filter(User.id == a.therapist_id).first()
-    return _to_response(a, therapist, db)
+    return _to_response(a, therapist, db, viewer=user)
 
 
 @router.post("", response_model=AppointmentResponse, status_code=status.HTTP_201_CREATED)
@@ -352,7 +374,7 @@ def cancel_appointment(
     db.commit()
     db.refresh(a)
     therapist = db.query(User).filter(User.id == a.therapist_id).first()
-    return _to_response(a, therapist, db)
+    return _to_response(a, therapist, db, viewer=user)
 
 
 @router.put("/{appointment_id}/payment", response_model=AppointmentResponse)
@@ -382,7 +404,7 @@ def update_appointment_payment(
     db.commit()
     db.refresh(a)
     therapist = db.query(User).filter(User.id == a.therapist_id).first()
-    return _to_response(a, therapist, db)
+    return _to_response(a, therapist, db, viewer=user)
 
 
 class BatchDeleteRequest(BaseModel):
@@ -492,7 +514,7 @@ def update_amount(
     db.commit()
     db.refresh(a)
     therapist = db.query(User).filter(User.id == a.therapist_id).first()
-    return _to_response(a, therapist, db)
+    return _to_response(a, therapist, db, viewer=user)
 
 
 def _check_room_conflict(db: Session, room_id: int, start: datetime, end: datetime):

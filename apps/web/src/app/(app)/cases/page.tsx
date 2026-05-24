@@ -141,7 +141,7 @@ const statusColors: Record<string, string> = { initial: "bg-blue-100 text-blue-7
 const apptStatusLabels: Record<string, string> = { booked: "已預約", executed: "已執行", cancelled: "已取消" };
 const apptStatusColors: Record<string, string> = { booked: "bg-blue-100 text-blue-700", executed: "bg-green-100 text-green-700", cancelled: "bg-gray-100 text-gray-500" };
 const billingLabels: Record<string, string> = { once: "次結", monthly: "月結", multiple: "多次結" };
-const sessionTypeLabels: Record<string, string> = { in_person: "現場", online: "線上", home_visit: "到宅" };
+const sessionTypeLabels: Record<string, string> = { in_person: "現場", online: "線上", outdoor: "外出" };
 
 function fmtDate(iso: string | null) {
   if (!iso) return "—";
@@ -1132,7 +1132,7 @@ function AppointmentForm({
               <select value={form.session_type} onChange={(e) => sf("session_type", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
                 <option value="in_person">現場</option>
                 <option value="online">線上</option>
-                <option value="home_visit">到宅</option>
+                <option value="outdoor">外出</option>
               </select>
             </label>
             {form.session_type === "in_person" && (
@@ -1195,7 +1195,7 @@ function AppointmentForm({
                   <option value="">{availableQuotas.length === 0 ? "該日無可用 Quota" : "請選擇"}</option>
                   {availableQuotas.map((q) => (
                     <option key={q.id} value={q.id}>
-                      {q.institution_name}｜剩餘 {q.remaining}/{q.total_count}｜到期 {q.valid_until}
+                      {q.institution_name}｜剩餘 {q.remaining}（預約 {q.reserved_count ?? 0}）/{q.total_count}｜到期 {q.valid_until}
                     </option>
                   ))}
                 </select>
@@ -1456,7 +1456,7 @@ function BatchForm({
                   <select value={form.session_type} onChange={(e) => { sf("session_type", e.target.value); setSlots(null); }} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
                     <option value="in_person">現場</option>
                     <option value="online">線上</option>
-                    <option value="home_visit">到宅</option>
+                    <option value="outdoor">外出</option>
                   </select>
                 </label>
                 {form.session_type === "in_person" && (
@@ -1510,7 +1510,7 @@ function BatchForm({
                     <option value="">{allQuotas.length === 0 ? "尚無有效 Quota" : "請選擇"}</option>
                     {allQuotas.map((q) => (
                       <option key={q.id} value={q.id}>
-                        {q.institution_name}｜剩餘 {q.remaining}/{q.total_count}｜到期 {q.valid_until}
+                        {q.institution_name}｜剩餘 {q.remaining}（預約 {q.reserved_count ?? 0}）/{q.total_count}｜到期 {q.valid_until}
                       </option>
                     ))}
                   </select>
@@ -1830,6 +1830,7 @@ interface QuotaRow {
   institution_name: string | null;
   total_count: number;
   used_count: number;
+  reserved_count: number;
   remaining: number;
   valid_from: string;
   valid_until: string;
@@ -1960,7 +1961,10 @@ function QuotasTab({ token, userRole }: { token: string; userRole: string }) {
                 <tr key={r.id} className="hover:bg-gray-50">
                   <td className="px-3 py-3 font-medium">{r.case_name ?? `#${r.case_id}`}</td>
                   <td className="px-3 py-3">{r.institution_name ?? `#${r.institution_id}`}</td>
-                  <td className="px-3 py-3 text-right">{r.used_count} / {r.total_count}</td>
+                  <td className="px-3 py-3 text-right text-xs">
+                    <div>總：{r.total_count}</div>
+                    <div className="text-gray-500">已用：{r.used_count}｜預約：{r.reserved_count ?? 0}</div>
+                  </td>
                   <td className="px-3 py-3 text-right font-medium">
                     <span className={r.remaining === 0 ? "text-gray-400" : "text-emerald-700"}>
                       {r.remaining}
@@ -1971,7 +1975,8 @@ function QuotasTab({ token, userRole }: { token: string; userRole: string }) {
                   <td className="px-3 py-3">
                     {active && <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700">有效</span>}
                     {expired && <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">已過期</span>}
-                    {!expired && exhausted && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">已用罄</span>}
+                    {!expired && exhausted && r.reserved_count > 0 && <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700">預約鎖定</span>}
+                    {!expired && exhausted && !r.reserved_count && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">已用罄</span>}
                   </td>
                   {canWrite && (
                     <td className="px-3 py-3">

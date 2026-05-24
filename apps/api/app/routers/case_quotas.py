@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import RequireRole, get_current_user
 from app.database import get_db
+from app.models.appointment import Appointment
 from app.models.case import Case
 from app.models.case_institution_quota import CaseInstitutionQuota
 from app.models.institution import Institution
@@ -18,7 +19,11 @@ router = APIRouter(tags=["case-quotas"])
 WRITE_ROLES = ["admin", "staff"]
 
 
-def _to_response(q: CaseInstitutionQuota) -> QuotaResponse:
+def _to_response(q: CaseInstitutionQuota, db: Session) -> QuotaResponse:
+    reserved = db.query(Appointment).filter(
+        Appointment.quota_id == q.id,
+        Appointment.status == "booked",
+    ).count()
     return QuotaResponse(
         id=q.id,
         case_id=q.case_id,
@@ -27,7 +32,8 @@ def _to_response(q: CaseInstitutionQuota) -> QuotaResponse:
         institution_name=q.institution.name if q.institution else None,
         total_count=q.total_count,
         used_count=q.used_count,
-        remaining=q.total_count - q.used_count,
+        reserved_count=reserved,
+        remaining=q.total_count - q.used_count - reserved,
         valid_from=q.valid_from,
         valid_until=q.valid_until,
         note=q.note,
@@ -48,7 +54,7 @@ def list_case_quotas(
         .order_by(CaseInstitutionQuota.valid_until.asc(), CaseInstitutionQuota.id.asc())
         .all()
     )
-    return [_to_response(q) for q in rows]
+    return [_to_response(q, db) for q in rows]
 
 
 @router.get("/cases/{case_id}/quotas/available", response_model=list[QuotaResponse])
@@ -73,7 +79,7 @@ def list_available_quotas(
     if institution_id is not None:
         q = q.filter(CaseInstitutionQuota.institution_id == institution_id)
     rows = q.order_by(CaseInstitutionQuota.valid_until.asc(), CaseInstitutionQuota.id.asc()).all()
-    return [_to_response(r) for r in rows]
+    return [_to_response(r, db) for r in rows]
 
 
 @router.get("/quotas", response_model=list[QuotaResponse])
@@ -92,7 +98,7 @@ def list_all_quotas(
             CaseInstitutionQuota.used_count < CaseInstitutionQuota.total_count,
         )
     rows = q.order_by(CaseInstitutionQuota.valid_until.asc(), CaseInstitutionQuota.id.desc()).all()
-    return [_to_response(r) for r in rows]
+    return [_to_response(r, db) for r in rows]
 
 
 @router.post("/cases/{case_id}/quotas", response_model=QuotaResponse, status_code=201)
@@ -136,7 +142,7 @@ def create_quota(
     )
     db.commit()
     db.refresh(q)
-    return _to_response(q)
+    return _to_response(q, db)
 
 
 @router.put("/quotas/{quota_id}", response_model=QuotaResponse)
@@ -181,7 +187,7 @@ def update_quota(
     )
     db.commit()
     db.refresh(q)
-    return _to_response(q)
+    return _to_response(q, db)
 
 
 @router.delete("/quotas/{quota_id}", status_code=204)

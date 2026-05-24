@@ -755,7 +755,7 @@ const payoutStatusColors: Record<string, string> = {
   pending: "bg-amber-100 text-amber-700",
   paid: "bg-green-100 text-green-700",
 };
-const sessionTypeLabels: Record<string, string> = { in_person: "現場", online: "線上", home_visit: "到宅" };
+const sessionTypeLabels: Record<string, string> = { in_person: "現場", online: "線上", outdoor: "外出" };
 
 function PayoutsTab({ token, userRole }: { token: string; userRole: string }) {
   const now = new Date();

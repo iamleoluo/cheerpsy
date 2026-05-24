@@ -16,7 +16,7 @@ const helpContent: HelpContent = {
       items: [
         "點「＋新增預約」",
         "選個案（可輸入姓名搜尋）",
-        "選心理師、諮商類型（現場／線上／到宅）、診間",
+        "選心理師、諮商類型（現場／線上／外出）、診間",
         "選日期與起始時間，填入諮商費用",
         "系統自動依心理師抽成比例計算師所分潤，儲存",
       ],
@@ -119,7 +119,7 @@ const statusColors: Record<string, string> = {
 const sessionTypeLabels: Record<string, string> = {
   in_person: "現場",
   online: "線上",
-  home_visit: "到宅",
+  outdoor: "外出",
 };
 
 const contactResultLabels: Record<string, string> = {
@@ -222,7 +222,7 @@ function RoomCalendarTab({ token }: { token: string }) {
         setEvents(
           data.map((a) => ({
             id: String(a.id),
-            title: `${a.case_name ?? "未知"} — ${a.therapist_name ?? ""}`,
+            title: `${a.case_name ?? "保留時段"} — ${a.therapist_name ?? ""}`,
             start: a.start_time ?? undefined,
             end: a.end_time ?? undefined,
             backgroundColor: statusColors[a.status] ?? "#6b7280",
@@ -313,7 +313,7 @@ function RoomCalendarTab({ token }: { token: string }) {
                 <div className="overflow-hidden px-1 py-0.5 text-xs leading-tight">
                   <div className="font-medium">{arg.timeText}</div>
                   <div className="truncate">
-                    {props.case_name ?? "未知"} — {props.therapist_name ?? ""}
+                    {props.case_name ?? "保留時段"} — {props.therapist_name ?? ""}
                   </div>
                 </div>
               );

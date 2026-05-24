@@ -13,7 +13,7 @@ class Appointment(Base):
     case_id = Column(Integer, ForeignKey("cases.id"), nullable=False)
     therapist_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     room_id = Column(Integer, ForeignKey("rooms.id"), nullable=True)
-    session_type = Column(String(20), nullable=False)  # in_person, online, home_visit
+    session_type = Column(String(20), nullable=False)  # in_person, online, outdoor
     time_range = Column(TSTZRANGE, nullable=False)
     amount = Column(Numeric(10, 2), nullable=False)
     status = Column(String(20), nullable=False, default="booked")  # booked, executed, cancelled

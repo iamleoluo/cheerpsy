@@ -6,7 +6,9 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import RequireRole, get_current_user
 from app.database import get_db
+from app.models.appointment import Appointment
 from app.models.case import Case
+from app.models.case_institution_quota import CaseInstitutionQuota
 from app.models.claim_batch import ClaimBatch
 from app.models.institution import Institution
 from app.models.session_record import SessionRecord
@@ -110,30 +112,29 @@ def list_eligible_cases(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Return cases that have unassigned session_records, filtered by funding source."""
+    """Return cases that have unassigned session_records, filtered by record funding_source."""
     from sqlalchemy import distinct
 
-    # Find case_ids with at least one unassigned (non-void) session_record
-    case_ids_with_records = (
+    # Filter by SessionRecord.funding_source (not Case.funding_source) —
+    # a case may be "self_pay" overall but have individual institution-funded records (split-pay).
+    q = (
         db.query(distinct(SessionRecord.case_id))
         .filter(
             SessionRecord.claim_batch_id.is_(None),
             SessionRecord.case_id.isnot(None),
             SessionRecord.is_void.is_(False),
         )
-        .all()
     )
-    cids = [row[0] for row in case_ids_with_records]
+    if type == "self_pay":
+        q = q.filter(SessionRecord.funding_source == "self_pay")
+    elif type == "institution":
+        q = q.filter(SessionRecord.funding_source == "institution")
+
+    cids = [row[0] for row in q.all()]
     if not cids:
         return []
 
-    q = db.query(Case).filter(Case.id.in_(cids))
-    if type == "self_pay":
-        q = q.filter(Case.funding_source == "self_pay")
-    elif type == "institution":
-        q = q.filter(Case.funding_source == "institution")
-
-    cases = q.order_by(Case.name).all()
+    cases = db.query(Case).filter(Case.id.in_(cids)).order_by(Case.name).all()
     return [
         {
             "id": c.id,
@@ -152,38 +153,44 @@ def list_eligible_institutions(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Return institutions that have cases with unassigned session_records."""
-    from sqlalchemy import distinct
+    """Return institutions with unassigned institution-funded session_records.
 
-    # case_ids with unassigned (non-void) records
-    case_ids_with_records = (
-        db.query(distinct(SessionRecord.case_id))
+    Institution lookup walks two paths:
+    1. case.institution_id (standard institution case)
+    2. appointment → quota → institution_id (split-pay / partial institution case)
+    """
+    records = (
+        db.query(SessionRecord)
         .filter(
             SessionRecord.claim_batch_id.is_(None),
-            SessionRecord.case_id.isnot(None),
             SessionRecord.is_void.is_(False),
+            SessionRecord.funding_source == "institution",
         )
         .all()
     )
-    cids = [row[0] for row in case_ids_with_records]
-    if not cids:
+    if not records:
         return []
 
-    # institution_ids from those cases
-    inst_ids = (
-        db.query(distinct(Case.institution_id))
-        .filter(Case.id.in_(cids), Case.funding_source == "institution", Case.institution_id.isnot(None))
-        .all()
-    )
-    iids = [row[0] for row in inst_ids]
+    iids: set[int] = set()
+    for r in records:
+        # Path 1: case.institution_id
+        if r.case_id:
+            case = db.query(Case).filter(Case.id == r.case_id).first()
+            if case and case.institution_id:
+                iids.add(case.institution_id)
+        # Path 2: appointment → quota → institution_id
+        if r.appointment_id:
+            appt = db.query(Appointment).filter(Appointment.id == r.appointment_id).first()
+            if appt and appt.quota_id:
+                quota = db.query(CaseInstitutionQuota).filter(CaseInstitutionQuota.id == appt.quota_id).first()
+                if quota and quota.institution_id:
+                    iids.add(quota.institution_id)
+
     if not iids:
         return []
 
     institutions = db.query(Institution).filter(Institution.id.in_(iids)).order_by(Institution.name).all()
-    return [
-        {"id": i.id, "name": i.name, "code": i.code}
-        for i in institutions
-    ]
+    return [{"id": i.id, "name": i.name, "code": i.code} for i in institutions]
 
 
 @router.get("/unassigned/records")
@@ -201,9 +208,25 @@ def list_unassigned_records(
     if case_id:
         q = q.filter(SessionRecord.case_id == case_id)
     elif institution_id:
-        case_ids = [c.id for c in db.query(Case).filter(Case.institution_id == institution_id).all()]
+        # Path 1: case.institution_id (standard institution case)
+        case_ids = set(c.id for c in db.query(Case).filter(Case.institution_id == institution_id).all())
+        # Path 2: appointment → quota → institution_id (split-pay / partial institution)
+        quota_case_ids = set(
+            row[0]
+            for row in db.query(SessionRecord.case_id)
+            .join(Appointment, Appointment.id == SessionRecord.appointment_id)
+            .join(CaseInstitutionQuota, CaseInstitutionQuota.id == Appointment.quota_id)
+            .filter(
+                CaseInstitutionQuota.institution_id == institution_id,
+                SessionRecord.claim_batch_id.is_(None),
+                SessionRecord.is_void.is_(False),
+                SessionRecord.funding_source == "institution",
+            )
+            .all()
+        )
+        case_ids |= quota_case_ids
         if case_ids:
-            q = q.filter(SessionRecord.case_id.in_(case_ids))
+            q = q.filter(SessionRecord.case_id.in_(case_ids), SessionRecord.funding_source == "institution")
         else:
             return []
 
@@ -523,33 +546,6 @@ def unwaive_docs(
     db.commit()
     db.refresh(batch)
     return _to_response(db, batch)
-
-
-@router.put("/{batch_id}/close")
-def close_batch(
-    batch_id: int,
-    user: User = Depends(RequireRole(["admin", "accountant"])),
-    db: Session = Depends(get_db),
-):
-    batch = db.query(ClaimBatch).filter(ClaimBatch.id == batch_id).first()
-    if not batch:
-        raise HTTPException(status_code=404, detail="Claim batch not found")
-    if batch.status not in ("submitted", "ready", "collecting"):
-        raise HTTPException(status_code=400, detail=f"Cannot close batch in status '{batch.status}'")
-
-    from datetime import datetime, timezone
-    old_status = batch.status
-    batch.status = "closed"
-    batch.closed_at = datetime.now(timezone.utc)
-    write_audit(db, "claim_batches", batch.id, "UPDATE", user.id,
-                {"status": old_status}, {"status": "closed"})
-    if batch.type == "self_pay":
-        records = db.query(SessionRecord).filter(SessionRecord.claim_batch_id == batch_id).all()
-        for r in records:
-            if r.payment_status == "unpaid":
-                r.payment_status = "paid"
-    db.commit()
-    return {"status": "closed"}
 
 
 # ── Attendance sheet PDF preview (no DB required) ──

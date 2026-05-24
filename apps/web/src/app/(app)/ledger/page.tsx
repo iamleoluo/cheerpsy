@@ -78,6 +78,7 @@ interface SessionRecord {
   claim_number: string | null;
   receipt_number: string | null;
   claim_batch_id: number | null;
+  parent_record_id: number | null;
   therapist_doc_submitted_at: string | null;
   locked_at: string | null;
   commission_rate_used: number | null;
@@ -92,7 +93,7 @@ const paymentColors: Record<string, string> = {
   claimed: "bg-green-100 text-green-700",
 };
 const allFilterLabels: Record<string, string> = { unpaid: "未收款/未請款", paid: "已收款", claiming: "請款中", claimed: "已請款" };
-const sessionTypeLabels: Record<string, string> = { in_person: "現場", online: "線上", home_visit: "到宅" };
+const sessionTypeLabels: Record<string, string> = { in_person: "現場", online: "線上", outdoor: "外出" };
 
 function getPaymentLabel(status: string, funding: string | null): string {
   return (funding === "institution" ? institutionLabels : selfPayLabels)[status] ?? status;
@@ -511,11 +512,15 @@ export default function LedgerPage() {
                         )}
                         {["admin", "staff"].includes(userRole) &&
                           r.funding_source === "institution" &&
+                          !r.parent_record_id &&
                           !r.locked_at &&
                           r.payment_status !== "claimed" && (
                           <button onClick={() => openSplit(r)} className="text-xs text-indigo-600 hover:underline">拆帳</button>
                         )}
-                        {["admin", "staff"].includes(userRole) && !r.locked_at && (
+                        {["admin", "staff"].includes(userRole) &&
+                          r.session_type === "outdoor" &&
+                          r.payment_status === "unpaid" &&
+                          !r.locked_at && (
                           <button onClick={() => openBonus(r)} className="text-xs text-emerald-600 hover:underline">
                             {(r as any).outcall_bonus > 0 ? `保底 $${(r as any).outcall_bonus}` : "外出保底"}
                           </button>

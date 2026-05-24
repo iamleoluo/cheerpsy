@@ -4,18 +4,27 @@ import { useEffect, useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-type ReceiptType = "single_session" | "batch" | "product";
+type ReceiptType = "single_session" | "batch" | "product" | "self_pay_batch";
+
+interface ReceiptItem {
+  date: string;
+  name: string;
+  receipt_no: string;
+  amount: number;
+}
 
 interface ReceiptPreview {
   receipt_number: string;
   issue_date: string;
   payee: string;
   fee_category: string;
-  quantity_label: string;
-  quantity: string;
+  quantity_label?: string;
+  quantity?: string;
   total_amount: number;
   note: string;
   show_tax_id: boolean;
+  items?: ReceiptItem[];
+  session_type_label?: string;
 }
 
 interface ReceiptModalProps {
@@ -28,6 +37,7 @@ interface ReceiptModalProps {
 function typePath(type: ReceiptType): string {
   if (type === "single_session") return "single-session";
   if (type === "batch") return "batch";
+  if (type === "self_pay_batch") return "self-pay-batch";
   return "product";
 }
 
@@ -47,6 +57,8 @@ export default function ReceiptModal({ token, type, sourceId, onClose }: Receipt
   const [note, setNote] = useState("");
   const [showTaxId, setShowTaxId] = useState(false);
   const [taxId, setTaxId] = useState("");
+  const [items, setItems] = useState<ReceiptItem[]>([]);
+  const [sessionTypeLabel, setSessionTypeLabel] = useState("");
 
   useEffect(() => {
     const path = typePath(type);
@@ -62,11 +74,13 @@ export default function ReceiptModal({ token, type, sourceId, onClose }: Receipt
         setIssueDate(d.issue_date);
         setPayee(d.payee);
         setFeeCat(d.fee_category);
-        setQtyLabel(d.quantity_label);
-        setQty(d.quantity);
+        setQtyLabel(d.quantity_label ?? "");
+        setQty(d.quantity ?? "");
         setTotal(d.total_amount);
         setNote(d.note);
         setShowTaxId(d.show_tax_id);
+        if (d.items) setItems(d.items);
+        if (d.session_type_label) setSessionTypeLabel(d.session_type_label);
       })
       .catch((e) => setError(`載入失敗：${e.message}`))
       .finally(() => setLoading(false));
@@ -83,17 +97,31 @@ export default function ReceiptModal({ token, type, sourceId, onClose }: Receipt
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          receipt_number: receiptNumber,
-          issue_date: issueDate,
-          payee,
-          fee_category: feeCat,
-          quantity_label: qtyLabel,
-          quantity: qty,
-          total_amount: total,
-          note,
-          tax_id: showTaxId ? taxId : "",
-        }),
+        body: JSON.stringify(
+          type === "self_pay_batch"
+            ? {
+                receipt_number: receiptNumber,
+                issue_date: issueDate,
+                payee,
+                fee_category: feeCat,
+                items,
+                total_amount: total,
+                note,
+                tax_id: showTaxId ? taxId : "",
+              }
+            : {
+                receipt_number: receiptNumber,
+                issue_date: issueDate,
+                payee,
+                fee_category: feeCat,
+                quantity_label: qtyLabel,
+                quantity: qty,
+                total_amount: total,
+                note,
+                tax_id: showTaxId ? taxId : "",
+                session_type_label: sessionTypeLabel,
+              }
+        ),
       });
       if (!res.ok) throw new Error(`${res.status}`);
       const blob = await res.blob();
@@ -156,6 +184,7 @@ export default function ReceiptModal({ token, type, sourceId, onClose }: Receipt
                 type="text"
                 value={payee}
                 onChange={(e) => setPayee(e.target.value)}
+                placeholder="可留空（不顯示於收據）"
                 className="mt-1 block w-full rounded border px-2 py-1.5 text-sm"
               />
             </label>
@@ -184,22 +213,52 @@ export default function ReceiptModal({ token, type, sourceId, onClose }: Receipt
             </div>
 
             {/* 收費項目（唯讀） */}
-            <div className="flex gap-3">
-              <div className="flex-1">
-                <p className="text-xs font-medium text-gray-700">收費項目</p>
-                <p className="mt-1 rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-sm">{feeCat}</p>
+            {type !== "self_pay_batch" ? (
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <p className="text-xs font-medium text-gray-700">收費項目</p>
+                  <p className="mt-1 rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-sm">{feeCat}</p>
+                </div>
+                <div className="w-28">
+                  <p className="text-xs font-medium text-gray-700">{qtyLabel}</p>
+                  <p className="mt-1 rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-sm">{qty}</p>
+                </div>
+                <div className="w-28">
+                  <p className="text-xs font-medium text-gray-700">總計</p>
+                  <p className="mt-1 rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-sm font-medium">
+                    ${total.toLocaleString()}
+                  </p>
+                </div>
               </div>
-              <div className="w-28">
-                <p className="text-xs font-medium text-gray-700">{qtyLabel}</p>
-                <p className="mt-1 rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-sm">{qty}</p>
+            ) : (
+              <div>
+                <p className="text-xs font-medium text-gray-700 mb-1">明細清單</p>
+                <table className="w-full text-xs border border-gray-200 rounded">
+                  <thead>
+                    <tr className="bg-gray-50 text-gray-500">
+                      <th className="px-2 py-1 text-left">日期</th>
+                      <th className="px-2 py-1 text-left">項目</th>
+                      <th className="px-2 py-1 text-left">收據編號</th>
+                      <th className="px-2 py-1 text-right">金額</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((item, i) => (
+                      <tr key={i} className="border-t border-gray-100">
+                        <td className="px-2 py-1">{item.date}</td>
+                        <td className="px-2 py-1">{item.name}</td>
+                        <td className="px-2 py-1 font-mono">{item.receipt_no}</td>
+                        <td className="px-2 py-1 text-right">${item.amount.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                    <tr className="border-t border-gray-300 font-medium bg-gray-50">
+                      <td colSpan={3} className="px-2 py-1">合計 {items.length} 筆</td>
+                      <td className="px-2 py-1 text-right">${total.toLocaleString()}</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
-              <div className="w-28">
-                <p className="text-xs font-medium text-gray-700">總計</p>
-                <p className="mt-1 rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-sm font-medium">
-                  ${total.toLocaleString()}
-                </p>
-              </div>
-            </div>
+            )}
 
             {/* 備註 */}
             <label className="block">

@@ -163,7 +163,7 @@ const categoryLabels: Record<string, string> = {
 const sessionTypeLabels: Record<string, string> = {
   in_person: "現場諮商",
   online: "線上諮商",
-  home_visit: "到宅服務",
+  outdoor: "外出服務",
 };
 
 function MonthlyReportTab({ token }: { token: string }) {

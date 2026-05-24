@@ -23,13 +23,16 @@ from app.models.institution import Institution
 from app.models.product_sales import ProductSale
 from app.models.session_record import SessionRecord
 from app.models.user import User
-from app.schemas.receipt import ReceiptPreview, ReceiptRequest
+from app.schemas.receipt import MultiItemReceiptPreview, MultiItemReceiptRequest, ReceiptItem, ReceiptPreview, ReceiptRequest
 from app.services.pdf.receipt import (
+    MultiItemReceiptData,
     ReceiptData,
     build_institution_receipt,
     build_multi_session_receipt,
     build_product_receipt,
+    build_self_pay_batch_receipt,
     build_single_session_receipt,
+    render_multi_item_receipt,
     render_receipt,
 )
 
@@ -49,6 +52,7 @@ def _preview_from_data(data: ReceiptData, show_tax_id: bool = False) -> ReceiptP
         total_amount=data.total_amount,
         note=data.note,
         show_tax_id=show_tax_id,
+        session_type_label=data.session_type_label,
     )
 
 
@@ -179,6 +183,67 @@ def issue_product(
         raise HTTPException(status_code=404, detail="Product sale not found")
     data = ReceiptData(**body.model_dump())
     pdf_bytes = render_receipt(data)
+    filename = f"receipt-{body.receipt_number}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ── 自費批次整體收據 ──────────────────────────────────────────────────────────
+
+@router.get("/self-pay-batch/{batch_id}/preview", response_model=MultiItemReceiptPreview)
+def preview_self_pay_batch(
+    batch_id: int,
+    user: User = Depends(RequireRole(ROLES)),
+    db: Session = Depends(get_db),
+):
+    from app.models.session_record import SessionRecord as SR
+    batch = db.query(ClaimBatch).filter(ClaimBatch.id == batch_id).first()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Claim batch not found")
+    case = db.query(Case).filter(Case.id == batch.case_id).first() if batch.case_id else None
+    records = (
+        db.query(SR)
+        .filter(SR.claim_batch_id == batch_id, SR.is_void.is_(False))
+        .order_by(SR.session_date)
+        .all()
+    )
+    data = build_self_pay_batch_receipt(batch, case, records)
+    return MultiItemReceiptPreview(
+        receipt_number=data.receipt_number,
+        issue_date=data.issue_date,
+        payee=data.payee,
+        fee_category=data.fee_category,
+        items=[ReceiptItem(**item) for item in data.items],
+        total_amount=data.total_amount,
+        note=data.note,
+        show_tax_id=False,
+    )
+
+
+@router.post("/self-pay-batch/{batch_id}")
+def issue_self_pay_batch(
+    batch_id: int,
+    body: MultiItemReceiptRequest,
+    user: User = Depends(RequireRole(ROLES)),
+    db: Session = Depends(get_db),
+):
+    batch = db.query(ClaimBatch).filter(ClaimBatch.id == batch_id).first()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Claim batch not found")
+    data = MultiItemReceiptData(
+        receipt_number=body.receipt_number,
+        issue_date=body.issue_date,
+        payee=body.payee,
+        fee_category=body.fee_category,
+        items=[item.model_dump() for item in body.items],
+        total_amount=body.total_amount,
+        note=body.note,
+        tax_id=body.tax_id,
+    )
+    pdf_bytes = render_multi_item_receipt(data)
     filename = f"receipt-{body.receipt_number}.pdf"
     return Response(
         content=pdf_bytes,

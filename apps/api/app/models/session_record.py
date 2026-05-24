@@ -42,3 +42,4 @@ class SessionRecord(Base):
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
 
     appointment = _rel("Appointment", back_populates="session_record")
+    claim_batch = _rel("ClaimBatch", foreign_keys=[claim_batch_id], lazy="select")

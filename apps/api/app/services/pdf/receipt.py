@@ -9,20 +9,110 @@ from __future__ import annotations
 import io
 from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas as rl_canvas
 
-try:
-    pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))
-except Exception:
-    pass
+# ── 字型設定（嵌入 TTF/TTC，Chrome 相容）────────────────────────────────────
+# CID 字型（STSong-Light 等）不嵌入字型資料，Chrome 無法顯示中文。
+# 必須使用 TTFont 載入並嵌入字型。依序嘗試：使用者提供的標楷體 →
+# macOS 系統華文黑體 → Linux Noto CJK → 最後才 fallback 到 CID。
 
-FONT = "STSong-Light"
+_FONT_DIR = Path(__file__).parent / "fonts"
+
+CN_FONT: str | None = None
+ASCII_FONT = "Helvetica"
+
+_CN_TTF_CANDIDATES = [
+    (str(_FONT_DIR / "BiauKai.ttf"), None),                               # 使用者提供標楷體
+    ("/System/Library/Fonts/STHeiti Light.ttc", 0),                       # macOS 華文細黑
+    ("/System/Library/Fonts/STHeiti Medium.ttc", 0),                      # macOS 華文黑體
+    ("/System/Library/Fonts/Hiragino Sans GB.ttc", 0),                    # macOS 冬青黑（含繁體）
+    ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", 0),        # Linux Noto CJK
+    ("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc", 0),
+]
+
+for _path, _idx in _CN_TTF_CANDIDATES:
+    try:
+        kwargs: dict = {}
+        if _idx is not None:
+            kwargs["subfontIndex"] = _idx
+        pdfmetrics.registerFont(TTFont("ClinFontCN", _path, **kwargs))
+        CN_FONT = "ClinFontCN"
+        break
+    except Exception:
+        continue
+
+if CN_FONT is None:
+    # 最後 fallback：CID 字型（Chrome 可能無法顯示，但 PDF 結構正確）
+    for _cid in ("STKaiti", "STSong-Light"):
+        try:
+            pdfmetrics.registerFont(UnicodeCIDFont(_cid))
+            CN_FONT = _cid
+            break
+        except Exception:
+            continue
+
+if CN_FONT is None:
+    CN_FONT = "Helvetica"  # 完全 fallback
+
+try:
+    pdfmetrics.registerFont(
+        TTFont("TimesNewRoman", "/System/Library/Fonts/Supplemental/Times New Roman.ttf")
+    )
+    ASCII_FONT = "TimesNewRoman"
+except Exception:
+    try:
+        pdfmetrics.registerFont(
+            TTFont("TimesNewRoman", "/System/Library/Fonts/Times.ttc", subfontIndex=0)
+        )
+        ASCII_FONT = "TimesNewRoman"
+    except Exception:
+        pass
+
+
 CLINIC_NAME = "慈恩心理治療所"
+
+
+def _is_ascii(ch: str) -> bool:
+    return ord(ch) < 128
+
+
+def _mixed_string_width(text: str, size: float) -> float:
+    """計算混合中英文字串的繪製寬度。"""
+    return sum(
+        pdfmetrics.stringWidth(ch, ASCII_FONT if _is_ascii(ch) else CN_FONT, size)
+        for ch in text
+    )
+
+
+def _draw_mixed(c: rl_canvas.Canvas, x: float, y: float, text: str, size: float) -> float:
+    """逐字切換字型繪製混合字串，回傳結束 x 座標。"""
+    cur_x = x
+    for ch in text:
+        font = ASCII_FONT if _is_ascii(ch) else CN_FONT
+        c.setFont(font, size)
+        c.drawString(cur_x, y, ch)
+        cur_x += pdfmetrics.stringWidth(ch, font, size)
+    return cur_x
+
+
+def _draw_mixed_right(c: rl_canvas.Canvas, x: float, y: float, text: str, size: float) -> None:
+    """靠右對齊繪製混合字串（以 x 為右邊界）。"""
+    w = _mixed_string_width(text, size)
+    _draw_mixed(c, x - w, y, text, size)
+
+
+def _draw_mixed_centred(c: rl_canvas.Canvas, x_centre: float, y: float, text: str, size: float) -> None:
+    """置中繪製混合字串。"""
+    w = _mixed_string_width(text, size)
+    _draw_mixed(c, x_centre - w / 2, y, text, size)
+
 
 # ── 中文金額轉換 ────────────────────────────────────────────────────────────
 
@@ -75,17 +165,21 @@ def _tw_date(d: date | None) -> str:
 
 # ── 資料模型 ────────────────────────────────────────────────────────────────
 
+_SESSION_TYPE_ZH = {"in_person": "現場", "online": "線上", "outdoor": "外出"}
+
+
 @dataclass
 class ReceiptData:
-    receipt_number: str   # 收據編號
-    issue_date: str       # 開立日期（ROC 格式，例 114/04/29）
-    payee: str            # 姓名/單位
-    fee_category: str     # 收費項目
-    quantity_label: str   # "數量/諮商次數" / "諮商場次" / "數量"
-    quantity: str         # "4" / "3 場" / "2 件"
-    total_amount: int     # NTD 整數
-    note: str = ""        # 備註（支援換行）
-    tax_id: str = ""      # 統一編號（非空則在表格加一列）
+    receipt_number: str        # 收據編號
+    issue_date: str            # 開立日期（ROC 格式，例 114/04/29）
+    payee: str                 # 姓名/單位（空字串 → 不顯示此列）
+    fee_category: str          # 收費項目（內部使用；正本不顯示此欄）
+    quantity_label: str        # "數量/諮商次數" / "諮商場次" / "數量"
+    quantity: str              # "4" / "3 場" / "2 件"
+    total_amount: int          # NTD 整數
+    note: str = ""             # 備註（支援換行）
+    tax_id: str = ""           # 統一編號（非空則在表格加一列）
+    session_type_label: str = ""  # "現場" / "線上" / "外出"（空則不顯示）
 
 
 # ── Canvas 繪圖工具 ─────────────────────────────────────────────────────────
@@ -97,17 +191,17 @@ _LINE_LEADING = _FONT_SIZE * 1.35
 ML = 2.0 * cm  # 左邊界
 
 
-def _wrap_text(c: rl_canvas.Canvas, text: str, max_w: float, font_size: int) -> list[str]:
-    """逐字計算 stringWidth，超過 max_w 時折行。"""
+def _wrap_text(text: str, max_w: float, font_size: int) -> list[str]:
+    """逐字計算 stringWidth，超過 max_w 時折行（使用混合字型寬度）。"""
     if not text:
         return [""]
-    if c.stringWidth(text, FONT, font_size) <= max_w:
+    if _mixed_string_width(text, font_size) <= max_w:
         return [text]
     lines: list[str] = []
     current = ""
     for ch in text:
         test = current + ch
-        if c.stringWidth(test, FONT, font_size) > max_w and current:
+        if _mixed_string_width(test, font_size) > max_w and current:
             lines.append(current)
             current = ch
         else:
@@ -132,7 +226,7 @@ def _draw_receipt_table(
     回傳表格底部 y 座標。"""
     y = y_top
     for label, value, allow_wrap in rows:
-        lines = _wrap_text(c, value, value_w - 8, font_size) if allow_wrap else [value]
+        lines = _wrap_text(value, value_w - 8, font_size) if allow_wrap else [value]
         h = max(min_row_h, len(lines) * _LINE_LEADING + 6)
 
         # 格線
@@ -142,18 +236,17 @@ def _draw_receipt_table(
         c.rect(x + label_w, y - h, value_w, h)
 
         c.setFillColorRGB(0, 0, 0)
-        c.setFont(FONT, font_size)
 
-        # 標籤（靠右對齊）
-        lw = c.stringWidth(label, FONT, font_size)
+        # 標籤（靠右對齊，混合字型）
+        lw = _mixed_string_width(label, font_size)
         label_y = y - h / 2 - font_size * 0.35
-        c.drawString(x + label_w - lw - 4, label_y, label)
+        _draw_mixed(c, x + label_w - lw - 4, label_y, label, font_size)
 
-        # 數值（靠左，多行）
+        # 數值（靠左，多行，混合字型）
         total_text_h = len(lines) * _LINE_LEADING
         line_y = y - (h - total_text_h) / 2 - _LINE_LEADING * 0.72
         for line in lines:
-            c.drawString(x + label_w + 4, line_y, line)
+            _draw_mixed(c, x + label_w + 4, line_y, line, font_size)
             line_y -= _LINE_LEADING
 
         y -= h
@@ -181,41 +274,31 @@ def _draw_section(
 
     if not is_stub:
         # ── 正本 標題區 ──
-        c.setFont(FONT, 16)
+        _draw_mixed_centred(c, W / 2, y, CLINIC_NAME, 16)
         c.setFillColorRGB(0, 0, 0)
-        c.drawCentredString(W / 2, y, CLINIC_NAME)
         y -= 0.9 * cm
 
-        # 「收 據」左置 + 條碼框右置
-        c.setFont(FONT, 20)
-        c.drawString(ML + TW * 0.18, y, "收  據")
-
-        bc_w, bc_h = 5.0 * cm, 1.15 * cm
-        bc_x = W - MR - bc_w
-        c.setStrokeColorRGB(0.35, 0.35, 0.35)
-        c.setLineWidth(0.5)
-        c.rect(bc_x, y - 0.15 * cm, bc_w, bc_h)
-        c.setFont(FONT, 8)
-        c.setFillColorRGB(0.4, 0.4, 0.4)
-        c.drawCentredString(bc_x + bc_w / 2, y + bc_h / 2 - 4, "（收據編號條碼）")
+        # 「收 據」標題（無條碼框）
+        _draw_mixed(c, ML + TW * 0.18, y, "收  據", 20)
         c.setFillColorRGB(0, 0, 0)
         y -= 1.05 * cm
 
         # 正本標籤
-        c.setFont(FONT, 9)
-        c.drawString(ML, y, "正本（客戶收據聯）")
+        _draw_mixed(c, ML, y, "正本（客戶收據聯）", 9)
+        c.setFillColorRGB(0, 0, 0)
         y -= 0.32 * cm
 
-        # 正本表格
+        # 正本表格（不含收據編號，收據編號只在副本顯示）
         main_rows: list[tuple[str, str, bool]] = [
-            ("收據編號：", data.receipt_number, False),
             ("開立日期：", data.issue_date, False),
-            ("姓名/單位：", data.payee, False),
         ]
-        if data.tax_id:
+        if data.payee and data.payee.strip():
+            main_rows.append(("姓名/單位：", data.payee, False))
+        if data.tax_id and data.tax_id.strip():
             main_rows.append(("統一編號：", data.tax_id, False))
+        if data.session_type_label:
+            main_rows.append(("諮商類型：", data.session_type_label, False))
         main_rows += [
-            ("收費項目：", data.fee_category, False),
             (data.quantity_label + "：", data.quantity, False),
             ("總計：", amount_ntd, False),
             ("金額：", amount_zh, False),
@@ -225,16 +308,14 @@ def _draw_section(
 
         # 簽名行
         sig_y = y_after - 1.1 * cm
-        c.setFont(FONT, 10)
         c.setFillColorRGB(0, 0, 0)
-        c.drawString(ML, sig_y, "開立行政：＿＿＿＿＿＿＿＿")
-        c.drawRightString(W - MR, sig_y, "診療所章")
+        _draw_mixed(c, ML, sig_y, "開立行政：＿＿＿＿＿＿＿＿", 10)
+        _draw_mixed_right(c, W - MR, sig_y, "診療所章", 10)
 
     else:
         # ── 存根 標題區 ──
-        c.setFont(FONT, 10)
+        _draw_mixed(c, ML, y, "慈恩心理治療所收據副本（存根聯）", 10)
         c.setFillColorRGB(0, 0, 0)
-        c.drawString(ML, y, "慈恩心理治療所收據副本（存根聯）")
         y -= 0.5 * cm
 
         # 存根表格（壓縮版，收費項目合併數量+總計）
@@ -245,7 +326,10 @@ def _draw_section(
         stub_rows: list[tuple[str, str, bool]] = [
             ("收據編號：", data.receipt_number, False),
             ("開立日期：", data.issue_date, False),
-            ("姓名/單位：", data.payee, False),
+        ]
+        if data.payee and data.payee.strip():
+            stub_rows.append(("姓名/單位：", data.payee, False))
+        stub_rows += [
             ("收費項目：", stub_fee, True),
             ("金  額：", amount_zh, False),
         ]
@@ -253,8 +337,8 @@ def _draw_section(
 
         # 簽名行
         sig_y = y_after - 0.8 * cm
-        c.setFont(FONT, 10)
-        c.drawString(ML, sig_y, "開立行政：＿＿＿＿＿＿＿＿")
+        _draw_mixed(c, ML, sig_y, "開立行政：＿＿＿＿＿＿＿＿", 10)
+        c.setFillColorRGB(0, 0, 0)
 
 
 # ── 主入口 ─────────────────────────────────────────────────────────────────
@@ -268,18 +352,14 @@ def render_receipt(data: ReceiptData) -> bytes:
     # 正本（從頂部往下）
     _draw_section(c, data, H - 1.5 * cm, is_stub=False)
 
-    # 分隔虛線
+    # 分隔線（實線 + 文字，無虛線）
     div_y = H / 2
-    c.setDash(3, 3)
-    c.setLineWidth(0.5)
-    c.setStrokeColorRGB(0.5, 0.5, 0.5)
-    c.line(ML, div_y, W - 2 * cm, div_y)
+    c.setStrokeColorRGB(0.45, 0.45, 0.45)
+    c.setLineWidth(0.6)
     c.setDash()
-
-    c.setFont(FONT, 8)
+    c.line(ML, div_y, W - 2 * cm, div_y)
     c.setFillColorRGB(0.5, 0.5, 0.5)
-    label = "─────────────────── 慈恩心療所留存 ───────────────────"
-    c.drawCentredString(W / 2, div_y + 3, label)
+    _draw_mixed_centred(c, W / 2, div_y + 3, "慈恩心療所留存", 8)
     c.setFillColorRGB(0, 0, 0)
 
     # 存根（分隔線下方）
@@ -294,15 +374,17 @@ def render_receipt(data: ReceiptData) -> bytes:
 def build_single_session_receipt(record, case) -> ReceiptData:
     """單次諮商收據。"""
     amount = int(record.amount or 0)
+    st_label = _SESSION_TYPE_ZH.get(record.session_type or "", "")
     return ReceiptData(
         receipt_number=record.receipt_no or f"R{record.id}",
         issue_date=_tw_date(date.today()),
-        payee=case.name if case else "——",
+        payee=case.name if case else "",
         fee_category="心理諮商",
         quantity_label="數量/諮商次數",
         quantity="1",
         total_amount=amount,
         note=f"諮商日期：{_tw_date(record.session_date)}　單次費用：新台幣 {amount:,} 元",
+        session_type_label=st_label,
     )
 
 
@@ -316,12 +398,13 @@ def build_multi_session_receipt(batch, case, records: list[dict]) -> ReceiptData
     return ReceiptData(
         receipt_number=batch.batch_number,
         issue_date=_tw_date(date.today()),
-        payee=case.name if case else "——",
+        payee=case.name if case else "",
         fee_category="心理諮商",
         quantity_label="數量/諮商次數",
         quantity=str(len(records)),
         total_amount=total,
         note=session_items,
+        session_type_label="",
     )
 
 
@@ -337,7 +420,7 @@ def build_institution_receipt(batch, institution, records: list[dict]) -> Receip
     return ReceiptData(
         receipt_number=batch.batch_number,
         issue_date=_tw_date(date.today()),
-        payee=institution.name if institution else "——",
+        payee=institution.name if institution else "",
         fee_category="心理諮商服務",
         quantity_label="諮商場次",
         quantity=f"{n} 場",
@@ -346,15 +429,176 @@ def build_institution_receipt(batch, institution, records: list[dict]) -> Receip
     )
 
 
+@dataclass
+class MultiItemReceiptData:
+    receipt_number: str
+    issue_date: str
+    payee: str
+    fee_category: str
+    items: list[dict]   # [{date, name, receipt_no, amount}]
+    total_amount: int
+    note: str = ""
+    tax_id: str = ""
+
+
+def render_multi_item_receipt(data: MultiItemReceiptData) -> bytes:
+    """多筆明細整體收據（A4 兩聯式：正本含明細表 + 存根聯）。"""
+    buf = io.BytesIO()
+    W, H = A4
+    c = rl_canvas.Canvas(buf, pagesize=A4)
+
+    amount_ntd = f"新台幣 {data.total_amount:,} 元"
+    amount_zh = amount_to_zh(data.total_amount)
+    MR = 2.0 * cm
+    TW = W - ML - MR
+    label_w = _LABEL_W
+    value_w = TW - label_w
+
+    # ── 正本 ──────────────────────────────────────────
+    y = H - 1.5 * cm
+    _draw_mixed_centred(c, W / 2, y, CLINIC_NAME, 16)
+    y -= 0.9 * cm
+    _draw_mixed(c, ML + TW * 0.18, y, "收  據", 20)
+    y -= 1.05 * cm
+    _draw_mixed(c, ML, y, "正本（客戶收據聯）", 9)
+    y -= 0.32 * cm
+
+    # 上方資訊行（正本不含收據編號）
+    header_rows: list[tuple[str, str, bool]] = [
+        ("開立日期：", data.issue_date, False),
+    ]
+    if data.payee and data.payee.strip():
+        header_rows.append(("姓名/單位：", data.payee, False))
+    if data.tax_id and data.tax_id.strip():
+        header_rows.append(("統一編號：", data.tax_id, False))
+    y = _draw_receipt_table(c, header_rows, ML, y, label_w, value_w, _ROW_H, _FONT_SIZE)
+
+    # 明細表格
+    y -= 0.3 * cm
+    col_widths = [2.4 * cm, 2.0 * cm, 6.5 * cm, 2.8 * cm]
+    headers = ["日期", "類型", "收據編號", "金額"]
+    col_x = ML
+    fs = 9
+
+    # 表頭
+    row_h = 0.6 * cm
+    c.setFillColorRGB(0.92, 0.92, 0.92)
+    c.rect(ML, y - row_h, sum(col_widths), row_h, fill=1)
+    c.setFillColorRGB(0, 0, 0)
+    for i, (header, cw) in enumerate(zip(headers, col_widths)):
+        cx = ML + sum(col_widths[:i])
+        c.setStrokeColorRGB(0.45, 0.45, 0.45)
+        c.setLineWidth(0.5)
+        c.rect(cx, y - row_h, cw, row_h)
+        _draw_mixed_centred(c, cx + cw / 2, y - row_h + 3, header, fs)
+    y -= row_h
+
+    # 明細列
+    item_h = 0.55 * cm
+    for item in data.items:
+        vals = [
+            item.get("date", ""),
+            item.get("name", ""),
+            item.get("receipt_no", ""),
+            f"${int(item.get('amount', 0)):,}",
+        ]
+        for i, (val, cw) in enumerate(zip(vals, col_widths)):
+            cx = ML + sum(col_widths[:i])
+            c.setStrokeColorRGB(0.45, 0.45, 0.45)
+            c.setLineWidth(0.4)
+            c.rect(cx, y - item_h, cw, item_h)
+            if i == 3:
+                _draw_mixed_right(c, cx + cw - 3, y - item_h + 3, val, fs)
+            else:
+                _draw_mixed(c, cx + 3, y - item_h + 3, val, fs)
+        y -= item_h
+
+    # 合計列
+    total_h = 0.65 * cm
+    c.setStrokeColorRGB(0.45, 0.45, 0.45)
+    c.setLineWidth(0.5)
+    c.rect(ML, y - total_h, sum(col_widths), total_h)
+    c.setFillColorRGB(0, 0, 0)
+    _draw_mixed(c, ML + 3, y - total_h + 4, f"合計：{len(data.items)} 筆", fs)
+    _draw_mixed_right(c, ML + sum(col_widths) - 3, y - total_h + 4, amount_ntd, fs)
+    y -= total_h
+
+    # 大寫金額 + 備註
+    y -= 0.3 * cm
+    amount_rows: list[tuple[str, str, bool]] = [
+        ("金額：", amount_zh, False),
+    ]
+    if data.note:
+        amount_rows.append(("備註：", data.note, True))
+    y = _draw_receipt_table(c, amount_rows, ML, y, label_w, value_w, _ROW_H, _FONT_SIZE)
+
+    # 簽名行
+    sig_y = y - 1.1 * cm
+    _draw_mixed(c, ML, sig_y, "開立行政：＿＿＿＿＿＿＿＿", 10)
+    _draw_mixed_right(c, W - MR, sig_y, "診療所章", 10)
+
+    # ── 分隔線 ──────────────────────────────────────
+    div_y = H / 2
+    c.setStrokeColorRGB(0.45, 0.45, 0.45)
+    c.setLineWidth(0.6)
+    c.setDash()
+    c.line(ML, div_y, W - MR, div_y)
+    c.setFillColorRGB(0.5, 0.5, 0.5)
+    _draw_mixed_centred(c, W / 2, div_y + 3, "慈恩心療所留存", 8)
+    c.setFillColorRGB(0, 0, 0)
+
+    # ── 存根 ──────────────────────────────────────────
+    y = div_y - 0.8 * cm
+    _draw_mixed(c, ML, y, "慈恩心理治療所收據副本（存根聯）", 10)
+    y -= 0.5 * cm
+
+    stub_fee = f"{data.fee_category}  共 {len(data.items)} 筆  總計：{amount_ntd}"
+    stub_rows: list[tuple[str, str, bool]] = [
+        ("收據編號：", data.receipt_number, False),
+        ("開立日期：", data.issue_date, False),
+    ]
+    if data.payee and data.payee.strip():
+        stub_rows.append(("姓名/單位：", data.payee, False))
+    stub_rows += [
+        ("收費項目：", stub_fee, True),
+        ("金  額：", amount_zh, False),
+    ]
+    _draw_receipt_table(c, stub_rows, ML, y, label_w, value_w, _ROW_H, _FONT_SIZE)
+
+    c.save()
+    return buf.getvalue()
+
+
+def build_self_pay_batch_receipt(batch, case, records) -> MultiItemReceiptData:
+    """自費批次整體收據 builder。records = list of SessionRecord ORM objects。"""
+    items = [
+        {
+            "date": _tw_date(r.session_date),
+            "name": _SESSION_TYPE_ZH.get(r.session_type or "", "現場"),
+            "receipt_no": r.receipt_no or f"R{r.id}",
+            "amount": int(r.amount or 0),
+        }
+        for r in sorted(records, key=lambda x: x.session_date)
+    ]
+    return MultiItemReceiptData(
+        receipt_number=batch.batch_number,
+        issue_date=_tw_date(date.today()),
+        payee=case.name if case else "",
+        fee_category="心理諮商",
+        items=items,
+        total_amount=int(batch.total_amount or 0),
+    )
+
+
 def build_product_receipt(sale) -> ReceiptData:
-    """商品收入收據。"""
+    """商品收入收據。payee 留空 → 收據不顯示姓名列。"""
     unit_price = int(sale.amount or 0)
     qty = sale.quantity or 1
     total = unit_price * qty
     return ReceiptData(
         receipt_number=sale.receipt_no or f"P{sale.id}",
         issue_date=_tw_date(date.today()),
-        payee="——",
+        payee="",
         fee_category=sale.product_name or "商品",
         quantity_label="數量",
         quantity=f"{qty} 件",

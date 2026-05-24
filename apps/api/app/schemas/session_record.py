@@ -32,6 +32,7 @@ class SessionRecordResponse(BaseModel):
     receipt_no: str | None = None
     commission_rate_used: float | None = None
     claim_batch_id: int | None = None
+    claim_batch_number: str | None = None
     therapist_doc_submitted_at: datetime | None = None
     locked_at: datetime | None = None
     is_void: bool = False

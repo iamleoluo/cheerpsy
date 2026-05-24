@@ -29,7 +29,7 @@ const helpContent: HelpContent = {
         "切到「機構」分頁，點「＋建立核銷案」",
         "選擇機構（僅列出有未歸入帳的機構），勾選紀錄，設定期間後建立",
         "心理師於「文件確認」逐筆確認，全部確認後自動升「待送出」",
-        "點「提交請款」填外部單號 → 款項到帳「確認收款」→「結案」",
+        "點「提交請款」填外部單號 → 款項到帳「確認收款」（即結案）",
       ],
     },
     {
@@ -37,7 +37,7 @@ const helpContent: HelpContent = {
       type: "text",
       items: [
         "自費：未收款 → 付款（逐筆/批次）→ 可印收據",
-        "機構：收集中 → 文件備妥（自動）→ 已送出 → 已收款 → 已結案",
+        "機構：收集中 → 文件備妥（自動）→ 已送出 → 已收款（終態）",
       ],
     },
     {
@@ -122,12 +122,14 @@ interface LedgerRecord {
   payment_status: string;
   receipt_no: string | null;
   is_void: boolean;
+  claim_batch_id: number | null;
+  claim_batch_number: string | null;
 }
 
 const SESSION_TYPE_LABELS: Record<string, string> = {
   in_person: "現場",
   online: "線上",
-  home_visit: "到宅",
+  outdoor: "外出",
 };
 
 /* ───── main page ───── */
@@ -263,7 +265,7 @@ function SelfPayPaymentModal({
   recordIds: number[];
   total: number;
   onClose: () => void;
-  onDone: (ids: number[], combine: boolean) => void;
+  onDone: (ids: number[], combine: boolean, batchId?: number | null) => void;
 }) {
   const [method, setMethod] = useState<"cash" | "transfer">("cash");
   const [note, setNote] = useState("");
@@ -291,7 +293,7 @@ function SelfPayPaymentModal({
             paid_date: paidDate,
           }),
         });
-        onDone(res?.record_ids ?? recordIds, res?.combine_receipt ?? combine);
+        onDone(res?.record_ids ?? recordIds, res?.combine_receipt ?? combine, res?.batch_id ?? null);
       } else {
         await clientFetch(`/ledger/${recordIds[0]}/pay`, token, {
           method: "PUT",
@@ -392,6 +394,7 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
   const [expandedCaseId, setExpandedCaseId] = useState<number | string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | "unpaid" | "paid">("all");
   const [receiptRecordId, setReceiptRecordId] = useState<number | null>(null);
+  const [receiptBatchId, setReceiptBatchId] = useState<number | null>(null);
 
   const canEdit = ["admin", "staff"].includes(userRole);
 
@@ -444,17 +447,23 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
     });
   };
 
-  const afterPay = (ids: number[], _combine: boolean) => {
+  const afterPay = (ids: number[], combine: boolean, batchId?: number | null) => {
     setPayIds(null);
     fetchRecords();
-    // 付款完成後若單筆，自動開啟收據開立視窗
-    if (ids.length === 1) setReceiptRecordId(ids[0]);
+    if (combine && batchId) {
+      setReceiptBatchId(batchId);
+    } else if (ids.length === 1) {
+      setReceiptRecordId(ids[0]);
+    }
   };
 
   return (
     <div>
       {receiptRecordId !== null && (
         <ReceiptModal token={token} type="single_session" sourceId={receiptRecordId} onClose={() => setReceiptRecordId(null)} />
+      )}
+      {receiptBatchId !== null && (
+        <ReceiptModal token={token} type="self_pay_batch" sourceId={receiptBatchId!} onClose={() => setReceiptBatchId(null)} />
       )}
       {payIds && (
         <SelfPayPaymentModal
@@ -579,7 +588,15 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
                                   付款
                                 </button>
                               )}
-                              {paid && (
+                              {paid && r.claim_batch_id && (
+                                <button
+                                  onClick={() => setReceiptBatchId(r.claim_batch_id!)}
+                                  className="rounded border border-primary-300 px-2 py-0.5 text-xs text-primary-600 hover:bg-primary-50"
+                                >
+                                  整體收據
+                                </button>
+                              )}
+                              {paid && !r.claim_batch_id && (
                                 <button
                                   onClick={() => setReceiptRecordId(r.id)}
                                   className="rounded border border-primary-300 px-2 py-0.5 text-xs text-primary-600 hover:bg-primary-50"
@@ -814,27 +831,20 @@ function BatchRow({
                 確認收款
               </button>
             )}
-            {canEdit && ["submitted", "received"].includes(b.status) && (
-              <button onClick={() => transition("close")} className="rounded bg-gray-600 px-2 py-0.5 text-xs text-white hover:bg-gray-700">
-                結案
+            {b.status === "closed" && (
+              <button
+                onClick={() => downloadPdf(`/claim-batches/${b.id}/claim-form`, token, `claim-${b.batch_number}.pdf`)}
+                className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-100"
+              >
+                請款單
               </button>
             )}
-            {b.status === "closed" && (
-              <>
-                <button
-                  onClick={() => downloadPdf(`/claim-batches/${b.id}/claim-form`, token, `claim-${b.batch_number}.pdf`)}
-                  className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-100"
-                >
-                  請款單
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setShowReceiptModal(true); }}
-                  className="rounded border border-primary-300 px-2 py-0.5 text-xs text-primary-600 hover:bg-primary-50"
-                >
-                  開立收據
-                </button>
-              </>
-            )}
+            <button
+              onClick={(e) => { e.stopPropagation(); setShowReceiptModal(true); }}
+              className="rounded border border-primary-300 px-2 py-0.5 text-xs text-primary-600 hover:bg-primary-50"
+            >
+              開立收據
+            </button>
           </div>
         </td>
       </tr>

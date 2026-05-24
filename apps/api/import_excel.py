@@ -301,7 +301,7 @@ def import_ledger(filepath: str):
         if session_format and "視訊" in session_format:
             session_type = "online"
         elif location and "到宅" in location:
-            session_type = "home_visit"
+            session_type = "outdoor"
         else:
             session_type = "in_person"
 

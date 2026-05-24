@@ -30,6 +30,7 @@ from app.schemas.session_record import (
     SplitRequest,
     VoidRequest,
 )
+from app.services.claim_batch import generate_batch_number
 from app.services.pdf_generator import generate_self_pay_receipt
 from app.services.settlement import materialize_due_appointments, run_daily_settlement
 
@@ -118,6 +119,7 @@ def _to_response(r: SessionRecord, db: Session) -> SessionRecordResponse:
         receipt_no=r.receipt_no,
         commission_rate_used=float(rate),
         claim_batch_id=r.claim_batch_id,
+        claim_batch_number=r.claim_batch.batch_number if r.claim_batch else None,
         therapist_doc_submitted_at=r.therapist_doc_submitted_at,
         locked_at=r.locked_at,
         is_void=bool(r.is_void),
@@ -310,7 +312,7 @@ def _build_receipt_dicts(records: list[SessionRecord], db: Session) -> list[dict
         out.append({
             "session_date": r.session_date,
             "therapist_name": therapist.name if therapist else "",
-            "session_type": {"in_person": "現場", "online": "線上", "home_visit": "到宅"}.get(r.session_type, r.session_type),
+            "session_type": {"in_person": "現場", "online": "線上", "outdoor": "外出"}.get(r.session_type, r.session_type),
             "amount": float(r.amount) - float(r.discount_amount or 0),
         })
     return out
@@ -838,11 +840,37 @@ def pay_batch(
         r.payment_status = "paid"
         r.paid_at = paid_at
         _write_audit(db, "session_records", r.id, "UPDATE", user.id, before, {"payment_status": "paid"})
+
+    # Create a ClaimBatch for combined receipt when multiple records
+    batch_id: int | None = None
+    if body.combine_receipt and len(records) > 1:
+        case_id = records[0].case_id
+        case = db.query(Case).filter(Case.id == case_id).first() if case_id else None
+        period_start = paid_at.date() if paid_at else date.today()
+        batch_number = generate_batch_number(db, "self_pay", case, None, period_start)
+        batch = ClaimBatch(
+            batch_number=batch_number,
+            type="self_pay",
+            case_id=case_id,
+            total_amount=sum(float(r.amount) for r in records),
+            payment_method=body.payment_method,
+            payment_note=body.payment_note,
+            status="closed",
+            closed_at=paid_at,
+            created_by=user.id,
+        )
+        db.add(batch)
+        db.flush()
+        for r in records:
+            r.claim_batch_id = batch.id
+        batch_id = batch.id
+
     db.commit()
     return {
         "paid": len(records),
         "record_ids": [r.id for r in records],
         "combine_receipt": body.combine_receipt,
+        "batch_id": batch_id,
     }
 
 
