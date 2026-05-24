@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import appointments, audit, auth, case_quotas, cases, churn, claim_batches, dashboard, data_import, export, health, institutions, invoices, ledger, notifications, payouts, petty_cash, product_sales, reminders, reports, rooms
+from app.routers import appointments, audit, auth, case_quotas, cases, churn, claim_batches, dashboard, data_import, export, health, institutions, invoices, ledger, notifications, payouts, petty_cash, product_sales, receipts, reminders, reports, rooms
 
 app = FastAPI(title="CheerPsy API", version="2.0.0")
 
@@ -34,4 +34,5 @@ app.include_router(data_import.router)
 app.include_router(claim_batches.router)
 app.include_router(notifications.router)
 app.include_router(product_sales.router)
+app.include_router(receipts.router)
 app.include_router(case_quotas.router)

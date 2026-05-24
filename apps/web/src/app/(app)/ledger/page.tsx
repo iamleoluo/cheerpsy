@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch, exportCsv } from "@/lib/client-api";
 import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
+import ReceiptModal from "@/components/ReceiptModal";
 
 const helpContent: HelpContent = {
   title: "帳冊流水帳",
@@ -138,6 +139,8 @@ export default function LedgerPage() {
   const [bonusRec, setBonusRec] = useState<SessionRecord | null>(null);
   const [bonusAmount, setBonusAmount] = useState("1000");
   const [bonusNote, setBonusNote] = useState("");
+
+  const [receiptRecordId, setReceiptRecordId] = useState<number | null>(null);
 
   const fetchRecords = useCallback(async () => {
     if (!token) return;
@@ -326,6 +329,9 @@ export default function LedgerPage() {
   return (
     <div>
       <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} content={helpContent} />
+      {receiptRecordId !== null && (
+        <ReceiptModal token={token} type="single_session" sourceId={receiptRecordId} onClose={() => setReceiptRecordId(null)} />
+      )}
 
       {/* Header */}
       <div className="mb-4 flex items-center justify-between">
@@ -513,6 +519,10 @@ export default function LedgerPage() {
                           <button onClick={() => openBonus(r)} className="text-xs text-emerald-600 hover:underline">
                             {(r as any).outcall_bonus > 0 ? `保底 $${(r as any).outcall_bonus}` : "外出保底"}
                           </button>
+                        )}
+                        {["admin", "staff"].includes(userRole) &&
+                          r.payment_status === "paid" && (
+                          <button onClick={() => setReceiptRecordId(r.id)} className="text-xs text-primary-600 hover:underline">開立收據</button>
                         )}
                         {(["admin", "staff"].includes(userRole) || userRole === "therapist") &&
                           !["paid", "claimed"].includes(r.payment_status) && (

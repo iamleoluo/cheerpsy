@@ -36,7 +36,7 @@ def seed():
                 password_hash=default_pw,
                 name=name,
                 role="therapist",
-                therapist_code=code,
+                user_code=code,
             )
         )
 

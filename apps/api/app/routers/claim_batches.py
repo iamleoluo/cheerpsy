@@ -634,36 +634,6 @@ def _build_record_dicts(db: Session, batch_id: int) -> list[dict]:
     return result
 
 
-@router.get("/{batch_id}/receipt")
-def download_receipt(
-    batch_id: int,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    batch = db.query(ClaimBatch).filter(ClaimBatch.id == batch_id).first()
-    if not batch:
-        raise HTTPException(status_code=404, detail="Claim batch not found")
-    if batch.type != "self_pay":
-        raise HTTPException(status_code=400, detail="Receipts are for self-pay batches only")
-
-    case = db.query(Case).filter(Case.id == batch.case_id).first() if batch.case_id else None
-    records = _build_record_dicts(db, batch_id)
-
-    pdf_bytes = generate_self_pay_receipt(
-        batch_number=batch.batch_number,
-        case_name=case.name if case else "N/A",
-        period_start=batch.period_start,
-        period_end=batch.period_end,
-        records=records,
-        total_amount=float(batch.total_amount or 0),
-    )
-
-    return StreamingResponse(
-        io.BytesIO(pdf_bytes),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="receipt-{batch.batch_number}.pdf"'},
-    )
-
 
 @router.get("/{batch_id}/claim-form")
 def download_claim_form(

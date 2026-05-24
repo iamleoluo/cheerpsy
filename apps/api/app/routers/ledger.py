@@ -846,31 +846,6 @@ def pay_batch(
     }
 
 
-@router.get("/{record_id}/receipt")
-def download_record_receipt(
-    record_id: int,
-    user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
-    db: Session = Depends(get_db),
-):
-    r = db.query(SessionRecord).filter(SessionRecord.id == record_id).first()
-    if not r:
-        raise HTTPException(status_code=404, detail="Record not found")
-    case = db.query(Case).filter(Case.id == r.case_id).first() if r.case_id else None
-    dicts = _build_receipt_dicts([r], db)
-    pdf = generate_self_pay_receipt(
-        batch_number=r.receipt_no or f"R{r.id}",
-        case_name=case.name if case else "N/A",
-        period_start=r.session_date,
-        period_end=r.session_date,
-        records=dicts,
-        total_amount=dicts[0]["amount"],
-    )
-    return StreamingResponse(
-        io.BytesIO(pdf),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="receipt-{r.receipt_no or r.id}.pdf"'},
-    )
-
 
 @router.post("/settle", response_model=SettlementResponse)
 def trigger_settlement(

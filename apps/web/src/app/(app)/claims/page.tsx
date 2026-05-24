@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
 import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
+import ReceiptModal from "@/components/ReceiptModal";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -390,6 +391,7 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
   const [payIds, setPayIds] = useState<number[] | null>(null);
   const [expandedCaseId, setExpandedCaseId] = useState<number | string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | "unpaid" | "paid">("all");
+  const [receiptRecordId, setReceiptRecordId] = useState<number | null>(null);
 
   const canEdit = ["admin", "staff"].includes(userRole);
 
@@ -442,20 +444,18 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
     });
   };
 
-  const afterPay = (ids: number[], combine: boolean) => {
-    if (ids.length === 1) {
-      downloadPdf(`/ledger/${ids[0]}/receipt`, token, `receipt-${ids[0]}.pdf`);
-    } else if (combine) {
-      downloadPdf(`/ledger/receipt?record_ids=${ids.join(",")}`, token, `receipt-combined.pdf`);
-    } else {
-      ids.forEach((id) => downloadPdf(`/ledger/${id}/receipt`, token, `receipt-${id}.pdf`));
-    }
+  const afterPay = (ids: number[], _combine: boolean) => {
     setPayIds(null);
     fetchRecords();
+    // 付款完成後若單筆，自動開啟收據開立視窗
+    if (ids.length === 1) setReceiptRecordId(ids[0]);
   };
 
   return (
     <div>
+      {receiptRecordId !== null && (
+        <ReceiptModal token={token} type="single_session" sourceId={receiptRecordId} onClose={() => setReceiptRecordId(null)} />
+      )}
       {payIds && (
         <SelfPayPaymentModal
           token={token}
@@ -581,10 +581,10 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
                               )}
                               {paid && (
                                 <button
-                                  onClick={() => downloadPdf(`/ledger/${r.id}/receipt`, token, `receipt-${r.id}.pdf`)}
-                                  className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-100"
+                                  onClick={() => setReceiptRecordId(r.id)}
+                                  className="rounded border border-primary-300 px-2 py-0.5 text-xs text-primary-600 hover:bg-primary-50"
                                 >
-                                  收據
+                                  開立收據
                                 </button>
                               )}
                             </td>
@@ -734,6 +734,7 @@ function BatchRow({
   const [extRef, setExtRef] = useState(b.external_ref ?? "");
   const [payMethod, setPayMethod] = useState(b.payment_method ?? "");
   const [payNote, setPayNote] = useState(b.payment_note ?? "");
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
 
   useEffect(() => {
     if (expanded) {
@@ -765,6 +766,13 @@ function BatchRow({
 
   return (
     <>
+      {showReceiptModal && (
+        <tr>
+          <td colSpan={7}>
+            <ReceiptModal token={token} type="batch" sourceId={b.id} onClose={() => setShowReceiptModal(false)} />
+          </td>
+        </tr>
+      )}
       <tr className="border-b hover:bg-gray-50 cursor-pointer" onClick={onToggle}>
         <td className="px-3 py-2 font-mono text-xs">{b.batch_number}</td>
         <td className="px-3 py-2">{b.institution_name}</td>
@@ -812,12 +820,20 @@ function BatchRow({
               </button>
             )}
             {b.status === "closed" && (
-              <button
-                onClick={() => downloadPdf(`/claim-batches/${b.id}/claim-form`, token, `claim-${b.batch_number}.pdf`)}
-                className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-100"
-              >
-                請款單
-              </button>
+              <>
+                <button
+                  onClick={() => downloadPdf(`/claim-batches/${b.id}/claim-form`, token, `claim-${b.batch_number}.pdf`)}
+                  className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-100"
+                >
+                  請款單
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowReceiptModal(true); }}
+                  className="rounded border border-primary-300 px-2 py-0.5 text-xs text-primary-600 hover:bg-primary-50"
+                >
+                  開立收據
+                </button>
+              </>
             )}
           </div>
         </td>

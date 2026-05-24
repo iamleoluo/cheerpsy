@@ -8,6 +8,15 @@ from datetime import date
 
 from .engine import DocumentSpec, render, render_multi
 from .templates import TEMPLATES, generate_pdf
+from .receipt import (
+    ReceiptData,
+    render_receipt,
+    build_single_session_receipt,
+    build_multi_session_receipt,
+    build_institution_receipt,
+    build_product_receipt,
+    amount_to_zh,
+)
 
 __all__ = [
     "generate_self_pay_receipt",
@@ -17,6 +26,13 @@ __all__ = [
     "render",
     "render_multi",
     "TEMPLATES",
+    "ReceiptData",
+    "render_receipt",
+    "build_single_session_receipt",
+    "build_multi_session_receipt",
+    "build_institution_receipt",
+    "build_product_receipt",
+    "amount_to_zh",
 ]
 
 

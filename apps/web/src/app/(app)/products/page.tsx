@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
 import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
+import ReceiptModal from "@/components/ReceiptModal";
 
 const helpContent: HelpContent = {
   title: "商品販售",
@@ -53,6 +54,7 @@ export default function ProductsPage() {
   const now = new Date();
   const [month, setMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
   const [showCreate, setShowCreate] = useState(false);
+  const [receiptSaleId, setReceiptSaleId] = useState<number | null>(null);
 
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const [fDate, setFDate] = useState(today);
@@ -122,6 +124,9 @@ export default function ProductsPage() {
   return (
     <div>
       <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} content={helpContent} />
+      {receiptSaleId !== null && (
+        <ReceiptModal token={token} type="product" sourceId={receiptSaleId} onClose={() => setReceiptSaleId(null)} />
+      )}
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-bold">商品販售</h1>
         <div className="flex items-center gap-2">
@@ -171,7 +176,10 @@ export default function ProductsPage() {
                   {s.is_void ? (
                     <span className="text-xs text-red-500">已作廢</span>
                   ) : (
-                    <button onClick={() => voidSale(s.id)} className="text-xs text-red-500 hover:underline">作廢</button>
+                    <div className="flex gap-2">
+                      <button onClick={() => setReceiptSaleId(s.id)} className="text-xs text-primary-600 hover:underline">開立收據</button>
+                      <button onClick={() => voidSale(s.id)} className="text-xs text-red-500 hover:underline">作廢</button>
+                    </div>
                   )}
                 </td>
               </tr>
