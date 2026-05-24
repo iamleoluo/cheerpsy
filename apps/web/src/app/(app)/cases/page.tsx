@@ -448,6 +448,7 @@ function CaseDetailPanel({
   };
 
   const [paymentModal, setPaymentModal] = useState<Appointment | null>(null);
+  const [editApptPanel, setEditApptPanel] = useState<Appointment | null>(null);
 
   const c = caseItem;
   const displayId = caseDisplayId(c);
@@ -536,6 +537,7 @@ function CaseDetailPanel({
                       <td className="px-3 py-2">
                         {a.status === "booked" && (
                           <div className="flex gap-2">
+                            <button onClick={() => setEditApptPanel(a)} className="text-xs text-blue-600 hover:underline">編輯</button>
                             <button
                               onClick={() => setPaymentModal(a)}
                               className="text-xs text-primary-600 hover:underline"
@@ -561,6 +563,14 @@ function CaseDetailPanel({
               appointment={paymentModal}
               onClose={() => setPaymentModal(null)}
               onSaved={() => { setPaymentModal(null); fetchAppts(); }}
+            />
+          )}
+          {editApptPanel && (
+            <AppointmentEditModal
+              token={token}
+              appt={editApptPanel}
+              onClose={() => setEditApptPanel(null)}
+              onDone={() => { setEditApptPanel(null); fetchAppts(); }}
             />
           )}
         </>
@@ -642,6 +652,7 @@ function AppointmentsTab({ token, userRole }: { token: string; userRole: string 
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [showBatchForm, setShowBatchForm] = useState(false);
+  const [editAppt, setEditAppt] = useState<Appointment | null>(null);
 
   const fetchAppointments = useCallback(async () => {
     setLoading(true);
@@ -740,7 +751,10 @@ function AppointmentsTab({ token, userRole }: { token: string; userRole: string 
                   </td>
                   <td className="px-4 py-3">
                     {a.status === "booked" && (
-                      <button onClick={() => handleCancel(a.id)} className="text-xs text-red-500 hover:underline">取消</button>
+                      <div className="flex gap-2">
+                        <button onClick={() => setEditAppt(a)} className="text-xs text-blue-600 hover:underline">編輯</button>
+                        <button onClick={() => handleCancel(a.id)} className="text-xs text-red-500 hover:underline">取消</button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -755,6 +769,14 @@ function AppointmentsTab({ token, userRole }: { token: string; userRole: string 
       )}
       {showBatchForm && (
         <BatchForm token={token} onClose={() => setShowBatchForm(false)} onSaved={() => { setShowBatchForm(false); fetchAppointments(); }} />
+      )}
+      {editAppt && (
+        <AppointmentEditModal
+          token={token}
+          appt={editAppt}
+          onClose={() => setEditAppt(null)}
+          onDone={() => { setEditAppt(null); fetchAppointments(); }}
+        />
       )}
     </>
   );
@@ -1832,6 +1854,114 @@ function AppointmentPaymentModal({
             {submitting ? "儲存中..." : "儲存"}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   Appointment Edit Modal
+   ═══════════════════════════════════════════════════ */
+
+function AppointmentEditModal({
+  token, appt, onClose, onDone,
+}: {
+  token: string; appt: Appointment; onClose: () => void; onDone: () => void;
+}) {
+  const [rooms, setRooms] = useState<RoomOption[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const [sessionType, setSessionType] = useState(appt.session_type);
+  const [roomId, setRoomId] = useState(appt.room_id ? String(appt.room_id) : "");
+  const [startDate, setStartDate] = useState(appt.start_time?.slice(0, 10) ?? "");
+  const [startTime, setStartTime] = useState(appt.start_time?.slice(11, 16) ?? "");
+  const [endTime, setEndTime] = useState(appt.end_time?.slice(11, 16) ?? "");
+  const [amount, setAmount] = useState(String(appt.amount));
+
+  useEffect(() => {
+    clientFetch("/rooms", token).then(setRooms).catch(() => {});
+  }, [token]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      const body: Record<string, unknown> = {
+        session_type: sessionType,
+        room_id: roomId ? parseInt(roomId) : null,
+        amount: parseFloat(amount),
+      };
+      if (startDate && startTime) {
+        body.start_time = `${startDate}T${startTime}:00+08:00`;
+      }
+      if (startDate && endTime) {
+        body.end_time = `${startDate}T${endTime}:00+08:00`;
+      }
+      await clientFetch(`/appointments/${appt.id}`, token, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      });
+      onDone();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="w-[480px] rounded-lg bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <h3 className="mb-4 text-base font-semibold">編輯預約 #{appt.appointment_number}</h3>
+        <p className="mb-4 text-xs text-gray-500">個案：{appt.case_name}　心理師：{appt.therapist_name}（唯讀）</p>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="text-xs font-medium text-gray-700">類型</span>
+              <select value={sessionType} onChange={(e) => setSessionType(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                <option value="in_person">現場</option>
+                <option value="online">線上</option>
+                <option value="outdoor">外出</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-gray-700">診間</span>
+              <select value={roomId} onChange={(e) => setRoomId(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                <option value="">— 不指定 —</option>
+                {rooms.map((r) => (
+                  <option key={r.id} value={r.id}>{r.name}（{r.room_code}）</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <label className="block">
+            <span className="text-xs font-medium text-gray-700">日期</span>
+            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="text-xs font-medium text-gray-700">開始時間</span>
+              <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-gray-700">結束時間</span>
+              <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            </label>
+          </div>
+          <label className="block">
+            <span className="text-xs font-medium text-gray-700">費用</span>
+            <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+          </label>
+          {error && <p className="text-xs text-red-600">{error}</p>}
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={onClose} className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">取消</button>
+            <button type="submit" disabled={saving} className="rounded bg-primary-600 px-4 py-2 text-sm text-white hover:bg-primary-700 disabled:opacity-50">
+              {saving ? "儲存中..." : "儲存"}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

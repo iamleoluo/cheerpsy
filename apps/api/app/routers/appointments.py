@@ -23,6 +23,7 @@ from app.schemas.appointment import (
     AppointmentCreate,
     AppointmentPaymentUpdate,
     AppointmentResponse,
+    AppointmentUpdate,
 )
 
 router = APIRouter(prefix="/appointments", tags=["appointments"])
@@ -339,6 +340,56 @@ def create_batch(
     return [_to_response(a, therapist, db) for a in results]
 
 
+@router.put("/{appointment_id}", response_model=AppointmentResponse)
+def update_appointment(
+    appointment_id: int,
+    body: AppointmentUpdate,
+    user: User = Depends(RequireRole(["admin", "staff"])),
+    db: Session = Depends(get_db),
+):
+    a = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if not a:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    if a.status != "booked":
+        raise HTTPException(status_code=400, detail=f"只能編輯 booked 狀態的預約，目前狀態：{a.status}")
+
+    before = {
+        "room_id": a.room_id, "session_type": a.session_type,
+        "amount": float(a.amount), "funding_source": a.funding_source,
+        "quota_id": a.quota_id, "time_range": str(a.time_range),
+    }
+
+    if body.start_time is not None or body.end_time is not None:
+        new_start = body.start_time or a.time_range.lower
+        new_end = body.end_time or a.time_range.upper
+        room_id = body.room_id if body.room_id is not None else a.room_id
+        if room_id:
+            _check_room_conflict(db, room_id, new_start, new_end, exclude_id=appointment_id)
+        a.time_range = DateTimeTZRange(new_start, new_end)
+
+    if body.room_id is not None:
+        a.room_id = body.room_id
+    if body.session_type is not None:
+        a.session_type = body.session_type
+    if body.amount is not None:
+        a.amount = body.amount
+    if body.funding_source is not None:
+        a.funding_source = body.funding_source
+    if body.quota_id is not None:
+        a.quota_id = body.quota_id
+
+    after = {
+        "room_id": a.room_id, "session_type": a.session_type,
+        "amount": float(a.amount), "funding_source": a.funding_source,
+        "quota_id": a.quota_id, "time_range": str(a.time_range),
+    }
+    write_audit(db, "appointments", a.id, "UPDATE", user.id, before, after)
+    db.commit()
+    db.refresh(a)
+    therapist = db.query(User).filter(User.id == a.therapist_id).first()
+    return _to_response(a, therapist, db, viewer=user)
+
+
 @router.put("/{appointment_id}/cancel", response_model=AppointmentResponse)
 def cancel_appointment(
     appointment_id: int,
@@ -517,16 +568,18 @@ def update_amount(
     return _to_response(a, therapist, db, viewer=user)
 
 
-def _check_room_conflict(db: Session, room_id: int, start: datetime, end: datetime):
-    conflict = db.execute(
-        text("""
-            SELECT id FROM appointments
-            WHERE room_id = :room_id
-              AND status != 'cancelled'
-              AND time_range && tstzrange(:start, :end)
-            LIMIT 1
-        """),
-        {"room_id": room_id, "start": start.isoformat(), "end": end.isoformat()},
-    ).first()
+def _check_room_conflict(db: Session, room_id: int, start: datetime, end: datetime, exclude_id: int | None = None):
+    sql = """
+        SELECT id FROM appointments
+        WHERE room_id = :room_id
+          AND status != 'cancelled'
+          AND time_range && tstzrange(:start, :end)
+    """
+    params: dict = {"room_id": room_id, "start": start.isoformat(), "end": end.isoformat()}
+    if exclude_id is not None:
+        sql += " AND id != :exclude_id"
+        params["exclude_id"] = exclude_id
+    sql += " LIMIT 1"
+    conflict = db.execute(text(sql), params).first()
     if conflict:
         raise HTTPException(status_code=409, detail="Room time slot conflict")

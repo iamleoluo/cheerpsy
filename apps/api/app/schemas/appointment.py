@@ -32,6 +32,16 @@ class AppointmentBatchCreate(BaseModel):
     slots: list[BatchSlot]
 
 
+class AppointmentUpdate(BaseModel):
+    room_id: int | None = None
+    session_type: str | None = None
+    start_time: datetime | None = None
+    end_time: datetime | None = None
+    amount: float | None = None
+    funding_source: str | None = None
+    quota_id: int | None = None
+
+
 class AppointmentPaymentUpdate(BaseModel):
     funding_source: str  # self_pay | institution
     quota_id: int | None = None
