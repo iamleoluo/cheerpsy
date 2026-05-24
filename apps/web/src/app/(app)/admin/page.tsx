@@ -1047,6 +1047,8 @@ function DataTab({ token }: { token: string }) {
         { key: "users", label: "使用者", endpoint: "/export/users" },
         { key: "rooms", label: "諮商室", endpoint: "/export/rooms" },
         { key: "institutions", label: "機構", endpoint: "/export/institutions" },
+        { key: "product-sales", label: "商品販售", endpoint: "/export/product-sales" },
+        { key: "quota-templates", label: "方案範本", endpoint: "/export/quota-templates" },
         { key: "audit-log", label: "稽核日誌", endpoint: "/export/audit-log" },
       ]);
     } finally {
