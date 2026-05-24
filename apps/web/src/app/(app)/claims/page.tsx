@@ -10,6 +10,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const helpContent: HelpContent = {
   title: "帳冊管理",
+  guideId: "claims",
   overview: "自費與機構帳務分流處理。自費不需建立核銷案，系統自動帶出個案所有未結清帳務，可逐筆或批次付款；機構維持核銷批次流程。",
   sections: [
     {

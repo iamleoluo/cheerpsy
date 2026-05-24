@@ -662,7 +662,13 @@ function SectionBlock({ section }: { section: DocSection }) {
 
 /* ───── main ───── */
 export default function GuidePage() {
-  const [activeId, setActiveId] = useState("overview");
+  const [activeId, setActiveId] = useState(() => {
+    if (typeof window !== "undefined") {
+      const hash = window.location.hash.slice(1);
+      if (hash && modules.find((m) => m.id === hash)) return hash;
+    }
+    return "overview";
+  });
   const active = modules.find((m) => m.id === activeId) ?? modules[0];
 
   return (

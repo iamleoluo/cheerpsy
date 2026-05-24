@@ -8,6 +8,7 @@ import ReceiptModal from "@/components/ReceiptModal";
 
 const helpContent: HelpContent = {
   title: "商品販售",
+  guideId: "products",
   overview: "登記非預約的其他商品銷售（如繪本、教具），以現金為主。每筆自動產生收據編號，並彙整進營運報表的「其他商品販售」。",
   sections: [
     {

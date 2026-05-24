@@ -8,6 +8,7 @@ import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
 
 const helpContent: HelpContent = {
   title: "個案管理",
+  guideId: "cases",
   overview: "個案採兩階段設計：預約時快速建檔（Stage 1），初診到場後補填完整資料並「轉正式」產生永久案號（Stage 2）。點擊列表中任一列可展開個案詳情與快速新增預約。",
   sections: [
     {

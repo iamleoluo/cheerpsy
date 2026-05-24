@@ -17,6 +17,7 @@ export interface HelpContent {
   title: string;
   overview: string;
   sections: HelpSection[];
+  guideId?: string;  // anchor id in /guide page
 }
 
 interface Props {
@@ -131,8 +132,16 @@ export default function HelpDrawer({ open, onClose, content }: Props) {
         </div>
 
         {/* footer */}
-        <div className="border-t border-gray-100 px-5 py-3">
-          <p className="text-xs text-gray-400">管理員版說明　CheerPsy v2</p>
+        <div className="border-t border-gray-100 px-5 py-3 flex items-center justify-between">
+          <p className="text-xs text-gray-400">CheerPsy v2</p>
+          {content.guideId && (
+            <a
+              href={`/guide#${content.guideId}`}
+              className="text-xs text-primary-600 hover:underline"
+            >
+              完整操作指南 →
+            </a>
+          )}
         </div>
       </div>
     </>

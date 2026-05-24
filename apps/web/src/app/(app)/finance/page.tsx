@@ -7,6 +7,7 @@ import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
 
 const helpContent: HelpContent = {
   title: "財務管理",
+  guideId: "finance",
   overview: "三個子模組：款項追蹤（核銷案進度對帳）、心理師酬勞月結（依各人抽成比例自動計算）、零用金管理（診所日常支出記帳）。",
   sections: [
     {

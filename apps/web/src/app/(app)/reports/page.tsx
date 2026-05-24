@@ -7,6 +7,7 @@ import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
 
 const helpContent: HelpContent = {
   title: "營運報表",
+  guideId: "reports",
   overview: "整合所有模組數據，自動產出月度損益摘要。管理層可即時掌握診所營收、心理師酬勞、零用金支出、淨收益與機構墊付狀況。",
   sections: [
     {

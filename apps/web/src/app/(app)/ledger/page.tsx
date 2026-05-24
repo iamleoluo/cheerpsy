@@ -8,6 +8,7 @@ import ReceiptModal from "@/components/ReceiptModal";
 
 const helpContent: HelpContent = {
   title: "帳冊流水帳",
+  guideId: "ledger",
   overview: "預約結束時間一過即時進帳冊，列為應收未收。每筆都有收據編號可開立收據；行政可加優待，未執行的場次需於當日由心理師作廢（逾期由管理員處理）。",
   sections: [
     {

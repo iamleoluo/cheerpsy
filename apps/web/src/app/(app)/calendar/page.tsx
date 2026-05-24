@@ -8,6 +8,7 @@ import FullCalendar from "@fullcalendar/react";
 
 const helpContent: HelpContent = {
   title: "預約日曆",
+  guideId: "calendar",
   overview: "排程中心，所有諮商都從建立預約開始。新增預約後，系統在 T+1（隔日）自動執行日結，將已執行預約寫入日結帳冊，無需手動操作。",
   sections: [
     {

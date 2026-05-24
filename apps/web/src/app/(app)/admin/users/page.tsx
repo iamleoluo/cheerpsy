@@ -7,6 +7,7 @@ import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
 
 const helpContent: HelpContent = {
   title: "帳號管理",
+  guideId: "admin",
   overview: "管理所有使用者帳號（邀請、停用、代號設定）與抽成比例。每個帳號都有角色代號，用於識別預約編號與帳務追蹤。",
   sections: [
     {

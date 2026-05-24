@@ -8,6 +8,7 @@ import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
 
 const helpContent: HelpContent = {
   title: "儀表板",
+  guideId: "overview",
   overview: "診所當日與本月運營狀況的快速總覽。所有數字即時從各模組彙整，無需手動更新。",
   sections: [
     {
