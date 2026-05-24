@@ -18,6 +18,7 @@ from app.models.invoice import Invoice
 from app.models.petty_cash import PettyCash
 from app.models.product_sales import ProductSale
 from app.models.room import Room
+from app.models.quota_template import QuotaTemplate
 from app.models.session_record import SessionRecord
 from app.models.user import User
 
@@ -344,6 +345,28 @@ def export_audit_log(
     return _csv_response(rows, "audit_log.csv")
 
 
+@router.get("/quota-templates")
+def export_quota_templates(
+    user: User = Depends(RequireRole(["admin"])),
+    db: Session = Depends(get_db),
+):
+    templates = db.query(QuotaTemplate).order_by(QuotaTemplate.institution_id, QuotaTemplate.name).all()
+    inst_map = {i.id: i.name for i in db.query(Institution).all()}
+    creator_map = {u.id: u.name for u in db.query(User).all()}
+    rows = []
+    for t in templates:
+        rows.append({
+            "ID": t.id,
+            "機構": inst_map.get(t.institution_id, ""),
+            "方案名稱": t.name,
+            "次數": t.total_count,
+            "備註": t.notes or "",
+            "建立者": creator_map.get(t.created_by, "") if t.created_by else "",
+            "建立時間": t.created_at.isoformat() if t.created_at else "",
+        })
+    return _csv_response(rows, "quota_templates.csv")
+
+
 @router.get("/tables")
 def list_exportable_tables(
     user: User = Depends(RequireRole(["admin"])),
@@ -361,4 +384,5 @@ def list_exportable_tables(
         {"key": "institutions", "label": "機構", "endpoint": "/export/institutions"},
         {"key": "product-sales", "label": "商品販售", "endpoint": "/export/product-sales"},
         {"key": "audit-log", "label": "稽核日誌", "endpoint": "/export/audit-log"},
+        {"key": "quota-templates", "label": "方案範本", "endpoint": "/export/quota-templates"},
     ]
