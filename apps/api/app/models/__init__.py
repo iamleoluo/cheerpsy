@@ -13,6 +13,7 @@ from app.models.invitation import Invitation
 from app.models.claim_batch import ClaimBatch
 from app.models.product_sales import ProductSale
 from app.models.case_institution_quota import CaseInstitutionQuota
+from app.models.quota_template import QuotaTemplate
 
 __all__ = [
     "User",
@@ -31,4 +32,5 @@ __all__ = [
     "ClaimBatch",
     "ProductSale",
     "CaseInstitutionQuota",
+    "QuotaTemplate",
 ]
