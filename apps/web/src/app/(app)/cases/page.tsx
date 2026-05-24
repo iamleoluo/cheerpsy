@@ -1251,6 +1251,23 @@ function generateWeeklySlots(
   return results;
 }
 
+function generateBiweeklySlots(
+  dowTarget: number,
+  startDate: string,
+  startTime: string,
+  endTime: string,
+  count: number,
+): { date: string; start: string; end: string }[] {
+  const results: { date: string; start: string; end: string }[] = [];
+  const cur = new Date(startDate + "T00:00:00");
+  while (cur.getDay() !== dowTarget) cur.setDate(cur.getDate() + 1);
+  for (let i = 0; i < count; i++) {
+    results.push({ date: isoDate(cur), start: startTime, end: endTime });
+    cur.setDate(cur.getDate() + 14);
+  }
+  return results;
+}
+
 function nthWeekdayOfMonth(year: number, month: number, dow: number, n: number): Date | null {
   // n = 1..4 or -1 for last
   if (n === -1) {
@@ -1313,7 +1330,7 @@ function BatchForm({
   const [allQuotas, setAllQuotas] = useState<QuotaRow[]>([]);
 
   // recurrence settings
-  const [recurrence, setRecurrence] = useState<"weekly" | "monthly">("weekly");
+  const [recurrence, setRecurrence] = useState<"weekly" | "biweekly" | "monthly">("weekly");
   const [dow, setDow] = useState(3); // Wed
   const [weekOfMonth, setWeekOfMonth] = useState(1); // 1st
   const today = new Date();
@@ -1380,6 +1397,8 @@ function BatchForm({
     let generated: { date: string; start: string; end: string }[];
     if (recurrence === "weekly") {
       generated = generateWeeklySlots(dow, startDate, startTime, endTime, n);
+    } else if (recurrence === "biweekly") {
+      generated = generateBiweeklySlots(dow, startDate, startTime, endTime, n);
     } else {
       generated = generateMonthlySlots(dow, weekOfMonth, startMonth, startTime, endTime, n);
     }
@@ -1526,14 +1545,14 @@ function BatchForm({
 
                 {/* frequency toggle */}
                 <div className="flex gap-1 rounded-lg border border-gray-200 bg-white p-1">
-                  {(["weekly", "monthly"] as const).map((f) => (
+                  {(["weekly", "biweekly", "monthly"] as const).map((f) => (
                     <button
                       key={f}
                       type="button"
                       onClick={() => { setRecurrence(f); setSlots(null); }}
                       className={`flex-1 rounded-md py-1.5 text-sm font-medium transition-colors ${recurrence === f ? "bg-primary-600 text-white shadow-sm" : "text-gray-600 hover:bg-gray-100"}`}
                     >
-                      {f === "weekly" ? "每週" : "每月"}
+                      {f === "weekly" ? "每週" : f === "biweekly" ? "每兩週" : "每月"}
                     </button>
                   ))}
                 </div>
@@ -1541,7 +1560,7 @@ function BatchForm({
                 {/* day of week picker — always shown */}
                 <div>
                   <p className="mb-1.5 text-xs text-gray-500">
-                    {recurrence === "weekly" ? "星期幾" : "第幾個禮拜幾"}
+                    {recurrence === "monthly" ? "第幾個禮拜幾" : "星期幾"}
                   </p>
                   {recurrence === "monthly" && (
                     <div className="mb-2 flex flex-wrap gap-1">
@@ -1590,8 +1609,8 @@ function BatchForm({
                 {/* start + count */}
                 <div className="flex items-end gap-3">
                   <div className="flex-1">
-                    <p className="mb-1 text-xs text-gray-500">{recurrence === "weekly" ? "起始日期" : "起始月份"}</p>
-                    {recurrence === "weekly" ? (
+                    <p className="mb-1 text-xs text-gray-500">{recurrence === "monthly" ? "起始月份" : "起始日期"}</p>
+                    {recurrence !== "monthly" ? (
                       <input type="date" value={startDate} onChange={(e) => { setStartDate(e.target.value); setSlots(null); }} className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm" />
                     ) : (
                       <input type="month" value={startMonth} onChange={(e) => { setStartMonth(e.target.value); setSlots(null); }} className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm" />
