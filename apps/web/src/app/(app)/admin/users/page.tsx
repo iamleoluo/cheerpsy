@@ -274,7 +274,7 @@ export default function AdminUsersPage() {
 
   return (
     <div>
-      <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} content={helpContent} />
+      <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} guideId="admin" />
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">帳號管理</h1>
         <div className="flex items-center gap-2">

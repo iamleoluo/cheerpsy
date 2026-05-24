@@ -99,7 +99,7 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} content={helpContent} />
+      <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} guideId="overview" />
       <div className="mb-6 flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold">儀表板</h1>

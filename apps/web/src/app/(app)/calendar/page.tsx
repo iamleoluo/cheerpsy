@@ -156,7 +156,7 @@ export default function CalendarPage() {
           <span>ℹ️</span> 說明
         </button>
       </div>
-      <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} content={helpContent} />
+      <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} guideId="calendar" />
 
       <div className="mb-4 flex gap-1 border-b border-gray-200">
         {(

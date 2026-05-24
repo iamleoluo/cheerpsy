@@ -124,7 +124,7 @@ export default function ProductsPage() {
 
   return (
     <div>
-      <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} content={helpContent} />
+      <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} guideId="products" />
       {receiptSaleId !== null && (
         <ReceiptModal token={token} type="product" sourceId={receiptSaleId} onClose={() => setReceiptSaleId(null)} />
       )}

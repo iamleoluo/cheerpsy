@@ -147,7 +147,7 @@ export default function ClaimsPage() {
 
   return (
     <div>
-      <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} content={helpContent} />
+      <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} guideId="claims" />
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-bold">帳冊管理</h1>
         <button onClick={() => setHelpOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700">

@@ -189,7 +189,7 @@ export default function CasesPage() {
           <span>ℹ️</span> 說明
         </button>
       </div>
-      <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} content={helpContent} />
+      <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} guideId="cases" />
 
       <div className="mb-6 flex gap-1 border-b border-gray-200">
         <button

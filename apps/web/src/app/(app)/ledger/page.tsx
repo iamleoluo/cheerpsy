@@ -339,7 +339,7 @@ export default function LedgerPage() {
 
   return (
     <div>
-      <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} content={helpContent} />
+      <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} guideId="ledger" />
       {receiptRecordId !== null && (
         <ReceiptModal token={token} type="single_session" sourceId={receiptRecordId} onClose={() => setReceiptRecordId(null)} />
       )}
