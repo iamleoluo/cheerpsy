@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth.dependencies import RequireRole, get_current_user
@@ -49,7 +49,8 @@ def _to_response(c: Case) -> CaseResponse:
 def list_cases(
     status_filter: str | None = Query(None, alias="status"),
     therapist_id: int | None = None,
-    q: str | None = None,
+    billing_cycle: str | None = Query(None, description="once / monthly / multiple"),
+    q: str | None = Query(None, description="搜尋個案姓名 / 案號 / 心理師姓名"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -60,8 +61,19 @@ def list_cases(
         query = query.filter(Case.therapist_id == therapist_id)
     if status_filter:
         query = query.filter(Case.status == status_filter)
+    if billing_cycle:
+        query = query.filter(Case.billing_cycle == billing_cycle)
     if q:
-        query = query.filter(Case.name.ilike(f"%{q}%"))
+        # 統一搜尋：個案姓名 / 案號（temp + 正式）/ 心理師姓名
+        like = f"%{q}%"
+        query = query.outerjoin(Case.therapist).filter(
+            or_(
+                Case.name.ilike(like),
+                Case.case_number.ilike(like),
+                Case.case_code.ilike(like),
+                User.name.ilike(like),
+            )
+        )
     cases = query.order_by(Case.id.desc()).limit(500).all()
     return [_to_response(c) for c in cases]
 

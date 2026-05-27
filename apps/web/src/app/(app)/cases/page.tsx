@@ -236,6 +236,8 @@ function CasesTab({ token, userRole }: { token: string; userRole: string }) {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [therapistFilter, setTherapistFilter] = useState("");
+  const [billingFilter, setBillingFilter] = useState("");
   const [error, setError] = useState("");
 
   const [showForm, setShowForm] = useState(false);
@@ -248,6 +250,8 @@ function CasesTab({ token, userRole }: { token: string; userRole: string }) {
       const params = new URLSearchParams();
       if (search) params.set("q", search);
       if (statusFilter) params.set("status", statusFilter);
+      if (therapistFilter) params.set("therapist_id", therapistFilter);
+      if (billingFilter) params.set("billing_cycle", billingFilter);
       const qs = params.toString();
       setCases(await clientFetch(`/cases${qs ? `?${qs}` : ""}`, token));
     } catch (e: any) {
@@ -255,7 +259,7 @@ function CasesTab({ token, userRole }: { token: string; userRole: string }) {
     } finally {
       setLoading(false);
     }
-  }, [token, search, statusFilter]);
+  }, [token, search, statusFilter, therapistFilter, billingFilter]);
 
   const fetchMeta = useCallback(async () => {
     const [t, i] = await Promise.all([
@@ -281,10 +285,10 @@ function CasesTab({ token, userRole }: { token: string; userRole: string }) {
   return (
     <>
       <div className="mb-4 flex items-center justify-between">
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <input
             type="text"
-            placeholder="搜尋個案姓名..."
+            placeholder="搜尋個案姓名 / 案號 / 心理師..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
@@ -297,6 +301,32 @@ function CasesTab({ token, userRole }: { token: string; userRole: string }) {
             <option value="">全部狀態</option>
             {Object.entries(statusLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
+          <select
+            value={billingFilter}
+            onChange={(e) => setBillingFilter(e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            title="結帳方式"
+          >
+            <option value="">全部結帳方式</option>
+            <option value="once">次結</option>
+            <option value="monthly">月結</option>
+            <option value="multiple">多次結</option>
+          </select>
+          {userRole !== "therapist" && (
+            <select
+              value={therapistFilter}
+              onChange={(e) => setTherapistFilter(e.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              title="心理師"
+            >
+              <option value="">全部心理師</option>
+              {therapists.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {userRole !== "therapist" && (

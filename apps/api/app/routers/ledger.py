@@ -6,6 +6,7 @@ import io
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth.dependencies import RequireRole, get_current_user
@@ -136,6 +137,7 @@ def list_records(
     payment_status: str | None = Query(None),
     therapist_id: int | None = Query(None),
     month: str | None = Query(None, description="YYYY-MM"),
+    q: str | None = Query(None, description="搜尋個案姓名 / 案號 / 心理師姓名"),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -161,9 +163,24 @@ def list_records(
             )
         except (ValueError, IndexError):
             pass
+    if q:
+        # 統一搜尋：個案姓名 / 案號 / 心理師姓名
+        like = f"%{q}%"
+        query = (
+            query.outerjoin(Case, SessionRecord.case_id == Case.id)
+            .outerjoin(User, SessionRecord.therapist_id == User.id)
+            .filter(
+                or_(
+                    Case.name.ilike(like),
+                    Case.case_number.ilike(like),
+                    Case.case_code.ilike(like),
+                    User.name.ilike(like),
+                )
+            )
+        )
     limit = None if month else 200
-    q = query.order_by(SessionRecord.session_date.desc())
-    records = (q.all() if limit is None else q.limit(limit).all())
+    qry = query.order_by(SessionRecord.session_date.desc())
+    records = (qry.all() if limit is None else qry.limit(limit).all())
     return [_to_response(r, db) for r in records]
 
 

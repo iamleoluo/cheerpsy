@@ -120,6 +120,7 @@ export default function LedgerPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("");
   const [filterMonth, setFilterMonth] = useState(currentMonth);
+  const [search, setSearch] = useState("");
 
   // Settlement
   const [settling, setSettling] = useState(false);
@@ -166,6 +167,7 @@ export default function LedgerPage() {
         if (filter) params.set("payment_status", filter);
         if (filterMonth) params.set("month", filterMonth);
       }
+      if (search) params.set("q", search);
       const qs = params.toString();
       const data = await clientFetch(`/ledger${qs ? `?${qs}` : ""}`, token);
       setRecords(data);
@@ -174,7 +176,7 @@ export default function LedgerPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, filter, filterMonth, tab]);
+  }, [token, filter, filterMonth, tab, search]);
 
   useEffect(() => {
     fetchRecords();
@@ -407,7 +409,7 @@ export default function LedgerPage() {
 
       {/* Filters */}
       <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {tab !== "pending" && (
             <>
               <input
@@ -428,6 +430,13 @@ export default function LedgerPage() {
               </select>
             </>
           )}
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="搜尋個案姓名 / 案號 / 心理師..."
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+          />
           {tab === "pending" && selected.size > 0 && userRole !== "therapist" && (
             <a
               href={`/claims?create=true&records=${Array.from(selected).join(",")}`}
