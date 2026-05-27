@@ -13,6 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models.appointment import Appointment
 from app.models.case import Case
 from app.models.session_record import SessionRecord
@@ -21,6 +22,28 @@ from app.models.user import User
 DEFAULT_COMMISSION_RATE = Decimal("0.70")
 
 SETTLEMENT_LEAD_MINUTES = 20
+
+
+def _calc_outdoor_bonus(amount: Decimal, rate: Decimal) -> tuple[Decimal, str | None]:
+    """外出（outdoor）保底計算。
+
+    公式：bonus = max(0, min(amount, MIN) - amount * rate)
+    語意：心理師抽成補至 OUTPATIENT_MIN_FEE，但診所不墊錢 —
+    當 amount 本身低於 MIN 時，最多只能全額讓利給心理師、診所領 0。
+    回傳：(bonus, note) — bonus=0 時 note=None。
+    """
+    min_fee = Decimal(str(settings.OUTPATIENT_MIN_FEE))
+    base = amount * rate
+    target = min(amount, min_fee)
+    bonus = target - base
+    if bonus <= 0:
+        return Decimal("0"), None
+    bonus = bonus.quantize(Decimal("0.01"))
+    if amount < min_fee:
+        note = f"系統自動補足心理師抽成至全額 ${int(amount)}（總額不足 ${int(min_fee)}，診所讓利）"
+    else:
+        note = f"系統自動補足心理師抽成至 ${int(min_fee)}"
+    return bonus, note
 
 
 def next_receipt_no(db: Session, d: date) -> str:
@@ -108,6 +131,12 @@ def materialize_due_appointments(db: Session, up_to: datetime | None = None) -> 
             receipt_no=next_receipt_no(db, session_date),
             payment_status="unpaid",
         )
+        # 外出諮商保底：心理師抽成不足 OUTPATIENT_MIN_FEE 時自動補足（診所不墊錢）
+        if appt.session_type == "outdoor":
+            bonus, note = _calc_outdoor_bonus(Decimal(str(appt.amount)), rate)
+            if bonus > 0:
+                record.outcall_bonus = bonus
+                record.outcall_note = note
         db.add(record)
         try:
             db.flush()

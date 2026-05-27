@@ -530,12 +530,17 @@ export default function LedgerPage() {
                           r.payment_status !== "claimed" && (
                           <button onClick={() => openSplit(r)} className="text-xs text-indigo-600 hover:underline">拆帳</button>
                         )}
-                        {["admin", "staff"].includes(userRole) &&
+                        {r.session_type === "outdoor" && r.outcall_bonus > 0 && (
+                          <span className="text-xs text-emerald-700" title={r.outcall_note ?? "系統自動保底"}>
+                            保底 ${r.outcall_bonus}
+                          </span>
+                        )}
+                        {userRole === "admin" &&
                           r.session_type === "outdoor" &&
                           r.payment_status === "unpaid" &&
                           !r.locked_at && (
                           <button onClick={() => openBonus(r)} className="text-xs text-emerald-600 hover:underline">
-                            {r.outcall_bonus > 0 ? `保底 $${r.outcall_bonus}` : "外出保底"}
+                            調整保底
                           </button>
                         )}
                         {["admin", "staff"].includes(userRole) &&
@@ -676,9 +681,10 @@ export default function LedgerPage() {
       {bonusRec && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setBonusRec(null)}>
           <div className="w-80 rounded-lg bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-3 text-base font-semibold">心理師外出保底</h3>
+            <h3 className="mb-3 text-base font-semibold">調整外出保底（管理員覆寫）</h3>
             <p className="mb-3 text-xs text-gray-500">
-              用於跨區家訪 / 外出諮商；金額會加入心理師月結酬勞。設 0 可取消。
+              外出保底已由系統自動計算（補足心理師抽成至 $1,000；診所不墊錢）。
+              此處僅供異常情境手動覆寫，金額會加入心理師月結酬勞。設 0 可取消。
             </p>
             <label className="mb-3 block">
               <span className="text-xs font-medium text-gray-700">保底金額</span>

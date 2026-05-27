@@ -174,7 +174,7 @@ class ReceiptData:
     issue_date: str            # 開立日期（ROC 格式，例 114/04/29）
     payee: str                 # 姓名/單位（空字串 → 不顯示此列）
     fee_category: str          # 收費項目（內部使用；正本不顯示此欄）
-    quantity_label: str        # "數量/諮商次數" / "諮商場次" / "數量"
+    quantity_label: str        # "數量/治療次數" / "治療場次" / "數量"
     quantity: str              # "4" / "3 場" / "2 件"
     total_amount: int          # NTD 整數
     note: str = ""             # 備註（支援換行）
@@ -298,7 +298,7 @@ def _draw_section(
         if data.tax_id and data.tax_id.strip():
             main_rows.append(("統一編號：", data.tax_id, False))
         if data.session_type_label:
-            main_rows.append(("諮商類型：", data.session_type_label, False))
+            main_rows.append(("治療類型：", data.session_type_label, False))
         main_rows += [
             (data.quantity_label + "：", data.quantity, False),
             ("總計：", amount_ntd, False),
@@ -372,29 +372,29 @@ def render_receipt(data: ReceiptData) -> bytes:
 
 # ── 4 種類型 Builder ────────────────────────────────────────────────────────
 
-_FEE_CATEGORY_ZH = {"counseling": "心理諮商"}
+_FEE_CATEGORY_ZH = {"counseling": "心理治療"}
 
 
 def build_single_session_receipt(record, case) -> ReceiptData:
-    """單次諮商收據。"""
+    """單次治療收據。"""
     amount = int(record.amount or 0)
     st_label = _SESSION_TYPE_ZH.get(record.session_type or "", "")
-    fee_cat = _FEE_CATEGORY_ZH.get(record.fee_category or "counseling", record.fee_category or "心理諮商")
+    fee_cat = _FEE_CATEGORY_ZH.get(record.fee_category or "counseling", record.fee_category or "心理治療")
     return ReceiptData(
         receipt_number=record.receipt_no or f"R{record.id}",
         issue_date=_tw_date(date.today()),
         payee=case.name if case else "",
         fee_category=fee_cat,
-        quantity_label="數量/諮商次數",
+        quantity_label="數量/治療次數",
         quantity="1",
         total_amount=amount,
-        note=f"諮商日期：{_tw_date(record.session_date)}　單次費用：新台幣 {amount:,} 元",
+        note=f"治療日期：{_tw_date(record.session_date)}　單次費用：新台幣 {amount:,} 元",
         session_type_label=st_label,
     )
 
 
 def build_multi_session_receipt(batch, case, records: list[dict]) -> ReceiptData:
-    """多次諮商收據（自費核銷案）。"""
+    """多次治療收據（自費核銷案）。"""
     total = int(batch.total_amount or 0)
     session_items = "　".join(
         f"{_tw_date(r['session_date'])} ${int(r['amount']):,}"
@@ -404,8 +404,8 @@ def build_multi_session_receipt(batch, case, records: list[dict]) -> ReceiptData
         receipt_number=batch.batch_number,
         issue_date=_tw_date(date.today()),
         payee=case.name if case else "",
-        fee_category="心理諮商",
-        quantity_label="數量/諮商次數",
+        fee_category="心理治療",
+        quantity_label="數量/治療次數",
         quantity=str(len(records)),
         total_amount=total,
         note=session_items,
@@ -426,8 +426,8 @@ def build_institution_receipt(batch, institution, records: list[dict]) -> Receip
         receipt_number=batch.batch_number,
         issue_date=_tw_date(date.today()),
         payee=institution.name if institution else "",
-        fee_category="心理諮商服務",
-        quantity_label="諮商場次",
+        fee_category="心理治療服務",
+        quantity_label="治療場次",
         quantity=f"{n} 場",
         total_amount=total,
         note=f"服務期間：{period}　共 {n} 場" if period else f"共 {n} 場",
@@ -479,10 +479,10 @@ def render_multi_item_receipt(data: MultiItemReceiptData) -> bytes:
         header_rows.append(("統一編號：", data.tax_id, False))
     y = _draw_receipt_table(c, header_rows, ML, y, label_w, value_w, _ROW_H, _FONT_SIZE)
 
-    # 明細表格（正本不顯示各筆收據編號，僅顯示日期、諮商方式、金額）
+    # 明細表格（正本不顯示各筆收據編號，僅顯示日期、治療方式、金額）
     y -= 0.3 * cm
     col_widths = [2.5 * cm, 8.4 * cm, 2.8 * cm]
-    col_headers = ["日期", "諮商方式", "金額"]
+    col_headers = ["日期", "治療方式", "金額"]
     fs = 9
 
     # 表頭
@@ -595,7 +595,7 @@ def build_self_pay_batch_receipt(batch, case, records) -> MultiItemReceiptData:
         receipt_number=batch.batch_number,
         issue_date=_tw_date(date.today()),
         payee=case.name if case else "",
-        fee_category="心理諮商",
+        fee_category="心理治療",
         items=items,
         total_amount=int(batch.total_amount or 0),
     )

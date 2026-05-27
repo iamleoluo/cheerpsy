@@ -759,12 +759,13 @@ def split_record(
 def set_outcall_bonus(
     record_id: int,
     body: OutcallBonusRequest,
-    user: User = Depends(RequireRole(["admin", "staff"])),
+    user: User = Depends(RequireRole(["admin"])),
     db: Session = Depends(get_db),
 ):
-    """Set or clear the outcall bonus (default 1000) for a record.
+    """Admin-only override of the outcall bonus.
 
-    `amount=0` clears it. Staff can only modify same-day records.
+    保底已由 T+1 結算自動計算（見 settlement._calc_outdoor_bonus）。
+    此 endpoint 僅供管理員於異常情境手動覆寫，`amount=0` 可清除。
     """
     r = db.query(SessionRecord).filter(SessionRecord.id == record_id).first()
     if not r:
@@ -775,8 +776,6 @@ def set_outcall_bonus(
         raise HTTPException(status_code=400, detail="已鎖定的紀錄不可調整保底")
     if body.amount < 0:
         raise HTTPException(status_code=400, detail="保底金額不可為負")
-    if user.role == "staff" and r.session_date != date.today():
-        raise HTTPException(status_code=403, detail="行政人員僅能於當日調整保底，逾期請洽管理員")
 
     before = {"outcall_bonus": float(r.outcall_bonus or 0), "outcall_note": r.outcall_note}
     r.outcall_bonus = body.amount

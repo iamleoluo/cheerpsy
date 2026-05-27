@@ -20,7 +20,7 @@ def build_self_pay_receipt_spec(data: dict) -> DocumentSpec:
 
     meta_rows = [
         ["收據編號", data["batch_number"], "個案姓名", data["case_name"]],
-        ["諮商期間", _tw_date_range(data["period_start"], data["period_end"]),
+        ["治療期間", _tw_date_range(data["period_start"], data["period_end"]),
          "列印日期", _tw_date(date.today())],
     ]
 
@@ -36,10 +36,10 @@ def build_self_pay_receipt_spec(data: dict) -> DocumentSpec:
 
     return DocumentSpec(
         title=CLINIC_NAME,
-        subtitle="自費諮商收據",
+        subtitle="自費治療收據",
         meta_rows=meta_rows,
         meta_col_widths=[3, 6, 3, 5],
-        table_header=["#", "諮商日期", "心理師", "服務項目", "金額"],
+        table_header=["#", "治療日期", "心理師", "服務項目", "金額"],
         table_rows=table_rows,
         table_total_row=["", "", "", "合計", f"${total_amount:,.0f}"],
         table_col_widths=[1.5, 3.5, 3.5, 5, 3.5],
@@ -80,7 +80,7 @@ def build_institution_claim_form_spec(data: dict) -> DocumentSpec:
         subtitle="機構請款單",
         meta_rows=meta_rows,
         meta_col_widths=[3, 6, 3, 5],
-        table_header=["#", "個案姓名", "諮商日期", "心理師", "諮商類型", "金額"],
+        table_header=["#", "個案姓名", "治療日期", "心理師", "服務項目", "金額"],
         table_rows=table_rows,
         table_total_row=["", "", "", "", "合計", f"${total_amount:,.0f}"],
         table_col_widths=[1.2, 3, 3, 3, 3, 3],
