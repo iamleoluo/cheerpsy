@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Date, ForeignKey, Integer, LargeBinary, Sequence, String, Text
+from sqlalchemy import Column, Date, DateTime, ForeignKey, Integer, LargeBinary, Sequence, String, Text
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -32,6 +32,12 @@ class Case(Base):
     therapist_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     status = Column(String(20), nullable=False, default="initial")
     notes = Column(Text, nullable=True)
+    # 結案/復案：status="closed" 時填入，個案資料保留但從列表預設隱藏
+    closed_at = Column(DateTime(timezone=True), nullable=True)
+    closed_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    closure_reason = Column(String(500), nullable=True)
+    reopened_at = Column(DateTime(timezone=True), nullable=True)
+    reopened_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
 
     therapist = relationship("User", back_populates="cases", foreign_keys=[therapist_id])

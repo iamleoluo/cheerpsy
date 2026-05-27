@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 
 from pydantic import BaseModel
 
@@ -68,5 +68,18 @@ class CaseResponse(BaseModel):
     billing_cycle: str | None = None
     has_national_id: bool = False
     notes: str | None = None
+    closed_at: datetime | None = None
+    closure_reason: str | None = None
 
     model_config = {"from_attributes": True}
+
+
+class CaseCloseRequest(BaseModel):
+    """結案請求 — 必須帶呼叫者密碼（防誤觸）。"""
+    password: str
+    reason: str | None = None
+
+
+class CaseReopenRequest(BaseModel):
+    """復案請求 — 必須帶呼叫者密碼。"""
+    password: str

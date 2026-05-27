@@ -1,12 +1,17 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, text
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth.dependencies import RequireRole, get_current_user
+from app.auth.password import verify_password
 from app.database import get_db
+from app.models.appointment import Appointment
 from app.models.case import Case
+from app.models.case_institution_quota import CaseInstitutionQuota
 from app.models.user import User
-from app.schemas.case import CaseCreate, CaseResponse, CaseUpdate
+from app.schemas.case import CaseCloseRequest, CaseCreate, CaseReopenRequest, CaseResponse, CaseUpdate
 from app.services.audit import write_audit
 from app.services.case_numbering import generate_case_number
 from app.utils.encryption import encrypt_national_id, hmac_national_id
@@ -42,6 +47,8 @@ def _to_response(c: Case) -> CaseResponse:
         billing_cycle=c.billing_cycle,
         has_national_id=c.national_id_encrypted is not None,
         notes=c.notes,
+        closed_at=c.closed_at,
+        closure_reason=c.closure_reason,
     )
 
 
@@ -61,6 +68,9 @@ def list_cases(
         query = query.filter(Case.therapist_id == therapist_id)
     if status_filter:
         query = query.filter(Case.status == status_filter)
+    else:
+        # 預設隱藏已結案個案（避免預約名單冗長）；如需查看請顯式帶 status=closed
+        query = query.filter(Case.status != "closed")
     if billing_cycle:
         query = query.filter(Case.billing_cycle == billing_cycle)
     if q:
@@ -188,6 +198,112 @@ def activate_case(
     write_audit(db, "cases", c.id, "UPDATE", user.id,
                 {"status": "initial", "case_number": None},
                 {"status": "ongoing", "case_number": c.case_number})
+    db.commit()
+    db.refresh(c)
+    return _to_response(c)
+
+
+@router.post("/{case_id}/close", response_model=CaseResponse)
+def close_case(
+    case_id: int,
+    body: CaseCloseRequest,
+    user: User = Depends(RequireRole(["admin", "staff"])),
+    db: Session = Depends(get_db),
+):
+    """結案個案。
+
+    流程：
+      1. 驗證呼叫者密碼（防誤觸）
+      2. case.status = "closed"，寫入 closed_at/by 與 closure_reason
+      3. 取消所有未來預約（booked 且 lower(time_range) > now）
+      4. 機構額度歸零：total_count := used_count（保留歷史紀錄完整性）
+      5. write_audit
+    """
+    if not verify_password(body.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="密碼錯誤")
+
+    c = db.query(Case).filter(Case.id == case_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="個案不存在")
+    if c.status == "closed":
+        raise HTTPException(status_code=400, detail="此個案已結案")
+
+    now = datetime.now(timezone.utc)
+    prev_status = c.status
+
+    # 4-1) 取消未來 booked 預約
+    cancelled = (
+        db.query(Appointment)
+        .filter(
+            Appointment.case_id == case_id,
+            Appointment.status == "booked",
+            text("lower(time_range) > now()"),
+        )
+        .update({Appointment.status: "cancelled"}, synchronize_session=False)
+    )
+
+    # 4-2) 額度歸零（剩餘 = 0；保留歷史 used_count）
+    quotas_zeroed = 0
+    quotas = (
+        db.query(CaseInstitutionQuota)
+        .filter(CaseInstitutionQuota.case_id == case_id)
+        .all()
+    )
+    for q in quotas:
+        if q.total_count > q.used_count:
+            q.total_count = q.used_count
+            quotas_zeroed += 1
+
+    c.status = "closed"
+    c.closed_at = now
+    c.closed_by = user.id
+    c.closure_reason = (body.reason or "").strip() or None
+
+    write_audit(
+        db, "cases", c.id, "CLOSE", user.id,
+        {"status": prev_status},
+        {
+            "status": "closed",
+            "closure_reason": c.closure_reason,
+            "cancelled_appointments": cancelled,
+            "quotas_zeroed": quotas_zeroed,
+        },
+    )
+    db.commit()
+    db.refresh(c)
+    return _to_response(c)
+
+
+@router.post("/{case_id}/reopen", response_model=CaseResponse)
+def reopen_case(
+    case_id: int,
+    body: CaseReopenRequest,
+    user: User = Depends(RequireRole(["admin", "staff"])),
+    db: Session = Depends(get_db),
+):
+    """復案：把結案個案恢復為 ongoing。
+
+    已歸零的 quota 與已取消的預約不會自動還原（避免狀態混亂）。
+    """
+    if not verify_password(body.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="密碼錯誤")
+
+    c = db.query(Case).filter(Case.id == case_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="個案不存在")
+    if c.status != "closed":
+        raise HTTPException(status_code=400, detail="此個案目前並非結案狀態")
+
+    now = datetime.now(timezone.utc)
+    c.status = "ongoing"
+    c.reopened_at = now
+    c.reopened_by = user.id
+
+    write_audit(
+        db, "cases", c.id, "REOPEN", user.id,
+        {"status": "closed"},
+        {"status": "ongoing", "reopened_at": now.isoformat()},
+    )
     db.commit()
     db.refresh(c)
     return _to_response(c)
