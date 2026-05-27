@@ -20,6 +20,10 @@ class ClaimBatchUpdate(BaseModel):
     item_name: str | None = None
 
 
+class ClaimBatchVerifyAll(BaseModel):
+    """空 body 也合法的 admin-verify-all request。"""
+
+
 class ClaimBatchResponse(BaseModel):
     id: int
     batch_number: str
@@ -40,6 +44,7 @@ class ClaimBatchResponse(BaseModel):
     status: str
     record_count: int = 0
     confirmed_count: int = 0
+    admin_verified_count: int = 0
     created_at: str | None = None
     submitted_at: str | None = None
     received_at: str | None = None
@@ -58,3 +63,4 @@ class ClaimBatchRecordResponse(BaseModel):
     amount: float
     payment_status: str
     therapist_doc_submitted_at: str | None = None
+    admin_verified_at: str | None = None

@@ -62,6 +62,10 @@ def docs_required(db: Session, batch: ClaimBatch) -> bool:
 
 
 def check_readiness(db: Session, batch_id: int) -> bool:
+    """Ready 條件：
+    - 機構免繳文件（docs_waived 或機構 requires_therapist_docs=False）→ 直接 ready。
+    - 否則：每筆紀錄必須「心理師已提交 AND 行政已核對」。
+    """
     batch = db.query(ClaimBatch).filter(ClaimBatch.id == batch_id).first()
     if not batch:
         return False
@@ -70,7 +74,10 @@ def check_readiness(db: Session, batch_id: int) -> bool:
         return False
     if not docs_required(db, batch):
         return True
-    return all(r.therapist_doc_submitted_at is not None for r in records)
+    return all(
+        r.therapist_doc_submitted_at is not None and r.admin_verified_at is not None
+        for r in records
+    )
 
 
 def auto_transition_to_ready(db: Session, batch_id: int):

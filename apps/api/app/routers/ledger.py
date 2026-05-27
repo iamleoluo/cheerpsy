@@ -123,6 +123,8 @@ def _to_response(r: SessionRecord, db: Session) -> SessionRecordResponse:
         claim_batch_id=r.claim_batch_id,
         claim_batch_number=r.claim_batch.batch_number if r.claim_batch else None,
         therapist_doc_submitted_at=r.therapist_doc_submitted_at,
+        admin_verified_at=r.admin_verified_at,
+        admin_verified_by=r.admin_verified_by,
         locked_at=r.locked_at,
         is_void=bool(r.is_void),
         void_reason=r.void_reason,
@@ -556,15 +558,76 @@ def confirm_doc_submission(
     db.flush()
 
     if r.claim_batch_id:
-        batch = db.query(ClaimBatch).filter(ClaimBatch.id == r.claim_batch_id).first()
-        if batch and batch.status == "collecting":
-            unconfirmed = db.query(SessionRecord).filter(
-                SessionRecord.claim_batch_id == batch.id,
-                SessionRecord.therapist_doc_submitted_at.is_(None),
-            ).count()
-            if unconfirmed == 0:
-                batch.status = "ready"
+        from app.services.claim_batch import auto_transition_to_ready
+        auto_transition_to_ready(db, r.claim_batch_id)
 
+    db.commit()
+    db.refresh(r)
+    return _to_response(r, db)
+
+
+# ─── 行政核對（Phase 4 #4c）─────────────────────────────────────────────
+# 流程：心理師確認資料後 → 行政再核對 → batch 才會自動 ready → 才能送出收款。
+# Waived 機構自動同時跳過心理師與行政（既有 UX 不破壞）。
+
+
+@router.put("/{record_id}/admin-verify", response_model=SessionRecordResponse)
+def admin_verify_record(
+    record_id: int,
+    user: User = Depends(RequireRole(["admin", "staff"])),
+    db: Session = Depends(get_db),
+):
+    """行政人員勾選「已核對」此筆紀錄。"""
+    r = db.query(SessionRecord).filter(SessionRecord.id == record_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Record not found")
+    if r.admin_verified_at:
+        raise HTTPException(status_code=400, detail="已核對過")
+
+    r.admin_verified_at = datetime.now(timezone.utc)
+    r.admin_verified_by = user.id
+    _write_audit(
+        db, "session_records", r.id, "ADMIN_VERIFY", user.id,
+        {"admin_verified_at": None},
+        {"admin_verified_at": r.admin_verified_at.isoformat(), "admin_verified_by": user.id},
+    )
+    db.flush()
+    if r.claim_batch_id:
+        from app.services.claim_batch import auto_transition_to_ready
+        auto_transition_to_ready(db, r.claim_batch_id)
+    db.commit()
+    db.refresh(r)
+    return _to_response(r, db)
+
+
+@router.put("/{record_id}/admin-unverify", response_model=SessionRecordResponse)
+def admin_unverify_record(
+    record_id: int,
+    user: User = Depends(RequireRole(["admin"])),
+    db: Session = Depends(get_db),
+):
+    """取消行政核對（admin 限定）。會把對應的 batch 退回 collecting。"""
+    r = db.query(SessionRecord).filter(SessionRecord.id == record_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Record not found")
+    if r.admin_verified_at is None:
+        raise HTTPException(status_code=400, detail="尚未核對")
+
+    before = {
+        "admin_verified_at": r.admin_verified_at.isoformat(),
+        "admin_verified_by": r.admin_verified_by,
+    }
+    r.admin_verified_at = None
+    r.admin_verified_by = None
+    _write_audit(
+        db, "session_records", r.id, "ADMIN_UNVERIFY", user.id,
+        before, {"admin_verified_at": None},
+    )
+    db.flush()
+    if r.claim_batch_id:
+        batch = db.query(ClaimBatch).filter(ClaimBatch.id == r.claim_batch_id).first()
+        if batch and batch.status == "ready":
+            batch.status = "collecting"
     db.commit()
     db.refresh(r)
     return _to_response(r, db)
@@ -585,12 +648,17 @@ def cancel_doc_submission(
     before = {
         "therapist_doc_submitted_at": r.therapist_doc_submitted_at.isoformat(),
         "therapist_doc_submitted_by": r.therapist_doc_submitted_by,
+        "admin_verified_at": r.admin_verified_at.isoformat() if r.admin_verified_at else None,
     }
     r.therapist_doc_submitted_at = None
     r.therapist_doc_submitted_by = None
+    # 心理師資料被取消 → 行政核對也一併失效（資料變動了須重新核對）
+    r.admin_verified_at = None
+    r.admin_verified_by = None
     after = {
         "therapist_doc_submitted_at": None,
         "therapist_doc_submitted_by": None,
+        "admin_verified_at": None,
     }
     _write_audit(db, "session_records", r.id, "UPDATE", user.id, before, after)
     db.flush()

@@ -35,6 +35,9 @@ class SessionRecord(Base):
     claim_batch_id = Column(Integer, ForeignKey("claim_batches.id"), nullable=True)
     therapist_doc_submitted_at = Column(DateTime(timezone=True), nullable=True)
     therapist_doc_submitted_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    # 行政核對：心理師提交資料後，由行政再做一次資料正確性確認
+    admin_verified_at = Column(DateTime(timezone=True), nullable=True)
+    admin_verified_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     locked_at = Column(DateTime(timezone=True), nullable=True)
     parent_record_id = Column(Integer, ForeignKey("session_records.id"), nullable=True)
     outcall_bonus = Column(Numeric(10, 2), nullable=False, default=0, server_default="0")

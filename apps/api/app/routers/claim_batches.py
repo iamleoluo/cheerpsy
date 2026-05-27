@@ -42,6 +42,7 @@ def _to_response(db: Session, b: ClaimBatch) -> ClaimBatchResponse:
     records = db.query(SessionRecord).filter(SessionRecord.claim_batch_id == b.id).all()
     record_count = len(records)
     confirmed_count = sum(1 for r in records if r.therapist_doc_submitted_at is not None)
+    admin_verified_count = sum(1 for r in records if r.admin_verified_at is not None)
 
     case_name = None
     if b.case_id:
@@ -75,6 +76,7 @@ def _to_response(db: Session, b: ClaimBatch) -> ClaimBatchResponse:
         status=b.status,
         record_count=record_count,
         confirmed_count=confirmed_count,
+        admin_verified_count=admin_verified_count,
         created_at=b.created_at.isoformat() if b.created_at else None,
         submitted_at=b.submitted_at.isoformat() if b.submitted_at else None,
         received_at=b.received_at.isoformat() if b.received_at else None,
@@ -246,6 +248,7 @@ def list_unassigned_records(
             "amount": float(r.amount),
             "payment_status": r.payment_status,
             "therapist_doc_submitted_at": r.therapist_doc_submitted_at.isoformat() if r.therapist_doc_submitted_at else None,
+            "admin_verified_at": r.admin_verified_at.isoformat() if r.admin_verified_at else None,
         })
     return result
 
@@ -291,6 +294,7 @@ def get_batch_records(
             amount=float(r.amount),
             payment_status=r.payment_status,
             therapist_doc_submitted_at=r.therapist_doc_submitted_at.isoformat() if r.therapist_doc_submitted_at else None,
+            admin_verified_at=r.admin_verified_at.isoformat() if r.admin_verified_at else None,
         ))
     return result
 
@@ -465,10 +469,14 @@ def submit_batch(
     if not batch:
         raise HTTPException(status_code=404, detail="Claim batch not found")
 
-    if batch.type == "institution" and batch.status != "ready":
-        raise HTTPException(status_code=400, detail="Institution batch must be in 'ready' status to submit")
-    if batch.type == "self_pay" and batch.status not in ("collecting", "ready"):
-        raise HTTPException(status_code=400, detail="Self-pay batch must be in 'collecting' or 'ready' status to submit")
+    # 三段式流程：collecting → submitted → received
+    # 機構案：允許從 collecting 或 ready 提交。資料未齊（心理師未確認/行政未核對）
+    # 由前端在送出前以 confirm 警示提示，不再硬擋 — 受款（receive）仍需 status=submitted。
+    if batch.status not in ("collecting", "ready"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"無法從目前狀態 ({batch.status}) 提交",
+        )
 
     from datetime import datetime, timezone
     old_status = batch.status
@@ -530,6 +538,41 @@ def waive_docs(
     write_audit(db, "claim_batches", batch.id, "WAIVE_DOCS", user.id,
                 {"docs_waived_at": None},
                 {"docs_waived_at": batch.docs_waived_at.isoformat(), "records_waived": waived})
+    db.commit()
+    db.refresh(batch)
+    return _to_response(db, batch)
+
+
+@router.post("/{batch_id}/admin-verify-all", response_model=ClaimBatchResponse)
+def admin_verify_all(
+    batch_id: int,
+    user: User = Depends(RequireRole(["admin", "staff"])),
+    db: Session = Depends(get_db),
+):
+    """行政一鍵核對整批：標記所有尚未核對的紀錄為已行政核對。"""
+    from datetime import datetime, timezone
+
+    batch = db.query(ClaimBatch).filter(ClaimBatch.id == batch_id).first()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Claim batch not found")
+    now = datetime.now(timezone.utc)
+    recs = (
+        db.query(SessionRecord)
+        .filter(
+            SessionRecord.claim_batch_id == batch_id,
+            SessionRecord.admin_verified_at.is_(None),
+        )
+        .all()
+    )
+    for r in recs:
+        r.admin_verified_at = now
+        r.admin_verified_by = user.id
+    db.flush()
+    auto_transition_to_ready(db, batch_id)
+    write_audit(
+        db, "claim_batches", batch.id, "ADMIN_VERIFY_ALL", user.id,
+        None, {"verified_count": len(recs)},
+    )
     db.commit()
     db.refresh(batch)
     return _to_response(db, batch)

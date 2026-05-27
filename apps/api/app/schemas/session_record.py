@@ -34,6 +34,8 @@ class SessionRecordResponse(BaseModel):
     claim_batch_id: int | None = None
     claim_batch_number: str | None = None
     therapist_doc_submitted_at: datetime | None = None
+    admin_verified_at: datetime | None = None
+    admin_verified_by: int | None = None
     locked_at: datetime | None = None
     is_void: bool = False
     void_reason: str | None = None

@@ -75,6 +75,7 @@ interface ClaimBatch {
   status: string;
   record_count: number;
   confirmed_count: number;
+  admin_verified_count: number;
   created_at: string | null;
   docs_waived_at: string | null;
   docs_waived_by: number | null;
@@ -91,6 +92,7 @@ interface BatchRecord {
   payment_status: string;
   therapist_doc_submitted_at: string | null;
   therapist_doc_submitted_by: number | null;
+  admin_verified_at: string | null;
 }
 
 interface UnassignedRecord {
@@ -771,6 +773,47 @@ function BatchRow({
     }
   };
 
+  const submitWithWarning = async () => {
+    // 機構案：若有未確認/未核對紀錄，跳警示讓行政手動確認後送出
+    if (b.type === "institution" && b.docs_required) {
+      const unconfirmed = b.record_count - b.confirmed_count;
+      const unverified = b.record_count - b.admin_verified_count;
+      const msgs: string[] = [];
+      if (unconfirmed > 0) msgs.push(`尚有 ${unconfirmed} 位心理師未提交資料`);
+      if (unverified > 0) msgs.push(`尚有 ${unverified} 筆未經行政核對`);
+      if (msgs.length > 0) {
+        const warn = `${msgs.join("、")}，確定要送出機構案核銷嗎？`;
+        if (!confirm(warn)) return;
+      }
+    }
+    await transition("submit");
+  };
+
+  const verifyAll = async () => {
+    if (!confirm("確認將本批所有紀錄標記為「行政已核對」？")) return;
+    try {
+      await clientFetch(`/claim-batches/${b.id}/admin-verify-all`, token, { method: "POST" });
+      if (expanded) {
+        const updated = await clientFetch(`/claim-batches/${b.id}/records`, token);
+        setRecords(updated);
+      }
+      onRefresh();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
+  const verifyRecord = async (recordId: number) => {
+    try {
+      await clientFetch(`/ledger/${recordId}/admin-verify`, token, { method: "PUT" });
+      const updated = await clientFetch(`/claim-batches/${b.id}/records`, token);
+      setRecords(updated);
+      onRefresh();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
   const saveInfo = async () => {
     try {
       await clientFetch(`/claim-batches/${b.id}`, token, {
@@ -829,8 +872,15 @@ function BatchRow({
                 </button>
               )
             )}
+            {canEdit && (b.status === "collecting" || b.status === "ready") && b.type === "institution" && b.docs_required && (
+              b.record_count - b.admin_verified_count > 0 && (
+                <button onClick={verifyAll} className="rounded border border-emerald-300 px-2 py-0.5 text-xs text-emerald-700 hover:bg-emerald-50" title="一鍵將整批紀錄標為已行政核對">
+                  全部核對
+                </button>
+              )
+            )}
             {canEdit && (b.status === "collecting" || b.status === "ready") && (
-              <button onClick={() => transition("submit")} className="rounded bg-blue-600 px-2 py-0.5 text-xs text-white hover:bg-blue-700">
+              <button onClick={submitWithWarning} className="rounded bg-blue-600 px-2 py-0.5 text-xs text-white hover:bg-blue-700">
                 提交請款
               </button>
             )}
@@ -913,7 +963,8 @@ function BatchRow({
                     <th className="px-2 py-1">類型</th>
                     <th className="px-2 py-1 text-right">金額</th>
                     <th className="px-2 py-1">付款狀態</th>
-                    <th className="px-2 py-1">文件確認</th>
+                    <th className="px-2 py-1">心理師</th>
+                    <th className="px-2 py-1">行政核對</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -930,6 +981,24 @@ function BatchRow({
                           <span className="text-green-600">&#10003; 已確認</span>
                         ) : (
                           <span className="text-amber-600">待確認</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-1">
+                        {r.admin_verified_at ? (
+                          <span className="text-green-700">&#10003; 已核對</span>
+                        ) : r.therapist_doc_submitted_at ? (
+                          canEdit ? (
+                            <button
+                              onClick={() => verifyRecord(r.id)}
+                              className="rounded border border-emerald-300 px-1.5 py-0.5 text-[10px] text-emerald-700 hover:bg-emerald-50"
+                            >
+                              核對
+                            </button>
+                          ) : (
+                            <span className="text-amber-600">待核對</span>
+                          )
+                        ) : (
+                          <span className="text-gray-400">—</span>
                         )}
                       </td>
                     </tr>
