@@ -86,6 +86,7 @@ interface SessionRecord {
   commission_rate_used: number | null;
   billing_cycle: string | null;
   outcall_bonus: number;
+  outcall_note: string | null;
 }
 
 const BILLING_CYCLE_LABEL: Record<string, string> = { monthly: "月結", once: "次結", multiple: "多次結" };
