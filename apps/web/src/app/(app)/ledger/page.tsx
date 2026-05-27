@@ -542,7 +542,7 @@ export default function LedgerPage() {
                         )}
                         {r.session_type === "outdoor" && r.outcall_bonus > 0 && (
                           <span className="text-xs text-emerald-700" title={r.outcall_note ?? "系統自動保底"}>
-                            保底 ${r.outcall_bonus}
+                            保底 ${r.therapist_share.toLocaleString()}
                           </span>
                         )}
                         {userRole === "admin" &&
