@@ -71,6 +71,7 @@ def _to_response(db: Session, b: ClaimBatch) -> ClaimBatchResponse:
         total_amount=float(b.total_amount or 0),
         payment_method=b.payment_method,
         payment_note=b.payment_note,
+        item_name=b.item_name,
         status=b.status,
         record_count=record_count,
         confirmed_count=confirmed_count,
@@ -364,14 +365,27 @@ def update_claim_batch(
     if not batch:
         raise HTTPException(status_code=404, detail="Claim batch not found")
 
-    before = {"external_ref": batch.external_ref, "payment_method": batch.payment_method, "payment_note": batch.payment_note}
+    before = {
+        "external_ref": batch.external_ref,
+        "payment_method": batch.payment_method,
+        "payment_note": batch.payment_note,
+        "item_name": batch.item_name,
+    }
     if body.external_ref is not None:
         batch.external_ref = body.external_ref
     if body.payment_method is not None:
         batch.payment_method = body.payment_method
     if body.payment_note is not None:
         batch.payment_note = body.payment_note
-    after = {"external_ref": batch.external_ref, "payment_method": batch.payment_method, "payment_note": batch.payment_note}
+    if body.item_name is not None:
+        # 空字串視為清除（回到 fallback）
+        batch.item_name = body.item_name.strip() or None
+    after = {
+        "external_ref": batch.external_ref,
+        "payment_method": batch.payment_method,
+        "payment_note": batch.payment_note,
+        "item_name": batch.item_name,
+    }
     write_audit(db, "claim_batches", batch.id, "UPDATE", user.id, before, after)
 
     db.commit()
@@ -609,13 +623,18 @@ def preview_attendance_sheet(
 
 # ── PDF download ──
 
-def _build_record_dicts(db: Session, batch_id: int) -> list[dict]:
+def _build_record_dicts(db: Session, batch_id: int, item_name: str | None = None) -> list[dict]:
+    """Build records list for PDF generation.
+
+    `item_name` overrides every row's 服務項目 column. Falls back to «心理治療» when None.
+    """
     records = (
         db.query(SessionRecord)
         .filter(SessionRecord.claim_batch_id == batch_id)
         .order_by(SessionRecord.session_date)
         .all()
     )
+    service_label = (item_name or "").strip() or "心理治療"
     result = []
     for r in records:
         case = db.query(Case).filter(Case.id == r.case_id).first() if r.case_id else None
@@ -624,7 +643,7 @@ def _build_record_dicts(db: Session, batch_id: int) -> list[dict]:
             "session_date": r.session_date,
             "case_name": case.name if case else "",
             "therapist_name": therapist.name if therapist else "",
-            "session_type": r.session_type,
+            "session_type": service_label,  # PDF 「服務項目」欄統一帶 item_name
             "amount": float(r.amount),
         })
     return result
@@ -644,7 +663,7 @@ def download_claim_form(
         raise HTTPException(status_code=400, detail="Claim forms are for institution batches only")
 
     inst = db.query(Institution).filter(Institution.id == batch.institution_id).first() if batch.institution_id else None
-    records = _build_record_dicts(db, batch_id)
+    records = _build_record_dicts(db, batch_id, batch.item_name)
 
     pdf_bytes = generate_institution_claim_form(
         batch_number=batch.batch_number,

@@ -19,6 +19,8 @@ class ClaimBatch(Base):
     total_amount = Column(Numeric(10, 2), nullable=False, default=0, server_default="0")
     payment_method = Column(String(20), nullable=True)
     payment_note = Column(String(200), nullable=True)
+    # PDF 列印時顯示的服務項目名稱（可由 UI 編輯）；NULL 時 fallback「心理治療」
+    item_name = Column(String(100), nullable=True)
     status = Column(String(20), nullable=False, default="collecting", server_default="collecting")
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

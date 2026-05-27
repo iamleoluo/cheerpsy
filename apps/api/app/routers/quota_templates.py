@@ -29,6 +29,8 @@ def _to_response(t: QuotaTemplate) -> QuotaTemplateResponse:
         name=t.name,
         total_count=t.total_count,
         notes=t.notes,
+        default_valid_from=t.default_valid_from,
+        default_valid_until=t.default_valid_until,
         created_by=t.created_by,
         created_at=t.created_at,
     )
@@ -49,11 +51,15 @@ def create_template(
     user: User = Depends(RequireRole(WRITE_ROLES)),
     db: Session = Depends(get_db),
 ):
+    if body.default_valid_from and body.default_valid_until and body.default_valid_from > body.default_valid_until:
+        raise HTTPException(status_code=400, detail="預設有效起日不可晚於迄日")
     t = QuotaTemplate(
         institution_id=body.institution_id,
         name=body.name,
         total_count=body.total_count,
         notes=body.notes,
+        default_valid_from=body.default_valid_from,
+        default_valid_until=body.default_valid_until,
         created_by=user.id,
     )
     db.add(t)
@@ -74,14 +80,37 @@ def update_template(
     t = db.query(QuotaTemplate).filter(QuotaTemplate.id == template_id).first()
     if not t:
         raise HTTPException(status_code=404, detail="範本不存在")
-    before = {"name": t.name, "total_count": t.total_count}
+    before = {
+        "name": t.name,
+        "total_count": t.total_count,
+        "default_valid_from": str(t.default_valid_from) if t.default_valid_from else None,
+        "default_valid_until": str(t.default_valid_until) if t.default_valid_until else None,
+    }
     if body.name is not None:
         t.name = body.name
     if body.total_count is not None:
         t.total_count = body.total_count
     if body.notes is not None:
         t.notes = body.notes
-    write_audit(db, "quota_templates", t.id, "update", user.id, before, {"name": t.name, "total_count": t.total_count})
+    if body.clear_default_valid_from:
+        t.default_valid_from = None
+    elif body.default_valid_from is not None:
+        t.default_valid_from = body.default_valid_from
+    if body.clear_default_valid_until:
+        t.default_valid_until = None
+    elif body.default_valid_until is not None:
+        t.default_valid_until = body.default_valid_until
+    if t.default_valid_from and t.default_valid_until and t.default_valid_from > t.default_valid_until:
+        raise HTTPException(status_code=400, detail="預設有效起日不可晚於迄日")
+    write_audit(
+        db, "quota_templates", t.id, "update", user.id, before,
+        {
+            "name": t.name,
+            "total_count": t.total_count,
+            "default_valid_from": str(t.default_valid_from) if t.default_valid_from else None,
+            "default_valid_until": str(t.default_valid_until) if t.default_valid_until else None,
+        },
+    )
     db.commit()
     db.refresh(t)
     return _to_response(t)
@@ -116,6 +145,12 @@ def apply_template(
     if not body.case_ids:
         raise HTTPException(status_code=400, detail="請選擇至少一個個案")
 
+    # 套用日期：呼叫端傳入優先；否則 fallback 到範本預設值；皆無則 NULL（永久）
+    valid_from = body.valid_from if body.valid_from is not None else t.default_valid_from
+    valid_until = body.valid_until if body.valid_until is not None else t.default_valid_until
+    if valid_from and valid_until and valid_from > valid_until:
+        raise HTTPException(status_code=400, detail="有效起日不可晚於迄日")
+
     cases = db.query(Case).filter(Case.id.in_(body.case_ids)).all()
     found_ids = {c.id for c in cases}
     missing = set(body.case_ids) - found_ids
@@ -129,8 +164,8 @@ def apply_template(
             institution_id=t.institution_id,
             total_count=t.total_count,
             used_count=0,
-            valid_from=body.valid_from,
-            valid_until=body.valid_until,
+            valid_from=valid_from,
+            valid_until=valid_until,
             note=f"套用範本：{t.name}",
             created_by=user.id,
         )

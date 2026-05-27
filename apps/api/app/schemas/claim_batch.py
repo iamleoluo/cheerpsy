@@ -17,6 +17,7 @@ class ClaimBatchUpdate(BaseModel):
     external_ref: str | None = None
     payment_method: str | None = None
     payment_note: str | None = None
+    item_name: str | None = None
 
 
 class ClaimBatchResponse(BaseModel):
@@ -35,6 +36,7 @@ class ClaimBatchResponse(BaseModel):
     total_amount: float
     payment_method: str | None = None
     payment_note: str | None = None
+    item_name: str | None = None
     status: str
     record_count: int = 0
     confirmed_count: int = 0

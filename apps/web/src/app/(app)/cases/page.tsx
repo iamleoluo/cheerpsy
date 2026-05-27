@@ -1225,7 +1225,7 @@ function AppointmentForm({
                   <option value="">{availableQuotas.length === 0 ? "該日無可用 Quota" : "請選擇"}</option>
                   {availableQuotas.map((q) => (
                     <option key={q.id} value={q.id}>
-                      {q.institution_name}｜剩餘 {q.remaining}（預約 {q.reserved_count ?? 0}）/{q.total_count}｜到期 {q.valid_until}
+                      {q.institution_name}｜剩餘 {q.remaining}（預約 {q.reserved_count ?? 0}）/{q.total_count}｜到期 {q.valid_until ?? "永久"}
                     </option>
                   ))}
                 </select>
@@ -1409,7 +1409,7 @@ function BatchForm({
       .then((rows: QuotaRow[]) => {
         const today = new Date().toISOString().slice(0, 10);
         const active = rows.filter(
-          (r) => r.valid_until >= today && r.remaining > 0,
+          (r) => (!r.valid_until || r.valid_until >= today) && r.remaining > 0,
         );
         setAllQuotas(active);
         setForm((prev) => {
@@ -1559,7 +1559,7 @@ function BatchForm({
                     <option value="">{allQuotas.length === 0 ? "尚無有效 Quota" : "請選擇"}</option>
                     {allQuotas.map((q) => (
                       <option key={q.id} value={q.id}>
-                        {q.institution_name}｜剩餘 {q.remaining}（預約 {q.reserved_count ?? 0}）/{q.total_count}｜到期 {q.valid_until}
+                        {q.institution_name}｜剩餘 {q.remaining}（預約 {q.reserved_count ?? 0}）/{q.total_count}｜到期 {q.valid_until ?? "永久"}
                       </option>
                     ))}
                   </select>
@@ -1844,7 +1844,7 @@ function AppointmentPaymentModal({
                 <option value="">{availableQuotas.length === 0 ? "該日無可用 Quota" : "請選擇"}</option>
                 {availableQuotas.map((q) => (
                   <option key={q.id} value={q.id}>
-                    {q.institution_name}｜剩餘 {q.remaining}/{q.total_count}｜到期 {q.valid_until}
+                    {q.institution_name}｜剩餘 {q.remaining}/{q.total_count}｜到期 {q.valid_until ?? "永久"}
                   </option>
                 ))}
               </select>
@@ -1991,8 +1991,8 @@ interface QuotaRow {
   used_count: number;
   reserved_count: number;
   remaining: number;
-  valid_from: string;
-  valid_until: string;
+  valid_from: string | null;
+  valid_until: string | null;
   note: string | null;
 }
 
@@ -2003,6 +2003,8 @@ interface QuotaTemplate {
   name: string;
   total_count: number;
   notes: string | null;
+  default_valid_from: string | null;
+  default_valid_until: string | null;
   created_by: number | null;
   created_at: string;
 }
@@ -2056,10 +2058,12 @@ function QuotasTab({ token, userRole }: { token: string; userRole: string }) {
       }
     }
     if (filterStatus === "active") {
-      return r.valid_from <= today && r.valid_until >= today && r.remaining > 0;
+      return (!r.valid_from || r.valid_from <= today)
+        && (!r.valid_until || r.valid_until >= today)
+        && r.remaining > 0;
     }
     if (filterStatus === "expired") {
-      return r.valid_until < today || r.remaining === 0;
+      return (!!r.valid_until && r.valid_until < today) || r.remaining === 0;
     }
     return true;
   });
@@ -2203,8 +2207,14 @@ function QuotaGroupedTable({
             const totalCount = quotas.reduce((s, q) => s + q.total_count, 0);
             const usedCount = quotas.reduce((s, q) => s + q.used_count, 0);
             const remaining = quotas.reduce((s, q) => s + q.remaining, 0);
-            const activeCount = quotas.filter(q => q.valid_from <= today && q.valid_until >= today && q.remaining > 0).length;
-            const expiredCount = quotas.filter(q => q.valid_until < today || q.remaining === 0).length;
+            const activeCount = quotas.filter(q =>
+              (!q.valid_from || q.valid_from <= today) &&
+              (!q.valid_until || q.valid_until >= today) &&
+              q.remaining > 0
+            ).length;
+            const expiredCount = quotas.filter(q =>
+              (!!q.valid_until && q.valid_until < today) || q.remaining === 0
+            ).length;
 
             return (
               <>
@@ -2244,7 +2254,7 @@ function QuotaGroupedTable({
 
                 {/* detail rows */}
                 {isOpen && quotas.map((r) => {
-                  const expired = r.valid_until < today;
+                  const expired = !!r.valid_until && r.valid_until < today;
                   const exhausted = r.remaining === 0;
                   const active = !expired && !exhausted;
                   return (
@@ -2257,7 +2267,7 @@ function QuotaGroupedTable({
                       <td className="px-3 py-2 text-right text-xs">
                         <span className={r.remaining === 0 ? "text-gray-400" : "text-emerald-700"}>{r.remaining}</span>
                       </td>
-                      <td className="px-3 py-2 text-xs text-gray-500">{r.valid_from} ~ {r.valid_until}</td>
+                      <td className="px-3 py-2 text-xs text-gray-500">{r.valid_from ?? "—"} ~ {r.valid_until ?? "永久"}</td>
                       <td className="px-3 py-2">
                         {active && <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700">有效</span>}
                         {expired && <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">已過期</span>}
@@ -2310,8 +2320,8 @@ function QuotaFormModal({
   const [caseId, setCaseId] = useState<number | "">(editing?.case_id ?? defaultCaseId ?? "");
   const [institutionId, setInstitutionId] = useState<number | "">(editing?.institution_id ?? "");
   const [totalCount, setTotalCount] = useState(editing?.total_count ?? 1);
-  const [validFrom, setValidFrom] = useState(editing?.valid_from ?? new Date().toISOString().slice(0, 10));
-  const [validUntil, setValidUntil] = useState(editing?.valid_until ?? "");
+  const [validFrom, setValidFrom] = useState<string>(editing?.valid_from ?? "");
+  const [validUntil, setValidUntil] = useState<string>(editing?.valid_until ?? "");
   const [note, setNote] = useState(editing?.note ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -2322,9 +2332,8 @@ function QuotaFormModal({
     setError("");
     if (!caseId) { setError("請選擇個案"); return; }
     if (!institutionId) { setError("請選擇機構"); return; }
-    if (!validUntil) { setError("請填寫有效迄日"); return; }
     if (totalCount <= 0) { setError("總次數需大於 0"); return; }
-    if (validFrom > validUntil) { setError("起日不可晚於迄日"); return; }
+    if (validFrom && validUntil && validFrom > validUntil) { setError("起日不可晚於迄日"); return; }
 
     setSubmitting(true);
     try {
@@ -2333,8 +2342,10 @@ function QuotaFormModal({
           method: "PUT",
           body: JSON.stringify({
             total_count: totalCount,
-            valid_from: validFrom,
-            valid_until: validUntil,
+            valid_from: validFrom || null,
+            valid_until: validUntil || null,
+            clear_valid_from: !validFrom,
+            clear_valid_until: !validUntil,
             note: note || null,
           }),
         });
@@ -2344,8 +2355,8 @@ function QuotaFormModal({
           body: JSON.stringify({
             institution_id: institutionId,
             total_count: totalCount,
-            valid_from: validFrom,
-            valid_until: validUntil,
+            valid_from: validFrom || null,
+            valid_until: validUntil || null,
             note: note || null,
           }),
         });
@@ -2406,7 +2417,7 @@ function QuotaFormModal({
           </div>
           <div className="flex gap-3">
             <div className="flex-1">
-              <label className="mb-1 block text-xs text-gray-500">有效起日</label>
+              <label className="mb-1 block text-xs text-gray-500">有效起日（留空＝無下限）</label>
               <input
                 type="date"
                 value={validFrom}
@@ -2415,7 +2426,7 @@ function QuotaFormModal({
               />
             </div>
             <div className="flex-1">
-              <label className="mb-1 block text-xs text-gray-500">有效迄日</label>
+              <label className="mb-1 block text-xs text-gray-500">有效迄日（留空＝永久）</label>
               <input
                 type="date"
                 value={validUntil}
@@ -2536,6 +2547,7 @@ function TemplatesSection({
                     <tr>
                       <th className="px-4 py-2 text-left font-medium">方案名稱</th>
                       <th className="px-4 py-2 text-center font-medium">次數</th>
+                      <th className="px-4 py-2 text-left font-medium">預設期間</th>
                       <th className="px-4 py-2 text-left font-medium">備註</th>
                       <th className="px-4 py-2 text-right font-medium">操作</th>
                     </tr>
@@ -2545,6 +2557,11 @@ function TemplatesSection({
                       <tr key={t.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 font-medium text-gray-800">{t.name}</td>
                         <td className="px-4 py-3 text-center text-gray-700">{t.total_count} 次</td>
+                        <td className="px-4 py-3 text-xs text-gray-500">
+                          {t.default_valid_from || t.default_valid_until
+                            ? `${t.default_valid_from ?? "—"} ~ ${t.default_valid_until ?? "永久"}`
+                            : "未設定"}
+                        </td>
                         <td className="px-4 py-3 text-gray-500">{t.notes ?? "—"}</td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex justify-end gap-2">
@@ -2611,6 +2628,8 @@ function TemplateFormModal({
   const [name, setName] = useState(editing?.name ?? "");
   const [totalCount, setTotalCount] = useState(editing?.total_count ?? 1);
   const [notes, setNotes] = useState(editing?.notes ?? "");
+  const [defaultFrom, setDefaultFrom] = useState<string>(editing?.default_valid_from ?? "");
+  const [defaultUntil, setDefaultUntil] = useState<string>(editing?.default_valid_until ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -2619,18 +2638,36 @@ function TemplateFormModal({
     if (!name.trim()) { setError("請填寫方案名稱"); return; }
     if (!institutionId) { setError("請選擇機構"); return; }
     if (totalCount <= 0) { setError("次數需大於 0"); return; }
+    if (defaultFrom && defaultUntil && defaultFrom > defaultUntil) {
+      setError("預設起日不可晚於預設迄日"); return;
+    }
 
     setSubmitting(true);
     try {
       if (editing) {
         await clientFetch(`/quota-templates/${editing.id}`, token, {
           method: "PUT",
-          body: JSON.stringify({ name, total_count: totalCount, notes: notes || null }),
+          body: JSON.stringify({
+            name,
+            total_count: totalCount,
+            notes: notes || null,
+            default_valid_from: defaultFrom || null,
+            default_valid_until: defaultUntil || null,
+            clear_default_valid_from: !defaultFrom,
+            clear_default_valid_until: !defaultUntil,
+          }),
         });
       } else {
         await clientFetch("/quota-templates/", token, {
           method: "POST",
-          body: JSON.stringify({ institution_id: institutionId, name, total_count: totalCount, notes: notes || null }),
+          body: JSON.stringify({
+            institution_id: institutionId,
+            name,
+            total_count: totalCount,
+            notes: notes || null,
+            default_valid_from: defaultFrom || null,
+            default_valid_until: defaultUntil || null,
+          }),
         });
       }
       onSaved();
@@ -2682,6 +2719,29 @@ function TemplateFormModal({
               className="w-full rounded border border-gray-300 px-3 py-2"
             />
           </div>
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="mb-1 block text-xs text-gray-500">預設起日（留空＝套用時不帶）</label>
+              <input
+                type="date"
+                value={defaultFrom}
+                onChange={(e) => setDefaultFrom(e.target.value)}
+                className="w-full rounded border border-gray-300 px-3 py-2"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="mb-1 block text-xs text-gray-500">預設迄日（留空＝永久）</label>
+              <input
+                type="date"
+                value={defaultUntil}
+                onChange={(e) => setDefaultUntil(e.target.value)}
+                className="w-full rounded border border-gray-300 px-3 py-2"
+              />
+            </div>
+          </div>
+          <div className="rounded bg-amber-50 px-3 py-2 text-xs text-amber-700">
+            提示：填入日期後，套用範本時會自動帶入（仍可改）。例：2026 年方案，預設「2026-01-01 ~ 2026-12-31」即可，明年只需修改此處日期，不必每次套用都重選。
+          </div>
           <div>
             <label className="mb-1 block text-xs text-gray-500">備註（選填）</label>
             <input
@@ -2719,12 +2779,10 @@ function ApplyTemplateModal({
   onClose: () => void;
   onApplied: () => void;
 }) {
-  const today = new Date().toISOString().slice(0, 10);
-  const nextMonth = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-
+  // 套用日期預填優先序：範本的 default 值 > 不帶入（留空＝NULL/永久）
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [validFrom, setValidFrom] = useState(today);
-  const [validUntil, setValidUntil] = useState(nextMonth);
+  const [validFrom, setValidFrom] = useState<string>(template.default_valid_from ?? "");
+  const [validUntil, setValidUntil] = useState<string>(template.default_valid_until ?? "");
   const [search, setSearch] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -2753,14 +2811,17 @@ function ApplyTemplateModal({
   const submit = async () => {
     setError("");
     if (selectedIds.size === 0) { setError("請至少選擇一個個案"); return; }
-    if (!validUntil) { setError("請填寫有效迄日"); return; }
-    if (validFrom > validUntil) { setError("起日不可晚於迄日"); return; }
+    if (validFrom && validUntil && validFrom > validUntil) { setError("起日不可晚於迄日"); return; }
 
     setSubmitting(true);
     try {
       await clientFetch(`/quota-templates/${template.id}/apply`, token, {
         method: "POST",
-        body: JSON.stringify({ case_ids: Array.from(selectedIds), valid_from: validFrom, valid_until: validUntil }),
+        body: JSON.stringify({
+          case_ids: Array.from(selectedIds),
+          valid_from: validFrom || null,
+          valid_until: validUntil || null,
+        }),
       });
       alert(`已成功為 ${selectedIds.size} 個個案套用「${template.name}」範本。`);
       onApplied();
@@ -2781,14 +2842,19 @@ function ApplyTemplateModal({
 
         {error && <div className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
 
+        {(template.default_valid_from || template.default_valid_until) && (
+          <div className="mb-2 rounded bg-blue-50 px-3 py-2 text-xs text-blue-700">
+            已帶入範本預設期間：{template.default_valid_from ?? "—"} ~ {template.default_valid_until ?? "永久"}（可改）
+          </div>
+        )}
         <div className="mb-3 flex gap-3">
           <div className="flex-1">
-            <label className="mb-1 block text-xs text-gray-500">有效起日</label>
+            <label className="mb-1 block text-xs text-gray-500">有效起日（留空＝無下限）</label>
             <input type="date" value={validFrom} onChange={(e) => setValidFrom(e.target.value)}
               className="w-full rounded border border-gray-300 px-3 py-2 text-sm" />
           </div>
           <div className="flex-1">
-            <label className="mb-1 block text-xs text-gray-500">有效迄日</label>
+            <label className="mb-1 block text-xs text-gray-500">有效迄日（留空＝永久）</label>
             <input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)}
               className="w-full rounded border border-gray-300 px-3 py-2 text-sm" />
           </div>

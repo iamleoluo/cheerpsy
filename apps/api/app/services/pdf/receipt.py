@@ -404,7 +404,7 @@ def build_multi_session_receipt(batch, case, records: list[dict]) -> ReceiptData
         receipt_number=batch.batch_number,
         issue_date=_tw_date(date.today()),
         payee=case.name if case else "",
-        fee_category="心理治療",
+        fee_category=(getattr(batch, "item_name", None) or "").strip() or "心理治療",
         quantity_label="數量/治療次數",
         quantity=str(len(records)),
         total_amount=total,
@@ -422,11 +422,12 @@ def build_institution_receipt(batch, institution, records: list[dict]) -> Receip
     elif batch.period_start:
         period = f"{_tw_date(batch.period_start)} ~"
     n = len(records)
+    item_name = (getattr(batch, "item_name", None) or "").strip() or "心理治療服務"
     return ReceiptData(
         receipt_number=batch.batch_number,
         issue_date=_tw_date(date.today()),
         payee=institution.name if institution else "",
-        fee_category="心理治療服務",
+        fee_category=item_name,
         quantity_label="治療場次",
         quantity=f"{n} 場",
         total_amount=total,
@@ -595,7 +596,7 @@ def build_self_pay_batch_receipt(batch, case, records) -> MultiItemReceiptData:
         receipt_number=batch.batch_number,
         issue_date=_tw_date(date.today()),
         payee=case.name if case else "",
-        fee_category="心理治療",
+        fee_category=(getattr(batch, "item_name", None) or "").strip() or "心理治療",
         items=items,
         total_amount=int(batch.total_amount or 0),
     )

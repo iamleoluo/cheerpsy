@@ -1,7 +1,7 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import RequireRole, get_current_user
@@ -51,7 +51,7 @@ def list_case_quotas(
     rows = (
         db.query(CaseInstitutionQuota)
         .filter(CaseInstitutionQuota.case_id == case_id)
-        .order_by(CaseInstitutionQuota.valid_until.asc(), CaseInstitutionQuota.id.asc())
+        .order_by(CaseInstitutionQuota.valid_until.asc().nullslast(), CaseInstitutionQuota.id.asc())
         .all()
     )
     return [_to_response(q, db) for q in rows]
@@ -65,20 +65,23 @@ def list_available_quotas(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """有效 Quota：valid_from ≤ on_date ≤ valid_until 且剩餘 > 0；依 valid_until 升冪（FIFO）。"""
+    """有效 Quota：valid_from ≤ on_date ≤ valid_until 且剩餘 > 0；依 valid_until 升冪（FIFO）。
+
+    NULL 視為無時間上限：valid_from IS NULL → 無起日下限；valid_until IS NULL → 永久有效。
+    """
     target = on_date or date.today()
     q = (
         db.query(CaseInstitutionQuota)
         .filter(
             CaseInstitutionQuota.case_id == case_id,
-            CaseInstitutionQuota.valid_from <= target,
-            CaseInstitutionQuota.valid_until >= target,
+            or_(CaseInstitutionQuota.valid_from.is_(None), CaseInstitutionQuota.valid_from <= target),
+            or_(CaseInstitutionQuota.valid_until.is_(None), CaseInstitutionQuota.valid_until >= target),
             CaseInstitutionQuota.used_count < CaseInstitutionQuota.total_count,
         )
     )
     if institution_id is not None:
         q = q.filter(CaseInstitutionQuota.institution_id == institution_id)
-    rows = q.order_by(CaseInstitutionQuota.valid_until.asc(), CaseInstitutionQuota.id.asc()).all()
+    rows = q.order_by(CaseInstitutionQuota.valid_until.asc().nullslast(), CaseInstitutionQuota.id.asc()).all()
     return [_to_response(r, db) for r in rows]
 
 
@@ -93,11 +96,11 @@ def list_all_quotas(
     if active_only:
         today = date.today()
         q = q.filter(
-            CaseInstitutionQuota.valid_from <= today,
-            CaseInstitutionQuota.valid_until >= today,
+            or_(CaseInstitutionQuota.valid_from.is_(None), CaseInstitutionQuota.valid_from <= today),
+            or_(CaseInstitutionQuota.valid_until.is_(None), CaseInstitutionQuota.valid_until >= today),
             CaseInstitutionQuota.used_count < CaseInstitutionQuota.total_count,
         )
-    rows = q.order_by(CaseInstitutionQuota.valid_until.asc(), CaseInstitutionQuota.id.desc()).all()
+    rows = q.order_by(CaseInstitutionQuota.valid_until.asc().nullslast(), CaseInstitutionQuota.id.desc()).all()
     return [_to_response(r, db) for r in rows]
 
 
@@ -114,7 +117,7 @@ def create_quota(
         raise HTTPException(status_code=404, detail="機構不存在")
     if body.total_count <= 0:
         raise HTTPException(status_code=400, detail="總次數需大於 0")
-    if body.valid_from > body.valid_until:
+    if body.valid_from and body.valid_until and body.valid_from > body.valid_until:
         raise HTTPException(status_code=400, detail="有效起日不可晚於迄日")
 
     q = CaseInstitutionQuota(
@@ -136,8 +139,8 @@ def create_quota(
             "case_id": case_id,
             "institution_id": body.institution_id,
             "total_count": body.total_count,
-            "valid_from": str(body.valid_from),
-            "valid_until": str(body.valid_until),
+            "valid_from": str(body.valid_from) if body.valid_from else None,
+            "valid_until": str(body.valid_until) if body.valid_until else None,
         },
     )
     db.commit()
@@ -158,21 +161,25 @@ def update_quota(
 
     before = {
         "total_count": q.total_count,
-        "valid_from": str(q.valid_from),
-        "valid_until": str(q.valid_until),
+        "valid_from": str(q.valid_from) if q.valid_from else None,
+        "valid_until": str(q.valid_until) if q.valid_until else None,
         "note": q.note,
     }
     if body.total_count is not None:
         if body.total_count < q.used_count:
             raise HTTPException(status_code=400, detail=f"總次數不可少於已用次數 {q.used_count}")
         q.total_count = body.total_count
-    if body.valid_from is not None:
+    if body.clear_valid_from:
+        q.valid_from = None
+    elif body.valid_from is not None:
         q.valid_from = body.valid_from
-    if body.valid_until is not None:
+    if body.clear_valid_until:
+        q.valid_until = None
+    elif body.valid_until is not None:
         q.valid_until = body.valid_until
     if body.note is not None:
         q.note = body.note
-    if q.valid_from > q.valid_until:
+    if q.valid_from and q.valid_until and q.valid_from > q.valid_until:
         raise HTTPException(status_code=400, detail="有效起日不可晚於迄日")
 
     write_audit(
@@ -180,8 +187,8 @@ def update_quota(
         before,
         {
             "total_count": q.total_count,
-            "valid_from": str(q.valid_from),
-            "valid_until": str(q.valid_until),
+            "valid_from": str(q.valid_from) if q.valid_from else None,
+            "valid_until": str(q.valid_until) if q.valid_until else None,
             "note": q.note,
         },
     )

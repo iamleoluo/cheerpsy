@@ -71,6 +71,7 @@ interface ClaimBatch {
   total_amount: number;
   payment_method: string | null;
   payment_note: string | null;
+  item_name: string | null;
   status: string;
   record_count: number;
   confirmed_count: number;
@@ -752,6 +753,7 @@ function BatchRow({
   const [extRef, setExtRef] = useState(b.external_ref ?? "");
   const [payMethod, setPayMethod] = useState(b.payment_method ?? "");
   const [payNote, setPayNote] = useState(b.payment_note ?? "");
+  const [itemName, setItemName] = useState(b.item_name ?? "");
   const [showReceiptModal, setShowReceiptModal] = useState(false);
 
   useEffect(() => {
@@ -773,7 +775,12 @@ function BatchRow({
     try {
       await clientFetch(`/claim-batches/${b.id}`, token, {
         method: "PUT",
-        body: JSON.stringify({ external_ref: extRef || null, payment_method: payMethod || null, payment_note: payNote || null }),
+        body: JSON.stringify({
+          external_ref: extRef || null,
+          payment_method: payMethod || null,
+          payment_note: payNote || null,
+          item_name: itemName ?? "",
+        }),
       });
       setEditRef(false);
       onRefresh();
@@ -872,12 +879,23 @@ function BatchRow({
                       備註
                       <input value={payNote} onChange={(e) => setPayNote(e.target.value)} className="ml-1 rounded border px-2 py-1 text-xs" />
                     </label>
+                    <label className="text-xs">
+                      收據／請款單服務項目
+                      <input
+                        value={itemName}
+                        onChange={(e) => setItemName(e.target.value)}
+                        placeholder="心理治療"
+                        title="留空或預設「心理治療」；列印 PDF 時顯示在「服務項目」欄"
+                        className="ml-1 rounded border px-2 py-1 text-xs"
+                      />
+                    </label>
                     <button onClick={saveInfo} className="rounded bg-primary-600 px-3 py-1 text-xs text-white">儲存</button>
                     <button onClick={() => setEditRef(false)} className="text-xs text-gray-500">取消</button>
                   </div>
                 ) : (
                   <button onClick={() => setEditRef(true)} className="text-xs text-primary-600 hover:underline">
                     編輯付款資訊 {b.external_ref ? `(${b.external_ref})` : ""}
+                    {b.item_name ? `｜服務項目：${b.item_name}` : ""}
                   </button>
                 )}
               </div>
