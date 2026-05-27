@@ -136,6 +136,8 @@ const SESSION_TYPE_LABELS: Record<string, string> = {
   outdoor: "外出",
 };
 
+const BILLING_CYCLE_LABEL: Record<string, string> = { monthly: "月結", once: "次結", multiple: "多次結" };
+
 /* ───── main page ───── */
 
 export default function ClaimsPage() {
@@ -425,10 +427,10 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
   });
 
   // group by case_id (fall back to case_name if no id)
-  const groups = filtered.reduce<Record<string | number, { name: string; records: LedgerRecord[] }>>(
+  const groups: Record<string, { name: string; billing_cycle: string | null; records: LedgerRecord[] }> = filtered.reduce<Record<string, { name: string; billing_cycle: string | null; records: LedgerRecord[] }>>(
     (acc, r) => {
       const key = r.case_id ?? (r.case_name ?? "?");
-      if (!acc[key]) acc[key] = { name: r.case_name ?? `#${r.case_id}`, records: [] };
+      if (!acc[key]) acc[key] = { name: r.case_name ?? `#${r.case_id}`, billing_cycle: r.billing_cycle, records: [] };
       acc[key].records.push(r);
       return acc;
     }, {}
@@ -501,7 +503,7 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
         </div>
       ) : (
         <div className="space-y-2">
-          {Object.entries(groups).map(([key, { name: caseName, records: rs }]) => {
+          {Object.entries(groups).map(([key, { name: caseName, billing_cycle: caseBillingCycle, records: rs }]) => {
             const caseKey = key;
             const isOpen = expandedCaseId === caseKey;
             const unpaidRs = rs.filter((r) => r.payment_status === "unpaid");
@@ -518,7 +520,12 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
                   className="flex w-full items-center justify-between bg-gray-50 px-4 py-3 hover:bg-gray-100 transition-colors"
                 >
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm">{caseName}</span>
+                    <span className="font-medium text-sm">
+                      {caseName}
+                      {caseBillingCycle && (
+                        <span className="ml-1 font-normal text-gray-400">（{BILLING_CYCLE_LABEL[caseBillingCycle] ?? caseBillingCycle}）</span>
+                      )}
+                    </span>
                     {unpaidRs.length > 0 && (
                       <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">
                         {unpaidRs.length} 筆待收
