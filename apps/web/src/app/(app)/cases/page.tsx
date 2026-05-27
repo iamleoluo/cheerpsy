@@ -245,7 +245,6 @@ function CasesTab({ token, userRole }: { token: string; userRole: string }) {
   const [showForm, setShowForm] = useState(false);
   const [editingCase, setEditingCase] = useState<CaseItem | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [closureTarget, setClosureTarget] = useState<{ case: CaseItem; mode: "close" | "reopen" } | null>(null);
 
   const fetchCases = useCallback(async () => {
     setLoading(true);
@@ -393,17 +392,9 @@ function CasesTab({ token, userRole }: { token: string; userRole: string }) {
                   </td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-2">
-                      {c.status !== "closed" && (
-                        <button onClick={() => { setEditingCase(c); setShowForm(true); }} className="text-xs text-blue-600 hover:underline">編輯</button>
-                      )}
+                      <button onClick={() => { setEditingCase(c); setShowForm(true); }} className="text-xs text-blue-600 hover:underline">編輯</button>
                       {c.status === "initial" && (
                         <button onClick={() => handleActivate(c)} className="text-xs text-green-600 hover:underline">轉正式</button>
-                      )}
-                      {c.status !== "closed" && ["admin", "staff"].includes(userRole) && (
-                        <button onClick={() => setClosureTarget({ case: c, mode: "close" })} className="text-xs text-red-600 hover:underline">結案</button>
-                      )}
-                      {c.status === "closed" && ["admin", "staff"].includes(userRole) && (
-                        <button onClick={() => setClosureTarget({ case: c, mode: "reopen" })} className="text-xs text-emerald-600 hover:underline">復案</button>
                       )}
                     </div>
                   </td>
@@ -439,15 +430,6 @@ function CasesTab({ token, userRole }: { token: string; userRole: string }) {
         />
       )}
 
-      {closureTarget && (
-        <CaseClosureModal
-          token={token}
-          caseItem={closureTarget.case}
-          mode={closureTarget.mode}
-          onClose={() => setClosureTarget(null)}
-          onDone={() => { setClosureTarget(null); fetchCases(); }}
-        />
-      )}
     </>
   );
 }
@@ -810,6 +792,7 @@ function AppointmentsTab({ token, userRole }: { token: string; userRole: string 
   const [cases, setCases] = useState<CaseItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("");
+  const [search, setSearch] = useState("");
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [showBatchForm, setShowBatchForm] = useState(false);
@@ -845,11 +828,22 @@ function AppointmentsTab({ token, userRole }: { token: string; userRole: string 
   };
 
   const casesMap = Object.fromEntries(cases.map((c) => [c.id, c]));
+  const filtered = appointments.filter((a) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (a.case_name ?? "").toLowerCase().includes(q) || (a.therapist_name ?? "").toLowerCase().includes(q);
+  });
 
   return (
     <>
       <div className="mb-4 flex items-center justify-between">
-        <div className="flex gap-3">
+        <div className="flex gap-2">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="搜尋個案或心理師…"
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm w-48"
+          />
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
@@ -889,9 +883,9 @@ function AppointmentsTab({ token, userRole }: { token: string; userRole: string 
           <tbody className="divide-y divide-gray-200">
             {loading ? (
               <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">載入中...</td></tr>
-            ) : appointments.length === 0 ? (
-              <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">尚無預約資料</td></tr>
-            ) : appointments.map((a) => {
+            ) : filtered.length === 0 ? (
+              <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">{search ? "找不到符合的預約" : "尚無預約資料"}</td></tr>
+            ) : filtered.map((a) => {
               const c = casesMap[a.case_id];
               return (
                 <tr key={a.id} className="hover:bg-gray-50">
@@ -976,6 +970,12 @@ function CaseForm({
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [showClosure, setShowClosure] = useState(false);
+  const [closurePassword, setClosurePassword] = useState("");
+  const [closureReason, setClosureReason] = useState("");
+
+  const isClosing = isEditing && showClosure && editingCase!.status !== "closed";
+  const isReopening = isEditing && showClosure && editingCase!.status === "closed";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1005,10 +1005,31 @@ function CaseForm({
       if (isEditing) {
         body.status = form.status;
         if (form.national_id) body.national_id = form.national_id;
-        await clientFetch(`/cases/${editingCase.id}`, token, { method: "PUT", body: JSON.stringify(body) });
+        await clientFetch(`/cases/${editingCase!.id}`, token, { method: "PUT", body: JSON.stringify(body) });
       } else {
         if (form.national_id) body.national_id = form.national_id;
         await clientFetch("/cases", token, { method: "POST", body: JSON.stringify(body) });
+      }
+      onSaved();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleClosure = async () => {
+    if (!showClosure) { setShowClosure(true); return; }
+    if (!closurePassword) { setError("請輸入您的登入密碼"); return; }
+    setSaving(true);
+    setError("");
+    try {
+      if (isClosing) {
+        const body: any = { password: closurePassword };
+        if (closureReason) body.reason = closureReason;
+        await clientFetch(`/cases/${editingCase!.id}/close`, token, { method: "POST", body: JSON.stringify(body) });
+      } else {
+        await clientFetch(`/cases/${editingCase!.id}/reopen`, token, { method: "POST", body: JSON.stringify({ password: closurePassword }) });
       }
       onSaved();
     } catch (e: any) {
@@ -1142,9 +1163,13 @@ function CaseForm({
                 </label>
                 <label className="block">
                   <span className="mb-1 block text-xs text-gray-500">狀態</span>
-                  <select value={form.status} onChange={(e) => sf("status", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
-                    {Object.entries(statusLabels).filter(([k]) => k !== "initial").map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                  </select>
+                  {editingCase!.status === "closed" ? (
+                    <div className="flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-400">已結案（可由右下「復案」變更）</div>
+                  ) : (
+                    <select value={form.status} onChange={(e) => sf("status", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                      {Object.entries(statusLabels).filter(([k]) => k !== "initial" && k !== "closed").map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    </select>
+                  )}
                 </label>
               </div>
             </>
@@ -1153,11 +1178,80 @@ function CaseForm({
             <span className="mb-1 block text-xs text-gray-500">備註</span>
             <textarea value={form.notes} onChange={(e) => sf("notes", e.target.value)} rows={2} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
           </label>
+
+          {/* === 結案操作區（選「結案」時出現）=== */}
+          {isClosing && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3 space-y-2">
+              <p className="text-xs font-semibold text-red-700">⚠️ 結案後將執行：</p>
+              <ul className="list-disc pl-4 text-xs text-red-600 space-y-0.5">
+                <li>個案標記為結案，從預約／個案名單預設隱藏</li>
+                <li>取消所有未來預約</li>
+                <li>機構額度歸零（保留歷史用量紀錄）</li>
+              </ul>
+              <p className="text-xs text-red-600">所有過往資料完整保留，可隨時復案恢復。</p>
+              <label className="block">
+                <span className="mb-1 block text-xs text-gray-600">結案原因（選填）</span>
+                <input
+                  value={closureReason}
+                  onChange={(e) => setClosureReason(e.target.value)}
+                  placeholder="例：流失、長期未派案"
+                  className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs text-gray-600">您的登入密碼 <span className="text-red-500">*</span></span>
+                <input
+                  type="password"
+                  value={closurePassword}
+                  onChange={(e) => setClosurePassword(e.target.value)}
+                  className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm"
+                />
+              </label>
+            </div>
+          )}
+
+          {/* === 復案操作區（已結案個案更改狀態時出現）=== */}
+          {isReopening && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2">
+              <p className="text-xs font-semibold text-emerald-700">復案後個案恢復為「進行中」，可重新編輯與建立新預約。</p>
+              <p className="text-xs text-emerald-600">已取消的舊預約與已歸零的額度不會自動還原。</p>
+              <label className="block">
+                <span className="mb-1 block text-xs text-gray-600">您的登入密碼 <span className="text-red-500">*</span></span>
+                <input
+                  type="password"
+                  value={closurePassword}
+                  onChange={(e) => setClosurePassword(e.target.value)}
+                  className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm"
+                />
+              </label>
+            </div>
+          )}
+
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">取消</button>
             <button type="submit" disabled={saving} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">
-              {saving ? "儲存中..." : "儲存"}
+              {saving && !showClosure ? "儲存中..." : "儲存"}
             </button>
+            {isEditing && editingCase!.status !== "closed" && (
+              <button
+                type="button"
+                disabled={saving}
+                onClick={handleClosure}
+                className={`rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 ${showClosure ? "bg-red-600 text-white hover:bg-red-700" : "border border-red-300 text-red-600 hover:bg-red-50"}`}
+              >
+                {saving && showClosure ? "處理中..." : showClosure ? "確認結案" : "結案"}
+              </button>
+            )}
+            {isEditing && editingCase!.status === "closed" && (
+              <button
+                type="button"
+                disabled={saving}
+                onClick={handleClosure}
+                className={`rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 ${showClosure ? "bg-emerald-600 text-white hover:bg-emerald-700" : "border border-emerald-300 text-emerald-600 hover:bg-emerald-50"}`}
+              >
+                {saving && showClosure ? "處理中..." : showClosure ? "確認復案" : "復案"}
+              </button>
+            )}
           </div>
         </form>
       </div>
@@ -2710,11 +2804,6 @@ function TemplatesSection({
                                 編輯
                               </button>
                             )}
-                            {canWrite && (
-                              <button onClick={() => handleDelete(t.id)} className="text-xs text-red-500 hover:underline">
-                                刪除
-                              </button>
-                            )}
                           </div>
                         </td>
                       </tr>
@@ -2734,6 +2823,7 @@ function TemplatesSection({
           editing={editingTpl}
           onClose={() => setShowForm(false)}
           onSaved={() => { setShowForm(false); fetchTemplates(); }}
+          onDeleted={() => { setShowForm(false); fetchTemplates(); }}
         />
       )}
 
@@ -2751,13 +2841,14 @@ function TemplatesSection({
 }
 
 function TemplateFormModal({
-  token, institutions, editing, onClose, onSaved,
+  token, institutions, editing, onClose, onSaved, onDeleted,
 }: {
   token: string;
   institutions: InstitutionItem[];
   editing: QuotaTemplate | null;
   onClose: () => void;
   onSaved: () => void;
+  onDeleted: () => void;
 }) {
   const [institutionId, setInstitutionId] = useState<number | "">(editing?.institution_id ?? "");
   const [name, setName] = useState(editing?.name ?? "");
@@ -2899,6 +2990,26 @@ function TemplateFormModal({
           >
             {submitting ? "儲存中..." : "儲存範本"}
           </button>
+          {editing && (
+            <button
+              onClick={async () => {
+                if (!confirm("確定刪除此範本？")) return;
+                setSubmitting(true);
+                try {
+                  await clientFetch(`/quota-templates/${editing.id}`, token, { method: "DELETE" });
+                  onDeleted();
+                } catch (e: any) {
+                  setError(e.message ?? "刪除失敗");
+                } finally {
+                  setSubmitting(false);
+                }
+              }}
+              disabled={submitting}
+              className="rounded border border-red-300 px-4 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+            >
+              刪除
+            </button>
+          )}
         </div>
       </div>
     </div>
