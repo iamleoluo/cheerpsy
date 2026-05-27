@@ -128,6 +128,7 @@ interface LedgerRecord {
   is_void: boolean;
   claim_batch_id: number | null;
   claim_batch_number: string | null;
+  billing_cycle: string | null;
 }
 
 const SESSION_TYPE_LABELS: Record<string, string> = {
