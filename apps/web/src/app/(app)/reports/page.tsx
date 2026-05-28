@@ -1,9 +1,22 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch, exportCsv } from "@/lib/client-api";
 import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
+import {
+  Chart as ChartJS,
+  ArcElement,
+  BarElement,
+  CategoryScale,
+  LinearScale,
+  Tooltip,
+  Legend,
+  Title,
+} from "chart.js";
+import { Bar, Doughnut } from "react-chartjs-2";
+
+ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, Tooltip, Legend, Title);
 
 const helpContent: HelpContent = {
   title: "營運報表",
@@ -60,7 +73,7 @@ const helpContent: HelpContent = {
 export default function ReportsPage() {
   const { data: session } = useSession();
   const token = (session?.user as any)?.accessToken;
-  const [outerTab, setOuterTab] = useState<"operations" | "finance">("operations");
+  const [outerTab, setOuterTab] = useState<"operations" | "finance" | "charts">("operations");
   const [helpOpen, setHelpOpen] = useState(false);
 
   if (!token) return <p>Loading...</p>;
@@ -81,6 +94,7 @@ export default function ReportsPage() {
           [
             ["operations", "📊 營運報表"],
             ["finance", "💰 財務報表"],
+            ["charts", "📈 圖表"],
           ] as const
         ).map(([key, label]) => (
           <button
@@ -99,6 +113,305 @@ export default function ReportsPage() {
 
       {outerTab === "operations" && <OperationsSection token={token} />}
       {outerTab === "finance" && <FinanceSection token={token} />}
+      {outerTab === "charts" && <ChartsView token={token} />}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════
+   圖表總覽
+   ═══════════════════════════════════════════════ */
+
+const CHART_OPTIONS = [
+  { id: "intake_source",    label: "進案來源分布",   source: "intake"    },
+  { id: "intake_therapist", label: "各心理師進案量", source: "intake"    },
+  { id: "intake_inst",      label: "各機構進案量",   source: "intake"    },
+  { id: "room_usage",       label: "診間使用率",     source: "room"      },
+  { id: "hourly",           label: "預約時段分布",   source: "room"      },
+  { id: "therapist_cases",  label: "心理師接案量",   source: "therapist" },
+  { id: "therapist_rev",    label: "心理師當月營收", source: "therapist" },
+  { id: "session_type",     label: "諮商類型分布",   source: "monthly"   },
+  { id: "monthly_pnl",      label: "月度損益",       source: "monthly"   },
+] as const;
+
+type ChartId = typeof CHART_OPTIONS[number]["id"];
+type DataSource = typeof CHART_OPTIONS[number]["source"];
+
+const PALETTE = [
+  "#6366f1","#22c55e","#f59e0b","#ef4444","#14b8a6",
+  "#a855f7","#ec4899","#0ea5e9","#f97316","#84cc16",
+  "#64748b","#06b6d4","#d946ef","#eab308","#10b981",
+];
+
+function ChartsView({ token }: { token: string }) {
+  const now = new Date();
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [chartId, setChartId] = useState<ChartId>("intake_source");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  // cached data per source
+  const [intakeData, setIntakeData] = useState<IntakeData | null>(null);
+  const [roomData, setRoomData] = useState<RoomUtilizationData | null>(null);
+  const [therapistData, setTherapistData] = useState<TherapistLoadData | null>(null);
+  const [monthlyData, setMonthlyData] = useState<ReportData | null>(null);
+
+  const chartRef = useRef<ChartJS<"bar"> | ChartJS<"doughnut"> | any>(null);
+
+  const currentSource = CHART_OPTIONS.find((o) => o.id === chartId)?.source ?? "intake";
+
+  const fetchSource = useCallback(async (src: DataSource) => {
+    const qs = `?year=${year}&month=${month}`;
+    const url: Record<DataSource, string> = {
+      intake:    `/reports/intake${qs}`,
+      room:      `/reports/room-utilization${qs}`,
+      therapist: `/reports/therapist-load${qs}`,
+      monthly:   `/reports/monthly${qs}`,
+    };
+    setLoading(true);
+    setError("");
+    try {
+      const d = await clientFetch(url[src], token);
+      if (src === "intake")    setIntakeData(d);
+      if (src === "room")      setRoomData(d);
+      if (src === "therapist") setTherapistData(d);
+      if (src === "monthly")   setMonthlyData(d);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [token, year, month]);
+
+  // fetch current source on mount / when year/month/chartId changes
+  useEffect(() => { fetchSource(currentSource); }, [fetchSource, currentSource]);
+
+  const handleDownload = () => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const url = chart.toBase64Image("image/png", 1.0);
+    const label = CHART_OPTIONS.find((o) => o.id === chartId)?.label ?? "chart";
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${label}_${year}${String(month).padStart(2, "0")}.png`;
+    a.click();
+  };
+
+  // ── build chart config ──────────────────────────────────────────────────
+  type ChartConfig = { type: "bar" | "doughnut"; data: any; options: any } | null;
+
+  const chartConfig = ((): ChartConfig => {
+    const baseBar = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        title: { display: false },
+        tooltip: { callbacks: {} },
+      },
+      scales: {
+        y: { beginAtZero: true, ticks: { precision: 0 } },
+      },
+    };
+
+    if (chartId === "intake_source" && intakeData) {
+      const s = intakeData.summary;
+      return {
+        type: "doughnut",
+        data: {
+          labels: ["機構成人", "機構兒青", "自費成人", "自費兒青"],
+          datasets: [{ data: [s.institution_adult, s.institution_child, s.self_pay_adult, s.self_pay_child], backgroundColor: PALETTE.slice(0, 4), borderWidth: 2 }],
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom" } } },
+      };
+    }
+
+    if (chartId === "intake_therapist" && intakeData) {
+      const rows = intakeData.by_therapist.slice(0, 15);
+      return {
+        type: "bar",
+        data: {
+          labels: rows.map((r) => r.therapist_name),
+          datasets: [
+            { label: "機構成人", data: rows.map((r) => r.institution_adult), backgroundColor: "#6366f1" },
+            { label: "機構兒青", data: rows.map((r) => r.institution_child), backgroundColor: "#a855f7" },
+            { label: "自費成人", data: rows.map((r) => r.self_pay_adult), backgroundColor: "#22c55e" },
+            { label: "自費兒青", data: rows.map((r) => r.self_pay_child), backgroundColor: "#86efac" },
+          ],
+        },
+        options: { ...baseBar, plugins: { ...baseBar.plugins, legend: { display: true, position: "top" } }, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } } } },
+      };
+    }
+
+    if (chartId === "intake_inst" && intakeData) {
+      const rows = intakeData.by_institution;
+      if (rows.length === 0) return null;
+      return {
+        type: "bar",
+        data: {
+          labels: rows.map((r) => r.institution_name),
+          datasets: [
+            { label: "成人", data: rows.map((r) => r.adult), backgroundColor: "#6366f1" },
+            { label: "兒青", data: rows.map((r) => r.child), backgroundColor: "#f59e0b" },
+          ],
+        },
+        options: { ...baseBar, plugins: { ...baseBar.plugins, legend: { display: true, position: "top" } }, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } } } },
+      };
+    }
+
+    if (chartId === "room_usage" && roomData) {
+      const rooms = roomData.rooms.filter((r) => r.appointment_count > 0);
+      return {
+        type: "bar",
+        data: {
+          labels: rooms.map((r) => r.room_name),
+          datasets: [{ label: "使用時數（h）", data: rooms.map((r) => r.used_hours), backgroundColor: PALETTE.slice(0, rooms.length), borderRadius: 4 }],
+        },
+        options: { ...baseBar, scales: { y: { beginAtZero: true, title: { display: true, text: "小時" } } } },
+      };
+    }
+
+    if (chartId === "hourly" && roomData) {
+      const dist = roomData.hourly_distribution;
+      const labels = Object.keys(dist).map((h) => `${h}:00`);
+      const vals = Object.values(dist);
+      return {
+        type: "bar",
+        data: {
+          labels,
+          datasets: [{ label: "預約次數", data: vals, backgroundColor: "#6366f1", borderRadius: 4 }],
+        },
+        options: { ...baseBar, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } },
+      };
+    }
+
+    if (chartId === "therapist_cases" && therapistData) {
+      const rows = therapistData.therapists.filter((t) => t.active_cases > 0);
+      return {
+        type: "bar",
+        data: {
+          labels: rows.map((t) => t.therapist_name),
+          datasets: [{ label: "進行中個案數", data: rows.map((t) => t.active_cases), backgroundColor: "#22c55e", borderRadius: 4 }],
+        },
+        options: { ...baseBar },
+      };
+    }
+
+    if (chartId === "therapist_rev" && therapistData) {
+      const rows = therapistData.therapists.filter((t) => t.sessions_this_month > 0);
+      return {
+        type: "bar",
+        data: {
+          labels: rows.map((t) => t.therapist_name),
+          datasets: [{ label: "當月營收（元）", data: rows.map((t) => t.revenue_this_month), backgroundColor: "#f59e0b", borderRadius: 4 }],
+        },
+        options: {
+          ...baseBar,
+          scales: { y: { beginAtZero: true, ticks: { callback: (v: number) => `$${v.toLocaleString()}` } } },
+          plugins: { ...baseBar.plugins, tooltip: { callbacks: { label: (ctx: any) => `$${Number(ctx.raw).toLocaleString()}` } } },
+        },
+      };
+    }
+
+    if (chartId === "session_type" && monthlyData) {
+      const bd = monthlyData.session_type_breakdown;
+      const labels = Object.keys(bd).map((k) => ({ in_person: "現場", online: "線上", outdoor: "外出" }[k] ?? k));
+      return {
+        type: "doughnut",
+        data: {
+          labels,
+          datasets: [{ data: Object.values(bd).map((v) => v.count), backgroundColor: ["#6366f1","#22c55e","#f59e0b"], borderWidth: 2 }],
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom" } } },
+      };
+    }
+
+    if (chartId === "monthly_pnl" && monthlyData) {
+      const p = monthlyData.pnl;
+      return {
+        type: "bar",
+        data: {
+          labels: ["總營收", "心理師成本", "診所毛利", "零用金支出", "淨收入"],
+          datasets: [{
+            label: "金額（元）",
+            data: [p.gross_revenue, p.therapist_cost, p.clinic_gross, p.petty_cash_expense, p.net_income],
+            backgroundColor: ["#6366f1","#ef4444","#22c55e","#f59e0b","#14b8a6"],
+            borderRadius: 4,
+          }],
+        },
+        options: {
+          ...baseBar,
+          scales: { y: { beginAtZero: true, ticks: { callback: (v: number) => `$${v.toLocaleString()}` } } },
+          plugins: { ...baseBar.plugins, legend: { display: false }, tooltip: { callbacks: { label: (ctx: any) => `$${Number(ctx.raw).toLocaleString()}` } } },
+        },
+      };
+    }
+
+    return null;
+  })();
+
+  const isReady = !loading && chartConfig !== null;
+
+  return (
+    <div>
+      {/* Controls */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <select value={year} onChange={(e) => setYear(parseInt(e.target.value))} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+          {[2024, 2025, 2026, 2027].map((y) => <option key={y} value={y}>{y} 年</option>)}
+        </select>
+        <select value={month} onChange={(e) => setMonth(parseInt(e.target.value))} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+          {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => <option key={m} value={m}>{m} 月</option>)}
+        </select>
+        {isReady && (
+          <button
+            onClick={handleDownload}
+            className="ml-auto flex items-center gap-1.5 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
+          >
+            ⬇️ 下載圖片
+          </button>
+        )}
+      </div>
+
+      {/* Chart type chips */}
+      <div className="mb-5 flex flex-wrap gap-2">
+        {CHART_OPTIONS.map((opt) => (
+          <button
+            key={opt.id}
+            onClick={() => setChartId(opt.id)}
+            className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors ${
+              chartId === opt.id
+                ? "bg-primary-600 text-white shadow-sm"
+                : "border border-gray-200 bg-white text-gray-600 hover:border-primary-300 hover:text-primary-700"
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
+      {error && <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</div>}
+
+      {/* Chart area */}
+      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <h3 className="mb-4 text-base font-semibold text-gray-700">
+          {CHART_OPTIONS.find((o) => o.id === chartId)?.label} — {year} 年 {month} 月
+        </h3>
+
+        {loading ? (
+          <div className="flex h-72 items-center justify-center text-gray-400">載入中...</div>
+        ) : !chartConfig ? (
+          <div className="flex h-72 items-center justify-center text-gray-400">本月無資料</div>
+        ) : (
+          <div className="relative h-80">
+            {chartConfig.type === "doughnut" ? (
+              <Doughnut ref={chartRef} data={chartConfig.data} options={chartConfig.options} />
+            ) : (
+              <Bar ref={chartRef} data={chartConfig.data} options={chartConfig.options} />
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
