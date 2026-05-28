@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Date, DateTime, ForeignKey, Integer, LargeBinary, Sequence, String, Text
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, LargeBinary, Sequence, String, Text
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -38,6 +38,7 @@ class Case(Base):
     closure_reason = Column(String(500), nullable=True)
     reopened_at = Column(DateTime(timezone=True), nullable=True)
     reopened_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    is_designated = Column(Boolean, nullable=False, default=False, server_default="false")
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
 
     therapist = relationship("User", back_populates="cases", foreign_keys=[therapist_id])

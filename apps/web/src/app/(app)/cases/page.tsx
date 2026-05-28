@@ -89,6 +89,7 @@ interface CaseItem {
   therapist_name: string | null;
   status: string;
   billing_cycle: string | null;
+  is_designated: boolean;
   notes: string | null;
   closed_at: string | null;
   closure_reason: string | null;
@@ -966,6 +967,7 @@ function CaseForm({
     session_location: editingCase?.session_location ?? "",
     national_id: "",
     status: editingCase?.status ?? "initial",
+    is_designated: editingCase?.is_designated ?? false,
     notes: editingCase?.notes ?? "",
   });
   const [saving, setSaving] = useState(false);
@@ -1000,6 +1002,7 @@ function CaseForm({
         billing_cycle: form.billing_cycle,
         referral_source: form.referral_source || null,
         session_location: form.session_location || null,
+        is_designated: form.is_designated,
         notes: form.notes || null,
       };
       if (isEditing) {
@@ -1085,6 +1088,17 @@ function CaseForm({
                 <option value="multiple">多次結</option>
               </select>
             </label>
+            <div className="flex items-end pb-1">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.is_designated}
+                  onChange={(e) => setForm((prev) => ({ ...prev, is_designated: e.target.checked }))}
+                  className="h-4 w-4 rounded border-gray-300 text-primary-600"
+                />
+                <span className="text-sm text-gray-700">指定心理師</span>
+              </label>
+            </div>
           </div>
 
           {/* === 完整資料（編輯時顯示，用於轉正式前補填）=== */}

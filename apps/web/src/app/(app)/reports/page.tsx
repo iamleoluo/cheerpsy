@@ -14,11 +14,21 @@ const helpContent: HelpContent = {
       heading: "查看月報表",
       type: "steps",
       items: [
-        "進入「營運報表 → 月報表」",
+        "進入「財務報表 → 月報表」",
         "選擇要查看的年月（預設當月）",
         "查看：諮商總收入、心理師酬勞支出、診所毛利（30%）、零用金支出、淨收益",
         "確認目前機構墊付金額（機構未到款、診所已支付酬勞的部分）",
         "可匯出 CSV 供外部財務系統使用",
+      ],
+    },
+    {
+      heading: "進案統計",
+      type: "steps",
+      items: [
+        "進入「營運報表 → 進案統計」",
+        "選擇要查看的年月",
+        "點「產生報表」查看該月新進案概況",
+        "可匯出 Excel 供進一步分析",
       ],
     },
     {
@@ -30,24 +40,16 @@ const helpContent: HelpContent = {
         "診所毛利：診所應得的場地與行政費用（總收入 × 診所比例加總）",
         "零用金支出：當月記錄的所有雜項支出",
         "淨收益：診所毛利 − 零用金支出",
-        "目前墊付金額：機構核銷案尚未結案、診所已付酬勞的金額",
+        "新進案定義：已轉正式（有正式案號）且完成第一次諮商的個案，以第一次諮商月份計算",
+        "兒青定義：第一次諮商時未滿 18 歲",
       ],
     },
     {
       heading: "流失預警",
       type: "text",
       items: [
-        "「流失預警」頁籤顯示超過 60 天未回診的進行中個案",
-        "可依心理師篩選，追蹤哪些個案需要主動聯繫",
-      ],
-    },
-    {
-      heading: "管理員提示",
-      type: "notes",
-      items: [
-        "報表即時反映帳冊狀態，帳冊更新後報表立即反映",
-        "墊付金額高代表機構款項積壓，需追蹤核銷案請款進度",
-        "月結產生後再查月報，數字更準確（避免酬勞未計入）",
+        "「流失預警」頁籤顯示超過指定天數未回診的進行中個案",
+        "可依天數篩選，追蹤哪些個案需要主動聯繫",
       ],
     },
   ],
@@ -58,7 +60,7 @@ const helpContent: HelpContent = {
 export default function ReportsPage() {
   const { data: session } = useSession();
   const token = (session?.user as any)?.accessToken;
-  const [tab, setTab] = useState<"monthly" | "churn">("monthly");
+  const [outerTab, setOuterTab] = useState<"operations" | "finance">("operations");
   const [helpOpen, setHelpOpen] = useState(false);
 
   if (!token) return <p>Loading...</p>;
@@ -67,13 +69,96 @@ export default function ReportsPage() {
     <div>
       <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} guideId="reports" />
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">營運報表</h1>
+        <h1 className="text-2xl font-bold">報表</h1>
         <button onClick={() => setHelpOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700">
           <span>ℹ️</span> 說明
         </button>
       </div>
 
+      {/* Outer tabs */}
       <div className="mb-4 flex gap-1 border-b border-gray-200">
+        {(
+          [
+            ["operations", "📊 營運報表"],
+            ["finance", "💰 財務報表"],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setOuterTab(key)}
+            className={`px-4 py-2.5 text-sm font-medium transition-colors ${
+              outerTab === key
+                ? "border-b-2 border-primary-600 text-primary-700"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {outerTab === "operations" && <OperationsSection token={token} />}
+      {outerTab === "finance" && <FinanceSection token={token} />}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════
+   營運報表 section
+   ═══════════════════════════════════════════════ */
+
+function OperationsSection({ token }: { token: string }) {
+  const [tab, setTab] = useState<"intake" | "space" | "therapist_load">("intake");
+
+  return (
+    <div>
+      <div className="mb-4 flex gap-1 border-b border-gray-100">
+        {(
+          [
+            ["intake", "進案統計"],
+            ["space", "空間利用率"],
+            ["therapist_load", "心理師接案量"],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className={`px-4 py-2 text-sm font-medium transition-colors ${
+              tab === key
+                ? "border-b-2 border-primary-500 text-primary-600"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "intake" && <IntakeStatsTab token={token} />}
+      {tab === "space" && <PlaceholderTab title="空間利用率" />}
+      {tab === "therapist_load" && <PlaceholderTab title="心理師接案量" />}
+    </div>
+  );
+}
+
+function PlaceholderTab({ title }: { title: string }) {
+  return (
+    <div className="rounded-lg border border-dashed border-gray-300 p-16 text-center text-gray-400">
+      {title}功能開發中
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════
+   財務報表 section
+   ═══════════════════════════════════════════════ */
+
+function FinanceSection({ token }: { token: string }) {
+  const [tab, setTab] = useState<"monthly" | "churn">("monthly");
+
+  return (
+    <div>
+      <div className="mb-4 flex gap-1 border-b border-gray-100">
         {(
           [
             ["monthly", "月報表"],
@@ -85,7 +170,7 @@ export default function ReportsPage() {
             onClick={() => setTab(key)}
             className={`px-4 py-2 text-sm font-medium transition-colors ${
               tab === key
-                ? "border-b-2 border-primary-600 text-primary-600"
+                ? "border-b-2 border-primary-500 text-primary-600"
                 : "text-gray-500 hover:text-gray-700"
             }`}
           >
@@ -94,13 +179,332 @@ export default function ReportsPage() {
         ))}
       </div>
 
-      {tab === "monthly" ? <MonthlyReportTab token={token} /> : <ChurnTab token={token} />}
+      {tab === "monthly" && <MonthlyReportTab token={token} />}
+      {tab === "churn" && <ChurnTab token={token} />}
     </div>
   );
 }
 
 /* ═══════════════════════════════════════════════
-   Tab 1 — 月報表
+   進案統計 Tab
+   ═══════════════════════════════════════════════ */
+
+interface IntakeSummary {
+  institution_adult: number;
+  institution_child: number;
+  self_pay_adult: number;
+  self_pay_child: number;
+  total: number;
+}
+
+interface IntakeTherapistRow {
+  therapist_name: string;
+  institution_adult: number;
+  institution_child: number;
+  self_pay_adult: number;
+  self_pay_child: number;
+  designated_institution_adult: number;
+  designated_institution_child: number;
+  designated_self_pay_adult: number;
+  designated_self_pay_child: number;
+  total: number;
+}
+
+interface IntakeInstitutionRow {
+  institution_name: string;
+  adult: number;
+  child: number;
+  total: number;
+}
+
+interface IntakeCaseRow {
+  case_number: string | null;
+  name: string;
+  funding_source: string;
+  age_group: string;
+  therapist_name: string;
+  institution_name: string | null;
+  is_designated: boolean;
+  first_session_date: string | null;
+}
+
+interface IntakeData {
+  year: number;
+  month: number;
+  summary: IntakeSummary;
+  by_therapist: IntakeTherapistRow[];
+  by_institution: IntakeInstitutionRow[];
+  cases: IntakeCaseRow[];
+}
+
+function IntakeStatsTab({ token }: { token: string }) {
+  const now = new Date();
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [data, setData] = useState<IntakeData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [error, setError] = useState("");
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const d = await clientFetch(`/reports/intake?year=${year}&month=${month}`, token);
+      setData(d);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [token, year, month]);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+      const res = await fetch(
+        `${apiBase}/reports/intake/export?year=${year}&month=${month}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!res.ok) throw new Error("匯出失敗");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `intake_${year}${String(month).padStart(2, "0")}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  return (
+    <div>
+      {/* Controls */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <select
+          value={year}
+          onChange={(e) => setYear(parseInt(e.target.value))}
+          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        >
+          {[2024, 2025, 2026, 2027].map((y) => (
+            <option key={y} value={y}>{y} 年</option>
+          ))}
+        </select>
+        <select
+          value={month}
+          onChange={(e) => setMonth(parseInt(e.target.value))}
+          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        >
+          {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+            <option key={m} value={m}>{m} 月</option>
+          ))}
+        </select>
+        <button
+          onClick={fetchData}
+          disabled={loading}
+          className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+        >
+          {loading ? "載入中..." : "產生報表"}
+        </button>
+        {data && (
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+          >
+            {exporting ? "匯出中..." : "📥 匯出 Excel"}
+          </button>
+        )}
+      </div>
+
+      {error && <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</div>}
+
+      {!data ? (
+        <div className="rounded-lg border border-dashed border-gray-300 p-16 text-center text-gray-400">
+          選擇年月後點擊「產生報表」
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {/* Summary cards */}
+          <div>
+            <h2 className="mb-3 text-base font-semibold text-gray-700">
+              {data.year} 年 {data.month} 月 新進案摘要（共 {data.summary.total} 案）
+            </h2>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <IntakeSummaryCard
+                label="機構成人"
+                value={data.summary.institution_adult}
+                color="blue"
+              />
+              <IntakeSummaryCard
+                label="機構兒青"
+                value={data.summary.institution_child}
+                color="blue"
+              />
+              <IntakeSummaryCard
+                label="自費成人"
+                value={data.summary.self_pay_adult}
+                color="emerald"
+              />
+              <IntakeSummaryCard
+                label="自費兒青"
+                value={data.summary.self_pay_child}
+                color="emerald"
+              />
+            </div>
+          </div>
+
+          {/* By therapist */}
+          <div>
+            <h2 className="mb-3 text-base font-semibold text-gray-700">各心理師進案量</h2>
+            {data.by_therapist.length === 0 ? (
+              <p className="text-sm text-gray-400">無資料</p>
+            ) : (
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-gray-50 text-xs text-gray-500">
+                    <tr>
+                      <th className="px-3 py-2.5 font-semibold">心理師</th>
+                      <th className="px-3 py-2.5 text-center font-semibold" colSpan={4}>進案數</th>
+                      <th className="px-3 py-2.5 text-center font-semibold" colSpan={4}>其中 — 指定</th>
+                      <th className="px-3 py-2.5 text-right font-semibold">合計</th>
+                    </tr>
+                    <tr className="text-xs text-gray-400">
+                      <th className="px-3 pb-2"></th>
+                      <th className="px-2 pb-2 text-center">機構成人</th>
+                      <th className="px-2 pb-2 text-center">機構兒青</th>
+                      <th className="px-2 pb-2 text-center">自費成人</th>
+                      <th className="px-2 pb-2 text-center">自費兒青</th>
+                      <th className="px-2 pb-2 text-center">機構成人</th>
+                      <th className="px-2 pb-2 text-center">機構兒青</th>
+                      <th className="px-2 pb-2 text-center">自費成人</th>
+                      <th className="px-2 pb-2 text-center">自費兒青</th>
+                      <th className="px-3 pb-2 text-right"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {data.by_therapist.map((row, idx) => (
+                      <tr key={idx} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 font-medium">{row.therapist_name}</td>
+                        <td className="px-2 py-2 text-center">{row.institution_adult || "—"}</td>
+                        <td className="px-2 py-2 text-center">{row.institution_child || "—"}</td>
+                        <td className="px-2 py-2 text-center">{row.self_pay_adult || "—"}</td>
+                        <td className="px-2 py-2 text-center">{row.self_pay_child || "—"}</td>
+                        <td className="px-2 py-2 text-center text-violet-600">{row.designated_institution_adult || "—"}</td>
+                        <td className="px-2 py-2 text-center text-violet-600">{row.designated_institution_child || "—"}</td>
+                        <td className="px-2 py-2 text-center text-violet-600">{row.designated_self_pay_adult || "—"}</td>
+                        <td className="px-2 py-2 text-center text-violet-600">{row.designated_self_pay_child || "—"}</td>
+                        <td className="px-3 py-2 text-right font-bold">{row.total}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* By institution */}
+          {data.by_institution.length > 0 && (
+            <div>
+              <h2 className="mb-3 text-base font-semibold text-gray-700">各機構進案量</h2>
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-gray-50 text-xs text-gray-500">
+                    <tr>
+                      <th className="px-4 py-2.5 font-semibold">機構名稱</th>
+                      <th className="px-4 py-2.5 text-center font-semibold">成人</th>
+                      <th className="px-4 py-2.5 text-center font-semibold">兒青（&lt;18）</th>
+                      <th className="px-4 py-2.5 text-right font-semibold">合計</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {data.by_institution.map((row, idx) => (
+                      <tr key={idx} className="hover:bg-gray-50">
+                        <td className="px-4 py-2.5 font-medium">{row.institution_name}</td>
+                        <td className="px-4 py-2.5 text-center">{row.adult}</td>
+                        <td className="px-4 py-2.5 text-center">{row.child}</td>
+                        <td className="px-4 py-2.5 text-right font-bold">{row.total}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Case list */}
+          {data.cases.length > 0 && (
+            <div>
+              <h2 className="mb-3 text-base font-semibold text-gray-700">新進個案清單</h2>
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-gray-50 text-xs text-gray-500">
+                    <tr>
+                      <th className="px-3 py-2.5 font-semibold">案號</th>
+                      <th className="px-3 py-2.5 font-semibold">姓名</th>
+                      <th className="px-3 py-2.5 font-semibold">來源</th>
+                      <th className="px-3 py-2.5 font-semibold">年齡層</th>
+                      <th className="px-3 py-2.5 font-semibold">心理師</th>
+                      <th className="px-3 py-2.5 font-semibold">機構</th>
+                      <th className="px-3 py-2.5 font-semibold">指定</th>
+                      <th className="px-3 py-2.5 font-semibold">首次諮商</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {data.cases.map((c, idx) => (
+                      <tr key={idx} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 font-mono text-xs text-gray-500">{c.case_number ?? "—"}</td>
+                        <td className="px-3 py-2 font-medium">{c.name}</td>
+                        <td className="px-3 py-2 text-xs">
+                          <span className={`rounded px-1.5 py-0.5 ${c.funding_source === "institution" ? "bg-blue-100 text-blue-700" : "bg-emerald-100 text-emerald-700"}`}>
+                            {c.funding_source === "institution" ? "機構" : "自費"}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-xs">
+                          <span className={`rounded px-1.5 py-0.5 ${c.age_group === "child" ? "bg-orange-100 text-orange-700" : "bg-gray-100 text-gray-600"}`}>
+                            {c.age_group === "child" ? "兒青" : "成人"}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-sm">{c.therapist_name}</td>
+                        <td className="px-3 py-2 text-sm text-gray-500">{c.institution_name ?? "—"}</td>
+                        <td className="px-3 py-2 text-center">
+                          {c.is_designated ? <span className="text-violet-600" title="指定心理師">●</span> : <span className="text-gray-200">●</span>}
+                        </td>
+                        <td className="px-3 py-2 text-xs text-gray-500">{c.first_session_date ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function IntakeSummaryCard({ label, value, color }: { label: string; value: number; color: "blue" | "emerald" }) {
+  const colors = {
+    blue: "bg-blue-50 border-blue-200 text-blue-700",
+    emerald: "bg-emerald-50 border-emerald-200 text-emerald-700",
+  };
+  return (
+    <div className={`rounded-lg border p-4 ${colors[color]}`}>
+      <div className="text-xs font-medium opacity-75">{label}</div>
+      <div className="mt-1 text-3xl font-bold">{value}</div>
+      <div className="text-xs opacity-60">案</div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════
+   財務 — 月報表
    ═══════════════════════════════════════════════ */
 
 interface ReportData {
@@ -393,7 +797,7 @@ function MonthlyReportTab({ token }: { token: string }) {
 }
 
 /* ═══════════════════════════════════════════════
-   Tab 2 — 流失預警
+   財務 — 流失預警
    ═══════════════════════════════════════════════ */
 
 interface ChurnCase {

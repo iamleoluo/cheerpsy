@@ -1,11 +1,15 @@
+import io
 from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
 from sqlalchemy import extract, func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
-from app.auth.dependencies import RequireRole
+from app.auth.dependencies import RequireRole, get_current_user
 from app.database import get_db
 from app.models.appointment import Appointment
 from app.models.case import Case
@@ -295,3 +299,256 @@ def reconciliation_report(
         },
         "institutions": institution_summaries,
     }
+
+
+# ---------------------------------------------------------------------------
+# 進案統計 helpers
+# ---------------------------------------------------------------------------
+
+def _age_group(birth_date, case_age, ref_date: date) -> str:
+    """Return 'child' if age < 18 at ref_date, else 'adult'."""
+    if birth_date is not None:
+        age = (ref_date - birth_date).days // 365
+    elif case_age is not None:
+        age = case_age
+    else:
+        return "adult"
+    return "child" if age < 18 else "adult"
+
+
+def _intake_data(db: Session, year: int, month: int) -> dict:
+    """
+    Return structured intake statistics for the given year/month.
+    A "new intake" = activated case (has case_number) whose first non-voided
+    session falls in the specified month.
+    """
+    # Subquery: earliest session date per case (exclude voided)
+    first_sq = (
+        db.query(
+            SessionRecord.case_id.label("case_id"),
+            func.min(SessionRecord.session_date).label("first_date"),
+        )
+        .filter(SessionRecord.is_void.is_(False))
+        .group_by(SessionRecord.case_id)
+        .subquery()
+    )
+
+    # Cases whose first session is in the target month and are activated
+    rows = (
+        db.query(Case, first_sq.c.first_date)
+        .join(first_sq, Case.id == first_sq.c.case_id)
+        .filter(
+            extract("year", first_sq.c.first_date) == year,
+            extract("month", first_sq.c.first_date) == month,
+            Case.case_number.isnot(None),
+        )
+        .all()
+    )
+
+    # Eagerly load therapist / institution to avoid N+1
+    case_ids = [c.id for c, _ in rows]
+    if case_ids:
+        cases_with_relations = (
+            db.query(Case)
+            .options(joinedload(Case.therapist), joinedload(Case.institution))
+            .filter(Case.id.in_(case_ids))
+            .all()
+        )
+        case_map = {c.id: c for c in cases_with_relations}
+    else:
+        case_map = {}
+
+    therapist_map: dict[int, dict] = {}
+    institution_map: dict[str, dict] = {}
+    summary = {
+        "institution_adult": 0,
+        "institution_child": 0,
+        "self_pay_adult": 0,
+        "self_pay_child": 0,
+        "total": 0,
+    }
+    case_list = []
+
+    for c_stub, first_date in rows:
+        c = case_map.get(c_stub.id, c_stub)
+        ag = _age_group(c.birth_date, c.age, first_date)
+        funding = c.funding_source or "self_pay"
+        is_inst = funding == "institution"
+
+        therapist_name = c.therapist.name if c.therapist else "（未指定）"
+        therapist_id = c.therapist_id or 0
+        institution_name = c.institution.name if c.institution else None
+
+        # Summary
+        key = ("institution" if is_inst else "self_pay") + "_" + ag
+        summary[key] += 1
+        summary["total"] += 1
+
+        # By therapist
+        if therapist_id not in therapist_map:
+            therapist_map[therapist_id] = {
+                "therapist_name": therapist_name,
+                "institution_adult": 0,
+                "institution_child": 0,
+                "self_pay_adult": 0,
+                "self_pay_child": 0,
+                "designated_institution_adult": 0,
+                "designated_institution_child": 0,
+                "designated_self_pay_adult": 0,
+                "designated_self_pay_child": 0,
+                "total": 0,
+            }
+        td = therapist_map[therapist_id]
+        td[key] += 1
+        td["total"] += 1
+        if c.is_designated:
+            td["designated_" + key] += 1
+
+        # By institution
+        if is_inst and institution_name:
+            if institution_name not in institution_map:
+                institution_map[institution_name] = {"institution_name": institution_name, "adult": 0, "child": 0, "total": 0}
+            institution_map[institution_name][ag] += 1
+            institution_map[institution_name]["total"] += 1
+
+        case_list.append({
+            "case_number": c.case_number,
+            "name": c.name,
+            "funding_source": funding,
+            "age_group": ag,
+            "therapist_name": therapist_name,
+            "institution_name": institution_name,
+            "is_designated": c.is_designated,
+            "first_session_date": first_date.isoformat() if first_date else None,
+        })
+
+    by_therapist = sorted(therapist_map.values(), key=lambda x: x["total"], reverse=True)
+    by_institution = sorted(institution_map.values(), key=lambda x: x["total"], reverse=True)
+
+    return {
+        "year": year,
+        "month": month,
+        "summary": summary,
+        "by_therapist": by_therapist,
+        "by_institution": by_institution,
+        "cases": case_list,
+    }
+
+
+def _build_intake_excel(data: dict) -> io.BytesIO:
+    wb = Workbook()
+    header_font = Font(bold=True)
+    header_fill = PatternFill("solid", fgColor="DDEEFF")
+    center = Alignment(horizontal="center")
+
+    # ── Sheet 1: 摘要 ──────────────────────────────────────────────────────
+    ws1 = wb.active
+    ws1.title = "摘要"
+    year, month = data["year"], data["month"]
+    ws1["A1"] = f"{year}年{month}月 新進案統計摘要"
+    ws1["A1"].font = Font(bold=True, size=13)
+    ws1.merge_cells("A1:C1")
+
+    ws1.append([])
+    ws1.append(["類別", "成人", "兒青（<18歲）", "小計"])
+    for cell in ws1[ws1.max_row]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = center
+
+    s = data["summary"]
+    ws1.append(["機構案", s["institution_adult"], s["institution_child"],
+                s["institution_adult"] + s["institution_child"]])
+    ws1.append(["自費案", s["self_pay_adult"], s["self_pay_child"],
+                s["self_pay_adult"] + s["self_pay_child"]])
+    ws1.append(["合計",
+                s["institution_adult"] + s["self_pay_adult"],
+                s["institution_child"] + s["self_pay_child"],
+                s["total"]])
+    for cell in ws1[ws1.max_row]:
+        cell.font = Font(bold=True)
+
+    for col in ["A", "B", "C", "D"]:
+        ws1.column_dimensions[col].width = 18
+
+    # ── Sheet 2: 各心理師 ──────────────────────────────────────────────────
+    ws2 = wb.create_sheet("各心理師")
+    headers2 = [
+        "心理師",
+        "機構成人", "機構兒青",
+        "自費成人", "自費兒青",
+        "指定-機構成人", "指定-機構兒青",
+        "指定-自費成人", "指定-自費兒青",
+        "合計",
+    ]
+    ws2.append(headers2)
+    for cell in ws2[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = center
+
+    for row in data["by_therapist"]:
+        ws2.append([
+            row["therapist_name"],
+            row["institution_adult"], row["institution_child"],
+            row["self_pay_adult"], row["self_pay_child"],
+            row["designated_institution_adult"], row["designated_institution_child"],
+            row["designated_self_pay_adult"], row["designated_self_pay_child"],
+            row["total"],
+        ])
+
+    ws2.column_dimensions["A"].width = 20
+    for col in ["B", "C", "D", "E", "F", "G", "H", "I", "J"]:
+        ws2.column_dimensions[col].width = 14
+
+    # ── Sheet 3: 各機構 ────────────────────────────────────────────────────
+    ws3 = wb.create_sheet("各機構")
+    headers3 = ["機構名稱", "成人", "兒青（<18歲）", "合計"]
+    ws3.append(headers3)
+    for cell in ws3[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = center
+
+    for row in data["by_institution"]:
+        ws3.append([row["institution_name"], row["adult"], row["child"], row["total"]])
+
+    ws3.column_dimensions["A"].width = 24
+    for col in ["B", "C", "D"]:
+        ws3.column_dimensions[col].width = 16
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
+# ---------------------------------------------------------------------------
+# 進案統計 endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/intake")
+def get_intake_stats(
+    year: int = Query(...),
+    month: int = Query(...),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return _intake_data(db, year, month)
+
+
+@router.get("/intake/export")
+def export_intake_excel(
+    year: int = Query(...),
+    month: int = Query(...),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    data = _intake_data(db, year, month)
+    buf = _build_intake_excel(data)
+    filename = f"intake_{year}{month:02d}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

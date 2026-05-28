@@ -16,6 +16,7 @@ class CaseCreate(BaseModel):
     institution_id: int | None = None
     therapist_id: int
     billing_cycle: str = "once"
+    is_designated: bool = False
     notes: str | None = None
 
 
@@ -38,6 +39,7 @@ class CaseUpdate(BaseModel):
     therapist_id: int | None = None
     status: str | None = None
     billing_cycle: str | None = None
+    is_designated: bool | None = None
     notes: str | None = None
 
 
@@ -67,6 +69,7 @@ class CaseResponse(BaseModel):
     status: str
     billing_cycle: str | None = None
     has_national_id: bool = False
+    is_designated: bool = False
     notes: str | None = None
     closed_at: datetime | None = None
     closure_reason: str | None = None

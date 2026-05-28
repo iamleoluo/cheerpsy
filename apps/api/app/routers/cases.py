@@ -46,6 +46,7 @@ def _to_response(c: Case) -> CaseResponse:
         status=c.status,
         billing_cycle=c.billing_cycle,
         has_national_id=c.national_id_encrypted is not None,
+        is_designated=c.is_designated,
         notes=c.notes,
         closed_at=c.closed_at,
         closure_reason=c.closure_reason,
@@ -123,6 +124,7 @@ def create_case(
         institution_id=body.institution_id if body.funding_source == "institution" else None,
         therapist_id=body.therapist_id if user.role != "therapist" else user.id,
         billing_cycle=body.billing_cycle,
+        is_designated=body.is_designated,
         notes=body.notes,
         created_by=user.id,
     )
