@@ -242,7 +242,7 @@ function IntakeStatsTab({ token }: { token: string }) {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [data, setData] = useState<IntakeData | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState("");
 
@@ -258,6 +258,8 @@ function IntakeStatsTab({ token }: { token: string }) {
       setLoading(false);
     }
   }, [token, year, month]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   const handleExport = async () => {
     setExporting(true);
@@ -309,7 +311,7 @@ function IntakeStatsTab({ token }: { token: string }) {
           disabled={loading}
           className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
         >
-          {loading ? "載入中..." : "產生報表"}
+          {loading ? "載入中..." : "重新查詢"}
         </button>
         {data && (
           <button
@@ -324,9 +326,13 @@ function IntakeStatsTab({ token }: { token: string }) {
 
       {error && <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</div>}
 
-      {!data ? (
+      {loading ? (
         <div className="rounded-lg border border-dashed border-gray-300 p-16 text-center text-gray-400">
-          選擇年月後點擊「產生報表」
+          載入中...
+        </div>
+      ) : !data ? (
+        <div className="rounded-lg border border-dashed border-gray-300 p-16 text-center text-gray-400">
+          無資料
         </div>
       ) : (
         <div className="space-y-6">
@@ -576,7 +582,7 @@ function MonthlyReportTab({ token }: { token: string }) {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [report, setReport] = useState<ReportData | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   const fetchReport = useCallback(async () => {
@@ -591,6 +597,8 @@ function MonthlyReportTab({ token }: { token: string }) {
       setLoading(false);
     }
   }, [token, year, month]);
+
+  useEffect(() => { fetchReport(); }, [fetchReport]);
 
   return (
     <div>
@@ -622,7 +630,7 @@ function MonthlyReportTab({ token }: { token: string }) {
           disabled={loading}
           className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
         >
-          {loading ? "產生中..." : "產生報表"}
+          {loading ? "載入中..." : "重新查詢"}
         </button>
         <button
           onClick={() =>
@@ -636,9 +644,13 @@ function MonthlyReportTab({ token }: { token: string }) {
 
       {error && <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</div>}
 
-      {!report ? (
+      {loading ? (
         <div className="rounded-lg border border-dashed border-gray-300 p-16 text-center text-gray-400">
-          選擇年月後點擊「產生報表」
+          載入中...
+        </div>
+      ) : !report ? (
+        <div className="rounded-lg border border-dashed border-gray-300 p-16 text-center text-gray-400">
+          無資料
         </div>
       ) : (
         <div className="space-y-6">
