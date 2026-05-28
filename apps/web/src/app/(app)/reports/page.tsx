@@ -135,16 +135,8 @@ function OperationsSection({ token }: { token: string }) {
       </div>
 
       {tab === "intake" && <IntakeStatsTab token={token} />}
-      {tab === "space" && <PlaceholderTab title="空間利用率" />}
-      {tab === "therapist_load" && <PlaceholderTab title="心理師接案量" />}
-    </div>
-  );
-}
-
-function PlaceholderTab({ title }: { title: string }) {
-  return (
-    <div className="rounded-lg border border-dashed border-gray-300 p-16 text-center text-gray-400">
-      {title}功能開發中
+      {tab === "space" && <RoomUtilizationTab token={token} />}
+      {tab === "therapist_load" && <TherapistLoadTab token={token} />}
     </div>
   );
 }
@@ -505,6 +497,363 @@ function IntakeSummaryCard({ label, value, color }: { label: string; value: numb
       <div className="text-xs font-medium opacity-75">{label}</div>
       <div className="mt-1 text-3xl font-bold">{value}</div>
       <div className="text-xs opacity-60">案</div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════
+   空間利用率 Tab
+   ═══════════════════════════════════════════════ */
+
+interface RoomStat {
+  room_id: number;
+  room_name: string;
+  floor: number;
+  room_code: string;
+  appointment_count: number;
+  used_hours: number;
+}
+
+interface FloorStat {
+  floor: number;
+  room_count: number;
+  total_used_hours: number;
+  total_appointments: number;
+}
+
+interface RoomUtilizationData {
+  year: number;
+  month: number;
+  total_appointments: number;
+  rooms: RoomStat[];
+  by_floor: FloorStat[];
+  hourly_distribution: Record<string, number>;
+}
+
+function RoomUtilizationTab({ token }: { token: string }) {
+  const now = new Date();
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [data, setData] = useState<RoomUtilizationData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const d = await clientFetch(`/reports/room-utilization?year=${year}&month=${month}`, token);
+      setData(d);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [token, year, month]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const maxHours = data ? Math.max(...data.rooms.map((r) => r.used_hours), 1) : 1;
+  const maxHourly = data ? Math.max(...Object.values(data.hourly_distribution), 1) : 1;
+
+  return (
+    <div>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <select value={year} onChange={(e) => setYear(parseInt(e.target.value))} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+          {[2024, 2025, 2026, 2027].map((y) => <option key={y} value={y}>{y} 年</option>)}
+        </select>
+        <select value={month} onChange={(e) => setMonth(parseInt(e.target.value))} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+          {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => <option key={m} value={m}>{m} 月</option>)}
+        </select>
+        <button onClick={fetchData} disabled={loading} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">
+          {loading ? "載入中..." : "重新查詢"}
+        </button>
+      </div>
+
+      {error && <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</div>}
+
+      {loading ? (
+        <div className="rounded-lg border border-dashed border-gray-300 p-16 text-center text-gray-400">載入中...</div>
+      ) : !data ? (
+        <div className="rounded-lg border border-dashed border-gray-300 p-16 text-center text-gray-400">無資料</div>
+      ) : (
+        <div className="space-y-6">
+          {/* Summary */}
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="rounded-lg border border-gray-200 bg-white p-4">
+              <div className="text-xs text-gray-500">本月預約總數</div>
+              <div className="mt-1 text-2xl font-bold text-gray-900">{data.total_appointments}</div>
+              <div className="text-xs text-gray-400">次</div>
+            </div>
+            <div className="rounded-lg border border-gray-200 bg-white p-4">
+              <div className="text-xs text-gray-500">使用診間數</div>
+              <div className="mt-1 text-2xl font-bold text-gray-900">
+                {data.rooms.filter((r) => r.appointment_count > 0).length}
+              </div>
+              <div className="text-xs text-gray-400">/ {data.rooms.length} 間</div>
+            </div>
+            <div className="rounded-lg border border-gray-200 bg-white p-4">
+              <div className="text-xs text-gray-500">總使用時數</div>
+              <div className="mt-1 text-2xl font-bold text-gray-900">
+                {data.rooms.reduce((s, r) => s + r.used_hours, 0).toFixed(1)}
+              </div>
+              <div className="text-xs text-gray-400">小時</div>
+            </div>
+            <div className="rounded-lg border border-gray-200 bg-white p-4">
+              <div className="text-xs text-gray-500">最忙時段</div>
+              <div className="mt-1 text-2xl font-bold text-gray-900">
+                {Object.entries(data.hourly_distribution).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "—"}:00
+              </div>
+              <div className="text-xs text-gray-400">點</div>
+            </div>
+          </div>
+
+          {/* Room table */}
+          <div>
+            <h2 className="mb-3 text-base font-semibold text-gray-700">各診間使用狀況</h2>
+            <div className="overflow-x-auto rounded-lg border border-gray-200">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-gray-50 text-xs text-gray-500">
+                  <tr>
+                    <th className="px-4 py-2.5 font-semibold">樓層</th>
+                    <th className="px-4 py-2.5 font-semibold">診間</th>
+                    <th className="px-4 py-2.5 text-right font-semibold">預約次數</th>
+                    <th className="px-4 py-2.5 text-right font-semibold">使用時數</th>
+                    <th className="px-4 py-2.5 font-semibold">使用比例</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {data.rooms.map((r) => (
+                    <tr key={r.room_id} className="hover:bg-gray-50">
+                      <td className="px-4 py-2.5 text-gray-500">{r.floor}F</td>
+                      <td className="px-4 py-2.5 font-medium">
+                        {r.room_name}
+                        <span className="ml-1.5 text-xs text-gray-400">{r.room_code}</span>
+                      </td>
+                      <td className="px-4 py-2.5 text-right">{r.appointment_count}</td>
+                      <td className="px-4 py-2.5 text-right">{r.used_hours}h</td>
+                      <td className="px-4 py-2.5 w-40">
+                        <div className="flex items-center gap-2">
+                          <div className="h-2 flex-1 rounded-full bg-gray-100">
+                            <div
+                              className="h-2 rounded-full bg-primary-500"
+                              style={{ width: `${Math.round((r.used_hours / maxHours) * 100)}%` }}
+                            />
+                          </div>
+                          <span className="w-8 text-right text-xs text-gray-500">
+                            {Math.round((r.used_hours / maxHours) * 100)}%
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* By floor */}
+          {data.by_floor.length > 0 && (
+            <div>
+              <h2 className="mb-3 text-base font-semibold text-gray-700">各樓層彙總</h2>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                {data.by_floor.map((f) => (
+                  <div key={f.floor} className="rounded-lg border border-gray-200 bg-white p-4">
+                    <div className="text-sm font-semibold text-gray-700">{f.floor}F</div>
+                    <div className="mt-2 space-y-1">
+                      <div className="flex justify-between text-xs text-gray-500">
+                        <span>診間數</span><span className="font-medium text-gray-800">{f.room_count} 間</span>
+                      </div>
+                      <div className="flex justify-between text-xs text-gray-500">
+                        <span>預約次數</span><span className="font-medium text-gray-800">{f.total_appointments} 次</span>
+                      </div>
+                      <div className="flex justify-between text-xs text-gray-500">
+                        <span>使用時數</span><span className="font-medium text-gray-800">{f.total_used_hours}h</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Hourly distribution */}
+          <div>
+            <h2 className="mb-3 text-base font-semibold text-gray-700">預約時段分布</h2>
+            <div className="rounded-lg border border-gray-200 bg-white p-4">
+              <div className="flex items-end gap-1 h-24">
+                {Object.entries(data.hourly_distribution).map(([h, cnt]) => (
+                  <div key={h} className="flex flex-1 flex-col items-center gap-1">
+                    <div className="w-full flex flex-col justify-end" style={{ height: "80px" }}>
+                      <div
+                        className={`w-full rounded-t ${cnt > 0 ? "bg-primary-400" : "bg-gray-100"}`}
+                        style={{ height: `${Math.max(2, Math.round((cnt / maxHourly) * 76))}px` }}
+                        title={`${h}:00 — ${cnt} 次`}
+                      />
+                    </div>
+                    <span className="text-xs text-gray-400">{h}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-gray-400 text-center">預約開始時間（小時）</p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════
+   心理師接案量 Tab
+   ═══════════════════════════════════════════════ */
+
+interface TherapistLoadRow {
+  therapist_id: number;
+  therapist_name: string;
+  user_code: string;
+  commission_rate: number;
+  active_cases: number;
+  sessions_this_month: number;
+  revenue_this_month: number;
+  upcoming_appointments: number;
+}
+
+interface TherapistLoadData {
+  year: number;
+  month: number;
+  summary: {
+    total_active_cases: number;
+    total_sessions: number;
+    active_therapist_count: number;
+  };
+  therapists: TherapistLoadRow[];
+}
+
+function TherapistLoadTab({ token }: { token: string }) {
+  const now = new Date();
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [data, setData] = useState<TherapistLoadData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const d = await clientFetch(`/reports/therapist-load?year=${year}&month=${month}`, token);
+      setData(d);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [token, year, month]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const maxCases = data ? Math.max(...data.therapists.map((t) => t.active_cases), 1) : 1;
+
+  return (
+    <div>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <select value={year} onChange={(e) => setYear(parseInt(e.target.value))} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+          {[2024, 2025, 2026, 2027].map((y) => <option key={y} value={y}>{y} 年</option>)}
+        </select>
+        <select value={month} onChange={(e) => setMonth(parseInt(e.target.value))} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+          {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => <option key={m} value={m}>{m} 月</option>)}
+        </select>
+        <button onClick={fetchData} disabled={loading} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">
+          {loading ? "載入中..." : "重新查詢"}
+        </button>
+      </div>
+
+      {error && <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</div>}
+
+      {loading ? (
+        <div className="rounded-lg border border-dashed border-gray-300 p-16 text-center text-gray-400">載入中...</div>
+      ) : !data ? (
+        <div className="rounded-lg border border-dashed border-gray-300 p-16 text-center text-gray-400">無資料</div>
+      ) : (
+        <div className="space-y-6">
+          {/* Summary cards */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="rounded-lg border border-gray-200 bg-white p-4">
+              <div className="text-xs text-gray-500">進行中個案總數</div>
+              <div className="mt-1 text-2xl font-bold text-gray-900">{data.summary.total_active_cases}</div>
+              <div className="text-xs text-gray-400">位</div>
+            </div>
+            <div className="rounded-lg border border-gray-200 bg-white p-4">
+              <div className="text-xs text-gray-500">{data.month} 月諮商總次數</div>
+              <div className="mt-1 text-2xl font-bold text-gray-900">{data.summary.total_sessions}</div>
+              <div className="text-xs text-gray-400">次</div>
+            </div>
+            <div className="rounded-lg border border-gray-200 bg-white p-4">
+              <div className="text-xs text-gray-500">有接案心理師</div>
+              <div className="mt-1 text-2xl font-bold text-gray-900">{data.summary.active_therapist_count}</div>
+              <div className="text-xs text-gray-400">/ {data.therapists.length} 位</div>
+            </div>
+          </div>
+
+          {/* Therapist table */}
+          <div>
+            <h2 className="mb-3 text-base font-semibold text-gray-700">各心理師接案狀況</h2>
+            <div className="overflow-x-auto rounded-lg border border-gray-200">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-gray-50 text-xs text-gray-500">
+                  <tr>
+                    <th className="px-4 py-2.5 font-semibold">心理師</th>
+                    <th className="px-4 py-2.5 text-right font-semibold">進行中個案</th>
+                    <th className="px-4 py-2.5 font-semibold">接案量</th>
+                    <th className="px-4 py-2.5 text-right font-semibold">{data.month} 月諮商</th>
+                    <th className="px-4 py-2.5 text-right font-semibold">{data.month} 月營收</th>
+                    <th className="px-4 py-2.5 text-right font-semibold">待執行預約</th>
+                    <th className="px-4 py-2.5 text-right font-semibold">抽成</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {data.therapists.map((t) => (
+                    <tr key={t.therapist_id} className="hover:bg-gray-50">
+                      <td className="px-4 py-2.5">
+                        <div className="font-medium">{t.therapist_name}</div>
+                        <div className="text-xs text-gray-400">{t.user_code}</div>
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-bold">
+                        {t.active_cases}
+                      </td>
+                      <td className="px-4 py-2.5 w-32">
+                        <div className="flex items-center gap-2">
+                          <div className="h-2 flex-1 rounded-full bg-gray-100">
+                            <div
+                              className="h-2 rounded-full bg-emerald-400"
+                              style={{ width: `${Math.round((t.active_cases / maxCases) * 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5 text-right">{t.sessions_this_month}</td>
+                      <td className="px-4 py-2.5 text-right">${t.revenue_this_month.toLocaleString()}</td>
+                      <td className="px-4 py-2.5 text-right">
+                        {t.upcoming_appointments > 0 ? (
+                          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+                            {t.upcoming_appointments}
+                          </span>
+                        ) : (
+                          <span className="text-gray-300">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-right text-xs text-gray-500">
+                        {Math.round(t.commission_rate * 100)}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

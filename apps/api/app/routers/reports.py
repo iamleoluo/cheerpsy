@@ -14,6 +14,7 @@ from app.database import get_db
 from app.models.appointment import Appointment
 from app.models.case import Case
 from app.models.petty_cash import PettyCash
+from app.models.room import Room
 from app.models.product_sales import ProductSale
 from app.models.session_record import SessionRecord
 from app.models.user import User
@@ -552,3 +553,194 @@ def export_intake_excel(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# 空間利用率
+# ---------------------------------------------------------------------------
+
+@router.get("/room-utilization")
+def get_room_utilization(
+    year: int = Query(...),
+    month: int = Query(...),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Per-room appointment counts and booked hours for the given month."""
+    appts = (
+        db.query(Appointment)
+        .options(joinedload(Appointment.room))
+        .filter(
+            extract("year", func.lower(Appointment.time_range)) == year,
+            extract("month", func.lower(Appointment.time_range)) == month,
+            Appointment.status.in_(["booked", "executed"]),
+            Appointment.room_id.isnot(None),
+        )
+        .all()
+    )
+
+    all_rooms = db.query(Room).all()
+    room_info = {r.id: r for r in all_rooms}
+
+    room_stats: dict[int, dict] = {}
+    hourly: dict[int, int] = {h: 0 for h in range(8, 22)}
+
+    for a in appts:
+        if a.room_id is None or a.time_range is None:
+            continue
+        start = a.time_range.lower
+        end = a.time_range.upper
+        if start is None or end is None:
+            continue
+
+        hours = (end - start).total_seconds() / 3600
+        rid = a.room_id
+        if rid not in room_stats:
+            r = room_info.get(rid)
+            room_stats[rid] = {
+                "room_id": rid,
+                "room_name": r.name if r else f"Room {rid}",
+                "floor": r.floor if r else 0,
+                "room_code": r.room_code if r else "",
+                "appointment_count": 0,
+                "used_hours": 0.0,
+            }
+        room_stats[rid]["appointment_count"] += 1
+        room_stats[rid]["used_hours"] += hours
+
+        h = start.hour
+        if h in hourly:
+            hourly[h] += 1
+
+    # Floor summary
+    floor_map: dict[int, dict] = {}
+    for rs in room_stats.values():
+        f = rs["floor"]
+        if f not in floor_map:
+            floor_map[f] = {
+                "floor": f,
+                "room_count": 0,
+                "total_used_hours": 0.0,
+                "total_appointments": 0,
+            }
+        floor_map[f]["room_count"] += 1
+        floor_map[f]["total_used_hours"] += rs["used_hours"]
+        floor_map[f]["total_appointments"] += rs["appointment_count"]
+
+    for rs in room_stats.values():
+        rs["used_hours"] = round(rs["used_hours"], 1)
+    for fs in floor_map.values():
+        fs["total_used_hours"] = round(fs["total_used_hours"], 1)
+
+    # Rooms with zero appointments (for completeness)
+    for r in all_rooms:
+        if r.id not in room_stats:
+            room_stats[r.id] = {
+                "room_id": r.id,
+                "room_name": r.name,
+                "floor": r.floor,
+                "room_code": r.room_code,
+                "appointment_count": 0,
+                "used_hours": 0.0,
+            }
+
+    return {
+        "year": year,
+        "month": month,
+        "total_appointments": len(appts),
+        "rooms": sorted(room_stats.values(), key=lambda x: x["used_hours"], reverse=True),
+        "by_floor": sorted(floor_map.values(), key=lambda x: x["floor"]),
+        "hourly_distribution": {str(h): hourly.get(h, 0) for h in range(8, 22)},
+    }
+
+
+# ---------------------------------------------------------------------------
+# 心理師接案量
+# ---------------------------------------------------------------------------
+
+@router.get("/therapist-load")
+def get_therapist_load(
+    year: int = Query(...),
+    month: int = Query(...),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Per-therapist caseload: active cases, sessions this month, revenue."""
+    # Active ongoing cases per therapist
+    active_rows = (
+        db.query(Case.therapist_id, func.count(Case.id).label("cnt"))
+        .filter(Case.status == "ongoing")
+        .group_by(Case.therapist_id)
+        .all()
+    )
+    active_map = {row.therapist_id: row.cnt for row in active_rows}
+
+    # Sessions + revenue this month
+    session_rows = (
+        db.query(
+            SessionRecord.therapist_id,
+            func.count(SessionRecord.id).label("cnt"),
+            func.sum(SessionRecord.amount).label("rev"),
+        )
+        .filter(
+            extract("year", SessionRecord.session_date) == year,
+            extract("month", SessionRecord.session_date) == month,
+            SessionRecord.is_void.is_(False),
+        )
+        .group_by(SessionRecord.therapist_id)
+        .all()
+    )
+    session_map = {
+        row.therapist_id: {"count": row.cnt, "revenue": float(row.rev or 0)}
+        for row in session_rows
+    }
+
+    # Upcoming booked appointments (regardless of month — "currently booked")
+    upcoming_rows = (
+        db.query(Appointment.therapist_id, func.count(Appointment.id).label("cnt"))
+        .filter(
+            Appointment.status == "booked",
+            func.lower(Appointment.time_range) >= func.now(),
+        )
+        .group_by(Appointment.therapist_id)
+        .all()
+    )
+    upcoming_map = {row.therapist_id: row.cnt for row in upcoming_rows}
+
+    # All active therapists
+    therapists = (
+        db.query(User)
+        .filter(User.role == "therapist", User.is_active.is_(True))
+        .order_by(User.user_code)
+        .all()
+    )
+
+    result = []
+    for t in therapists:
+        sd = session_map.get(t.id, {"count": 0, "revenue": 0.0})
+        result.append({
+            "therapist_id": t.id,
+            "therapist_name": t.name,
+            "user_code": t.user_code or "",
+            "commission_rate": float(t.commission_rate or 0.70),
+            "active_cases": active_map.get(t.id, 0),
+            "sessions_this_month": sd["count"],
+            "revenue_this_month": sd["revenue"],
+            "upcoming_appointments": upcoming_map.get(t.id, 0),
+        })
+
+    result.sort(key=lambda x: (x["active_cases"], x["sessions_this_month"]), reverse=True)
+
+    total_active = sum(r["active_cases"] for r in result)
+    total_sessions = sum(r["sessions_this_month"] for r in result)
+
+    return {
+        "year": year,
+        "month": month,
+        "summary": {
+            "total_active_cases": total_active,
+            "total_sessions": total_sessions,
+            "active_therapist_count": sum(1 for r in result if r["active_cases"] > 0),
+        },
+        "therapists": result,
+    }
