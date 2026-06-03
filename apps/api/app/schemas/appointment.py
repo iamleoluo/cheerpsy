@@ -52,6 +52,7 @@ class AppointmentResponse(BaseModel):
     appointment_number: str
     case_id: int
     case_name: str | None = None
+    case_type: str = "individual"
     therapist_id: int
     therapist_name: str | None = None
     room_id: int | None = None

@@ -80,6 +80,7 @@ interface CalendarAppointment {
   id: number;
   appointment_number: string;
   case_name: string | null;
+  case_type?: string;
   therapist_name: string | null;
   room_id: number | null;
   room_name: string | null;
@@ -225,7 +226,7 @@ function RoomCalendarTab({ token }: { token: string }) {
         setEvents(
           data.map((a) => ({
             id: String(a.id),
-            title: `${a.case_name ?? "保留時段"} — ${a.therapist_name ?? ""}`,
+            title: `${a.case_type === "couple" ? "👫 " : ""}${a.case_name ?? "保留時段"} — ${a.therapist_name ?? ""}`,
             start: a.start_time ?? undefined,
             end: a.end_time ?? undefined,
             backgroundColor: statusColors[a.status] ?? "#6b7280",
@@ -233,6 +234,7 @@ function RoomCalendarTab({ token }: { token: string }) {
             extendedProps: {
               appointment_number: a.appointment_number,
               case_name: a.case_name,
+              case_type: a.case_type,
               therapist_name: a.therapist_name,
               status: a.status,
               session_type: a.session_type,
@@ -316,7 +318,7 @@ function RoomCalendarTab({ token }: { token: string }) {
                 <div className="overflow-hidden px-1 py-0.5 text-xs leading-tight">
                   <div className="font-medium">{arg.timeText}</div>
                   <div className="truncate">
-                    {props.case_name ?? "保留時段"} — {props.therapist_name ?? ""}
+                    {props.case_type === "couple" ? "👫 " : ""}{props.case_name ?? "保留時段"} — {props.therapist_name ?? ""}
                   </div>
                 </div>
               );

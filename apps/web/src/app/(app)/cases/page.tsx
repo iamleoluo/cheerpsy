@@ -1438,7 +1438,7 @@ function AppointmentForm({
 }: {
   token: string; fixedCaseId?: number; fixedCaseName?: string; onClose: () => void; onSaved: () => void;
 }) {
-  const [cases, setCases] = useState<{ id: number; name: string; therapist_id: number }[]>([]);
+  const [cases, setCases] = useState<{ id: number; name: string; therapist_id: number; case_type?: string }[]>([]);
   const [therapists, setTherapists] = useState<Therapist[]>([]);
   const [rooms, setRooms] = useState<RoomOption[]>([]);
   const [saving, setSaving] = useState(false);
@@ -1552,7 +1552,7 @@ function AppointmentForm({
                 <span className="mb-1 block text-xs text-gray-500">個案 <span className="text-red-500">*</span></span>
                 <select required value={form.case_id} onChange={(e) => sf("case_id", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
                   <option value="">請選擇</option>
-                  {cases.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {cases.map((c) => <option key={c.id} value={c.id}>{c.case_type === "couple" ? "👫 " : ""}{c.name}</option>)}
                 </select>
               </label>
             )}
@@ -1741,7 +1741,7 @@ function BatchForm({
 }: {
   token: string; fixedCaseId?: number; fixedCaseName?: string; onClose: () => void; onSaved: () => void;
 }) {
-  const [cases, setCases] = useState<{ id: number; name: string; therapist_id: number }[]>([]);
+  const [cases, setCases] = useState<{ id: number; name: string; therapist_id: number; case_type?: string }[]>([]);
   const [therapists, setTherapists] = useState<Therapist[]>([]);
   const [rooms, setRooms] = useState<RoomOption[]>([]);
   const [saving, setSaving] = useState(false);
@@ -1892,7 +1892,7 @@ function BatchForm({
                   <span className="mb-1 block text-xs text-gray-500">個案 <span className="text-red-500">*</span></span>
                   <select required value={form.case_id} onChange={(e) => sf("case_id", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
                     <option value="">請選擇</option>
-                    {cases.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    {cases.map((c) => <option key={c.id} value={c.id}>{c.case_type === "couple" ? "👫 " : ""}{c.name}</option>)}
                   </select>
                 </label>
               )}
@@ -2786,7 +2786,7 @@ function QuotaFormModal({
             >
               <option value="">— 選擇個案 —</option>
               {cases.map((c) => (
-                <option key={c.id} value={c.id}>{caseDisplayId(c)} {c.name}</option>
+                <option key={c.id} value={c.id}>{c.case_type === "couple" ? "👫 " : ""}{caseDisplayId(c)} {c.name}</option>
               ))}
             </select>
           </div>
