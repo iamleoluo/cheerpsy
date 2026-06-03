@@ -10,10 +10,19 @@ from app.database import get_db
 from app.models.appointment import Appointment
 from app.models.case import Case
 from app.models.case_institution_quota import CaseInstitutionQuota
+from app.models.couple_member import CoupleMember
 from app.models.user import User
-from app.schemas.case import CaseCloseRequest, CaseCreate, CaseReopenRequest, CaseResponse, CaseUpdate
+from app.schemas.case import (
+    CaseCloseRequest,
+    CaseCreate,
+    CaseReopenRequest,
+    CaseResponse,
+    CaseUpdate,
+    CoupleCreate,
+    CoupleMemberInfo,
+)
 from app.services.audit import write_audit
-from app.services.case_numbering import generate_case_number
+from app.services.case_numbering import generate_case_number, generate_couple_number
 from app.utils.encryption import encrypt_national_id, hmac_national_id
 
 router = APIRouter(prefix="/cases", tags=["cases"])
@@ -47,10 +56,22 @@ def _to_response(c: Case) -> CaseResponse:
         billing_cycle=c.billing_cycle,
         has_national_id=c.national_id_encrypted is not None,
         is_designated=c.is_designated,
+        case_type=c.case_type,
+        members=_couple_members(c) if c.case_type == "couple" else None,
         notes=c.notes,
         closed_at=c.closed_at,
         closure_reason=c.closure_reason,
     )
+
+
+def _couple_members(c: Case) -> list[CoupleMemberInfo]:
+    """組出伴侶案的成員清單。"""
+    out: list[CoupleMemberInfo] = []
+    for link in c.couple_links:
+        m = link.member_case
+        if m:
+            out.append(CoupleMemberInfo(case_id=m.id, name=m.name, role=link.role))
+    return out
 
 
 @router.get("", response_model=list[CaseResponse])
@@ -135,6 +156,61 @@ def create_case(
     db.commit()
     db.refresh(c)
     return _to_response(c)
+
+
+@router.post("/couple", response_model=CaseResponse, status_code=status.HTTP_201_CREATED)
+def create_couple_case(
+    body: CoupleCreate,
+    user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
+    db: Session = Depends(get_db),
+):
+    """建立伴侶案：把兩個既有個案綁成一筆合療收費單位（case_type='couple'）。"""
+    if len(body.member_case_ids) != 2 or len(set(body.member_case_ids)) != 2:
+        raise HTTPException(status_code=400, detail="伴侶案需指定兩個不同的個案")
+
+    members = db.query(Case).filter(Case.id.in_(body.member_case_ids)).all()
+    if len(members) != 2:
+        raise HTTPException(status_code=400, detail="找不到指定的個案")
+    for m in members:
+        if m.case_type == "couple":
+            raise HTTPException(status_code=400, detail=f"{m.name} 本身是伴侶案，不能再被綁定")
+
+    # 不可重複綁定：任一成員已屬於其他伴侶案
+    existing = (
+        db.query(CoupleMember)
+        .filter(CoupleMember.member_case_id.in_(body.member_case_ids))
+        .first()
+    )
+    if existing:
+        raise HTTPException(status_code=400, detail="該個案已屬於其他伴侶案")
+
+    # display_name 留空 → 自動組合
+    ordered = {m.id: m for m in members}
+    a, b = ordered[body.member_case_ids[0]], ordered[body.member_case_ids[1]]
+    display_name = body.display_name or f"{a.name}＆{b.name}（伴侶）"
+
+    couple = Case(
+        name=display_name,
+        case_type="couple",
+        status="ongoing",
+        funding_source=body.funding_source,
+        institution_id=body.institution_id if body.funding_source == "institution" else None,
+        therapist_id=body.therapist_id,
+        billing_cycle=body.billing_cycle,
+        case_number=generate_couple_number(db),
+        created_by=user.id,
+    )
+    db.add(couple)
+    db.flush()  # 取得 couple.id
+
+    for mid in body.member_case_ids:
+        db.add(CoupleMember(couple_case_id=couple.id, member_case_id=mid))
+
+    write_audit(db, "cases", couple.id, "CREATE", user.id, None,
+                {"case_type": "couple", "members": body.member_case_ids})
+    db.commit()
+    db.refresh(couple)
+    return _to_response(couple)
 
 
 @router.put("/{case_id}", response_model=CaseResponse)

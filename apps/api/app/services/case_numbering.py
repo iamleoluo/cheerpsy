@@ -15,3 +15,12 @@ def generate_case_number(db: Session, case: Case) -> str:
     national_id = decrypt_national_id(case.national_id_encrypted)
     last2 = national_id[-2:]
     return f"{yy}{seq}{last2}"
+
+
+def generate_couple_number(db: Session) -> str:
+    """伴侶案專用編號（無身分證）。格式：C{YY}{SEQ4}，例 C260003。"""
+    yy = str(datetime.now().year % 100).zfill(2)
+    prefix = f"C{yy}"
+    count = db.query(func.count(Case.id)).filter(Case.case_number.like(f"{prefix}%")).scalar() or 0
+    seq = str(count + 1).zfill(4)
+    return f"{prefix}{seq}"

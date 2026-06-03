@@ -70,11 +70,28 @@ class CaseResponse(BaseModel):
     billing_cycle: str | None = None
     has_national_id: bool = False
     is_designated: bool = False
+    case_type: str = "individual"
+    members: list["CoupleMemberInfo"] | None = None
     notes: str | None = None
     closed_at: datetime | None = None
     closure_reason: str | None = None
 
     model_config = {"from_attributes": True}
+
+
+class CoupleMemberInfo(BaseModel):
+    case_id: int
+    name: str
+    role: str | None = None
+
+
+class CoupleCreate(BaseModel):
+    member_case_ids: list[int]   # 必為 2 筆（家族未來可放寬）
+    therapist_id: int
+    funding_source: str = "self_pay"
+    institution_id: int | None = None
+    billing_cycle: str = "once"
+    display_name: str | None = None   # 留空自動組合
 
 
 class CaseCloseRequest(BaseModel):
@@ -86,3 +103,7 @@ class CaseCloseRequest(BaseModel):
 class CaseReopenRequest(BaseModel):
     """復案請求 — 必須帶呼叫者密碼。"""
     password: str
+
+
+# 解析 CaseResponse 內的前向參照 CoupleMemberInfo
+CaseResponse.model_rebuild()

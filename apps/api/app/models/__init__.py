@@ -1,6 +1,7 @@
 from app.models.user import User
 from app.models.institution import Institution
 from app.models.case import Case
+from app.models.couple_member import CoupleMember
 from app.models.room import Room
 from app.models.appointment import Appointment
 from app.models.session_record import SessionRecord
@@ -19,6 +20,7 @@ __all__ = [
     "User",
     "Institution",
     "Case",
+    "CoupleMember",
     "Room",
     "Appointment",
     "SessionRecord",
