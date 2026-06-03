@@ -35,3 +35,6 @@ pgdata/
 # Misc
 coverage/
 *.log
+
+# Migration output (generated files)
+output/
