@@ -78,12 +78,23 @@ def _to_response(
     can_see_name = viewer is None or viewer.role in ("admin", "staff") or (
         viewer.role == "therapist" and a.therapist_id == viewer.id
     )
+    # 合療判定：couple_case_id 有值，或 case 本身就是伴侶案
+    is_couple = a.couple_case_id is not None or (a.case is not None and a.case.case_type == "couple")
+    couple_name = None
+    if is_couple and can_see_name:
+        if a.couple_case_id and a.couple_case:
+            couple_name = a.couple_case.name
+        elif a.case and a.case.case_type == "couple":
+            couple_name = a.case.name
     return AppointmentResponse(
         id=a.id,
         appointment_number=a.appointment_number,
         case_id=a.case_id,
         case_name=(a.case.name if a.case else None) if can_see_name else None,
         case_type=(a.case.case_type if a.case else "individual"),
+        couple_case_id=a.couple_case_id,
+        couple_name=couple_name,
+        is_couple=is_couple,
         therapist_id=a.therapist_id,
         therapist_name=a.therapist.name if a.therapist else None,
         room_id=a.room_id,
@@ -102,6 +113,22 @@ def _to_response(
         batch_id=a.batch_id,
         created_at=a.created_at,
     )
+
+
+def _validate_couple(db: Session, couple_case_id: int | None, payer_case_id: int) -> Case | None:
+    """合療驗證：couple_case_id 必為伴侶案，付款方(payer_case_id)必為伴侶案本身或其成員。
+
+    回傳伴侶案 Case（供取得共同心理師），非合療回傳 None。
+    """
+    if not couple_case_id:
+        return None
+    couple = db.query(Case).filter(Case.id == couple_case_id).first()
+    if not couple or couple.case_type != "couple":
+        raise HTTPException(status_code=400, detail="couple_case_id 不是伴侶案")
+    member_ids = [link.member_case_id for link in couple.couple_links]
+    if payer_case_id not in ([couple.id] + member_ids):
+        raise HTTPException(status_code=400, detail="付款方必須是該伴侶案本身或其成員")
+    return couple
 
 
 def _resolve_quota(
@@ -231,11 +258,18 @@ def create_appointment(
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
 
+    # 合療：付款方(case_id)可為伴侶案本身或其成員；心理師一律取伴侶案的共同心理師
+    couple = _validate_couple(db, body.couple_case_id, body.case_id)
+    therapist_case = couple or case
+
     # therapist can only create for their own cases
-    if user.role == "therapist" and case.therapist_id != user.id:
+    if user.role == "therapist" and therapist_case.therapist_id != user.id:
         raise HTTPException(status_code=403, detail="只能為自己的個案建立預約")
 
-    therapist = user if user.role == "therapist" else db.query(User).filter(User.id == case.therapist_id).first()
+    therapist = (
+        user if user.role == "therapist"
+        else db.query(User).filter(User.id == therapist_case.therapist_id).first()
+    )
     if not therapist or not therapist.user_code:
         raise HTTPException(status_code=400, detail="Therapist not found or has no code")
 
@@ -265,6 +299,7 @@ def create_appointment(
         funding_source=body.funding_source,
         quota_id=quota_id,
         visit_seq=visit_seq,
+        couple_case_id=body.couple_case_id,
         status="booked",
         created_by=user.id,
     )
@@ -287,10 +322,16 @@ def create_batch(
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    if user.role == "therapist" and case.therapist_id != user.id:
+    couple = _validate_couple(db, body.couple_case_id, body.case_id)
+    therapist_case = couple or case
+
+    if user.role == "therapist" and therapist_case.therapist_id != user.id:
         raise HTTPException(status_code=403, detail="只能為自己的個案建立預約")
 
-    therapist = user if user.role == "therapist" else db.query(User).filter(User.id == case.therapist_id).first()
+    therapist = (
+        user if user.role == "therapist"
+        else db.query(User).filter(User.id == therapist_case.therapist_id).first()
+    )
     if not therapist or not therapist.user_code:
         raise HTTPException(status_code=400, detail="Therapist not found or has no code")
 
@@ -327,6 +368,7 @@ def create_batch(
             funding_source=slot_funding,
             quota_id=quota_id,
             visit_seq=next_vs + i,
+            couple_case_id=body.couple_case_id,
             status="booked",
             batch_id=batch_id,
             created_by=user.id,

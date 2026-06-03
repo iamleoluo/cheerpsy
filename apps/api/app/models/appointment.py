@@ -21,10 +21,13 @@ class Appointment(Base):
     quota_id = Column(Integer, ForeignKey("case_institution_quotas.id"), nullable=True)
     visit_seq = Column(Integer, nullable=True)
     batch_id = Column(String(50), nullable=True, index=True)
+    # 合療標記：有值 = 這是某伴侶案的合療場次（case_id 仍為付款方）
+    couple_case_id = Column(Integer, ForeignKey("cases.id"), nullable=True, index=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    case = relationship("Case", back_populates="appointments")
+    case = relationship("Case", back_populates="appointments", foreign_keys=[case_id])
+    couple_case = relationship("Case", foreign_keys=[couple_case_id])
     therapist = relationship("User", back_populates="appointments", foreign_keys=[therapist_id])
     room = relationship("Room")
     session_record = relationship("SessionRecord", back_populates="appointment", uselist=False)

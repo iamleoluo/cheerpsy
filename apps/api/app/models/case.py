@@ -44,7 +44,7 @@ class Case(Base):
 
     therapist = relationship("User", back_populates="cases", foreign_keys=[therapist_id])
     institution = relationship("Institution")
-    appointments = relationship("Appointment", back_populates="case")
+    appointments = relationship("Appointment", back_populates="case", foreign_keys="Appointment.case_id")
     # 伴侶案 → 成員連結（僅 case_type='couple' 會有）
     couple_links = relationship(
         "CoupleMember",

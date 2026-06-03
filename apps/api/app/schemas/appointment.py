@@ -12,6 +12,7 @@ class AppointmentCreate(BaseModel):
     amount: float
     funding_source: str = "self_pay"  # self_pay | institution
     quota_id: int | None = None
+    couple_case_id: int | None = None  # 合療：標記場次所屬伴侶案（case_id 為付款方）
 
 
 class BatchSlot(BaseModel):
@@ -29,6 +30,7 @@ class AppointmentBatchCreate(BaseModel):
     amount: float
     funding_source: str = "self_pay"
     quota_id: int | None = None
+    couple_case_id: int | None = None
     slots: list[BatchSlot]
 
 
@@ -53,6 +55,9 @@ class AppointmentResponse(BaseModel):
     case_id: int
     case_name: str | None = None
     case_type: str = "individual"
+    couple_case_id: int | None = None
+    couple_name: str | None = None
+    is_couple: bool = False
     therapist_id: int
     therapist_name: str | None = None
     room_id: int | None = None

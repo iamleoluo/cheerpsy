@@ -1438,7 +1438,7 @@ function AppointmentForm({
 }: {
   token: string; fixedCaseId?: number; fixedCaseName?: string; onClose: () => void; onSaved: () => void;
 }) {
-  const [cases, setCases] = useState<{ id: number; name: string; therapist_id: number; case_type?: string }[]>([]);
+  const [cases, setCases] = useState<{ id: number; name: string; therapist_id: number; case_type?: string; members?: { case_id: number; name: string }[] | null }[]>([]);
   const [therapists, setTherapists] = useState<Therapist[]>([]);
   const [rooms, setRooms] = useState<RoomOption[]>([]);
   const [saving, setSaving] = useState(false);
@@ -1454,7 +1454,13 @@ function AppointmentForm({
     funding_source: "self_pay",
     quota_id: "",
   });
+  const [payerCaseId, setPayerCaseId] = useState("");
   const [availableQuotas, setAvailableQuotas] = useState<QuotaRow[]>([]);
+
+  // 合療付款方：選到伴侶案時，billingCaseId 改為付款方（伴侶案本身或某成員）
+  const selectedCase = cases.find((c) => String(c.id) === form.case_id);
+  const isCouple = selectedCase?.case_type === "couple";
+  const billingCaseId = isCouple ? (payerCaseId || (selectedCase ? String(selectedCase.id) : "")) : form.case_id;
 
   useEffect(() => {
     clientFetch("/auth/therapists", token).then(setTherapists).catch(() => {});
@@ -1467,12 +1473,12 @@ function AppointmentForm({
   }, [token, fixedCaseId]);
 
   useEffect(() => {
-    if (form.funding_source !== "institution" || !form.case_id || !form.start_date) {
+    if (form.funding_source !== "institution" || !billingCaseId || !form.start_date) {
       setAvailableQuotas([]);
       return;
     }
     clientFetch(
-      `/cases/${form.case_id}/quotas/available?on_date=${form.start_date}`,
+      `/cases/${billingCaseId}/quotas/available?on_date=${form.start_date}`,
       token,
     )
       .then((rows: QuotaRow[]) => {
@@ -1483,7 +1489,7 @@ function AppointmentForm({
         });
       })
       .catch(() => setAvailableQuotas([]));
-  }, [token, form.funding_source, form.case_id, form.start_date]);
+  }, [token, form.funding_source, billingCaseId, form.start_date]);
 
   // Resolve a case's therapist base price (default 2000 if unset)
   const basePriceFor = (caseId: string) => {
@@ -1517,7 +1523,8 @@ function AppointmentForm({
       await clientFetch("/appointments", token, {
         method: "POST",
         body: JSON.stringify({
-          case_id: parseInt(form.case_id),
+          case_id: parseInt(billingCaseId),
+          couple_case_id: isCouple && selectedCase ? selectedCase.id : null,
           room_id: form.room_id ? parseInt(form.room_id) : null,
           session_type: form.session_type,
           start_time: `${form.start_date}T${form.start_time}:00+08:00`,
@@ -1550,10 +1557,22 @@ function AppointmentForm({
             {!fixedCaseId && (
               <label className="block">
                 <span className="mb-1 block text-xs text-gray-500">個案 <span className="text-red-500">*</span></span>
-                <select required value={form.case_id} onChange={(e) => sf("case_id", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                <select required value={form.case_id} onChange={(e) => { sf("case_id", e.target.value); setPayerCaseId(""); }} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
                   <option value="">請選擇</option>
                   {cases.map((c) => <option key={c.id} value={c.id}>{c.case_type === "couple" ? "👫 " : ""}{c.name}</option>)}
                 </select>
+              </label>
+            )}
+            {isCouple && (
+              <label className="block">
+                <span className="mb-1 block text-xs text-gray-500">付款方（誰付款）<span className="text-red-500">*</span></span>
+                <select value={billingCaseId} onChange={(e) => setPayerCaseId(e.target.value)} className="w-full rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm">
+                  <option value={selectedCase!.id}>伴侶案（自費合計）</option>
+                  {(selectedCase!.members ?? []).map((m) => (
+                    <option key={m.case_id} value={m.case_id}>{m.name}（機構請選此，扣其扣打）</option>
+                  ))}
+                </select>
+                <span className="mt-1 block text-xs text-gray-400">機構合療請選某位成員，費用記在他名下、扣他的機構扣打。</span>
               </label>
             )}
             <label className="block">
@@ -1741,7 +1760,7 @@ function BatchForm({
 }: {
   token: string; fixedCaseId?: number; fixedCaseName?: string; onClose: () => void; onSaved: () => void;
 }) {
-  const [cases, setCases] = useState<{ id: number; name: string; therapist_id: number; case_type?: string }[]>([]);
+  const [cases, setCases] = useState<{ id: number; name: string; therapist_id: number; case_type?: string; members?: { case_id: number; name: string }[] | null }[]>([]);
   const [therapists, setTherapists] = useState<Therapist[]>([]);
   const [rooms, setRooms] = useState<RoomOption[]>([]);
   const [saving, setSaving] = useState(false);
@@ -1756,7 +1775,13 @@ function BatchForm({
     funding_source: "self_pay",
     quota_id: "",
   });
+  const [payerCaseId, setPayerCaseId] = useState("");
   const [allQuotas, setAllQuotas] = useState<QuotaRow[]>([]);
+
+  // 合療付款方
+  const selectedCase = cases.find((c) => String(c.id) === form.case_id);
+  const isCouple = selectedCase?.case_type === "couple";
+  const billingCaseId = isCouple ? (payerCaseId || (selectedCase ? String(selectedCase.id) : "")) : form.case_id;
 
   // recurrence settings
   const [recurrence, setRecurrence] = useState<"weekly" | "biweekly" | "monthly">("weekly");
@@ -1800,11 +1825,11 @@ function BatchForm({
   }, [form.case_id, cases, therapists]);
 
   useEffect(() => {
-    if (form.funding_source !== "institution" || !form.case_id) {
+    if (form.funding_source !== "institution" || !billingCaseId) {
       setAllQuotas([]);
       return;
     }
-    clientFetch(`/cases/${form.case_id}/quotas`, token)
+    clientFetch(`/cases/${billingCaseId}/quotas`, token)
       .then((rows: QuotaRow[]) => {
         const today = new Date().toISOString().slice(0, 10);
         const active = rows.filter(
@@ -1817,7 +1842,7 @@ function BatchForm({
         });
       })
       .catch(() => setAllQuotas([]));
-  }, [token, form.funding_source, form.case_id]);
+  }, [token, form.funding_source, billingCaseId]);
 
   const sf = (key: string, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
 
@@ -1851,7 +1876,8 @@ function BatchForm({
       await clientFetch("/appointments/batch", token, {
         method: "POST",
         body: JSON.stringify({
-          case_id: parseInt(form.case_id),
+          case_id: parseInt(billingCaseId),
+          couple_case_id: isCouple && selectedCase ? selectedCase.id : null,
           room_id: form.room_id ? parseInt(form.room_id) : null,
           session_type: form.session_type,
           amount: parseFloat(form.amount),
@@ -1890,9 +1916,20 @@ function BatchForm({
               {!fixedCaseId && (
                 <label className="block">
                   <span className="mb-1 block text-xs text-gray-500">個案 <span className="text-red-500">*</span></span>
-                  <select required value={form.case_id} onChange={(e) => sf("case_id", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                  <select required value={form.case_id} onChange={(e) => { sf("case_id", e.target.value); setPayerCaseId(""); }} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
                     <option value="">請選擇</option>
                     {cases.map((c) => <option key={c.id} value={c.id}>{c.case_type === "couple" ? "👫 " : ""}{c.name}</option>)}
+                  </select>
+                </label>
+              )}
+              {isCouple && (
+                <label className="block">
+                  <span className="mb-1 block text-xs text-gray-500">付款方（誰付款）<span className="text-red-500">*</span></span>
+                  <select value={billingCaseId} onChange={(e) => setPayerCaseId(e.target.value)} className="w-full rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm">
+                    <option value={selectedCase!.id}>伴侶案（自費合計）</option>
+                    {(selectedCase!.members ?? []).map((m) => (
+                      <option key={m.case_id} value={m.case_id}>{m.name}（機構請選此，扣其扣打）</option>
+                    ))}
                   </select>
                 </label>
               )}
