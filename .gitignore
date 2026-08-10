@@ -28,6 +28,21 @@ Thumbs.db
 *.db
 *.db-journal
 *.xlsx
+# ⚠️ 個案／財務原始資料一律不進版控（含匯出的 CSV，內含姓名、身分證、電話、地址等個資）
+*.csv
+
+# 真實個案 / 財務 / 匯入資料夾 — 嚴禁提交
+data_transfer/
+original_data/
+dataset/
+_legacy/
+google calendar_test/
+請款單模板/
+
+# Claude Code 本機工作檔
+.claude/plans/
+.claude/worktrees/
+.claude/settings.local.json
 
 # Docker
 pgdata/
