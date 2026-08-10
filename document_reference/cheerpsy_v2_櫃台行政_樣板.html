@@ -1,0 +1,1819 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CheerPsy V2 — 櫃台行政 介面樣板</title>
+<style>
+  :root{
+    --p50:#f0f9ff; --p100:#e0f2fe; --p200:#bae6fd; --p300:#7dd3fc; --p400:#38bdf8;
+    --p500:#0ea5e9; --p600:#0284c7; --p700:#0369a1; --p900:#0c4a6e;
+    --g50:#f8fafc; --g100:#f1f5f9; --g200:#e5e7eb; --g300:#d1d5db;
+    --g400:#9ca3af; --g500:#6b7280; --g600:#4b5563; --g700:#374151; --g900:#111827;
+    --ok:#16a34a; --ok-bg:#dcfce7; --warn:#d97706; --warn-bg:#fef3c7;
+    --danger:#dc2626; --danger-bg:#fee2e2; --info-bg:#dbeafe; --info:#1d4ed8;
+    --violet:#7c3aed; --violet-bg:#ede9fe; --rose:#e11d48; --rose-bg:#ffe4e6;
+    --sky:#0284c7; --sky-bg:#e0f2fe;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--g50); color:var(--g900);
+    font-family:"Inter","Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,-apple-system,sans-serif;
+    font-size:14px; line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+  .shell{display:flex; min-height:100vh;}
+  aside{width:228px; flex:0 0 228px; background:#fff; border-right:1px solid var(--g200); display:flex; flex-direction:column; position:sticky; top:0; height:100vh;}
+  .brand{padding:18px 16px 14px; border-bottom:1px solid var(--g200);}
+  .brand h1{margin:0; font-size:17px; font-weight:800; color:var(--p700); letter-spacing:.3px;}
+  .brand .sb{margin-top:3px; font-size:12px; color:var(--g500);}
+  .brand .ver{display:inline-block; margin-top:7px; font-size:10px; font-weight:700; letter-spacing:.4px; background:var(--p50); color:var(--p700); border:1px solid var(--p200); padding:2px 7px; border-radius:999px;}
+  nav{flex:1; overflow-y:auto; padding:10px 8px;}
+  .nav-sec{font-size:10px; color:var(--g400); font-weight:700; letter-spacing:.8px; padding:10px 10px 5px;}
+  .nav a{display:flex; align-items:center; gap:10px; padding:8px 10px; margin-bottom:2px; border-radius:8px; color:var(--g600); text-decoration:none; font-size:13.5px; cursor:pointer;}
+  .nav a:hover{background:var(--g100);}
+  .nav a.on{background:var(--p50); color:var(--p700); font-weight:600;}
+  .nav a .ic{width:17px; text-align:center; font-size:14px;}
+  .nav a .new{margin-left:auto; font-size:9px; font-weight:800; color:#fff; background:var(--rose); padding:1px 5px; border-radius:999px;}
+  .nav a .star{margin-left:auto; font-size:9px; font-weight:800; color:#fff; background:var(--p600); padding:1px 5px; border-radius:999px;}
+  .who{border-top:1px solid var(--g200); padding:11px 14px; display:flex; align-items:center; gap:9px;}
+  .avatar{width:31px; height:31px; border-radius:50%; background:var(--p100); color:var(--p700); display:grid; place-items:center; font-weight:700; font-size:12px;}
+  .who .nm{font-size:13px; font-weight:600;} .who .rl{font-size:11px; color:var(--g500);}
+  main{flex:1; min-width:0; display:flex; flex-direction:column;}
+  .topbar{background:#fff; border-bottom:1px solid var(--g200); padding:13px 26px; display:flex; align-items:center; gap:14px; position:sticky; top:0; z-index:20;}
+  .crumb{font-size:12px; color:var(--g400);}
+  .topbar h2{margin:2px 0 0; font-size:19px; font-weight:700;}
+  .topbar .right{margin-left:auto; display:flex; align-items:center; gap:9px;}
+  .content{padding:22px 26px 70px;}
+
+  .btn{border:1px solid var(--g300); background:#fff; color:var(--g700); padding:7px 13px; border-radius:8px; font-size:13px; cursor:pointer; font-family:inherit; white-space:nowrap;}
+  .btn:hover{background:var(--g50);}
+  .btn.pri{background:var(--p600); border-color:var(--p600); color:#fff; font-weight:600;}
+  .btn.pri:hover{background:var(--p700);}
+  .btn.sm{padding:4px 9px; font-size:12px; border-radius:6px;}
+  .card{background:#fff; border:1px solid var(--g200); border-radius:var(--radius); overflow:hidden;}
+  .card + .card{margin-top:18px;}
+  .card-h{padding:13px 16px; border-bottom:1px solid var(--g200); display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+  .card-h h3{margin:0; font-size:14.5px; font-weight:700;}
+  .card-h .hint{font-size:12px; color:var(--g500);}
+  .card-h .right{margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+  .card-b{padding:16px;}
+  .filters{display:flex; gap:8px; flex-wrap:wrap; align-items:center; padding:12px 16px; border-bottom:1px solid var(--g200); background:var(--g50);}
+  input.f,select.f{border:1px solid var(--g300); border-radius:8px; padding:6px 10px; font-size:13px; background:#fff; font-family:inherit; color:var(--g700);}
+  input.f{min-width:190px;}
+  .f-lb{font-size:12px; color:var(--g500);}
+  .tw{overflow-x:auto;}
+  table{width:100%; border-collapse:collapse; font-size:13px; white-space:nowrap;}
+  thead th{background:var(--g50); text-align:left; padding:9px 12px; font-size:11.5px; color:var(--g500); font-weight:700; letter-spacing:.4px; border-bottom:1px solid var(--g200);}
+  tbody td{padding:10px 12px; border-bottom:1px solid var(--g100); vertical-align:middle;}
+  tbody tr:hover{background:var(--p50);}
+  tbody tr.sel{background:var(--p50);}
+  .mono{font-family:"SF Mono",ui-monospace,Menlo,monospace; font-size:12px;}
+  .muted{color:var(--g400);} .strong{font-weight:600;}
+  .num{text-align:right; font-variant-numeric:tabular-nums;}
+  .tag{display:inline-block; padding:2px 8px; border-radius:999px; font-size:11.5px; font-weight:600; white-space:nowrap;}
+  .t-gray{background:var(--g100); color:var(--g600);} .t-blue{background:var(--info-bg); color:var(--info);}
+  .t-green{background:var(--ok-bg); color:var(--ok);} .t-amber{background:var(--warn-bg); color:var(--warn);}
+  .t-red{background:var(--danger-bg); color:var(--danger);} .t-violet{background:var(--violet-bg); color:var(--violet);}
+  .t-rose{background:var(--rose-bg); color:var(--rose);}
+  .tabs{display:flex; gap:2px; border-bottom:1px solid var(--g200); padding:0 16px; background:#fff; flex-wrap:wrap;}
+  .tabs span{padding:10px 14px; font-size:13.5px; color:var(--g500); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px;}
+  .tabs span.on{color:var(--p700); font-weight:600; border-bottom-color:var(--p600);}
+  .kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(172px,1fr)); gap:13px;}
+  .kpi{background:#fff; border:1px solid var(--g200); border-radius:var(--radius); padding:14px 15px;}
+  .kpi .lb{font-size:12px; color:var(--g500);}
+  .kpi .vl{font-size:25px; font-weight:800; margin-top:5px; letter-spacing:-.5px;}
+  .kpi .dt{font-size:11.5px; color:var(--g400); margin-top:3px;}
+  .up{color:var(--ok); font-weight:600;} .dn{color:var(--danger); font-weight:600;}
+  .bar{height:5px; border-radius:99px; background:var(--g100); overflow:hidden; margin-top:9px;}
+  .bar i{display:block; height:100%; background:var(--p500); border-radius:99px;}
+  .grid2{display:grid; grid-template-columns:1.35fr 1fr; gap:18px; align-items:start;}
+  @media(max-width:1080px){.grid2{grid-template-columns:1fr;}}
+
+  /* room grid */
+  .rg{overflow-x:auto; border:1px solid var(--g200); border-radius:var(--radius); background:#fff;}
+  .rg table{border-collapse:separate; border-spacing:0; min-width:1010px; white-space:normal;}
+  .rg th{background:var(--g50); border-bottom:1px solid var(--g200); border-right:1px solid var(--g200); padding:9px 8px; font-size:12px; text-align:center; color:var(--g600); font-weight:700;}
+  .rg th small{display:block; font-weight:500; color:var(--g400); font-size:10.5px;}
+  .rg td{border-bottom:1px solid var(--g100); border-right:1px solid var(--g100); padding:3px; vertical-align:top; height:74px;}
+  .rg .tcol{width:58px; background:var(--g50); text-align:center; font-size:11.5px; color:var(--g500); font-weight:600; border-right:1px solid var(--g200); vertical-align:middle;}
+  .slot{border-radius:7px; padding:5px 6px; height:100%; font-size:11.5px; line-height:1.3; border-left:3px solid; position:relative;}
+  .slot .l1{font-weight:700; color:var(--g900);}
+  .slot .l2{color:var(--g600); font-size:11px;}
+  .slot .l3{font-size:10.5px; margin-top:1px;}
+  .slot .st{position:absolute; top:4px; right:5px; font-size:9px; font-weight:800; padding:1px 5px; border-radius:99px;}
+  .st-wait{background:var(--g200); color:var(--g600);} .st-in{background:var(--ok); color:#fff;}
+  .st-no{background:var(--danger); color:#fff;} .st-paid{background:var(--p600); color:#fff;}
+  .acts{display:flex; gap:3px; margin-top:5px; padding-top:4px; border-top:1px dashed rgba(0,0,0,.13); flex-wrap:wrap;}
+  .mini{font-size:10px; padding:2px 6px; border-radius:5px; border:1px solid var(--g300); background:#fff; cursor:pointer; font-weight:600; color:var(--g600); font-family:inherit; line-height:1.4;}
+  .mini.ok{color:var(--ok); border-color:#86efac;} .mini.no{color:var(--danger); border-color:#fca5a5;}
+  .mini.pay{color:#fff; background:var(--p600); border-color:var(--p600);}
+  .mini.rc{color:var(--p700); border-color:var(--p300);}
+  .mini.done{color:var(--g400); border-color:var(--g200); background:var(--g50);}
+  .s-self{background:var(--p50); border-color:var(--p500);}
+  .s-inst{background:var(--warn-bg); border-color:var(--warn);}
+  .s-couple{background:var(--rose-bg); border-color:var(--rose);}
+  .s-done{background:var(--ok-bg); border-color:var(--ok);}
+  .s-no{background:var(--danger-bg); border-color:var(--danger);}
+
+  /* week calendar (room availability) */
+  .wk{overflow-x:auto; border:1px solid var(--g200); border-radius:9px; background:#fff;}
+  .wk table{border-collapse:separate; border-spacing:0; min-width:520px; white-space:normal;}
+  .wk th{background:var(--g50); border-bottom:1px solid var(--g200); border-right:1px solid var(--g200); padding:6px 4px; font-size:11px; text-align:center; color:var(--g600); font-weight:700;}
+  .wk th small{display:block; font-weight:500; color:var(--g400); font-size:10px;}
+  .wk th.today{background:var(--p50); color:var(--p700);}
+  .wk td{border-bottom:1px solid var(--g100); border-right:1px solid var(--g100); padding:2px; height:30px; vertical-align:top;}
+  .wk .tc{width:46px; background:var(--g50); text-align:center; font-size:10.5px; color:var(--g400); font-weight:600; border-right:1px solid var(--g200); vertical-align:middle;}
+  .ev{border-radius:5px; padding:2px 4px; font-size:10px; line-height:1.25; border-left:2px solid; height:100%; overflow:hidden;}
+  .ev b{display:block; font-weight:700;}
+  .ev.bk{background:var(--sky-bg); border-color:var(--sky); color:#075985;}
+  .ev.ex{background:var(--ok-bg); border-color:var(--ok); color:#14532d;}
+  .ev.nw{background:var(--p100); border-color:var(--p600); color:var(--p900); box-shadow:0 0 0 2px var(--p300);}
+  .ev.cf{background:var(--danger-bg); border-color:var(--danger); color:#7f1d1d;}
+  .ev.free{background:transparent; border:1px dashed var(--g200); color:var(--g300); text-align:center; font-size:9px; border-left:1px dashed var(--g200);}
+  .dow{display:flex; gap:3px;}
+  .dow button{flex:1; border:1px solid var(--g200); background:#fff; border-radius:7px; padding:5px 0; font-size:11.5px; font-weight:700; color:var(--g600); cursor:pointer; font-family:inherit;}
+  .dow button.on{background:var(--p500); border-color:var(--p500); color:#fff;}
+  .seg{display:flex; gap:2px; background:#fff; border:1px solid var(--g200); border-radius:8px; padding:3px;}
+  .seg button{flex:1; border:none; background:transparent; border-radius:6px; padding:5px 0; font-size:12.5px; font-weight:600; color:var(--g600); cursor:pointer; font-family:inherit;}
+  .seg button.on{background:var(--p600); color:#fff;}
+  .panel{border:1px solid var(--g200); background:var(--g50); border-radius:11px; padding:13px;}
+  .panel .pt{font-size:11px; font-weight:800; color:var(--g500); letter-spacing:.6px; margin-bottom:9px;}
+  .slots{max-height:186px; overflow-y:auto; border:1px solid var(--g200); border-radius:9px; background:#fff;}
+  .slots li{display:flex; align-items:center; padding:6px 10px; border-bottom:1px solid var(--g100); font-size:12.5px;}
+  .slots li:last-child{border-bottom:none;}
+  .slots li .x{margin-left:auto; color:var(--g300); cursor:pointer; font-size:11px;}
+  .slots li .x:hover{color:var(--danger);}
+  .slots li.cfl{background:#fef2f2;}
+  ul.slots{list-style:none; margin:0; padding:0;}
+
+  /* wizard */
+  .wiz{display:flex; align-items:center; gap:0; flex-wrap:wrap;}
+  .wiz .w{display:flex; align-items:center; gap:8px; padding:8px 14px; border:1px solid var(--g200); background:#fff; font-size:12.5px; color:var(--g500); border-radius:8px;}
+  .wiz .w .n{width:19px; height:19px; border-radius:50%; background:var(--g200); color:var(--g600); display:grid; place-items:center; font-size:11px; font-weight:800;}
+  .wiz .w.on{border-color:var(--p600); background:var(--p50); color:var(--p700); font-weight:700;}
+  .wiz .w.on .n{background:var(--p600); color:#fff;}
+  .wiz .w.ok .n{background:var(--ok); color:#fff;}
+  .wiz .cn{width:22px; height:1px; background:var(--g300);}
+
+  /* quota bar */
+  .qbar{display:flex; height:8px; border-radius:99px; overflow:hidden; background:var(--g100); min-width:104px;}
+  .qbar i{display:block; height:100%;}
+  .q-used{background:var(--ok);} .q-bk{background:var(--p500);} .q-rs{background:var(--p200);}
+  .qlg{display:flex; gap:11px; font-size:11px; color:var(--g500); flex-wrap:wrap; align-items:center;}
+  .qlg i{width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:4px;vertical-align:-1px;}
+
+  /* modal */
+  .modal-demo{background:#fff; border:1px solid var(--g200); border-radius:12px; box-shadow:0 8px 28px rgba(15,23,42,.10);}
+  .modal-demo .mh{padding:13px 17px; border-bottom:1px solid var(--g200); display:flex; align-items:center;}
+  .modal-demo .mh h4{margin:0; font-size:14.5px; font-weight:700;}
+  .modal-demo .mb{padding:15px 17px;}
+  .modal-demo .mf{padding:11px 17px; border-top:1px solid var(--g200); display:flex; justify-content:flex-end; gap:8px; background:var(--g50);}
+  .fgrid{display:grid; grid-template-columns:repeat(2,1fr); gap:12px;}
+  .fgrid.f3{grid-template-columns:repeat(3,1fr);}
+  .fld label{display:block; font-size:11.5px; color:var(--g500); margin-bottom:4px;}
+  .fld label .rq{color:var(--danger);}
+  .inp{width:100%; border:1px solid var(--g300); border-radius:8px; padding:7px 10px; font-size:13px; background:#fff; color:var(--g700);}
+  .inp.ph{color:var(--g400);}
+  .sect{margin-top:14px; padding-top:12px; border-top:1px dashed var(--g200);}
+  .sect > .st2{font-size:12px; font-weight:700; color:var(--g600); margin-bottom:8px;}
+  .chks{display:flex; flex-wrap:wrap; gap:7px;}
+  .chk{border:1px solid var(--g300); border-radius:7px; padding:5px 10px; font-size:12.5px; color:var(--g600); background:#fff; display:inline-flex; align-items:center; gap:6px;}
+  .chk.on{border-color:var(--p500); background:var(--p50); color:var(--p700); font-weight:600;}
+  .chk .bx{width:12px; height:12px; border:1.5px solid var(--g400); border-radius:3px; display:inline-block; position:relative;}
+  .chk.on .bx{background:var(--p600); border-color:var(--p600);}
+  .chk.on .bx::after{content:"✓"; color:#fff; font-size:9px; position:absolute; left:1.5px; top:-3px;}
+  .note{background:var(--p50); border:1px solid var(--p200); color:var(--p900); border-radius:8px; padding:9px 12px; font-size:12.5px;}
+  .note.rose{background:var(--rose-bg); border-color:#fecdd3; color:#9f1239;}
+  .note.amber{background:var(--warn-bg); border-color:#fde68a; color:#92400e;}
+  .note.green{background:var(--ok-bg); border-color:#86efac; color:#14532d;}
+  .page{display:none;} .page.on{display:block;}
+  .sub{display:none;} .sub.on{display:block;}
+  .legend{display:flex; gap:14px; flex-wrap:wrap; font-size:11.5px; color:var(--g500); align-items:center;}
+  .legend i{display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:4px; vertical-align:-1px;}
+  .flow{display:flex; align-items:center; gap:7px; flex-wrap:wrap; font-size:12px;}
+  .flow .stp{border:1px solid var(--g300); border-radius:99px; padding:4px 11px; background:#fff; color:var(--g600);}
+  .flow .stp.on{background:var(--p600); border-color:var(--p600); color:#fff; font-weight:600;}
+  .flow .ar{color:var(--g300);}
+  .sr{font-size:11.5px; color:var(--g500); padding:9px 16px; background:var(--g50); border-top:1px solid var(--g200); display:flex; align-items:center; flex-wrap:wrap; gap:6px;}
+  .sr .right{margin-left:auto; display:flex; gap:5px;}
+  .pg{border:1px solid var(--g300); background:#fff; border-radius:6px; padding:2px 8px; font-size:12px; color:var(--g600);}
+  .pg.on{background:var(--p600); color:#fff; border-color:var(--p600); font-weight:700;}
+  .ops a{color:var(--p600); text-decoration:none; font-size:12.5px; margin-right:9px; cursor:pointer;}
+  .ops a:hover{text-decoration:underline;}
+  .ops a.dg{color:var(--danger);} .ops a.ok{color:var(--ok);}
+  h4.blk{margin:20px 0 9px; font-size:13px; font-weight:700; color:var(--g600);}
+  .nx{font-size:10.5px; color:var(--g500); margin-top:3px; line-height:1.4;}
+  .nx.wr{color:var(--warn); font-weight:600;}
+
+  /* logic block */
+  .logic{margin-top:16px; background:#fff; border:1px solid var(--g200); border-left:3px solid var(--p500); border-radius:var(--radius); overflow:hidden;}
+  .logic-h{padding:10px 16px; border-bottom:1px solid var(--g200); font-size:13px; font-weight:700; color:var(--p700); background:var(--p50); display:flex; align-items:center; gap:7px;}
+  .logic-b{padding:15px 16px;}
+  .lgrid{display:grid; grid-template-columns:repeat(auto-fit,minmax(290px,1fr)); gap:20px;}
+  .lgrid h5{margin:0 0 7px; font-size:12px; font-weight:800; color:var(--g700); letter-spacing:.2px;}
+  .lgrid ul{margin:0; padding-left:16px; font-size:12.5px; color:var(--g600); line-height:1.8;}
+  .lgrid li{margin-bottom:2px;}
+  .lgrid b{color:var(--g900);}
+  .tbd{margin-top:14px; padding:10px 12px; background:var(--warn-bg); border:1px solid #fde68a; border-radius:8px; font-size:12px; color:#92400e; line-height:1.75;}
+  .tbd b{display:block; margin-bottom:2px;}
+  code{background:var(--g100); padding:1px 5px; border-radius:4px; font-size:11.5px; font-family:"SF Mono",ui-monospace,Menlo,monospace; color:var(--g700);}
+</style>
+
+<div class="shell">
+  <aside>
+    <div class="brand">
+      <h1>CheerPsy</h1>
+      <div class="sb">慈恩心理治療所</div>
+      <span class="ver">V2 · 櫃台行政</span>
+    </div>
+    <nav class="nav" id="nav">
+      <div class="nav-sec">營運</div>
+      <a data-p="dash" class="on"><span class="ic">📊</span>營運總覽</a>
+      <div class="nav-sec">個案流程</div>
+      <a data-p="match"><span class="ic">🤝</span>媒合管理<span class="new">NEW</span></a>
+      <a data-p="cases"><span class="ic">👤</span>個案管理</a>
+      <div class="nav-sec">每日作業</div>
+      <a data-p="rooms"><span class="ic">🗓️</span>診間日曆<span class="star">主控</span></a>
+      <a data-p="booking"><span class="ic">➕</span>預約作業</a>
+      <a data-p="appts"><span class="ic">📋</span>預約總表</a>
+      <div class="nav-sec">機構</div>
+      <a data-p="contracts"><span class="ic">📑</span>機構合約清冊<span class="new">NEW</span></a>
+      <a data-p="plans"><span class="ic">🏢</span>機構方案清冊</a>
+      <a data-p="claims"><span class="ic">💰</span>機構核銷案</a>
+      <div class="nav-sec">財務</div>
+      <a data-p="daily"><span class="ic">📒</span>日報表 / 對帳</a>
+      <a data-p="ar"><span class="ic">💳</span>應收帳冊</a>
+      <div class="nav-sec">分析</div>
+      <a data-p="analytics"><span class="ic">📈</span>數據分析</a>
+    </nav>
+    <div class="who">
+      <div class="avatar">子君</div>
+      <div><div class="nm">陳子君</div><div class="rl">櫃台行政</div></div>
+    </div>
+  </aside>
+
+  <main>
+    <div class="topbar">
+      <div><div class="crumb" id="crumb">營運</div><h2 id="title">營運總覽</h2></div>
+      <div class="right"><button class="btn sm">🔔 3</button><button class="btn sm">2026 / 08 / 01（六）</button></div>
+    </div>
+    <div class="content">
+
+      <!-- ============ 營運總覽 ============ -->
+      <section class="page on" id="p-dash">
+        <div class="kpis">
+          <div class="kpi"><div class="lb">本月媒合數量</div><div class="vl">32</div><div class="dt"><span class="up">▲ 6</span> 較上月</div></div>
+          <div class="kpi"><div class="lb">本月進案數量</div><div class="vl">27</div><div class="dt">初診有到 27 / 未到 5</div></div>
+          <div class="kpi"><div class="lb">進案率</div><div class="vl">84<span style="font-size:15px">%</span></div><div class="bar"><i style="width:84%"></i></div></div>
+          <div class="kpi"><div class="lb">本週預約 / 實際</div><div class="vl">96 <span style="font-size:15px;color:var(--g400)">/ 88</span></div><div class="dt">達成率 <span class="up">91.7%</span></div></div>
+          <div class="kpi"><div class="lb">本月應收</div><div class="vl">$248,600</div><div class="dt">已收 $196,400 · 未收 <span class="dn">$52,200</span></div></div>
+        </div>
+        <div class="grid2" style="margin-top:18px">
+          <div class="card" style="margin:0">
+            <div class="card-h"><h3>今日待辦</h3><span class="hint">2026/08/01</span></div>
+            <div class="tw"><table>
+              <thead><tr><th>類型</th><th>項目</th><th>對象</th><th>狀態</th><th>操作</th></tr></thead>
+              <tbody>
+                <tr><td><span class="tag t-rose">媒合</span></td><td>待心理師回覆逾 2 天</td><td>黃一夫（260801002）</td><td><span class="tag t-amber">媒合中</span></td><td class="ops"><a>改派心理師</a></td></tr>
+                <tr><td><span class="tag t-blue">初診</span></td><td>今日初診待確認到診</td><td>李新源 14:00</td><td><span class="tag t-gray">待確認</span></td><td class="ops"><a class="ok">初診有到</a><a class="dg">初診未到</a></td></tr>
+                <tr><td><span class="tag t-amber">核銷</span></td><td>心理師文件未齊（4 筆）</td><td>202607-01 衛生局</td><td><span class="tag t-amber">收集中</span></td><td class="ops"><a>前往核對</a></td></tr>
+                <tr><td><span class="tag t-violet">額度</span></td><td>機構額度即將用罄（最後 1 次）</td><td>林凱文 15-45青壯</td><td><span class="tag t-amber">3/3</span></td><td class="ops"><a>設定下次結帳</a></td></tr>
+                <tr><td><span class="tag t-green">收款</span></td><td>月結個案應收</td><td>林小潔 $2,000</td><td><span class="tag t-red">未付款</span></td><td class="ops"><a>付款</a></td></tr>
+              </tbody>
+            </table></div>
+          </div>
+          <div class="card" style="margin:0">
+            <div class="card-h"><h3>本月來源分析</h3></div>
+            <div class="card-b">
+              <div style="display:flex;flex-direction:column;gap:11px">
+                <div><div style="display:flex;font-size:12.5px;margin-bottom:4px"><span>機構轉介</span><span class="num" style="margin-left:auto;font-weight:700">41%</span></div><div class="bar"><i style="width:41%"></i></div></div>
+                <div><div style="display:flex;font-size:12.5px;margin-bottom:4px"><span>親友介紹</span><span class="num" style="margin-left:auto;font-weight:700">23%</span></div><div class="bar"><i style="width:23%;background:var(--violet)"></i></div></div>
+                <div><div style="display:flex;font-size:12.5px;margin-bottom:4px"><span>社群媒體</span><span class="num" style="margin-left:auto;font-weight:700">18%</span></div><div class="bar"><i style="width:18%;background:var(--ok)"></i></div></div>
+                <div><div style="display:flex;font-size:12.5px;margin-bottom:4px"><span>他院所推薦</span><span class="num" style="margin-left:auto;font-weight:700">11%</span></div><div class="bar"><i style="width:11%;background:var(--warn)"></i></div></div>
+                <div><div style="display:flex;font-size:12.5px;margin-bottom:4px"><span>自行前來 / 其他</span><span class="num" style="margin-left:auto;font-weight:700">7%</span></div><div class="bar"><i style="width:7%;background:var(--g400)"></i></div></div>
+              </div>
+              <div class="note" style="margin-top:14px">💡 主述議題 TOP3：伴侶關係 28% · 情緒壓力 21% · 家庭親子 17%</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="logic">
+          <div class="logic-h">⚙️ 頁面邏輯與互動設計</div>
+          <div class="logic-b">
+            <div class="lgrid">
+              <div>
+                <h5>資料來源與計算</h5>
+                <ul>
+                  <li><b>媒合數量</b>＝當月新建立的「諮商需求表」筆數。</li>
+                  <li><b>進案數量</b>＝當月按下<b>初診有到</b>、成功產生病歷號的個案數；統計月份以<b>初診日</b>為準。</li>
+                  <li><b>進案率</b>＝進案數 ÷ 媒合數（分母含當月新增但尚未完成媒合者，故月中會偏低，月結算才準）。</li>
+                  <li><b>本月應收</b>＝當月所有已執行紀錄的應收合計；已收/未收依收款狀態拆分。</li>
+                </ul>
+              </div>
+              <div>
+                <h5>互動行為</h5>
+                <ul>
+                  <li>每張 KPI 卡<b>可點擊</b>，帶著已套用的篩選條件跳到對應清單（如「未收 $52,200」→ 應收帳冊已篩「未收」）。</li>
+                  <li>今日待辦每列的操作按鈕<b>就地執行</b>，完成後該列即時消失，不需離開本頁。</li>
+                  <li>待辦依<b>急迫度排序</b>：逾期媒合 → 今日初診 → 額度將盡 → 核銷缺件 → 逾期收款。</li>
+                  <li>來源分析長條可點擊，下鑽到該管道的個案清單。</li>
+                </ul>
+              </div>
+              <div>
+                <h5>權限</h5>
+                <ul>
+                  <li>行政／管理者：完整可見。</li>
+                  <li>會計：只見財務類 KPI 與收款待辦。</li>
+                  <li>心理師：不進本頁，改看心理師版「我的今日」。</li>
+                </ul>
+              </div>
+            </div>
+            <div class="tbd"><b>待確認</b>
+              ① 進案率的分母要用「當月新增媒合」還是「當月結案的媒合」？影響月中數字的解讀。<br>
+              ② 待辦是否需要「已讀／延後處理」機制，避免同一項目每天重複出現。
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 媒合管理 ============ -->
+      <section class="page" id="p-match">
+        <div class="card" style="margin-bottom:16px"><div class="card-b" style="padding:13px 16px">
+          <div class="flow">
+            <span class="stp on">諮商需求表</span><span class="ar">→</span>
+            <span class="stp">派案心理師</span><span class="ar">→</span>
+            <span class="stp">心理師承接</span><span class="ar">→</span>
+            <span class="stp">成功轉預約</span><span class="ar">→</span>
+            <span class="stp">初診有到</span><span class="ar">→</span>
+            <span class="stp" style="border-color:var(--ok);color:var(--ok);font-weight:600">產生病歷號 · 進行中個案</span>
+          </div>
+        </div></div>
+
+        <div class="card">
+          <div class="tabs">
+            <span class="on" data-sub="m1" data-grp="m">媒合列表</span>
+            <span data-sub="m2" data-grp="m">媒合結案表</span>
+            <span data-sub="m3" data-grp="m">諮商需求表（表單樣式）</span>
+          </div>
+          <div class="sub on" id="s-m1">
+            <div class="filters">
+              <input class="f" placeholder="搜尋 派案碼 / 姓名 / 電話">
+              <select class="f"><option>全部狀態</option><option>新增</option><option>媒合中</option><option>成功轉預約</option><option>不成功</option><option>取消媒合</option></select>
+              <select class="f"><option>全部方案</option><option>自費</option><option>衛生局 / 15-45青壯</option></select>
+              <div style="margin-left:auto"><button class="btn pri">＋ 新增派案</button></div>
+            </div>
+            <div class="tw"><table>
+              <thead><tr><th>派案碼</th><th>姓名</th><th>年齡</th><th>性別</th><th>方案</th><th>諮商模式</th><th>媒合狀態</th><th>操作</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">260801002</td><td class="strong">黃一夫</td><td>48</td><td>男</td><td>自費</td><td>個人</td><td><span class="tag t-gray">新增</span></td><td class="ops"><a>編輯</a><a>派案心理師</a></td></tr>
+                <tr class="sel"><td class="mono">260801001</td><td class="strong">王大白 ▾</td><td>45</td><td>男</td><td>自費</td><td>個人</td><td><span class="tag t-amber">媒合中</span></td><td class="ops"><a>編輯</a><a class="dg">取消媒合</a></td></tr>
+                <tr><td colspan="8" style="background:var(--g50);padding:0"><div style="padding:13px 16px">
+                  <div style="font-size:12px;color:var(--g500);margin-bottom:9px">派案碼 <b class="mono">260801001</b> ｜ 個案：<b>王大白</b> ｜ 狀態：<span class="tag t-amber">媒合中</span></div>
+                  <div style="background:#fff;border:1px solid var(--g200);border-radius:8px;overflow:hidden"><table>
+                    <thead><tr><th>媒合日期</th><th>次數</th><th>媒合心理師</th><th>狀態</th><th>操作</th></tr></thead>
+                    <tbody>
+                      <tr><td>2026/07/26</td><td>第二次</td><td>林紀宇</td><td><span class="tag t-amber">媒合中</span></td><td class="ops"><a class="dg">取消媒合</a></td></tr>
+                      <tr><td>2026/07/25</td><td>第一次</td><td>劉柏宏</td><td><span class="tag t-red">不成功</span></td><td class="ops"><a>重新派案</a></td></tr>
+                      <tr><td>2026/07/25</td><td class="muted">—</td><td class="muted">—</td><td><span class="tag t-gray">新增</span></td><td class="ops"><a>派案心理師</a></td></tr>
+                    </tbody></table></div>
+                </div></td></tr>
+                <tr><td class="mono">260731001</td><td class="strong">林小潔</td><td>18</td><td>女</td><td>自費</td><td>個人</td><td><span class="tag t-red">取消媒合</span></td><td class="ops"><a>查看</a><a>取消原因</a></td></tr>
+                <tr><td class="mono">260725002</td><td class="strong">李新源</td><td>26</td><td>男</td><td>衛生局 / 15-45青壯</td><td>個人</td><td><span class="tag t-green">成功轉預約</span></td><td class="ops"><a class="ok">初診有到</a><a class="dg">初診未到</a></td></tr>
+                <tr><td class="mono">260725001</td><td class="strong">李小月</td><td>33</td><td>女</td><td>國防部 / 國軍EAP</td><td>伴侶</td><td><span class="tag t-red">不成功</span></td><td class="ops"><a>重新派案</a></td></tr>
+              </tbody></table></div>
+            <div class="sr">共 43 筆 ｜ 每頁 20 筆<div class="right"><span class="pg on">1</span><span class="pg">2</span><span class="pg">3</span><span class="pg">›</span></div></div>
+          </div>
+
+          <div class="sub" id="s-m2">
+            <div class="filters"><input class="f" placeholder="搜尋 派案碼 / 姓名"><select class="f"><option>全部狀態</option><option>已結案</option><option>取消媒合</option></select></div>
+            <div class="tw"><table>
+              <thead><tr><th>媒合結案日期</th><th>派案碼</th><th>姓名</th><th>年齡</th><th>性別</th><th>方案</th><th>媒合狀態</th><th>操作</th></tr></thead>
+              <tbody>
+                <tr><td>26/08/15</td><td class="mono">260801002</td><td class="strong">黃一夫</td><td>48</td><td>男</td><td>自費</td><td><span class="tag t-gray">已結案</span></td><td class="ops"><a>查看原因</a></td></tr>
+                <tr><td>26/08/03</td><td class="mono">260731001</td><td class="strong">林小潔</td><td>18</td><td>女</td><td>自費</td><td><span class="tag t-red">取消媒合</span></td><td class="ops"><a>查看原因</a></td></tr>
+                <tr><td>26/07/26</td><td class="mono">260725001</td><td class="strong">李小月</td><td>33</td><td>女</td><td>國防部 / 國軍EAP</td><td><span class="tag t-gray">已結案</span></td><td class="ops"><a>查看原因</a></td></tr>
+              </tbody></table></div>
+            <div class="card-b" style="border-top:1px solid var(--g200)"><div class="note amber"><b>取消媒合</b>＝個案自行取消　｜　<b>已結案</b>＝我方結束（聯繫不上／所有心理師皆無法配合）</div></div>
+          </div>
+
+          <div class="sub" id="s-m3">
+            <div class="card-b" style="background:var(--g50)">
+              <div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">
+                <div class="modal-demo" style="flex:1;min-width:400px">
+                  <div class="mh"><h4>新增派案 — 諮商需求表</h4><div style="margin-left:auto;display:flex;gap:7px"><button class="btn sm">編輯</button><button class="btn sm pri">儲存</button></div></div>
+                  <div class="mb">
+                    <div class="fgrid f3">
+                      <div class="fld"><label>姓名 <span class="rq">*</span></label><div class="inp">王大白</div></div>
+                      <div class="fld"><label>年齡</label><div class="inp">45</div></div>
+                      <div class="fld"><label>性別</label><div class="inp">男</div></div>
+                    </div>
+                    <div class="fgrid" style="margin-top:12px">
+                      <div class="fld"><label>電話 <span class="rq">*</span></label><div class="inp">0912-345-678</div></div>
+                      <div class="fld"><label>方案</label><div class="inp">自費</div></div>
+                    </div>
+                    <div class="sect"><div class="st2">管道來源</div>
+                      <div class="chks">
+                        <span class="chk on"><i class="bx"></i>親友介紹</span><span class="chk"><i class="bx"></i>自行前來</span>
+                        <span class="chk"><i class="bx"></i>社群媒體</span><span class="chk"><i class="bx"></i>他院所推薦</span>
+                        <span class="chk"><i class="bx"></i>員工協助方案 EAP</span><span class="chk"><i class="bx"></i>本所員工推薦</span>
+                      </div>
+                      <div class="note rose" style="margin-top:9px;font-size:11.5px">⚠️ 勾「親友介紹」時提示：如推薦人目前為本所治療中個案，本所得依專業倫理考量安排心理治療師。</div>
+                    </div>
+                    <div class="sect"><div class="st2">主述議題</div>
+                      <div class="chks">
+                        <span class="chk"><i class="bx"></i>性諮商／多元性別</span><span class="chk on"><i class="bx"></i>伴侶關係／人際關係</span>
+                        <span class="chk"><i class="bx"></i>家庭／親子／嬰幼兒發展</span><span class="chk"><i class="bx"></i>工作職場</span>
+                        <span class="chk on"><i class="bx"></i>情緒壓力</span><span class="chk"><i class="bx"></i>自我探索</span><span class="chk"><i class="bx"></i>成癮議題</span>
+                      </div>
+                    </div>
+                    <div class="sect"><div class="fgrid">
+                      <div class="fld"><label>指定心理師</label><div class="chks"><span class="chk on"><i class="bx"></i>不指定</span><span class="chk"><i class="bx"></i>指定</span></div></div>
+                      <div class="fld"><label>諮商型態</label><div class="chks"><span class="chk on"><i class="bx"></i>個人</span><span class="chk"><i class="bx"></i>伴侶</span><span class="chk"><i class="bx"></i>親子／家庭</span></div></div>
+                    </div>
+                    <div class="fld" style="margin-top:12px"><label>可諮商時段</label><div class="inp">平日晚上 18:00 後、週六全天</div></div></div>
+                  </div>
+                  <div class="mf"><button class="btn">取消</button><button class="btn pri">儲存並列入媒合列表</button></div>
+                </div>
+                <div style="flex:0 0 258px">
+                  <div class="modal-demo"><div class="mh"><h4>初診未到</h4></div>
+                    <div class="mb">
+                      <div style="font-size:12px;color:var(--g500);margin-bottom:9px">請至少選填一項未到原因</div>
+                      <div class="chks" style="flex-direction:column;align-items:stretch">
+                        <span class="chk on"><i class="bx"></i>更改時間 → 回轉預約</span>
+                        <span class="chk"><i class="bx"></i>更換心理師 → 回派案</span>
+                        <span class="chk"><i class="bx"></i>取消媒合 → 媒合結案</span>
+                      </div>
+                      <div class="fld" style="margin-top:11px"><label>其他</label><div class="inp ph">　</div></div>
+                    </div>
+                    <div class="mf"><button class="btn pri">確定</button></div>
+                  </div>
+                  <div class="note" style="margin-top:13px">按【初診有到】→ 跳出初診單（資料由需求表自動帶入，只補個資）→ 產生<b>病歷號</b>，轉「進行中」。</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="logic">
+          <div class="logic-h">⚙️ 頁面邏輯與互動設計</div>
+          <div class="logic-b">
+            <div class="lgrid">
+              <div>
+                <h5>狀態機（媒合狀態）</h5>
+                <ul>
+                  <li><b>新增</b>：已建需求表、尚未派案。</li>
+                  <li><b>媒合中</b>：已派給心理師、等待回覆。系統推播通知給該心理師。</li>
+                  <li><b>不成功</b>：心理師按「無意願承接」→ 自動回此狀態並開放<b>重新派案</b>（可累積多次，記在媒合子列表）。</li>
+                  <li><b>成功轉預約</b>：心理師承接 → 操作欄出現「轉預約」，行政排初診時段。</li>
+                  <li><b>取消媒合</b>（個案自行）／<b>已結案</b>（我方結束）→ 移入媒合結案表。</li>
+                </ul>
+              </div>
+              <div>
+                <h5>互動行為</h5>
+                <ul>
+                  <li>點<b>整列</b>展開媒合子列表（歷次派案紀錄），不另開頁。</li>
+                  <li><b>派案心理師</b>：跳出心理師選擇視窗，可多選同時詢問；送出後狀態轉「媒合中」。</li>
+                  <li><b>轉預約</b>：直接開啟預約視窗並帶入個案資料，存檔後同步寫入診間日曆。</li>
+                  <li><b>初診有到</b>：跳出初診單（需求表資料自動帶入，只補身分證等個資）→ 產生病歷號 → 個案轉「進行中」並寫入個案列表。</li>
+                  <li><b>初診未到</b>：跳出原因視窗，依勾選分流回「轉預約」或「派案」，或轉媒合結案。</li>
+                  <li>個資權限：行政可<b>編輯</b>，心理師只能<b>查看</b>。</li>
+                </ul>
+              </div>
+              <div>
+                <h5>編號規則</h5>
+                <ul>
+                  <li>派案碼 <code>YYMMDD + 流水號3碼</code>，例 <code>260801001</code>，建立需求表時產生。</li>
+                  <li>初診有到後<b>另外</b>產生病歷號，兩碼並存以利追溯媒合來源。</li>
+                </ul>
+              </div>
+            </div>
+            <div class="tbd"><b>待確認</b>
+              ① 派案可否<b>同時</b>詢問多位心理師（先回先得），或必須一位一位問？影響子列表的「次數」定義。<br>
+              ② 實習心理師是否納入系統以供派案。<br>
+              ③ 媒合中超過幾天要自動提醒／自動退回重新派案。
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 個案管理 ============ -->
+      <section class="page" id="p-cases">
+        <div class="card">
+          <div class="tabs">
+            <span class="on" data-sub="c1" data-grp="c">個案列表</span>
+            <span data-sub="c2" data-grp="c">個案詳情（最新動態）</span>
+            <span data-sub="c3" data-grp="c">預警流失列表</span>
+          </div>
+
+          <div class="sub on" id="s-c1">
+            <div class="filters">
+              <input class="f" placeholder="搜尋 病歷號 / 姓名 / 電話">
+              <select class="f"><option>全部狀態</option><option>初診已預約</option><option>進行中</option><option>暫停</option><option>預警流失</option><option>已結案</option></select>
+              <select class="f"><option>全部心理師</option></select>
+              <select class="f"><option>全部結帳方式</option><option>次結</option><option>月結</option><option>多次結</option><option>機構自付</option></select>
+              <div style="margin-left:auto"><button class="btn">匯出 CSV</button><button class="btn pri" style="margin-left:8px">＋ 新增個案</button></div>
+            </div>
+            <div class="tw"><table>
+              <thead><tr><th>病歷號</th><th>姓名</th><th>性別</th><th>心理師</th><th style="min-width:230px">當前 / 下次結帳方式</th><th>狀態</th><th>操作</th></tr></thead>
+              <tbody>
+                <tr><td class="mono strong">26A2422058</td><td class="strong">林小花</td><td>女</td><td>劉柏宏</td>
+                  <td><span class="tag t-gray">自費 · 次結</span><div class="nx">無機構方案</div></td>
+                  <td><span class="tag t-green">進行中</span></td><td class="ops"><a>查看</a><a class="dg">結案</a></td></tr>
+
+                <tr><td class="mono strong">25A8569123</td><td class="strong">王大宇</td><td>男</td><td>呂孟育</td>
+                  <td><span class="tag t-amber">機構 · 機構自付</span> <span class="tag t-gray">2/3</span><div class="nx">衛生局/15-45青壯 · 尚餘 1 次</div></td>
+                  <td><span class="tag t-green">進行中</span></td><td class="ops"><a>查看</a><a class="dg">結案</a></td></tr>
+
+                <tr style="background:#fffbeb"><td class="mono strong">26A7456126</td><td class="strong">林凱文</td><td>男</td><td>呂孟育</td>
+                  <td><span class="tag t-amber">機構 · 機構自付</span> <span class="tag t-red">3/3 最後一次</span>
+                    <div class="nx wr">⚠️ 本次為機構最後一次 → 下次自動轉「自費 · 月結」</div></td>
+                  <td><span class="tag t-green">進行中</span></td><td class="ops"><a>查看</a><a>設定下次結帳</a></td></tr>
+
+                <tr><td class="mono strong">25A5669184</td><td class="strong">陳冠新</td><td>男</td><td>陳慧苓</td>
+                  <td><span class="tag t-gray">自費 · 月結</span><div class="nx">人事處/員工EAP 已用罄（4/4）· 已回自費</div></td>
+                  <td><span class="tag t-green">進行中</span></td><td class="ops"><a>查看</a><a class="dg">結案</a></td></tr>
+
+                <tr><td class="mono strong">26C0000114</td><td class="strong">陳凡 ＆ 王震 <span class="tag t-rose">伴侶</span></td><td>—</td><td>邱惟翔</td>
+                  <td><span class="tag t-gray">自費 · 次結</span><div class="nx">伴侶合療合併收費</div></td>
+                  <td><span class="tag t-green">進行中</span></td><td class="ops"><a>查看</a></td></tr>
+
+                <tr><td class="mono strong">26X0000058</td><td class="strong">李新源</td><td>男</td><td>劉彥君</td>
+                  <td><span class="tag t-gray">自費 · 多次結</span><div class="nx">預繳 10 次 · 已用 6 次</div></td>
+                  <td><span class="tag t-violet">預警流失</span></td><td class="ops"><a>查看</a><a class="dg">結案</a></td></tr>
+              </tbody></table></div>
+            <div class="sr">
+              病歷號規則：初診年(YY) + 代碼(A身分證／B護照／C第三方轉介／X資訊短少) + 末四碼 + 流水號(01起)　例：<b class="mono">26A472701</b>
+              <div class="right"><span class="pg on">1</span><span class="pg">2</span><span class="pg">›</span></div>
+            </div>
+          </div>
+
+          <div class="sub" id="s-c2">
+            <div class="card-b" style="border-bottom:1px solid var(--g200)">
+              <div style="display:flex;align-items:center;gap:13px;flex-wrap:wrap">
+                <div class="avatar" style="width:42px;height:42px;font-size:14px">林</div>
+                <div>
+                  <div style="font-size:16px;font-weight:700">林凱文 <span class="mono" style="font-size:12px;color:var(--g500);font-weight:400">26A7456126</span></div>
+                  <div style="font-size:12.5px;color:var(--g500);margin-top:2px">心理師：呂孟育 ｜ <span class="tag t-green">進行中</span> ｜ 機構 · 機構自付 <span class="tag t-red">3/3 最後一次</span></div>
+                </div>
+                <div style="margin-left:auto;display:flex;gap:8px"><button class="btn">＋ 批次預約</button><button class="btn pri">＋ 新增預約</button></div>
+              </div>
+              <div class="note amber" style="margin-top:12px">⚠️ 機構額度將於本次用罄。下次預約起自動改為 <b>自費 · 月結</b>；如需改為次結請按「設定下次結帳」。</div>
+            </div>
+            <div class="tabs" style="padding-left:16px"><span class="on">最新動態</span><span>預約歷程</span><span>個人資料</span><span>款項紀錄</span></div>
+            <div class="tw"><table>
+              <thead><tr><th>到訪序號</th><th>心理師</th><th>日期</th><th>時段</th><th>類型</th><th>診間</th><th>方案紀錄</th><th class="num">金額</th><th>結帳方式</th><th>自付收款</th><th>機構付款</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">26A7456126004</td><td>呂孟育</td><td>08/05</td><td>18:00-19:00</td><td>現場</td><td>3C</td><td><span class="tag t-gray">自費</span> 預定</td><td class="num">$2,000</td><td>月結</td><td class="muted">未執行</td><td class="muted">—</td></tr>
+                <tr><td class="mono">26A7456126003</td><td>呂孟育</td><td>07/10</td><td>18:00-19:00</td><td>現場</td><td>3C</td><td>15-45青壯 <span class="tag t-red">3/3</span></td><td class="num">$400</td><td>機構自付</td><td><span class="tag t-red">未收款</span></td><td><span class="tag t-amber">待請款</span></td></tr>
+                <tr><td class="mono">26A7456126002</td><td>呂孟育</td><td>06/26</td><td>18:00-19:00</td><td>現場</td><td>3C</td><td>15-45青壯 <span class="tag t-amber">2/3</span></td><td class="num">$400</td><td>機構自付</td><td><span class="tag t-green">已收款</span></td><td><span class="tag t-green">已付款</span></td></tr>
+                <tr><td class="mono">26A7456126001</td><td>呂孟育</td><td>06/12</td><td>18:00-19:00</td><td>現場</td><td>3C</td><td>15-45青壯 <span class="tag t-amber">1/3</span></td><td class="num">$400</td><td>機構自付</td><td><span class="tag t-green">已收款</span></td><td><span class="tag t-green">已付款</span></td></tr>
+              </tbody></table></div>
+            <div class="sr">顯示當日前後各 5 筆；超過 10 筆歸入「歷史紀錄」。換心理師後原心理師無法再查看過往紀錄。</div>
+          </div>
+
+          <div class="sub" id="s-c3">
+            <div class="filters"><select class="f"><option>依超過天數排序 ↓</option><option>依心理師</option></select><select class="f"><option>全部心理師</option></select><span class="f-lb">規則：超過 45 天未有預約紀錄</span></div>
+            <div class="tw"><table>
+              <thead><tr><th>超過天數</th><th>病歷號</th><th>姓名</th><th>心理師</th><th>結帳方式</th><th>狀態</th><th>操作</th></tr></thead>
+              <tbody>
+                <tr><td><span class="tag t-red">58 天</span></td><td class="mono">26A2422058</td><td class="strong">林小花</td><td>劉柏宏</td><td>自費 · 次結</td><td><span class="tag t-gray">已結案</span></td><td class="muted">—</td></tr>
+                <tr><td><span class="tag t-red">57 天</span></td><td class="mono">26A2568072</td><td class="strong">黃詠晨</td><td>鄭幼毅</td><td>自費 · 月結</td><td><span class="tag t-violet">預警流失</span></td><td class="ops"><a class="dg">結案</a></td></tr>
+                <tr><td><span class="tag t-amber">45 天</span></td><td class="mono">25A5669184</td><td class="strong">陳冠新</td><td>陳慧苓</td><td>自費 · 月結</td><td><span class="tag t-violet">預警流失</span></td><td class="ops"><a class="dg">結案</a></td></tr>
+              </tbody></table></div>
+          </div>
+        </div>
+
+        <div class="logic">
+          <div class="logic-h">⚙️ 頁面邏輯與互動設計 — 重點：結帳方式是「動態」的</div>
+          <div class="logic-b">
+            <div class="lgrid">
+              <div>
+                <h5>結帳方式如何計算（核心）</h5>
+                <ul>
+                  <li>此欄<b>不是固定設定值</b>，而是「<b>當前或下次預約會採用的結帳方式</b>」，由系統即時推算。</li>
+                  <li>判斷順序：<br>① 個案是否有<b>有效中</b>的機構方案且<b>尚有可用額度</b> → 顯示 <b>機構</b>（並標示 <code>已用/總數</code>）。<br>② 額度用罄或方案過期 → 自動回落到個案的<b>自費設定</b>（月結／次結／多次結）。</li>
+                  <li>同時有多個機構方案時，<b>一個方案用完才使用下一個</b>（依有效期先到先用）。</li>
+                  <li>已結案個案顯示<b>結案當下</b>的結帳方式，不再變動。</li>
+                </ul>
+              </div>
+              <div>
+                <h5>額度將盡的提示（介面已呈現）</h5>
+                <ul>
+                  <li><b>最後一次</b>時該列<b>整列標黃</b>，標籤顯示 <span class="tag t-red">3/3 最後一次</span>，並附一行說明「下次自動轉自費 · 月結」。</li>
+                  <li>個案詳情頁頂端另有橫幅提醒，行政與心理師都看得到。</li>
+                  <li>操作欄出現 <b>設定下次結帳</b>，可改月結／次結／多次結，或改掛新的機構方案。</li>
+                  <li>同一提醒會出現在<b>營運總覽待辦</b>與<b>診間日曆</b>該時段方塊上，確保櫃檯收款時不會用錯金額。</li>
+                </ul>
+              </div>
+              <div>
+                <h5>其他規則</h5>
+                <ul>
+                  <li><b>預警流失</b>：超過 45 天無預約自動標記，可在此直接結案。</li>
+                  <li><b>結案</b>：跳出結案原因視窗；結案後<b>取消所有未來預約</b>並<b>釋出機構已預留／已預約額度</b>（見機構方案清冊）。</li>
+                  <li><b>換心理師</b>：由行政操作；原心理師即失去該個案歷史紀錄的查看權，新心理師與管理者可看完整歷程。</li>
+                  <li>伴侶案以一筆合併收費，計為一案。</li>
+                </ul>
+              </div>
+            </div>
+            <div class="tbd"><b>待確認</b>
+              ① 機構最後一次時，是否要<b>強制</b>行政確認下次結帳方式（跳窗擋住），還是只提示、預設自動回落自費即可？<br>
+              ② 自費回落的預設值：沿用個案原本設定，還是一律預設「次結」？<br>
+              ③ 若個案同時符合<b>兩個</b>機構方案，優先順序要用「有效期先到」還是「行政手動指定」？
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 診間日曆（櫃檯主控台） ============ -->
+      <section class="page" id="p-rooms">
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-h">
+            <h3>診間日曆 — 櫃檯主控台</h3>
+            <span class="hint">報到 → 收款 → 開收據，一頁完成</span>
+            <div class="right">
+              <button class="btn sm">‹ 前一日</button><button class="btn sm pri">2026/07/10（五）</button><button class="btn sm">後一日 ›</button>
+              <select class="f" style="margin-left:6px"><option>全部樓層</option><option>1F</option><option>2F</option><option>3F</option></select>
+            </div>
+          </div>
+          <div class="card-b" style="padding:12px 16px;display:flex;gap:20px;flex-wrap:wrap;align-items:center">
+            <div style="display:flex;gap:16px;flex-wrap:wrap">
+              <div><div style="font-size:11px;color:var(--g500)">今日應到</div><div style="font-size:18px;font-weight:800">9</div></div>
+              <div><div style="font-size:11px;color:var(--g500)">已報到</div><div style="font-size:18px;font-weight:800;color:var(--ok)">5</div></div>
+              <div><div style="font-size:11px;color:var(--g500)">未到</div><div style="font-size:18px;font-weight:800;color:var(--danger)">1</div></div>
+              <div><div style="font-size:11px;color:var(--g500)">待報到</div><div style="font-size:18px;font-weight:800;color:var(--g400)">3</div></div>
+              <div style="border-left:1px solid var(--g200);padding-left:16px"><div style="font-size:11px;color:var(--g500)">今日已收</div><div style="font-size:18px;font-weight:800;color:var(--p600)">$5,400</div></div>
+              <div><div style="font-size:11px;color:var(--g500)">尚待收款</div><div style="font-size:18px;font-weight:800;color:var(--warn)">$400</div></div>
+            </div>
+            <button class="btn pri" style="margin-left:auto">📒 前往日報表對帳</button>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:14px"><div class="card-b" style="padding:11px 16px">
+          <div class="legend">
+            <span><i style="background:var(--p500)"></i>自費</span>
+            <span><i style="background:var(--warn)"></i>機構方案</span>
+            <span><i style="background:var(--rose)"></i>伴侶案</span>
+            <span><i style="background:var(--ok)"></i>已完成（報到＋收款）</span>
+            <span><i style="background:var(--danger)"></i>未到</span>
+            <span style="margin-left:auto">每格：<b>個案｜性別</b> · <b>心理師｜現場</b> · <b>方案</b> · <b>操作列</b></span>
+          </div>
+        </div></div>
+
+        <div class="rg">
+          <table>
+            <thead><tr>
+              <th class="tcol">時間</th>
+              <th>1A<small>1F · 一般</small></th><th>2B<small>2F · 一般</small></th><th>2C<small>2F · 遊戲治療</small></th>
+              <th>3C<small>3F · 一般</small></th><th>3D<small>3F · 團體</small></th>
+            </tr></thead>
+            <tbody>
+              <tr>
+                <td class="tcol">10:00</td>
+                <td><div class="slot s-done"><span class="st st-paid">已收</span><div class="l1">陳凡／王震｜伴</div><div class="l2">邱惟翔｜現場</div><div class="l3">伴侶自費 · 次結 <b>$3,000</b></div><div class="acts"><button class="mini done">✓ 已到</button><button class="mini rc">查看收據</button></div></div></td>
+                <td><div class="slot s-done"><span class="st st-in">已到</span><div class="l1">王小明｜男</div><div class="l2">邱似齋｜現場</div><div class="l3">自費 · <b>月結</b>（不當場收）</div><div class="acts"><button class="mini done">已記入月結</button></div></div></td>
+                <td></td>
+                <td></td>
+                <td></td>
+              </tr>
+              <tr>
+                <td class="tcol">11:00</td>
+                <td></td><td></td>
+                <td><div class="slot s-inst"><span class="st st-wait">待報到</span><div class="l1">黃小蘭｜女</div><div class="l2">鄭幼毅｜現場</div><div class="l3">衛生局 <b>1/2</b> · 自付 $400</div><div class="acts"><button class="mini ok">已到</button><button class="mini no">未到</button></div></div></td>
+                <td></td><td></td>
+              </tr>
+              <tr>
+                <td class="tcol">13:00</td>
+                <td><div class="slot s-self"><span class="st st-wait">待報到</span><div class="l1">黃詠晨｜男</div><div class="l2">鄭幼毅｜現場</div><div class="l3">自費 · 月結 $2,000</div><div class="acts"><button class="mini ok">已到</button><button class="mini no">未到</button></div></div></td>
+                <td></td><td></td>
+                <td><div class="slot s-inst"><span class="st st-in">已到</span><div class="l1">林凱文｜男</div><div class="l2">呂孟育｜現場</div><div class="l3">15-45青壯 <b>2/3</b> · 應收自付 <b>$400</b></div><div class="acts"><button class="mini pay">收款</button><button class="mini rc">開立收據</button></div></div></td>
+                <td></td>
+              </tr>
+              <tr>
+                <td class="tcol">14:00</td>
+                <td></td>
+                <td><div class="slot s-self"><span class="st st-wait">待報到</span><div class="l1">林小花｜女</div><div class="l2">劉柏宏｜現場</div><div class="l3">自費 · 月結 $2,000</div><div class="acts"><button class="mini ok">已到</button><button class="mini no">未到</button></div></div></td>
+                <td></td><td></td>
+                <td><div class="slot s-done"><span class="st st-in">已到</span><div class="l1">團體 6 人</div><div class="l2">劉彥君｜現場</div><div class="l3">南家扶 · 機構全額</div><div class="acts"><button class="mini done">機構請款 · 免收</button></div></div></td>
+              </tr>
+              <tr>
+                <td class="tcol">15:00</td>
+                <td></td><td></td>
+                <td><div class="slot s-no"><span class="st st-no">未到</span><div class="l1">陳小蓉｜女</div><div class="l2">林紀宇｜現場</div><div class="l3">脆家 2/6 · 已填未到原因</div><div class="acts"><button class="mini">查看原因</button><button class="mini">改約</button></div></div></td>
+                <td></td><td></td>
+              </tr>
+              <tr>
+                <td class="tcol">18:00</td>
+                <td></td>
+                <td><div class="slot s-self"><span class="st st-wait">待報到</span><div class="l1">陳小新｜男</div><div class="l2">劉柏宏｜現場</div><div class="l3">自費 · <b>次結</b> $2,000</div><div class="acts"><button class="mini ok">已到</button><button class="mini no">未到</button></div></div></td>
+                <td></td>
+                <td><div class="slot s-inst" style="box-shadow:0 0 0 2px #fca5a5 inset"><span class="st st-wait">待報到</span><div class="l1">林凱文｜男</div><div class="l2">呂孟育｜現場</div><div class="l3">15-45青壯 <b style="color:var(--danger)">3/3 最後一次</b></div><div class="acts"><button class="mini ok">已到</button><button class="mini no">未到</button></div></div></td>
+                <td></td>
+              </tr>
+              <tr>
+                <td class="tcol">19:00</td>
+                <td><div class="slot s-done"><span class="st st-paid">已收</span><div class="l1">李新源｜男</div><div class="l2">劉彥君｜現場</div><div class="l3">自費 · 多次結（扣 7/10）</div><div class="acts"><button class="mini done">✓ 已到</button><button class="mini rc">查看收據</button></div></div></td>
+                <td></td><td></td><td></td><td></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:16px">
+          <div class="modal-demo" style="flex:1;min-width:330px">
+            <div class="mh"><h4>收款 — 林凱文 26A7456126</h4></div>
+            <div class="mb">
+              <div class="note amber" style="margin-bottom:12px">機構：衛生局 15-45青壯（2/3）· 機構請款 $1,600 · <b>個案自付 $400</b></div>
+              <div class="fgrid">
+                <div class="fld"><label>應收金額</label><div class="inp"><b>$400</b></div></div>
+                <div class="fld"><label>付款方式</label><div class="chks"><span class="chk on"><i class="bx"></i>現金</span><span class="chk"><i class="bx"></i>匯款</span></div></div>
+              </div>
+              <div class="fgrid" style="margin-top:12px">
+                <div class="fld"><label>優待／減免</label><div class="inp ph">0</div></div>
+                <div class="fld"><label>匯款末 5 碼</label><div class="inp ph">— 僅匯款需填</div></div>
+              </div>
+              <div class="sect"><div class="chks"><span class="chk on"><i class="bx"></i>收款後立即開立收據</span></div>
+                <div class="nx" style="margin-top:7px">收費名目自動帶入「心理治療」；機構案依合約自付額規則帶入名目。</div></div>
+            </div>
+            <div class="mf"><button class="btn">取消</button><button class="btn pri">確認收款並開立收據</button></div>
+          </div>
+
+          <div style="flex:1;min-width:330px">
+            <div class="card" style="margin:0"><div class="card-h"><h3>報到後依結帳方式分流</h3></div>
+              <div class="tw"><table>
+                <thead><tr><th>結帳方式</th><th>按下「已到」後</th><th>方塊顯示</th></tr></thead>
+                <tbody>
+                  <tr><td><b>次結</b></td><td>立即產生應收，跳收款視窗</td><td>[收款] [開立收據]</td></tr>
+                  <tr><td><b>月結</b></td><td>記入當月月結帳，<b>不當場收</b></td><td>「已記入月結」</td></tr>
+                  <tr><td><b>多次結</b></td><td>自動扣抵預繳次數</td><td>「扣 7/10」</td></tr>
+                  <tr><td><b>機構自付</b></td><td>應收＝自付額；機構額轉核銷</td><td>[收款 $400] [開立收據]</td></tr>
+                  <tr><td><b>機構全額</b></td><td>不產生應收，全數轉核銷</td><td>「機構請款 · 免收」</td></tr>
+                </tbody></table></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="logic">
+          <div class="logic-h">⚙️ 頁面邏輯與互動設計 — 本頁為櫃檯的主要工作台</div>
+          <div class="logic-b">
+            <div class="lgrid">
+              <div>
+                <h5>設計目標</h5>
+                <ul>
+                  <li>櫃檯人員<b>整天只需要開這一頁</b>：個案報到、收款、開立收據全部就地完成，不必跳到別的頁面。</li>
+                  <li>當日結束後才切到<b>日報表</b>做對帳（現金 / 匯款 / 未收）。</li>
+                  <li><b>已移除視訊／外展欄位</b>：這些個案不會到櫃檯報到，改由心理師在心理師版的「<b>我的班表</b>」個人行事曆上自行處理（<b>預設已到</b>，個案沒來才按取消）。</li>
+                </ul>
+              </div>
+              <div>
+                <h5>報到流程（點方塊即可）</h5>
+                <ul>
+                  <li><b>待報到</b>（灰標）→ 按 <b>已到</b> 或 <b>未到</b>。</li>
+                  <li>按 <b>已到</b>：預約轉「已執行」，寫入當日帳冊，並<b>依結帳方式分流</b>（見左側對照表）。機構案同時把該次額度由「已預約」轉為「已使用」。</li>
+                  <li>按 <b>未到</b>：跳出未到原因視窗；不產生應收，機構額度<b>釋回</b>為可用。</li>
+                  <li>已到後方塊<b>就地長出</b>［收款］［開立收據］按鈕，不必離開日曆。</li>
+                </ul>
+              </div>
+              <div>
+                <h5>收款與收據</h5>
+                <ul>
+                  <li>［收款］跳出視窗：應收金額<b>自動帶入</b>（機構案自動只收自付額），選現金／匯款，可填優待減免、匯款末 5 碼。</li>
+                  <li>預設勾選「收款後立即開立收據」，一次完成兩件事。</li>
+                  <li>收據編號 <code>館別+年月日+流水號3碼+分類+檢核碼</code>，例 <code>A20260801C021-1</code>。重印 <code>-2</code>、作廢 <code>-3</code>。</li>
+                  <li>已開立後按鈕轉為［查看收據］，支援<b>重印</b>與<b>作廢後重開</b>。</li>
+                </ul>
+              </div>
+              <div>
+                <h5>視覺提示</h5>
+                <ul>
+                  <li>方塊右上角<b>狀態徽章</b>：待報到（灰）／已到（綠）／已收（藍）／未到（紅）。</li>
+                  <li>方塊底色即方案類型；<b>已完成</b>整格轉綠，櫃檯一眼看出還剩哪幾格要處理。</li>
+                  <li>機構<b>最後一次</b>的方塊加紅框提示，避免收錯金額（下次起為自費）。</li>
+                  <li>頂部即時統計：應到 / 已報到 / 未到 / 待報到 / 今日已收 / 尚待收款。</li>
+                </ul>
+              </div>
+            </div>
+            <div class="tbd"><b>待確認</b>
+              ① <b>已到但未收款</b>就下班了怎麼處理：自動轉入隔日「應收帳冊」，還是日報表要先擋住不讓結帳？<br>
+              ② 月結個案是否仍需在報到時列印任何單據（簽名單／回條）？<br>
+              ③ 「未到」是否要區分<b>臨時取消</b>與<b>無故未到</b>（影響是否計收失約費、以及機構額度是否釋回）。<br>
+              ④ 時間軸目前為整點列，是否需要 15/30/45 分的半格顯示（若有 90 分鐘的伴侶諮商會跨格）。
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 預約作業（沿用 V1 完整介面） ============ -->
+      <section class="page" id="p-booking">
+        <div class="card">
+          <div class="tabs">
+            <span class="on" data-sub="b1" data-grp="b">新增預約（單筆）</span>
+            <span data-sub="b2" data-grp="b">批次預約</span>
+            <span data-sub="b3" data-grp="b">診間空間週檢視</span>
+          </div>
+
+          <!-- ---- 單筆預約：左表單 + 右空間日曆 ---- -->
+          <div class="sub on" id="s-b1">
+            <div class="card-b" style="background:var(--g50)">
+              <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
+                <div style="flex:0 0 352px;max-width:100%">
+                  <div class="modal-demo">
+                    <div class="mh"><h4>新增預約</h4></div>
+                    <div class="mb">
+                      <div class="fld"><label>個案 <span class="rq">*</span></label>
+                        <div class="inp" style="display:flex;align-items:center;gap:6px">🔍 <span>林凱文（26A7456126）</span><span class="muted" style="margin-left:auto;font-size:11px">可搜尋姓名／電話</span></div>
+                      </div>
+                      <div class="fld" style="margin-top:12px"><label>付款方（伴侶案才出現）</label>
+                        <div class="inp muted">—（一般個案不顯示）</div></div>
+                      <div class="fgrid" style="margin-top:12px">
+                        <div class="fld"><label>諮商類型</label><div class="inp">現場</div></div>
+                        <div class="fld"><label>診間 <span class="rq">*</span></label><div class="inp">3C（3F）</div></div>
+                      </div>
+                      <div class="fld" style="margin-top:12px"><label>日期 <span class="rq">*</span></label><div class="inp">2026 / 07 / 24</div></div>
+                      <div class="fgrid" style="margin-top:12px">
+                        <div class="fld"><label>開始時間</label><div class="inp">18:00</div></div>
+                        <div class="fld"><label>結束時間</label><div class="inp">19:00</div></div>
+                      </div>
+                      <div class="nx">選開始時間後自動 +1 小時；分鐘僅 00 / 15 / 30 / 45。</div>
+                      <div class="fld" style="margin-top:12px"><label>金額 <span class="rq">*</span></label><div class="inp">400</div>
+                        <div class="nx">依心理師預設鐘點費自動帶入；機構案自動帶入自付額。</div></div>
+                      <div class="sect"><div class="st2">付款方式</div>
+                        <div class="chks"><span class="chk"><i class="bx"></i>自費</span><span class="chk on"><i class="bx"></i>機構</span></div>
+                        <div class="fld" style="margin-top:11px"><label>機構額度 Quota <span class="rq">*</span></label>
+                          <div class="inp">衛生局 15-45青壯｜剩餘 1（已預約 1）/ 3｜到期 2026-12-31</div>
+                          <div class="nx wr">⚠️ 選用後為此個案<b>最後一次</b>機構額度，下次起自動轉自費 · 月結。</div></div>
+                      </div>
+                    </div>
+                    <div class="mf"><button class="btn">取消</button><button class="btn pri">儲存</button></div>
+                  </div>
+                </div>
+
+                <div style="flex:1;min-width:330px">
+                  <div class="card" style="margin:0">
+                    <div class="card-h" style="padding:10px 14px"><h3 style="font-size:13.5px">3C 診間 — 空間使用狀況</h3>
+                      <span class="hint">2026/07/20 ~ 07/26</span>
+                      <div class="right"><button class="btn sm">‹</button><button class="btn sm">週</button><button class="btn sm">日</button><button class="btn sm">›</button></div></div>
+                    <div class="card-b" style="padding:12px">
+                      <div class="wk">
+                        <table>
+                          <thead><tr><th class="tc"></th>
+                            <th>一<small>7/20</small></th><th>二<small>7/21</small></th><th>三<small>7/22</small></th>
+                            <th class="today">四<small>7/23</small></th><th>五<small>7/24</small></th><th>六<small>7/25</small></th><th>日<small>7/26</small></th></tr></thead>
+                          <tbody>
+                            <tr><td class="tc">10:00</td><td></td><td><div class="ev bk"><b>黃小蘭</b>鄭幼毅</div></td><td></td><td></td><td></td><td><div class="ev bk"><b>陳大蓉</b>林紀宇</div></td><td></td></tr>
+                            <tr><td class="tc">11:00</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+                            <tr><td class="tc">13:00</td><td><div class="ev ex"><b>林凱文</b>呂孟育</div></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+                            <tr><td class="tc">14:00</td><td></td><td></td><td><div class="ev bk"><b>王大宇</b>呂孟育</div></td><td></td><td></td><td></td><td></td></tr>
+                            <tr><td class="tc">15:00</td><td></td><td></td><td></td><td><div class="ev bk"><b>陳小蓉</b>林紀宇</div></td><td></td><td></td><td></td></tr>
+                            <tr><td class="tc">16:00</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+                            <tr><td class="tc">18:00</td><td><div class="ev bk"><b>陳小新</b>劉柏宏</div></td><td></td><td></td><td></td><td><div class="ev nw"><b>◆ 本次預約</b>林凱文</div></td><td></td><td></td></tr>
+                            <tr><td class="tc">19:00</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <div class="legend" style="margin-top:10px">
+                        <span><i style="background:var(--sky)"></i>已預約</span>
+                        <span><i style="background:var(--ok)"></i>已執行</span>
+                        <span><i style="background:var(--p600)"></i>本次要建立的預約</span>
+                        <span><i style="background:var(--danger)"></i>時段衝突</span>
+                        <span style="margin-left:auto">點空格可直接帶入日期與時間</span>
+                      </div>
+                      <div class="note green" style="margin-top:10px">✓ 07/24 18:00-19:00 於 3C 無衝突，可建立。</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ---- 批次預約 ---- -->
+          <div class="sub" id="s-b2">
+            <div class="card-b" style="background:var(--g50)">
+              <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
+                <div style="flex:0 0 352px;max-width:100%">
+                  <div class="modal-demo">
+                    <div class="mh"><h4>批次預約 — 林凱文</h4></div>
+                    <div class="mb">
+                      <div class="fgrid">
+                        <div class="fld"><label>諮商類型</label><div class="inp">現場</div></div>
+                        <div class="fld"><label>診間</label><div class="inp">3C</div></div>
+                      </div>
+                      <div class="fld" style="margin-top:12px"><label>每次金額 <span class="rq">*</span></label><div class="inp">2,000</div></div>
+                      <div class="fld" style="margin-top:12px"><label>付款方式（套用全部時段）</label>
+                        <div class="chks"><span class="chk on"><i class="bx"></i>自費</span><span class="chk"><i class="bx"></i>機構</span></div>
+                        <div class="nx">機構案：批次全部時段共用同一 Quota；若超過期限或剩餘不足，系統會拒絕建立。</div></div>
+
+                      <div class="panel" style="margin-top:14px">
+                        <div class="pt">循環設定</div>
+                        <div class="seg" style="margin-bottom:10px">
+                          <button class="on">每週</button><button>每兩週</button><button>每月</button>
+                        </div>
+                        <div style="font-size:11.5px;color:var(--g500);margin-bottom:6px">星期幾</div>
+                        <div class="dow" style="margin-bottom:11px">
+                          <button>日</button><button>一</button><button>二</button><button>三</button>
+                          <button class="on">四</button><button>五</button><button>六</button>
+                        </div>
+                        <div style="display:flex;gap:9px;margin-bottom:11px">
+                          <div style="flex:1"><div style="font-size:11.5px;color:var(--g500);margin-bottom:4px">開始時間</div><div class="inp">18:00</div></div>
+                          <div style="align-self:flex-end;padding-bottom:9px;color:var(--g400)">~</div>
+                          <div style="flex:1"><div style="font-size:11.5px;color:var(--g500);margin-bottom:4px">結束時間</div><div class="inp">19:00</div></div>
+                        </div>
+                        <div style="display:flex;gap:9px;align-items:flex-end">
+                          <div style="flex:1"><div style="font-size:11.5px;color:var(--g500);margin-bottom:4px">起始日期</div><div class="inp">2026-07-24</div></div>
+                          <div style="width:84px"><div style="font-size:11.5px;color:var(--g500);margin-bottom:4px">循環次數</div><div class="inp">8</div></div>
+                        </div>
+                        <button class="btn" style="width:100%;margin-top:11px;background:var(--g700);color:#fff;border-color:var(--g700);font-weight:600">產生時段預覽</button>
+                      </div>
+
+                      <div style="margin-top:14px">
+                        <div style="display:flex;align-items:center;margin-bottom:6px">
+                          <span style="font-size:11.5px;font-weight:700;color:var(--g600)">預覽時段（共 8 筆）</span>
+                          <span style="margin-left:auto;font-size:11px;color:var(--g400)">點 ✕ 可移除個別時段</span>
+                        </div>
+                        <ul class="slots">
+                          <li>07/24（四）<span class="muted" style="margin-left:8px">18:00 ~ 19:00</span><span class="x">✕</span></li>
+                          <li class="cfl">07/31（四）<span class="muted" style="margin-left:8px">18:00 ~ 19:00</span>
+                            <span class="tag t-red" style="margin-left:8px;font-size:10px">空間衝突</span><span class="x">✕</span></li>
+                          <li>08/07（四）<span class="muted" style="margin-left:8px">18:00 ~ 19:00</span><span class="x">✕</span></li>
+                          <li>08/14（四）<span class="muted" style="margin-left:8px">18:00 ~ 19:00</span><span class="x">✕</span></li>
+                          <li>08/21（四）<span class="muted" style="margin-left:8px">18:00 ~ 19:00</span><span class="x">✕</span></li>
+                          <li>08/28（四）<span class="muted" style="margin-left:8px">18:00 ~ 19:00</span><span class="x">✕</span></li>
+                        </ul>
+                      </div>
+                    </div>
+                    <div class="mf"><button class="btn">取消</button><button class="btn pri">建立 7 筆預約</button></div>
+                  </div>
+                </div>
+
+                <div style="flex:1;min-width:330px">
+                  <div class="card" style="margin:0">
+                    <div class="card-h" style="padding:10px 14px"><h3 style="font-size:13.5px">3C 診間 — 批次時段套疊檢視</h3>
+                      <span class="hint">2026/07/20 ~ 08/09</span></div>
+                    <div class="card-b" style="padding:12px">
+                      <div class="wk">
+                        <table>
+                          <thead><tr><th class="tc"></th><th>一</th><th>二</th><th>三</th><th>四</th><th>五</th><th>六</th><th>日</th></tr></thead>
+                          <tbody>
+                            <tr><td class="tc">7/20</td><td><div class="ev ex">林凱文</div></td><td><div class="ev bk">黃小蘭</div></td><td><div class="ev bk">王大宇</div></td><td><div class="ev nw">◆ 新增</div></td><td></td><td><div class="ev bk">陳大蓉</div></td><td></td></tr>
+                            <tr><td class="tc">7/27</td><td></td><td></td><td></td><td><div class="ev cf">✕ 衝突</div></td><td></td><td></td><td></td></tr>
+                            <tr><td class="tc">8/3</td><td></td><td><div class="ev bk">黃小蘭</div></td><td></td><td><div class="ev nw">◆ 新增</div></td><td></td><td></td><td></td></tr>
+                            <tr><td class="tc">8/10</td><td></td><td></td><td></td><td><div class="ev nw">◆ 新增</div></td><td></td><td></td><td></td></tr>
+                            <tr><td class="tc">8/17</td><td></td><td></td><td></td><td><div class="ev nw">◆ 新增</div></td><td></td><td></td><td></td></tr>
+                            <tr><td class="tc">8/24</td><td></td><td></td><td></td><td><div class="ev nw">◆ 新增</div></td><td></td><td></td><td></td></tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <div class="note rose" style="margin-top:11px">⚠️ 07/31（四）18:00 該診間已有預約 → 該時段標紅，可按 ✕ 移除或改診間；<b>不移除則整批無法送出</b>。</div>
+                      <div class="note" style="margin-top:9px">機構案批次預約會一次佔用 <b>N 次額度</b>（由「已預留」轉入「已預約」）；若額度不足，系統會擋下並提示可建立的筆數。</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ---- 診間空間週檢視 ---- -->
+          <div class="sub" id="s-b3">
+            <div class="filters">
+              <span class="f-lb">診間</span>
+              <select class="f" style="min-width:150px"><option>3C（3F · 一般）</option><option>1A（1F · 一般）</option><option>2B（2F · 一般）</option><option>2C（2F · 遊戲治療）</option><option>3D（3F · 團體）</option></select>
+              <select class="f"><option>全部心理師</option></select>
+              <button class="btn sm">‹ 上週</button><button class="btn sm pri">本週</button><button class="btn sm">下週 ›</button>
+              <div style="margin-left:auto"><button class="btn">切換全診間單日檢視</button></div>
+            </div>
+            <div class="card-b">
+              <div class="wk">
+                <table>
+                  <thead><tr><th class="tc"></th>
+                    <th>週一<small>7/20</small></th><th>週二<small>7/21</small></th><th>週三<small>7/22</small></th>
+                    <th class="today">週四<small>7/23</small></th><th>週五<small>7/24</small></th><th>週六<small>7/25</small></th><th>週日<small>7/26</small></th></tr></thead>
+                  <tbody>
+                    <tr><td class="tc">09:00</td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td></td></tr>
+                    <tr><td class="tc">10:00</td><td><div class="ev free">空</div></td><td><div class="ev bk"><b>黃小蘭</b>鄭幼毅 · 機構</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td><div class="ev bk"><b>陳大蓉</b>林紀宇 · 機構</div></td><td></td></tr>
+                    <tr><td class="tc">11:00</td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td></td></tr>
+                    <tr><td class="tc">13:00</td><td><div class="ev ex"><b>林凱文</b>呂孟育 · 已執行</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td></td></tr>
+                    <tr><td class="tc">14:00</td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td><div class="ev bk"><b>王大宇</b>呂孟育 · 機構</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td></td></tr>
+                    <tr><td class="tc">15:00</td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td><div class="ev bk"><b>陳小蓉</b>林紀宇 · 機構</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td></td></tr>
+                    <tr><td class="tc">16:00</td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td></td></tr>
+                    <tr><td class="tc">18:00</td><td><div class="ev bk"><b>陳小新</b>劉柏宏 · 自費</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td></td></tr>
+                    <tr><td class="tc">19:00</td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td><div class="ev free">空</div></td><td></td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div style="display:flex;gap:14px;margin-top:13px;flex-wrap:wrap">
+                <div class="kpi" style="flex:1;min-width:150px;padding:11px"><div class="lb">本週使用率</div><div class="vl" style="font-size:20px">13%</div><div class="bar"><i style="width:13%"></i></div></div>
+                <div class="kpi" style="flex:1;min-width:150px;padding:11px"><div class="lb">已預約時段</div><div class="vl" style="font-size:20px">6</div><div class="dt">/ 共 48 格</div></div>
+                <div class="kpi" style="flex:1;min-width:150px;padding:11px"><div class="lb">最易空出</div><div class="vl" style="font-size:20px">上午</div><div class="dt">週一～週五 09-12</div></div>
+              </div>
+              <div class="note" style="margin-top:12px">💡 空格可直接點擊 → 帶入該日期與時間開啟「新增預約」；此檢視同時是媒合排案時的空間查詢工具。</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="logic">
+          <div class="logic-h">⚙️ 頁面邏輯與互動設計 — 沿用 V1 已完成的預約介面</div>
+          <div class="logic-b">
+            <div class="lgrid">
+              <div>
+                <h5>核心設計：邊訂邊看空間</h5>
+                <ul>
+                  <li>預約表單採<b>左右雙欄</b>：左邊填資料，右邊<b>同步顯示該診間的週檢視</b>，行政不必來回切換就能確認空檔。</li>
+                  <li>選到<b>現場 + 診間</b>時右欄才展開（線上／外展不佔空間，維持單欄）。</li>
+                  <li>正在建立的時段以<b>粗框高亮</b>疊在日曆上，一眼看出是否卡到別人。</li>
+                  <li>可<b>直接點日曆空格</b>帶入日期與時間，減少手動輸入。</li>
+                </ul>
+              </div>
+              <div>
+                <h5>時間輸入規則</h5>
+                <ul>
+                  <li>點選開始時間後<b>結束時間自動 +1 小時</b>，較長的諮商再手動調整。</li>
+                  <li>分鐘僅提供 <code>00 / 15 / 30 / 45</code> 四種。</li>
+                  <li>金額依<b>心理師預設鐘點費</b>自動帶入；機構案自動帶入<b>個案自付額</b>。</li>
+                </ul>
+              </div>
+              <div>
+                <h5>批次預約</h5>
+                <ul>
+                  <li>循環模式：<b>每週 / 每兩週 / 每月</b>（每月可指定「第幾個星期幾」，支援最後一週）。</li>
+                  <li>設定星期幾＋時間＋起始日＋次數 → 按<b>產生時段預覽</b>。</li>
+                  <li>預覽清單可<b>逐筆移除</b>（如遇連假）；有衝突的時段<b>標紅</b>。</li>
+                  <li>右欄把整批時段<b>套疊</b>在診間日曆上，一次看完未來數週的佔用情形。</li>
+                  <li><b>存在衝突時不可送出</b>，必須先移除或改診間／改時間。</li>
+                  <li>機構案批次會一次佔用 N 次額度（已預留 → 已預約）；額度不足時提示最多可建立幾筆。</li>
+                </ul>
+              </div>
+              <div>
+                <h5>空間衝突與檢查</h5>
+                <ul>
+                  <li>同一診間同時段<b>不可重複預約</b>，由資料庫層強制（非僅前端檢查）。</li>
+                  <li>僅「已預約 / 已執行」計入衝突；已取消的不佔用空間。</li>
+                  <li>送出前即時檢查，衝突以紅色標示並說明卡到誰。</li>
+                  <li>線上／外展不佔診間，不列入衝突檢查（外展可自填地點）。</li>
+                </ul>
+              </div>
+            </div>
+            <div class="tbd"><b>待確認</b>
+              ① 週檢視的<b>營業時段範圍</b>（目前 09:00-21:00），以及是否要排除心理師未當診時段。<br>
+              ② 批次預約遇到<b>國定假日</b>是否要自動跳過或標示提醒。<br>
+              ③ 是否允許<b>跨診間</b>批次（同一循環自動找有空的診間）。<br>
+              ④ 90 分鐘的伴侶諮商在週檢視要如何呈現（跨格顯示）。
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 預約總表 ============ -->
+      <section class="page" id="p-appts">
+        <div class="card">
+          <div class="card-h"><h3>預約總表</h3><span class="hint">一覽式清單 · 綁病歷號 · 預設當日起 3 天</span>
+            <div class="right"><button class="btn">匯出 CSV</button><button class="btn">＋ 批次預約</button><button class="btn pri">＋ 新增預約</button></div></div>
+          <div class="filters">
+            <input class="f" placeholder="搜尋 病歷號 / 姓名">
+            <span class="f-lb">日期</span><input class="f" style="min-width:118px" value="2026/07/10"><span class="f-lb">～</span><input class="f" style="min-width:118px" value="2026/07/12">
+            <select class="f"><option>全部心理師</option></select><select class="f"><option>全部診間</option></select>
+            <select class="f"><option>全部類型</option><option>現場</option><option>視訊</option><option>外展</option></select>
+            <select class="f"><option>全部狀態</option><option>已預約</option><option>已執行</option><option>已取消</option></select>
+          </div>
+          <div class="tw"><table>
+            <thead><tr><th>預約日期</th><th>病歷號</th><th>姓名</th><th>心理師</th><th>時間</th><th>類型</th><th>診間</th><th>方案</th><th class="num">金額</th><th>狀態</th><th>操作</th><th>行政確認</th></tr></thead>
+            <tbody>
+              <tr><td>07/10</td><td class="mono">26A2422128</td><td class="strong">陳小新</td><td>劉柏宏</td><td>18:00-19:00</td><td>現場</td><td>2B</td><td>自費 · 次結</td><td class="num">$2,000</td><td><span class="tag t-blue">已預約</span></td><td class="ops"><a>編輯</a><a class="dg">取消</a></td><td class="ops"><a class="ok">已到</a><a class="dg">未到</a></td></tr>
+              <tr><td>07/10</td><td class="mono">26A7456126</td><td class="strong">林凱文</td><td>呂孟育</td><td>18:00-19:00</td><td>現場</td><td>3C</td><td>15-45青壯 <span class="tag t-red">3/3</span></td><td class="num">$400</td><td><span class="tag t-blue">已預約</span></td><td class="ops"><a>編輯</a><a class="dg">取消</a></td><td class="ops"><a class="ok">已到</a><a class="dg">未到</a></td></tr>
+              <tr><td>07/10</td><td class="mono">26A6981257</td><td class="strong">林柏志</td><td>陳慧苓</td><td>15:00-16:00</td><td>視訊</td><td class="muted">—</td><td>人事處-EAP</td><td class="num">$0</td><td><span class="tag t-green">已執行</span></td><td class="muted">—</td><td class="muted">心理師端確認</td></tr>
+              <tr><td>07/11</td><td class="mono">26C0000114</td><td class="strong">陳凡 ＆ 王震 <span class="tag t-rose">伴侶</span></td><td>邱惟翔</td><td>10:00-11:30</td><td>現場</td><td>1A</td><td>自費（合計）</td><td class="num">$3,000</td><td><span class="tag t-blue">已預約</span></td><td class="ops"><a>編輯</a><a class="dg">取消</a></td><td class="ops"><a class="ok">已到</a><a class="dg">未到</a></td></tr>
+              <tr><td>07/11</td><td class="mono">25A8569123</td><td class="strong">王大宇</td><td>呂孟育</td><td>14:00-15:00</td><td>外展</td><td class="muted">台南女中</td><td>教育局/教支</td><td class="num">$0</td><td><span class="tag t-gray">已取消</span></td><td class="muted">—</td><td class="muted">—</td></tr>
+            </tbody></table></div>
+          <div class="sr">視訊／外展由心理師端確認到診（超過半小時自動列已到）；現場個案建議直接在<b>診間日曆</b>報到收款。<div class="right"><span class="pg on">1</span><span class="pg">2</span><span class="pg">›</span></div></div>
+        </div>
+
+        <div class="logic">
+          <div class="logic-h">⚙️ 頁面邏輯與互動設計</div>
+          <div class="logic-b">
+            <div class="lgrid">
+              <div>
+                <h5>定位</h5>
+                <ul>
+                  <li>本頁是<b>查詢與稽核用的總表</b>（跨日期區間、可篩選、可匯出）；<b>每日現場作業請用診間日曆</b>。</li>
+                  <li>第一欄綁 <b>病歷號</b>（非到訪序號），方便與個案資料對照。</li>
+                  <li>預設顯示<b>當日起 3 天</b>，以預約日期排序，每頁 20 筆。</li>
+                </ul>
+              </div>
+              <div>
+                <h5>互動行為</h5>
+                <ul>
+                  <li>第一列所有欄位<b>皆可篩選</b>；日期支援單日或區間。</li>
+                  <li><b>行政確認</b>欄同樣可按已到／未到，效果與診間日曆一致（雙入口、同一份資料）。</li>
+                  <li>按<b>已到</b>→ 該筆轉入當日日報表成為營收之一；按<b>未到</b>→ 跳未到原因視窗。</li>
+                  <li>視訊／外展列不提供行政確認，顯示「心理師端確認」。</li>
+                  <li><b>編輯</b>可改時間／診間／金額；改時間會即時檢查空間衝突。</li>
+                </ul>
+              </div>
+              <div>
+                <h5>匯出 CSV 欄位</h5>
+                <ul>
+                  <li>心理師、預約編號（到訪序號）、個案、空間、類型（中文：現場／視訊／外展）、<b>日期與時段分開兩欄</b>、金額、狀態、建立時間。</li>
+                  <li>畫面顯示與匯出欄位需一致，避免對帳落差。</li>
+                </ul>
+              </div>
+            </div>
+            <div class="tbd"><b>待確認</b>
+              ① 匯出 CSV 的第一欄「ID」要放什麼（系統流水 id／預約編號／病歷號）？<br>
+              ② 是否允許在本頁<b>直接收款</b>，或收款一律只走診間日曆與日報表兩個入口。
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 機構合約清冊 ============ -->
+      <section class="page" id="p-contracts">
+        <div class="card">
+          <div class="card-h"><h3>機構合約清冊</h3><span class="hint">機構與本所簽訂的所有合約總表</span>
+            <div class="right"><button class="btn pri">＋ 新增機構合約</button></div></div>
+          <div class="filters"><input class="f" placeholder="搜尋 方案名稱"><select class="f"><option>全部單位</option></select><select class="f"><option>全部狀態</option><option>生效中</option><option>已到期</option></select></div>
+          <div class="tw"><table>
+            <thead><tr><th>機構單位</th><th>合約（公告方案）</th><th>方案身份條件</th><th class="num">方案鐘點費</th><th class="num">個案自付額</th><th class="num">總核銷上限</th><th>承辦人</th><th>聯絡電話</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr><td class="strong">國防部</td><td>國軍心理照護方案</td><td>國軍、士官等</td><td class="num">$2,000</td><td class="num">$0</td><td class="num">$149,000</td><td>王小姐</td><td class="mono">07-8525898</td><td class="ops"><a>編輯</a></td></tr>
+              <tr><td class="strong">衛生局</td><td>15-45 青壯世代心理健康方案</td><td>15-45 歲民眾</td><td class="num">$1,600</td><td class="num">$400</td><td class="num">318 次</td><td>陳專員</td><td class="mono">06-2587456</td><td class="ops"><a>編輯</a></td></tr>
+              <tr><td class="strong">衛生局</td><td>衛生局心理照護方案</td><td>民眾</td><td class="num">$1,800</td><td class="num">$200</td><td class="num muted">不限</td><td>李先生</td><td class="mono">06-5874698</td><td class="ops"><a>編輯</a></td></tr>
+              <tr><td class="strong">教育局</td><td>老師教育支持方案</td><td>大學以下老師</td><td class="num">$2,000</td><td class="num">$0</td><td class="num muted">不限</td><td>王專員</td><td class="mono">06-8513564</td><td class="ops"><a>編輯</a></td></tr>
+            </tbody></table></div>
+        </div>
+
+        <div class="logic">
+          <div class="logic-h">⚙️ 頁面邏輯與互動設計</div>
+          <div class="logic-b">
+            <div class="lgrid">
+              <div>
+                <h5>為什麼要有這一層</h5>
+                <ul>
+                  <li>同一個機構（如衛生局）會跟本所簽<b>多份不同合約</b>，需要一份總清冊管理。</li>
+                  <li>合約定義<b>錢的規則</b>：鐘點費、個案自付額、總核銷上限（金額或次數）。</li>
+                  <li>下一層「機構方案清冊」再依合約<b>開出年度方案與額度</b>，最後才把個案加進方案。</li>
+                </ul>
+              </div>
+              <div>
+                <h5>欄位如何被使用</h5>
+                <ul>
+                  <li><b>方案鐘點費</b>＝該次諮商總價（含個案自付額）。</li>
+                  <li><b>個案自付額</b>：報到收款時<b>只收這個數字</b>；差額轉機構核銷。也直接影響收據上的<b>收費名目</b>。</li>
+                  <li><b>總核銷上限</b>：可設金額（$149,000）或次數（318 次）或不限；達上限後該方案不可再請款。</li>
+                  <li><b>方案身份條件</b>：新增個案掛方案時做資格檢核（如 15-45 歲）。</li>
+                </ul>
+              </div>
+              <div>
+                <h5>互動行為</h5>
+                <ul>
+                  <li>［＋新增機構合約］欄位：機構單位／公告方案／鐘點費／自付額／身份條件／核銷上限／承辦人／電話。</li>
+                  <li>合約到期前提醒續約；到期後掛在其下的方案自動轉「已過期」，不可再新增個案。</li>
+                </ul>
+              </div>
+            </div>
+            <div class="tbd"><b>待確認</b>
+              ① 是否需要支援<b>核銷區間匯入</b>（一次帶入整年度分期區間）。<br>
+              ② 合約中途調整鐘點費時，<b>已發生</b>的紀錄是否要沿用舊價（建議：紀錄產生時就鎖定當下價格）。
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 機構方案清冊 ============ -->
+      <section class="page" id="p-plans">
+        <div class="card">
+          <div class="card-h"><h3>機構方案清冊</h3><span class="hint">方案掛勾合約 · 個案加入方案 · 額度三態管理</span>
+            <div class="right"><button class="btn pri">＋ 新增方案</button></div></div>
+          <div class="filters"><input class="f" placeholder="搜尋 方案"><select class="f"><option>全部單位</option></select><select class="f"><option>全部狀態</option><option>有效中</option><option>已用罄</option><option>已過期</option></select>
+            <div style="margin-left:auto" class="qlg"><span><i class="q-used"></i>已使用</span><span><i class="q-bk"></i>已預約</span><span><i class="q-rs"></i>已預留</span></div></div>
+          <div class="tw"><table>
+            <thead><tr><th>機構單位</th><th>公告方案</th><th class="num">每人 / 年度總次數</th><th class="num">年度總核銷金額</th><th>有效期間</th><th>核銷單位 / 窗口</th><th>狀態</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr class="sel"><td class="strong">衛生局</td><td>15-45 青壯方案 ▾</td><td class="num">3 / 318</td><td class="num muted">—</td><td>2026/01/01 ~ 12/31</td><td>衛生局 · 陳建永</td><td><span class="tag t-green">有效中</span></td><td class="ops"><a>編輯</a></td></tr>
+              <tr><td colspan="8" style="background:var(--g50);padding:0"><div style="padding:13px 16px">
+                <div style="font-size:12px;color:var(--g500);margin-bottom:9px">機構單位：衛生局 ｜ 核銷單位：衛生局 ｜ 方案：15-45 青壯方案 ｜ 每人上限 <b>3 次</b></div>
+                <div style="display:flex;gap:8px;margin-bottom:9px;flex-wrap:wrap">
+                  <input class="f" placeholder="搜尋個案"><select class="f"><option>全部狀態</option></select>
+                  <div style="display:flex;gap:2px;margin-left:auto"><button class="btn sm pri">有效列表</button><button class="btn sm">封存清冊</button><button class="btn sm" style="margin-left:6px">＋ 新增個案</button></div>
+                </div>
+                <div style="background:#fff;border:1px solid var(--g200);border-radius:8px;overflow:hidden"><table>
+                  <thead><tr><th>加入日期</th><th>姓名</th><th style="min-width:150px">額度使用情形</th><th class="num">已使用 / 已預約 / 已預留</th><th>有效期間</th><th>狀態</th><th>操作</th></tr></thead>
+                  <tbody>
+                    <tr><td>26/05/07</td><td class="strong">王小明</td>
+                      <td><div class="qbar"><i class="q-used" style="width:33.3%"></i><i class="q-bk" style="width:33.3%"></i><i class="q-rs" style="width:33.4%"></i></div></td>
+                      <td class="num mono">1 / 1 / 1</td><td>2026/1/1~12/31</td><td><span class="tag t-green">使用中</span></td><td class="ops"><a>編輯</a></td></tr>
+                    <tr><td>26/05/07</td><td class="strong">陳大蓉</td>
+                      <td><div class="qbar"><i class="q-used" style="width:100%"></i></div></td>
+                      <td class="num mono">3 / 0 / 0</td><td>2026/1/1~12/31</td><td><span class="tag t-red">已用罄</span></td><td class="ops"><a>編輯</a></td></tr>
+                    <tr><td>26/05/06</td><td class="strong">林凱文</td>
+                      <td><div class="qbar"><i class="q-used" style="width:66.6%"></i><i class="q-bk" style="width:33.4%"></i></div></td>
+                      <td class="num mono">2 / 1 / 0</td><td>2026/1/1~12/31</td><td><span class="tag t-amber">最後一次</span></td><td class="ops"><a>編輯</a></td></tr>
+                    <tr><td>26/05/06</td><td class="strong">陳中蓉 <span class="tag t-blue">尚未初診</span></td>
+                      <td><div class="qbar"><i class="q-bk" style="width:33.3%"></i><i class="q-rs" style="width:66.7%"></i></div></td>
+                      <td class="num mono">0 / 1 / 2</td><td>2026/1/1~12/31</td><td><span class="tag t-green">使用中</span></td><td class="ops"><a>編輯</a></td></tr>
+                  </tbody></table></div>
+                <div class="note" style="margin-top:10px">年度總次數 318 為<b>方案層級</b>上限；上表每人 <b>3 次</b>為<b>個人層級</b>上限。兩者都會擋預約。</div>
+              </div></td></tr>
+              <tr><td class="strong">國防部</td><td>國軍心理照顧方案</td><td class="num">6 / —</td><td class="num">$149,000</td><td>2026/01/01 ~ 12/31</td><td>國軍總醫院 · 陳小姐</td><td><span class="tag t-green">有效中</span></td><td class="ops"><a>編輯</a></td></tr>
+              <tr><td class="strong">教育局</td><td>老師教育支持方案</td><td class="num">12 / 75</td><td class="num">$205,000</td><td>2026/01/01 ~ 12/31</td><td>台南女中 · 王大白</td><td><span class="tag t-green">有效中</span></td><td class="ops"><a>編輯</a></td></tr>
+            </tbody></table></div>
+        </div>
+
+        <div class="logic">
+          <div class="logic-h">⚙️ 頁面邏輯與互動設計 — 重點：額度三態（已預留 / 已預約 / 已使用）</div>
+          <div class="logic-b">
+            <div class="lgrid">
+              <div>
+                <h5>三種額度狀態的定義</h5>
+                <ul>
+                  <li><b>已預留</b>：個案符合資格、<b>第一次預約時（尚未初診）</b>即先把<b>個人上限全數預留</b>。例如方案是一年 3 次，加入當下就先預留 3 次，避免方案被別人用光。</li>
+                  <li><b>已預約</b>：已排定但<b>尚未執行</b>的預約所佔用的額度＝計畫中會用到的量。</li>
+                  <li><b>已使用</b>：<b>已執行完畢</b>的場次，進入核銷流程。</li>
+                  <li>三者恆等式：<code>已使用 + 已預約 + 已預留 = 個人上限</code>（介面用一條三色長條呈現）。</li>
+                </ul>
+              </div>
+              <div>
+                <h5>額度流轉</h5>
+                <ul>
+                  <li>加入方案 → 全數進<b>已預留</b>（例 0/0/3）。</li>
+                  <li>排一次預約 → 預留轉預約（0/1/2）。</li>
+                  <li>報到按<b>已到</b> → 預約轉使用（1/0/2）。</li>
+                  <li>按<b>未到</b>或取消預約 → 預約<b>退回</b>預留。</li>
+                  <li><b>個案結案</b> → 取消所有未來預約，<b>已預留＋已預約全數釋出</b>回方案總池，狀態轉「已結案」並移入封存清冊。</li>
+                </ul>
+              </div>
+              <div>
+                <h5>擋預約與提示</h5>
+                <ul>
+                  <li>預約時同時檢查<b>個人上限</b>與<b>方案年度總量</b>，任一不足即擋下並提示改自費。</li>
+                  <li>剩最後一次時，個案在清單標<span class="tag t-amber">最後一次</span>，診間日曆該方塊加紅框。</li>
+                  <li>方案<b>已過期／已用罄</b>時不可再新增個案；已在其中者只能用完既有額度。</li>
+                  <li>防呆：同一人在同一方案<b>不可重複加入</b>。</li>
+                  <li>已結案／已失效／已用罄的個案<b>自動轉入封存清冊</b>。</li>
+                </ul>
+              </div>
+            </div>
+            <div class="tbd"><b>待確認</b>
+              ① 預留是否要設<b>有效期</b>（例如加入後 30 天內未初診就自動釋回），避免額度被長期佔住。<br>
+              ② 個案<b>暫停</b>（非結案）時，已預留額度要保留還是釋出？<br>
+              ③ 跨年度時未用完的額度處理方式：歸零重算，或可展延。<br>
+              ④ 方案年度總量快滿時（如剩 5 次），是否要對行政發出預警。
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 核銷案 ============ -->
+      <section class="page" id="p-claims">
+        <!-- 狀態機 -->
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-h"><h3>核銷案流程</h3><span class="hint">含退回補件與作廢兩條回頭路</span></div>
+          <div class="card-b">
+            <div class="flow" style="margin-bottom:12px">
+              <span class="stp on">① 收集中</span><span class="ar">→</span>
+              <span class="stp">② 待送出</span><span class="ar">→</span>
+              <span class="stp">③ 已送出</span><span class="ar">→</span>
+              <span class="stp" style="border-color:var(--ok);color:var(--ok);font-weight:600">④ 已結案</span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:12px">
+              <div class="panel">
+                <div class="pt">① 收集中 — 湊齊資料</div>
+                <ul style="margin:0;padding-left:16px;font-size:12.5px;color:var(--g600);line-height:1.75">
+                  <li>每筆需 <b>心理師提交資料</b> ＋ <b>行政核對</b></li>
+                  <li>［全部核對］一鍵完成行政核對</li>
+                  <li>［豁免本案資料］該機構免繳文件時直接跳過</li>
+                  <li>資料有誤 → ［<b>退回補件</b>］給心理師重交</li>
+                </ul>
+                <div class="nx">全部齊備 → 自動轉「待送出」</div>
+              </div>
+              <div class="panel">
+                <div class="pt">② 待送出 — 出單</div>
+                <ul style="margin:0;padding-left:16px;font-size:12.5px;color:var(--g600);line-height:1.75">
+                  <li>［開立收據］（可編輯收費名目）</li>
+                  <li>［提交請款］→ 轉「已送出」</li>
+                  <li>［<b>恢復需繳資料</b>］退回收集中（撤銷豁免）</li>
+                </ul>
+              </div>
+              <div class="panel">
+                <div class="pt">③ 已送出 — 等機構撥款</div>
+                <ul style="margin:0;padding-left:16px;font-size:12.5px;color:var(--g600);line-height:1.75">
+                  <li>［確認收款］填入帳金額與日期 → 已結案</li>
+                  <li>［查看收據］可重印 / 作廢重開</li>
+                  <li>機構退件 → ［<b>退回補件</b>］回收集中</li>
+                </ul>
+              </div>
+              <div class="panel" style="border-color:#fecdd3;background:#fff5f6">
+                <div class="pt" style="color:var(--rose)">✕ 作廢核銷案（任一階段皆可）</div>
+                <ul style="margin:0;padding-left:16px;font-size:12.5px;color:var(--g600);line-height:1.75">
+                  <li>整案標記為<b>已作廢</b>，不可再編輯</li>
+                  <li>內含所有紀錄<b>脫離本案</b>，付款狀態<b>退回「未核銷」</b></li>
+                  <li>這些紀錄回到<b>可核銷池</b>，可重新建立新核銷案</li>
+                  <li>已開立的收據一併<b>作廢</b>（編號 -3）</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="tabs">
+            <span class="on" data-sub="q1" data-grp="q">核銷案列表</span>
+            <span data-sub="q2" data-grp="q">建立核銷案（三步驟）</span>
+            <span data-sub="q3" data-grp="q">文件狀態與退件</span>
+            <span data-sub="q4" data-grp="q">作廢處理</span>
+          </div>
+
+          <!-- 列表 -->
+          <div class="sub on" id="s-q1">
+            <div class="filters">
+              <input class="f" placeholder="搜尋 核銷案編號 / 機構">
+              <select class="f"><option>全部狀態</option><option>收集中</option><option>待送出</option><option>已送出</option><option>已結案</option><option>已作廢</option></select>
+              <select class="f"><option>全部機構</option></select>
+              <div style="margin-left:auto"><button class="btn pri">＋ 建立核銷案</button></div>
+            </div>
+            <div class="tw"><table>
+              <thead><tr><th>核銷案編號</th><th>機構 / 方案</th><th>核銷期間</th><th class="num">人數</th><th class="num">場次</th><th class="num">總金額</th><th>資料齊備</th><th>狀態</th><th>操作</th></tr></thead>
+              <tbody>
+                <tr class="sel"><td class="mono strong">202607-01 ▾</td><td>衛生局<div class="nx">15-45青壯方案</div></td><td>2026/07/01 - 07/31</td><td class="num">4</td><td class="num">12</td><td class="num">$24,000</td><td class="num">8 / 12</td><td><span class="tag t-amber">收集中</span></td><td class="ops"><a>全部核對</a><a>豁免資料</a><a>編輯</a><a class="dg">作廢</a></td></tr>
+                <tr><td colspan="9" style="background:var(--g50);padding:0"><div style="padding:13px 16px">
+                  <div style="font-size:12px;color:var(--g500);margin-bottom:9px">核銷明細 — 依<b>個案</b>分組（同一人於期間內的所有場次<b>整組</b>納入，不可單挑場次）</div>
+                  <div style="background:#fff;border:1px solid var(--g200);border-radius:8px;overflow:hidden"><table>
+                    <thead><tr><th>個案</th><th>日期</th><th>心理師</th><th>類型</th><th class="num">自付額</th><th class="num">機構請款</th><th>心理師資料</th><th>行政核對</th><th>操作</th></tr></thead>
+                    <tbody>
+                      <tr><td class="strong" rowspan="3" style="vertical-align:top;background:var(--g50)">王大明<div class="nx mono">26A2422058</div><div class="nx">3 場 · $4,800</div></td>
+                        <td>7/03</td><td>劉柏宏</td><td>現場</td><td class="num">$400</td><td class="num">$1,600</td><td><span class="tag t-green">✓ 已提交</span></td><td><span class="tag t-green">✓ 已核對</span></td><td class="ops"><a class="dg">退回補件</a></td></tr>
+                      <tr><td>7/10</td><td>劉柏宏</td><td>現場</td><td class="num">$400</td><td class="num">$1,600</td><td><span class="tag t-green">✓ 已提交</span></td><td><span class="tag t-green">✓ 已核對</span></td><td class="ops"><a class="dg">退回補件</a></td></tr>
+                      <tr><td>7/17</td><td>劉柏宏</td><td>現場</td><td class="num">$400</td><td class="num">$1,600</td><td><span class="tag t-green">✓ 已提交</span></td><td><span class="tag t-green">✓ 已核對</span></td><td class="ops"><a class="dg">退回補件</a></td></tr>
+
+                      <tr><td class="strong" rowspan="2" style="vertical-align:top;background:var(--g50)">陳心始<div class="nx mono">26A2568072</div><div class="nx">2 場 · $3,200</div></td>
+                        <td>7/22</td><td>鄭幼毅</td><td>現場</td><td class="num">$400</td><td class="num">$1,600</td><td><span class="tag t-amber">待提交</span></td><td class="muted">———</td><td class="ops"><a>催繳</a></td></tr>
+                      <tr><td>7/29</td><td>鄭幼毅</td><td>現場</td><td class="num">$400</td><td class="num">$1,600</td><td><span class="tag t-amber">待提交</span></td><td class="muted">———</td><td class="ops"><a>催繳</a></td></tr>
+
+                      <tr style="background:#fff7ed"><td class="strong" style="vertical-align:top;background:var(--warn-bg)">李新源<div class="nx mono">26X0000058</div><div class="nx">1 場 · $1,600</div></td>
+                        <td>7/25</td><td>劉彥君</td><td>視訊</td><td class="num">$400</td><td class="num">$1,600</td><td><span class="tag t-red">已退回</span><div class="nx wr">日期與出席單不符</div></td><td class="muted">———</td><td class="ops"><a>查看退回原因</a></td></tr>
+                    </tbody></table></div>
+                  <div style="display:flex;gap:8px;margin-top:11px;flex-wrap:wrap">
+                    <button class="btn sm pri">全部核對</button><button class="btn sm">豁免本案資料</button>
+                    <button class="btn sm">增減個案</button>
+                    <span style="margin-left:auto;font-size:11.5px;color:var(--g500);align-self:center">齊備 8/12 → 尚缺 4 筆才能轉「待送出」</span>
+                  </div>
+                </div></td></tr>
+                <tr><td class="mono strong">202607-02</td><td>南家扶<div class="nx">兒少心理支持</div></td><td>2026/07/01 - 07/31</td><td class="num">3</td><td class="num">8</td><td class="num">$16,000</td><td class="num">8 / 8</td><td><span class="tag t-blue">待送出</span></td><td class="ops"><a>開立收據</a><a>提交請款</a><a>恢復需繳資料</a><a class="dg">作廢</a></td></tr>
+                <tr><td class="mono strong">202606-04</td><td>教育局<div class="nx">老師教育支持</div></td><td>2026/06/01 - 06/30</td><td class="num">6</td><td class="num">16</td><td class="num">$32,000</td><td class="num">16 / 16</td><td><span class="tag t-violet">已送出</span></td><td class="ops"><a class="ok">確認收款</a><a>查看收據</a><a class="dg">退回補件</a><a class="dg">作廢</a></td></tr>
+                <tr><td class="mono strong">202605-02</td><td>衛生局<div class="nx">15-45青壯方案</div></td><td>2026/05/01 - 05/31</td><td class="num">7</td><td class="num">18</td><td class="num">$28,800</td><td class="num">18 / 18</td><td><span class="tag t-green">已結案</span><div class="nx">入帳 06/15</div></td><td class="ops"><a>查看收據</a><a class="dg">作廢</a></td></tr>
+                <tr style="opacity:.6"><td class="mono strong">202605-01</td><td>衛生局</td><td>2026/05/01 - 05/31</td><td class="num">2</td><td class="num">5</td><td class="num muted">$8,000</td><td class="num muted">—</td><td><span class="tag t-gray">已作廢</span><div class="nx">期間重疊，重開為 -02</div></td><td class="ops"><a>查看</a></td></tr>
+              </tbody></table></div>
+            <div class="sr">編號規則 <code>YYMM + 流水號2碼</code>；作廢後編號<b>不回收</b>，重開會取得新流水號。</div>
+          </div>
+
+          <!-- 建立核銷案 wizard -->
+          <div class="sub" id="s-q2">
+            <div class="card-b" style="background:var(--g50)">
+              <div class="wiz" style="margin-bottom:16px">
+                <div class="w ok"><span class="n">✓</span>選機構 / 方案</div><span class="cn"></span>
+                <div class="w ok"><span class="n">✓</span>選核銷期間</div><span class="cn"></span>
+                <div class="w on"><span class="n">3</span>選個案（人）</div><span class="cn"></span>
+                <div class="w"><span class="n">4</span>確認建立</div>
+              </div>
+
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:14px;margin-bottom:14px">
+                <div class="modal-demo">
+                  <div class="mh"><h4>步驟 1 — 選機構 / 方案</h4></div>
+                  <div class="mb">
+                    <div class="fld"><label>機構單位 <span class="rq">*</span></label><div class="inp">衛生局</div></div>
+                    <div class="fld" style="margin-top:12px"><label>機構方案 <span class="rq">*</span></label><div class="inp">15-45 青壯世代心理健康方案</div></div>
+                    <div class="fld" style="margin-top:12px"><label>核銷單位</label><div class="inp">衛生局（自動帶入，可改）</div></div>
+                    <div class="nx" style="margin-top:9px">同一機構有多個方案時<b>必須分開</b>建立核銷案，因為請款窗口與額度不同。</div>
+                  </div>
+                </div>
+
+                <div class="modal-demo">
+                  <div class="mh"><h4>步驟 2 — 選核銷期間</h4></div>
+                  <div class="mb">
+                    <div class="note" style="margin-bottom:11px">上次核銷案 <b class="mono">202606-03</b> 期間：<b>2026/06/01 ~ 06/30</b><br>→ 建議本次起日：<b>2026/07/01</b></div>
+                    <div class="fgrid">
+                      <div class="fld"><label>起日 <span class="rq">*</span></label><div class="inp">2026/07/01</div></div>
+                      <div class="fld"><label>迄日 <span class="rq">*</span></label><div class="inp">2026/07/31</div></div>
+                    </div>
+                    <div class="note green" style="margin-top:11px">✓ 起日接續上次核銷結束日，無缺口。</div>
+                    <div class="note rose" style="margin-top:8px"><b>若填 07/05：</b>⚠️ 與上次結束日 06/30 之間有 <b>4 天缺口</b>（07/01~07/04），該期間紀錄不會被納入，可能漏請款。</div>
+                    <div class="note amber" style="margin-top:8px"><b>若填 06/20：</b>⚠️ 與上次核銷期間<b>重疊</b> 11 天，恐重複請款。</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card" style="margin:0">
+                <div class="card-h"><h3>步驟 3 — 選個案（人）</h3>
+                  <span class="hint">勾選的是「人」；該期間內此人的<b>所有場次會整組納入</b></span>
+                  <div class="right"><input class="f" placeholder="搜尋個案"><button class="btn sm">全選</button></div></div>
+                <div class="note amber" style="margin:12px 16px 0">
+                  同一機構的不同個案<b>可能分屬不同核銷案</b>（如分批請款、社工窗口不同），因此需逐一勾選。<br>
+                  但<b>不能單挑場次</b> — 勾了某人，其在此期間的所有符合場次一律納入，避免漏請或重複請。
+                </div>
+                <div class="tw"><table>
+                  <thead><tr><th style="width:34px">✓</th><th>個案</th><th>病歷號</th><th>心理師</th><th class="num">期間內場次</th><th class="num">機構請款小計</th><th>資料狀態</th><th>備註</th></tr></thead>
+                  <tbody>
+                    <tr><td><span class="chk on" style="padding:0;border:none"><i class="bx"></i></span></td><td class="strong">王大明</td><td class="mono">26A2422058</td><td>劉柏宏</td><td class="num">3</td><td class="num">$4,800</td><td><span class="tag t-green">已齊備</span></td><td class="muted">—</td></tr>
+                    <tr><td><span class="chk on" style="padding:0;border:none"><i class="bx"></i></span></td><td class="strong">陳心始</td><td class="mono">26A2568072</td><td>鄭幼毅</td><td class="num">2</td><td class="num">$3,200</td><td><span class="tag t-amber">待心理師提交</span></td><td class="muted">仍可納入，之後補</td></tr>
+                    <tr><td><span class="chk on" style="padding:0;border:none"><i class="bx"></i></span></td><td class="strong">李新源</td><td class="mono">26X0000058</td><td>劉彥君</td><td class="num">1</td><td class="num">$1,600</td><td><span class="tag t-amber">待心理師提交</span></td><td class="muted">—</td></tr>
+                    <tr><td><span class="chk on" style="padding:0;border:none"><i class="bx"></i></span></td><td class="strong">林凱文</td><td class="mono">26A7456126</td><td>呂孟育</td><td class="num">6</td><td class="num">$14,400</td><td><span class="tag t-green">已齊備</span></td><td class="muted">—</td></tr>
+                    <tr style="opacity:.55"><td><span class="chk" style="padding:0;border:none"><i class="bx"></i></span></td><td class="strong">黃小蘭</td><td class="mono">26A2422128</td><td>鄭幼毅</td><td class="num">2</td><td class="num">$3,200</td><td><span class="tag t-gray">未選</span></td><td class="muted">留待下一批請款</td></tr>
+                    <tr style="opacity:.4"><td class="muted">🔒</td><td class="strong">陳大蓉</td><td class="mono">26A9981233</td><td>林紀宇</td><td class="num">2</td><td class="num">$3,200</td><td><span class="tag t-red">已在 202607-05</span></td><td class="muted">已被其他核銷案佔用，不可重複</td></tr>
+                  </tbody></table></div>
+                <div class="card-b" style="border-top:1px solid var(--g200);background:var(--g50)">
+                  <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+                    <div><div style="font-size:11px;color:var(--g500)">已選人數</div><div style="font-size:18px;font-weight:800">4 人</div></div>
+                    <div><div style="font-size:11px;color:var(--g500)">納入場次</div><div style="font-size:18px;font-weight:800">12 場</div></div>
+                    <div><div style="font-size:11px;color:var(--g500)">請款總額</div><div style="font-size:18px;font-weight:800;color:var(--p600)">$24,000</div></div>
+                    <div style="margin-left:auto;display:flex;gap:8px"><button class="btn">上一步</button><button class="btn pri">建立核銷案</button></div>
+                  </div>
+                </div>
+              </div>
+
+              <div style="margin-top:14px">
+                <div class="modal-demo" style="max-width:520px">
+                  <div class="mh"><h4>展開某人 → 檢視將納入的場次（唯讀）</h4></div>
+                  <div class="mb">
+                    <div style="font-size:12.5px;margin-bottom:9px">王大明 <span class="mono muted">26A2422058</span> · 期間內 3 場</div>
+                    <div class="tw" style="border:1px solid var(--g200);border-radius:8px"><table>
+                      <thead><tr><th>日期</th><th>心理師</th><th>類型</th><th class="num">自付</th><th class="num">請款</th></tr></thead>
+                      <tbody>
+                        <tr><td>7/03</td><td>劉柏宏</td><td>現場</td><td class="num">$400</td><td class="num">$1,600</td></tr>
+                        <tr><td>7/10</td><td>劉柏宏</td><td>現場</td><td class="num">$400</td><td class="num">$1,600</td></tr>
+                        <tr><td>7/17</td><td>劉柏宏</td><td>現場</td><td class="num">$400</td><td class="num">$1,600</td></tr>
+                      </tbody></table></div>
+                    <div class="note" style="margin-top:10px">場次<b>不可個別取消勾選</b>（無勾選框）。若真的要排除某一場，需先在帳冊將該筆<b>作廢</b>或改為自費。</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 文件狀態與退件 -->
+          <div class="sub" id="s-q3">
+            <div class="card-b" style="border-bottom:1px solid var(--g200)">
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px">
+                <div class="panel"><div class="pt">① 心理師提交資料</div>
+                  <div style="font-size:12.5px;color:var(--g600)">心理師於「文件確認」頁確認並上傳附件（出席單／輔導紀錄）。可批次確認。</div></div>
+                <div class="panel"><div class="pt">② 行政核對</div>
+                  <div style="font-size:12.5px;color:var(--g600)">行政逐筆或［全部核對］。發現錯誤 → ［退回補件］。</div></div>
+                <div class="panel"><div class="pt">③ 豁免（免繳文件的機構）</div>
+                  <div style="font-size:12.5px;color:var(--g600)">［豁免本案資料］整案跳過心理師提交；可［恢復需繳資料］撤銷。</div></div>
+                <div class="panel" style="border-color:#fecdd3;background:#fff5f6"><div class="pt" style="color:var(--rose)">④ 退回補件</div>
+                  <div style="font-size:12.5px;color:var(--g600)">清除該筆心理師確認與行政核對，回到「待提交」並通知心理師，需填退回原因。</div></div>
+              </div>
+            </div>
+            <div class="filters"><select class="f"><option>全部狀態</option><option>待提交</option><option>已提交待核對</option><option>已核對</option><option>已退回</option><option>已豁免</option></select>
+              <select class="f"><option>全部心理師</option></select><input class="f" placeholder="搜尋個案"></div>
+            <div class="tw"><table>
+              <thead><tr><th>核銷案</th><th>個案</th><th>日期</th><th>心理師</th><th>心理師資料</th><th>行政核對</th><th>目前狀態</th><th>操作</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">202607-01</td><td class="strong">王大明</td><td>7/10</td><td>劉柏宏</td><td><span class="tag t-green">✓ 已提交</span><div class="nx">07/28 14:22</div></td><td><span class="tag t-green">✓ 已核對</span></td><td><span class="tag t-green">齊備</span></td><td class="ops"><a class="dg">退回補件</a></td></tr>
+                <tr><td class="mono">202607-01</td><td class="strong">陳心始</td><td>7/22</td><td>鄭幼毅</td><td><span class="tag t-amber">待提交</span></td><td class="muted">———</td><td><span class="tag t-amber">等心理師</span></td><td class="ops"><a>催繳通知</a></td></tr>
+                <tr style="background:#fff7ed"><td class="mono">202607-01</td><td class="strong">李新源</td><td>7/25</td><td>劉彥君</td><td><span class="tag t-red">已退回</span><div class="nx wr">原因：日期與出席單不符</div></td><td class="muted">———</td><td><span class="tag t-red">補件中</span></td><td class="ops"><a>查看原因</a><a>取消退回</a></td></tr>
+                <tr><td class="mono">202607-02</td><td class="strong">王大宇</td><td>7/18</td><td>呂孟育</td><td><span class="tag t-violet">已豁免</span><div class="nx">機構免繳文件</div></td><td><span class="tag t-green">✓ 已核對</span></td><td><span class="tag t-green">齊備</span></td><td class="ops"><a>恢復需繳</a></td></tr>
+                <tr><td class="mono">202607-02</td><td class="strong">林柏志</td><td>7/28</td><td>陳慧苓</td><td><span class="tag t-green">✓ 已提交</span></td><td><span class="tag t-amber">待核對</span></td><td><span class="tag t-amber">等行政</span></td><td class="ops"><a class="ok">核對</a><a class="dg">退回補件</a></td></tr>
+              </tbody></table></div>
+            <div style="display:flex;gap:16px;padding:14px 16px;background:var(--g50);border-top:1px solid var(--g200);flex-wrap:wrap">
+              <div class="modal-demo" style="flex:1;min-width:290px;max-width:420px">
+                <div class="mh"><h4>退回補件</h4></div>
+                <div class="mb">
+                  <div style="font-size:12.5px;color:var(--g600);margin-bottom:10px">李新源 · 7/25 · 劉彥君</div>
+                  <div class="fld"><label>退回原因 <span class="rq">*</span></label>
+                    <div class="chks" style="flex-direction:column;align-items:stretch">
+                      <span class="chk on"><i class="bx"></i>日期／時間與出席單不符</span>
+                      <span class="chk"><i class="bx"></i>缺少必要附件</span>
+                      <span class="chk"><i class="bx"></i>個案資料有誤</span>
+                      <span class="chk"><i class="bx"></i>其他</span>
+                    </div></div>
+                  <div class="fld" style="margin-top:11px"><label>補充說明</label><div class="inp ph">請重新確認 7/25 的實際會談時間…</div></div>
+                  <div class="note amber" style="margin-top:11px">送出後：清除心理師確認與行政核對 → 該筆回到<b>待提交</b>，並推播通知心理師；核銷案若已在「待送出」會<b>退回收集中</b>。</div>
+                </div>
+                <div class="mf"><button class="btn">取消</button><button class="btn" style="background:var(--danger);border-color:var(--danger);color:#fff;font-weight:600">確認退回</button></div>
+              </div>
+              <div style="flex:1;min-width:270px">
+                <div class="note">💡 退回是<b>單筆</b>操作，不影響同案其他已齊備的紀錄；但只要有任一筆未齊備，整案就無法轉「待送出」。</div>
+                <div class="note" style="margin-top:10px">心理師端在「文件確認」頁會看到<b>被退回</b>的紀錄與原因，重新提交後回到「已提交待核對」。</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 作廢 -->
+          <div class="sub" id="s-q4">
+            <div class="card-b" style="background:var(--g50)">
+              <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
+                <div class="modal-demo" style="flex:1;min-width:340px;max-width:480px">
+                  <div class="mh"><h4 style="color:var(--danger)">✕ 作廢核銷案 202605-01</h4></div>
+                  <div class="mb">
+                    <div class="note rose" style="margin-bottom:12px">
+                      <b>作廢後將執行：</b>
+                      <ul style="margin:7px 0 0;padding-left:17px;line-height:1.8">
+                        <li>整案標記為<b>已作廢</b>，不可再編輯或送出</li>
+                        <li>內含 <b>5 筆</b>紀錄脫離本案（<code>核銷案編號</code> 清空）</li>
+                        <li>這些紀錄付款狀態退回 <b>未核銷</b>，回到可核銷池</li>
+                        <li>已開立的收據一併<b>作廢</b>（編號後綴 -3）</li>
+                        <li>機構額度<b>不受影響</b>（額度在「已到」時就已扣除）</li>
+                      </ul>
+                    </div>
+                    <div class="fld"><label>作廢原因 <span class="rq">*</span></label>
+                      <div class="chks" style="flex-direction:column;align-items:stretch">
+                        <span class="chk on"><i class="bx"></i>核銷期間設定錯誤（重疊／缺口）</span>
+                        <span class="chk"><i class="bx"></i>納入的個案有誤</span>
+                        <span class="chk"><i class="bx"></i>金額計算錯誤</span>
+                        <span class="chk"><i class="bx"></i>機構退件要求重開</span>
+                        <span class="chk"><i class="bx"></i>其他</span>
+                      </div></div>
+                    <div class="fld" style="margin-top:11px"><label>補充說明</label><div class="inp ph">期間與 202605-02 重疊，重新建立…</div></div>
+                    <div class="fld" style="margin-top:11px"><label>操作者密碼 <span class="rq">*</span></label><div class="inp ph">••••••••</div>
+                      <div class="nx">作廢屬不可逆操作，需密碼確認並記錄稽核軌跡。</div></div>
+                  </div>
+                  <div class="mf"><button class="btn">取消</button><button class="btn" style="background:var(--danger);border-color:var(--danger);color:#fff;font-weight:600">確認作廢</button></div>
+                </div>
+
+                <div style="flex:1;min-width:300px">
+                  <div class="card" style="margin:0"><div class="card-h"><h3>作廢後的款項流向</h3></div>
+                    <div class="tw"><table>
+                      <thead><tr><th>項目</th><th>作廢前</th><th>作廢後</th></tr></thead>
+                      <tbody>
+                        <tr><td>核銷案狀態</td><td><span class="tag t-violet">已送出</span></td><td><span class="tag t-gray">已作廢</span></td></tr>
+                        <tr><td>紀錄的核銷案編號</td><td class="mono">202605-01</td><td class="muted">（清空）</td></tr>
+                        <tr><td>紀錄付款狀態</td><td><span class="tag t-blue">已請款</span></td><td><span class="tag t-red">未核銷</span></td></tr>
+                        <tr><td>是否可重新核銷</td><td class="muted">否（已佔用）</td><td><span class="tag t-green">是</span></td></tr>
+                        <tr><td>收據</td><td class="mono">…C031-1</td><td class="mono">…C031-3 作廢</td></tr>
+                        <tr><td>機構額度</td><td class="num">已使用 5</td><td class="num">已使用 5（不變）</td></tr>
+                        <tr><td>心理師酬勞</td><td>已計入</td><td>不變（酬勞與核銷脫鉤）</td></tr>
+                      </tbody></table></div>
+                  </div>
+                  <div class="note amber" style="margin-top:12px">⚠️ 若機構<b>已實際撥款</b>後才作廢，需另行處理退款；系統會在確認收款後的案件作廢時<b>額外警告</b>。</div>
+                  <div class="note" style="margin-top:10px">作廢紀錄保留在列表（灰階顯示）供稽核，並記錄操作者、時間與原因。</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="logic">
+          <div class="logic-h">⚙️ 頁面邏輯與互動設計</div>
+          <div class="logic-b">
+            <div class="lgrid">
+              <div>
+                <h5>建立核銷案：三步驟（重點）</h5>
+                <ul>
+                  <li><b>① 選機構 / 方案</b>：同一機構的不同方案<b>必須分開</b>建案（窗口與額度不同）。</li>
+                  <li><b>② 選期間</b>：系統顯示<b>上次核銷案的結束日</b>，並建議接續起日。<br>
+                    ・有<b>缺口</b> → 警告「X 天未被納入，可能漏請款」<br>
+                    ・有<b>重疊</b> → 警告「恐重複請款」<br>
+                    ・兩者皆為<b>警告不阻擋</b>，行政可自行判斷後繼續。</li>
+                  <li><b>③ 選人</b>：勾選的單位是「<b>人</b>」不是場次。因為同機構不同個案可能<b>分屬不同核銷案</b>（分批請款、社工窗口不同），必須逐一挑選。</li>
+                  <li><b>不可單挑場次</b>：勾了某人，其在該期間內所有符合的場次<b>整組納入</b>。展開只能唯讀檢視，沒有個別勾選框 — 避免漏請與重複請。</li>
+                  <li>已被其他核銷案佔用的個案<b>鎖定不可選</b>（顯示所屬案號）。</li>
+                </ul>
+              </div>
+              <div>
+                <h5>資料齊備的三條路</h5>
+                <ul>
+                  <li><b>正常</b>：心理師提交 → 行政核對 → 該筆齊備。</li>
+                  <li><b>豁免</b>：機構免繳文件時，行政［豁免本案資料］整案跳過心理師提交；可［恢復需繳資料］撤銷。</li>
+                  <li><b>退回補件</b>：行政發現錯誤 → 填退回原因 → <b>清除</b>該筆的心理師確認與行政核對 → 回「待提交」並通知心理師。</li>
+                  <li>退回是<b>單筆</b>操作，不影響同案其他紀錄；但只要有一筆未齊備，整案就無法轉「待送出」。</li>
+                  <li>全部齊備 → 系統<b>自動</b>由「收集中」轉「待送出」。</li>
+                </ul>
+              </div>
+              <div>
+                <h5>作廢與款項回退</h5>
+                <ul>
+                  <li>任一階段皆可作廢，需<b>原因 + 密碼</b>，並留稽核軌跡。</li>
+                  <li>作廢後：紀錄<b>脫離本案</b>、付款狀態退回 <b>未核銷</b>、回到可核銷池可重新建案。</li>
+                  <li>已開立收據一併<b>作廢</b>（編號 -3）。</li>
+                  <li><b>機構額度不受影響</b> — 額度在報到「已到」時就已由已預約轉已使用，與核銷無關。</li>
+                  <li><b>心理師酬勞不受影響</b> — 酬勞依已執行場次計算，與是否請款成功脫鉤。</li>
+                  <li>已實際撥款後才作廢會<b>額外警告</b>，退款需另行處理。</li>
+                  <li>作廢案保留在列表（灰階）供稽核；編號不回收，重開取新流水號。</li>
+                </ul>
+              </div>
+            </div>
+            <div class="tbd"><b>待確認</b>
+              ① 期間缺口／重疊目前設計為<b>警告不阻擋</b>，是否要改為必須勾「我已確認」才能繼續？<br>
+              ② 若某人在期間內<b>部分場次</b>真的不該請款（如個案自行取消但已計費），標準作法是先在帳冊作廢該筆，還是要開放例外排除？<br>
+              ③ 「已送出」後機構退件，是走<b>退回補件</b>（同案修正）還是<b>作廢重開</b>？建議依是否已開收據判斷。<br>
+              ④ 機構已撥款後作廢的退款流程與會計科目處理。<br>
+              ⑤ 催繳通知的頻率與方式（系統推播／Email／LINE）。
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 日報表 ============ -->
+      <section class="page" id="p-daily">
+        <div class="kpis" style="margin-bottom:18px">
+          <div class="kpi"><div class="lb">當日應收</div><div class="vl">$12,700</div></div>
+          <div class="kpi"><div class="lb">已收 — 現金</div><div class="vl" style="color:var(--ok)">$4,700</div><div class="dt">今日現金存款</div></div>
+          <div class="kpi"><div class="lb">已收 — 匯款</div><div class="vl" style="color:var(--ok)">$4,000</div><div class="dt">核對銀行末 5 碼</div></div>
+          <div class="kpi"><div class="lb">未收</div><div class="vl" style="color:var(--danger)">$4,000</div><div class="dt">隔日轉入應收帳冊</div></div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h3>日報表 — 帳冊流水帳</h3><span class="hint">2026/08/01 當日應收款項</span>
+            <div class="right"><button class="btn sm">應收</button><button class="btn sm">已收</button><button class="btn" style="margin-left:6px">匯出</button><button class="btn pri">完成當日對帳</button></div></div>
+          <div class="tw"><table>
+            <thead><tr><th>收據編號</th><th>預約日期</th><th>姓名</th><th>心理師</th><th>類型</th><th>方案</th><th class="num">個案自付額</th><th class="num">機構請款額</th><th>結帳方式</th><th>收款狀態</th><th>結帳批次</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">A20260801C021-1</td><td>08/01</td><td class="strong">王大白</td><td>呂孟育</td><td>現場</td><td>自費</td><td class="num">$2,300</td><td class="num">$0</td><td>自費 / 次結</td><td><span class="tag t-green">已付款</span></td><td class="muted">—</td><td class="ops"><a>編輯</a><a>查看收據</a></td></tr>
+              <tr><td class="muted">—</td><td>07/31</td><td class="strong">林小潔</td><td>鄭幼毅</td><td>現場</td><td>自費</td><td class="num">$2,000</td><td class="num">$0</td><td>自費 / 月結</td><td><span class="tag t-red">未付款</span></td><td><span class="tag t-blue">月結可使用</span></td><td class="ops"><a>付款</a><a>優待</a><a>開立收據</a></td></tr>
+              <tr><td class="mono">A20260801C022-1</td><td>07/25</td><td class="strong">李新源</td><td>劉柏宏</td><td>現場</td><td>機構</td><td class="num">$400</td><td class="num">$1,600</td><td>機構 / 機構自付</td><td><span class="tag t-green">已付款</span></td><td class="mono">202607-01</td><td class="ops"><a>編輯</a><a>查看收據</a></td></tr>
+              <tr><td class="muted">—</td><td>08/01</td><td class="strong">陳凡 ＆ 王震 <span class="tag t-rose">伴侶</span></td><td>邱惟翔</td><td>現場</td><td>自費</td><td class="num">$3,000</td><td class="num">$0</td><td>自費 / 次結</td><td><span class="tag t-red">未付款</span></td><td class="muted">—</td><td class="ops"><a>付款</a><a>優待</a><a>拆帳</a><a class="dg">作廢</a></td></tr>
+              <tr><td class="mono">A20260801O023-2</td><td>08/01</td><td class="strong">—（商品）</td><td class="muted">—</td><td class="muted">—</td><td>其他</td><td class="num">$650</td><td class="num">$0</td><td>現場銷售</td><td><span class="tag t-green">已付款</span></td><td class="muted">—</td><td class="ops"><a>查看收據</a></td></tr>
+            </tbody></table></div>
+          <div class="sr">收據編號：<code>館別(A永康館) + 開立年月日 + 流水號3碼 + 分類(C諮商／O其他) + 檢核碼(-1開立／-2重印／-3作廢)</code>，例 <b class="mono">A20260716C001-1</b></div>
+        </div>
+
+        <div class="logic">
+          <div class="logic-h">⚙️ 頁面邏輯與互動設計 — 當日結束後的對帳工具</div>
+          <div class="logic-b">
+            <div class="lgrid">
+              <div>
+                <h5>資料怎麼進來</h5>
+                <ul>
+                  <li>診間日曆按下<b>已到</b>的每一筆，<b>即時</b>寫入本表成為當日營收之一。</li>
+                  <li>視訊／外展由心理師端確認（或超過半小時自動列已到）後同樣進入本表。</li>
+                  <li>商品販售（分類 O）也一併列入，與諮商收入分開統計。</li>
+                </ul>
+              </div>
+              <div>
+                <h5>對帳流程（每日下班前）</h5>
+                <ul>
+                  <li>切換<b>應收 / 已收</b>兩個檢視。</li>
+                  <li>核對<b>現金</b>總額與抽屜實際現金；核對<b>匯款</b>與銀行帳戶（比對末 5 碼）。</li>
+                  <li>仍<b>未收</b>者按［完成當日對帳］後，隔日自動轉入<b>應收帳冊</b>追蹤。</li>
+                  <li>在此仍可補做：付款／優待／拆帳／開立收據／作廢。</li>
+                </ul>
+              </div>
+              <div>
+                <h5>與其他頁的關係</h5>
+                <ul>
+                  <li><b>結帳批次</b>欄可點擊，連動到對應的月結批次或機構核銷案。</li>
+                  <li>月結個案在此顯示「月結可使用」，代表可併入當月結帳批次一起收。</li>
+                  <li>機構案的機構請款額不計入當日現金收入，只計自付額。</li>
+                </ul>
+              </div>
+            </div>
+            <div class="tbd"><b>待確認</b>
+              ① ［完成當日對帳］後是否<b>鎖定</b>當日資料（不可再改），需要修改必須走作廢重開？<br>
+              ② 現金短溢款如何記錄（是否需要「調整」欄位與原因）。<br>
+              ③ 收據「重印 vs 重開」的判定規則尚未定義。<br>
+              ④ 被作廢的帳款需要獨立的查詢／稽核頁面嗎。
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 應收帳冊 ============ -->
+      <section class="page" id="p-ar">
+        <div class="card">
+          <div class="tabs"><span class="on" data-sub="a1" data-grp="a">未收</span><span data-sub="a2" data-grp="a">月結</span><span data-sub="a3" data-grp="a">機構應收</span></div>
+          <div class="sub on" id="s-a1">
+            <div class="filters"><span class="f-lb">區間</span><input class="f" style="min-width:118px" value="2026/07/01"><span class="f-lb">～</span><input class="f" style="min-width:118px" value="2026/08/01"><select class="f"><option>全部心理師</option></select></div>
+            <div class="tw"><table>
+              <thead><tr><th>預約日期</th><th>病歷號</th><th>姓名</th><th>心理師</th><th class="num">應收金額</th><th>結帳方式</th><th>逾期天數</th><th>操作</th></tr></thead>
+              <tbody>
+                <tr><td>07/31</td><td class="mono">26A2568072</td><td class="strong">林小潔</td><td>鄭幼毅</td><td class="num strong">$2,000</td><td>自費 / 月結</td><td><span class="tag t-amber">1 天</span></td><td class="ops"><a>付款</a><a>優待</a></td></tr>
+                <tr><td>07/15</td><td class="mono">26A2422058</td><td class="strong">林小花</td><td>劉柏宏</td><td class="num strong">$2,000</td><td>自費 / 月結</td><td><span class="tag t-red">17 天</span></td><td class="ops"><a>付款</a><a>優待</a></td></tr>
+                <tr><td>07/10</td><td class="mono">26A2422058</td><td class="strong">林小花</td><td>劉柏宏</td><td class="num strong">$2,000</td><td>自費 / 月結</td><td><span class="tag t-red">22 天</span></td><td class="ops"><a>付款</a><a>優待</a></td></tr>
+              </tbody></table></div>
+            <div class="sr">合計未收 <b style="color:var(--danger)">$6,000</b> ｜ 3 筆</div>
+          </div>
+          <div class="sub" id="s-a2"><div class="card-b"><div class="note">月結應收帳款清單：可選區間檢視，看出未付款的月結／視訊個案，並可整批產生月結帳單。</div></div></div>
+          <div class="sub" id="s-a3">
+            <div class="tw"><table>
+              <thead><tr><th>日期</th><th>姓名</th><th>心理師</th><th>類型</th><th class="num">個案自付額</th><th class="num">機構請款額</th><th>付款狀態</th><th>心理師確認</th><th>行政核對</th><th>操作</th></tr></thead>
+              <tbody>
+                <tr><td>7/10</td><td class="strong">王大明</td><td>劉柏宏</td><td>現場</td><td class="num">$400</td><td class="num">$1,600</td><td><span class="tag t-red">未付款</span></td><td><span class="tag t-green">✓ 已確認</span></td><td class="ops"><a>核對</a></td><td class="ops"><a class="ok">已收到款項</a></td></tr>
+                <tr><td>7/22</td><td class="strong">陳心始</td><td>鄭幼毅</td><td>現場</td><td class="num">$400</td><td class="num">$1,600</td><td><span class="tag t-red">未付款</span></td><td><span class="tag t-amber">待確認</span></td><td class="muted">———</td><td class="muted">—</td></tr>
+              </tbody></table></div>
+          </div>
+        </div>
+
+        <div class="logic">
+          <div class="logic-h">⚙️ 頁面邏輯與互動設計</div>
+          <div class="logic-b">
+            <div class="lgrid">
+              <div>
+                <h5>三個分頁的差別</h5>
+                <ul>
+                  <li><b>未收</b>：當日日報表結束後仍未收到錢、且<b>不屬於</b>月結／機構的款項（即應該當場收卻沒收到的）。</li>
+                  <li><b>月結</b>：本來就約定月底結的款項，非逾期，可整批產生帳單。</li>
+                  <li><b>機構應收</b>：等機構撥款的款項，與核銷案連動。</li>
+                </ul>
+              </div>
+              <div>
+                <h5>互動行為</h5>
+                <ul>
+                  <li>逾期天數自動計算並<b>分色</b>（黃：1-7 天；紅：超過 7 天）。</li>
+                  <li>可就地［付款］［優待］，完成後該筆消失並回寫日報表與個案款項紀錄。</li>
+                  <li>機構分頁可按［已收到款項］並填<b>入帳日期</b>，與核銷案的「確認收款」同一份資料。</li>
+                  <li>支援區間查詢，用於月底／季底的應收帳款盤點。</li>
+                </ul>
+              </div>
+              <div>
+                <h5>提醒機制</h5>
+                <ul>
+                  <li>逾期超過設定天數自動列入營運總覽待辦。</li>
+                  <li>同一個案累積多筆未收時合併提醒，避免洗版。</li>
+                </ul>
+              </div>
+            </div>
+            <div class="tbd"><b>待確認</b>
+              ① 逾期天數的分級門檻（幾天算警告、幾天算嚴重）。<br>
+              ② 是否需要「催收紀錄」欄位（何時聯繫、結果為何）。<br>
+              ③ 月結個案若當月未再回診，帳單何時產生與寄送。
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 數據分析 ============ -->
+      <section class="page" id="p-analytics">
+        <div class="card">
+          <div class="tabs"><span class="on">所內營運</span><span>心理師數據</span><span>客群型態</span><span>空間效益</span></div>
+          <div class="card-b">
+            <div class="kpis">
+              <div class="kpi"><div class="lb">每週預約 / 實際人次</div><div class="vl">96 <span style="font-size:15px;color:var(--g400)">/ 88</span></div><div class="bar"><i style="width:91%"></i></div><div class="dt">達成率 91.7%</div></div>
+              <div class="kpi"><div class="lb">每週目標 / 實際收入</div><div class="vl">$168K</div><div class="bar"><i style="width:78%;background:var(--warn)"></i></div><div class="dt">目標 $215K · 達成 78%</div></div>
+              <div class="kpi"><div class="lb">自費 : 機構</div><div class="vl">62<span style="font-size:15px">%</span> : 38<span style="font-size:15px">%</span></div></div>
+              <div class="kpi"><div class="lb">媒合 → 進案</div><div class="vl">32 → 27</div><div class="dt">成功率 <span class="up">84%</span></div></div>
+              <div class="kpi"><div class="lb">空間使用率</div><div class="vl">67<span style="font-size:15px">%</span></div><div class="bar"><i style="width:67%;background:var(--ok)"></i></div><div class="dt">最易空出：週二上午 1A</div></div>
+            </div>
+            <h4 class="blk">心理師接案量 / 留案率</h4>
+            <div class="tw" style="border:1px solid var(--g200);border-radius:8px"><table>
+              <thead><tr><th>心理師</th><th class="num">本月進案</th><th class="num">自費 / 機構</th><th class="num">進行中個案</th><th class="num">留案率</th><th>黏著度</th><th class="num">媒合成功率</th></tr></thead>
+              <tbody>
+                <tr><td class="strong">劉柏宏</td><td class="num">8</td><td class="num">5 / 3</td><td class="num">24</td><td class="num"><span class="tag t-green">71%</span></td><td>每週 1 次</td><td class="num">88%</td></tr>
+                <tr><td class="strong">鄭幼毅</td><td class="num">6</td><td class="num">4 / 2</td><td class="num">19</td><td class="num"><span class="tag t-green">64%</span></td><td>隔週 1 次</td><td class="num">80%</td></tr>
+                <tr><td class="strong">呂孟育</td><td class="num">5</td><td class="num">1 / 4</td><td class="num">17</td><td class="num"><span class="tag t-amber">52%</span></td><td>每週 1 次</td><td class="num">75%</td></tr>
+                <tr><td class="strong">邱惟翔</td><td class="num">4</td><td class="num">4 / 0</td><td class="num">11</td><td class="num"><span class="tag t-green">75%</span></td><td>每週 2 次以上</td><td class="num">100%</td></tr>
+              </tbody></table></div>
+            <h4 class="blk">客群型態 — 年齡區間</h4>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(108px,1fr));gap:9px">
+              <div class="kpi" style="padding:11px"><div class="lb">0-6 學齡前</div><div class="vl" style="font-size:20px">4%</div></div>
+              <div class="kpi" style="padding:11px"><div class="lb">7-18 青少年</div><div class="vl" style="font-size:20px">18%</div></div>
+              <div class="kpi" style="padding:11px"><div class="lb">19-28</div><div class="vl" style="font-size:20px">23%</div></div>
+              <div class="kpi" style="padding:11px"><div class="lb">29-38</div><div class="vl" style="font-size:20px">27%</div></div>
+              <div class="kpi" style="padding:11px"><div class="lb">39-48</div><div class="vl" style="font-size:20px">16%</div></div>
+              <div class="kpi" style="padding:11px"><div class="lb">49-58</div><div class="vl" style="font-size:20px">9%</div></div>
+              <div class="kpi" style="padding:11px"><div class="lb">60+</div><div class="vl" style="font-size:20px">3%</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="logic">
+          <div class="logic-h">⚙️ 頁面邏輯與互動設計</div>
+          <div class="logic-b">
+            <div class="lgrid">
+              <div>
+                <h5>關鍵指標定義</h5>
+                <ul>
+                  <li><b>留案率</b>：自費案需累積 <b>6 次</b>以上紀錄；機構案需在機構次數用罄後、自費紀錄超過 <b>3 次</b>，才計入該心理師的成功留案。</li>
+                  <li><b>黏著度</b>：依個案預約週期歸類（每週 2 次以上／每週 1 次／隔週 1 次／每月 1 次／不固定）。</li>
+                  <li><b>媒合成功率</b>＝媒合成功數 ÷ 該心理師被派案數。</li>
+                  <li><b>空間使用率</b>＝已預約時段 ÷ 可用時段（依營業時段計算）。</li>
+                </ul>
+              </div>
+              <div>
+                <h5>互動行為</h5>
+                <ul>
+                  <li>所有數字<b>可下鑽</b>到明細清單（如點「進行中個案 24」→ 該心理師個案列表）。</li>
+                  <li>可切換<b>週／月／季</b>與自訂區間；圖表可下載 PNG，表格可匯出 CSV。</li>
+                  <li>空間效益提供「<b>最易空出的空間與時段</b>」建議，供新個案優先安排。</li>
+                </ul>
+              </div>
+              <div>
+                <h5>未來延伸</h5>
+                <ul>
+                  <li>心理師登記<b>每週可當診時段</b>，減少媒合來回，並可看出哪些時段可釋出。</li>
+                  <li>期望以<b>上午/下午/晚上</b>三大時段為單位做排班與分析。</li>
+                </ul>
+              </div>
+            </div>
+            <div class="tbd"><b>待確認</b>
+              ① 每週／每月「目標收入」與「目標人次」由誰設定、設在哪一層（全所／每位心理師）。<br>
+              ② 留案率的計算是看<b>累積</b>次數還是<b>該年度</b>次數。<br>
+              ③ 空間使用率的分母（營業時段）如何定義，是否排除心理師未當診時段。
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<script>
+  const META={dash:["營運","營運總覽"],match:["個案流程","媒合管理"],cases:["個案流程","個案管理"],
+    rooms:["每日作業","診間日曆 — 櫃檯主控台"],booking:["每日作業","預約作業"],appts:["每日作業","預約總表"],
+    contracts:["機構","機構合約清冊"],plans:["機構","機構方案清冊"],claims:["機構","機構核銷案"],
+    daily:["財務","日報表 / 對帳"],ar:["財務","應收帳冊"],analytics:["分析","數據分析"]};
+  document.querySelectorAll('#nav a').forEach(a=>{a.onclick=()=>{
+    document.querySelectorAll('#nav a').forEach(x=>x.classList.remove('on'));a.classList.add('on');
+    const p=a.dataset.p;document.querySelectorAll('.page').forEach(s=>s.classList.remove('on'));
+    document.getElementById('p-'+p).classList.add('on');
+    document.getElementById('crumb').textContent=META[p][0];document.getElementById('title').textContent=META[p][1];
+    window.scrollTo(0,0);};});
+  document.querySelectorAll('.tabs span[data-sub]').forEach(t=>{t.onclick=()=>{
+    const g=t.dataset.grp;
+    document.querySelectorAll(`.tabs span[data-grp="${g}"]`).forEach(x=>{x.classList.remove('on');document.getElementById('s-'+x.dataset.sub).classList.remove('on');});
+    t.classList.add('on');document.getElementById('s-'+t.dataset.sub).classList.add('on');};});
+</script>
