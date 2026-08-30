@@ -45,6 +45,7 @@ services:
       API_URL: http://api:8000
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?NEXTAUTH_SECRET is required}
       NEXTAUTH_URL: ${NEXTAUTH_URL:?NEXTAUTH_URL is required}
+      AUTH_TRUST_HOST: "true"
     ports:
       - "3000:3000"
 
