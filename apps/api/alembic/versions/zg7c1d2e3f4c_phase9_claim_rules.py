@@ -129,6 +129,13 @@ def downgrade() -> None:
         "pricing_mode IN ('contract_fixed','therapist_rate')",
     )
     op.drop_column("session_records", "rebate_amount")
+    # Phase 9 起回扣比例可為 NULL（改由抽成推導），因此回滾前要先補值，
+    # 否則 Phase 8 的「回扣型必須有比例」約束加不回去。
+    # 注意：這會把「依抽成計算」的語意固化成 0，回滾後需人工複核。
+    op.execute(
+        "UPDATE institution_contracts SET rebate_rate = 0 "
+        "WHERE settlement_direction = 'to_therapist' AND rebate_rate IS NULL"
+    )
     op.create_check_constraint(
         "ck_contracts_rebate_required", "institution_contracts",
         "settlement_direction = 'to_clinic' OR rebate_rate IS NOT NULL",
