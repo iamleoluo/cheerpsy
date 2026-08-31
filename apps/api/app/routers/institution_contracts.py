@@ -30,6 +30,9 @@ class ContractBase(BaseModel):
     contact_phone: str | None = None
     valid_from: date | None = None
     valid_until: date | None = None
+    settlement_direction: str = "to_clinic"
+    rebate_rate: float | None = None
+    rebate_method: str | None = None
 
     @model_validator(mode="after")
     def _check(self):
@@ -43,6 +46,15 @@ class ContractBase(BaseModel):
             raise ValueError("個案自付額不可高於方案鐘點費")
         if self.valid_from and self.valid_until and self.valid_from > self.valid_until:
             raise ValueError("有效起日不可晚於迄日")
+        if self.settlement_direction not in ("to_clinic", "to_therapist"):
+            raise ValueError("settlement_direction 需為 to_clinic 或 to_therapist")
+        if self.settlement_direction == "to_therapist":
+            if self.rebate_rate is None:
+                raise ValueError("回扣型方案需填寫回繳比例")
+            if not (0 <= self.rebate_rate <= 1):
+                raise ValueError("回繳比例需介於 0 與 1 之間")
+            if self.rebate_method not in ("transfer", "payout_deduct"):
+                raise ValueError("回繳方式需為 transfer 或 payout_deduct")
         return self
 
 
@@ -72,6 +84,9 @@ class ContractResponse(BaseModel):
     valid_until: date | None = None
     is_active: bool
     plan_count: int = 0
+    settlement_direction: str = "to_clinic"
+    rebate_rate: float | None = None
+    rebate_method: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -94,6 +109,9 @@ def _to_response(c: InstitutionContract, plan_count: int = 0) -> ContractRespons
         valid_until=c.valid_until,
         is_active=c.is_active,
         plan_count=plan_count,
+        settlement_direction=c.settlement_direction,
+        rebate_rate=float(c.rebate_rate) if c.rebate_rate is not None else None,
+        rebate_method=c.rebate_method,
     )
 
 
@@ -141,6 +159,9 @@ def create_contract(
         contact_phone=body.contact_phone,
         valid_from=body.valid_from,
         valid_until=body.valid_until,
+        settlement_direction=body.settlement_direction,
+        rebate_rate=body.rebate_rate,
+        rebate_method=body.rebate_method,
         created_by=user.id,
     )
     db.add(c)
@@ -179,6 +200,9 @@ def update_contract(
     c.contact_phone = body.contact_phone
     c.valid_from = body.valid_from
     c.valid_until = body.valid_until
+    c.settlement_direction = body.settlement_direction
+    c.rebate_rate = body.rebate_rate
+    c.rebate_method = body.rebate_method
     after = {
         "name": c.name,
         "hourly_rate": float(c.hourly_rate),

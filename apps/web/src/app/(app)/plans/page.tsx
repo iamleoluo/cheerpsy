@@ -3,6 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
+import {
+  RateItemsEditor,
+  RateSummary,
+  emptyRateItem,
+  type RateItem,
+} from "@/components/rate-items-editor";
 
 interface TransportFee {
   id?: number;
@@ -21,8 +27,18 @@ interface Plan {
   claim_unit: string | null;
   claim_contact: string | null;
   claim_phone: string | null;
+  quota_unit: "count" | "amount";
   per_person_count: number | null;
   annual_total_count: number | null;
+  per_person_amount: number | null;
+  annual_total_amount: number | null;
+  per_person_monthly_limit: number | null;
+  extension_sessions: number | null;
+  claim_threshold_sessions: number | null;
+  pricing_mode: "contract_fixed" | "therapist_rate";
+  rate_items: RateItem[];
+  settlement_direction: string;
+  rebate_rate: number | null;
   valid_from: string | null;
   valid_until: string | null;
   notes: string | null;
@@ -213,18 +229,47 @@ export default function PlansPage() {
                   </div>
                   <div className="mt-1 text-xs text-gray-500">
                     {p.institution_name} · {p.contract_name}
-                    {p.hourly_rate != null && (
-                      <>
-                        {" · "}鐘點 ${p.hourly_rate.toLocaleString()} / 自付 $
-                        {(p.self_pay_amount ?? 0).toLocaleString()}
-                      </>
-                    )}
+                  </div>
+                  <div className="mt-1 text-xs text-gray-600">
+                    <RateSummary items={p.rate_items ?? []} />
                   </div>
                   <div className="mt-1 text-xs text-gray-400">
-                    有效 {p.valid_from || "—"} ~ {p.valid_until || "—"} · 每人{" "}
-                    {p.per_person_count ?? "不限"} 次 · 年度 {p.annual_total_count ?? "不限"} 次
+                    有效 {p.valid_from || "—"} ~ {p.valid_until || "—"}
+                    {p.quota_unit === "amount" ? (
+                      <>
+                        {" · "}額度以金額計 · 每人{" "}
+                        {p.per_person_amount != null ? `$${p.per_person_amount.toLocaleString()}` : "不限"}
+                        {" · 年度 "}
+                        {p.annual_total_amount != null ? `$${p.annual_total_amount.toLocaleString()}` : "不限"}
+                      </>
+                    ) : (
+                      <>
+                        {" · 每人 "}{p.per_person_count ?? "不限"} 次
+                        {p.extension_sessions ? `（可延長 ${p.extension_sessions} 次）` : ""}
+                        {" · 年度 "}{p.annual_total_count ?? "不限"} 次
+                      </>
+                    )}
+                    {p.per_person_monthly_limit ? ` · 每月上限 ${p.per_person_monthly_limit} 次` : ""}
                     {p.transport_fees.length > 0 && (
                       <> · 交通費 {p.transport_fees.map((t) => `${t.label} $${t.amount}`).join("／")}</>
+                    )}
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {p.claim_threshold_sessions ? (
+                      <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-700">
+                        達 {p.claim_threshold_sessions} 次才可核銷
+                      </span>
+                    ) : null}
+                    {p.pricing_mode === "therapist_rate" && (
+                      <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[11px] text-blue-700">
+                        依心理師鐘點費
+                      </span>
+                    )}
+                    {p.settlement_direction === "to_therapist" && (
+                      <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[11px] text-violet-700">
+                        回扣型 · 機構直接匯給心理師
+                        {p.rebate_rate != null ? `（回繳 ${Math.round(p.rebate_rate * 100)}%）` : ""}
+                      </span>
                     )}
                   </div>
                 </div>
@@ -376,11 +421,33 @@ function PlanForm({
   const [claimUnit, setClaimUnit] = useState(plan?.claim_unit ?? "");
   const [claimContact, setClaimContact] = useState(plan?.claim_contact ?? "");
   const [claimPhone, setClaimPhone] = useState(plan?.claim_phone ?? "");
+  const [quotaUnit, setQuotaUnit] = useState<"count" | "amount">(plan?.quota_unit ?? "count");
   const [perPerson, setPerPerson] = useState(
     plan?.per_person_count != null ? String(plan.per_person_count) : ""
   );
   const [annual, setAnnual] = useState(
     plan?.annual_total_count != null ? String(plan.annual_total_count) : ""
+  );
+  const [perPersonAmt, setPerPersonAmt] = useState(
+    plan?.per_person_amount != null ? String(plan.per_person_amount) : ""
+  );
+  const [annualAmt, setAnnualAmt] = useState(
+    plan?.annual_total_amount != null ? String(plan.annual_total_amount) : ""
+  );
+  const [monthlyLimit, setMonthlyLimit] = useState(
+    plan?.per_person_monthly_limit != null ? String(plan.per_person_monthly_limit) : ""
+  );
+  const [extension, setExtension] = useState(
+    plan?.extension_sessions != null ? String(plan.extension_sessions) : ""
+  );
+  const [threshold, setThreshold] = useState(
+    plan?.claim_threshold_sessions != null ? String(plan.claim_threshold_sessions) : ""
+  );
+  const [pricingMode, setPricingMode] = useState<"contract_fixed" | "therapist_rate">(
+    plan?.pricing_mode ?? "contract_fixed"
+  );
+  const [rateItems, setRateItems] = useState<RateItem[]>(
+    plan?.rate_items?.length ? plan.rate_items : [{ ...emptyRateItem(), label: "個別諮商" }]
   );
   const [from, setFrom] = useState(plan?.valid_from ?? "");
   const [until, setUntil] = useState(plan?.valid_until ?? "");
@@ -400,8 +467,16 @@ function PlanForm({
       claim_unit: claimUnit || null,
       claim_contact: claimContact || null,
       claim_phone: claimPhone || null,
-      per_person_count: perPerson === "" ? null : Number(perPerson),
-      annual_total_count: annual === "" ? null : Number(annual),
+      quota_unit: quotaUnit,
+      per_person_count: quotaUnit === "count" && perPerson !== "" ? Number(perPerson) : null,
+      annual_total_count: quotaUnit === "count" && annual !== "" ? Number(annual) : null,
+      per_person_amount: quotaUnit === "amount" && perPersonAmt !== "" ? Number(perPersonAmt) : null,
+      annual_total_amount: quotaUnit === "amount" && annualAmt !== "" ? Number(annualAmt) : null,
+      per_person_monthly_limit: monthlyLimit === "" ? null : Number(monthlyLimit),
+      extension_sessions: extension === "" ? null : Number(extension),
+      claim_threshold_sessions: threshold === "" ? null : Number(threshold),
+      pricing_mode: pricingMode,
+      rate_items: pricingMode === "contract_fixed" ? rateItems : [],
       valid_from: from || null,
       valid_until: until || null,
       notes: notes || null,
@@ -435,7 +510,7 @@ function PlanForm({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
       <form
         onSubmit={submit}
-        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-6 shadow-xl"
+        className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-white p-6 shadow-xl"
       >
         <h2 className="mb-4 text-lg font-bold">{plan ? "編輯機構方案" : "新增機構方案"}</h2>
 
@@ -496,27 +571,75 @@ function PlanForm({
 
           <div />
 
+          <div className="col-span-2 rounded-lg border border-gray-200 p-3">
+            <div className="mb-2 flex items-center gap-3">
+              <span className="text-sm text-gray-600">額度單位</span>
+              {([["count", "以次數計"], ["amount", "以金額計"]] as const).map(([k, label]) => (
+                <label key={k} className="flex items-center gap-1.5 text-sm">
+                  <input
+                    type="radio"
+                    checked={quotaUnit === k}
+                    onChange={() => setQuotaUnit(k)}
+                  />
+                  {label}
+                </label>
+              ))}
+              <span className="text-xs text-gray-400">如國軍是整個機構一年 $149,000</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {quotaUnit === "count" ? (
+                <>
+                  <label className="text-sm">
+                    <span className="mb-1 block text-gray-600">每人次數（留空＝不限）</span>
+                    <input type="number" min="1" value={perPerson} onChange={(e) => setPerPerson(e.target.value)} placeholder="不限" className="w-full rounded-lg border border-gray-300 px-3 py-2 tabular-nums" />
+                  </label>
+                  <label className="text-sm">
+                    <span className="mb-1 block text-gray-600">年度總次數（留空＝不限）</span>
+                    <input type="number" min="1" value={annual} onChange={(e) => setAnnual(e.target.value)} placeholder="不限" className="w-full rounded-lg border border-gray-300 px-3 py-2 tabular-nums" />
+                  </label>
+                </>
+              ) : (
+                <>
+                  <label className="text-sm">
+                    <span className="mb-1 block text-gray-600">每人金額上限</span>
+                    <input type="number" min="0" value={perPersonAmt} onChange={(e) => setPerPersonAmt(e.target.value)} placeholder="不限" className="w-full rounded-lg border border-gray-300 px-3 py-2 tabular-nums" />
+                  </label>
+                  <label className="text-sm">
+                    <span className="mb-1 block text-gray-600">年度總金額上限</span>
+                    <input type="number" min="0" value={annualAmt} onChange={(e) => setAnnualAmt(e.target.value)} placeholder="不限" className="w-full rounded-lg border border-gray-300 px-3 py-2 tabular-nums" />
+                  </label>
+                </>
+              )}
+              <label className="text-sm">
+                <span className="mb-1 block text-gray-600">每人每月上限</span>
+                <input type="number" min="1" value={monthlyLimit} onChange={(e) => setMonthlyLimit(e.target.value)} placeholder="無" className="w-full rounded-lg border border-gray-300 px-3 py-2 tabular-nums" />
+                <span className="mt-0.5 block text-xs text-gray-400">如容愛協會每月 4 次、總 24 次</span>
+              </label>
+              <label className="text-sm">
+                <span className="mb-1 block text-gray-600">可延長次數</span>
+                <input type="number" min="1" value={extension} onChange={(e) => setExtension(e.target.value)} placeholder="不可延長" className="w-full rounded-lg border border-gray-300 px-3 py-2 tabular-nums" />
+                <span className="mt-0.5 block text-xs text-gray-400">如警局、奇美家照 6 次可再延長 3 次</span>
+              </label>
+            </div>
+          </div>
+
           <label className="text-sm">
-            <span className="mb-1 block text-gray-600">每人次數（留空＝不限）</span>
-            <input
-              type="number"
-              min="1"
-              value={perPerson}
-              onChange={(e) => setPerPerson(e.target.value)}
-              placeholder="不限"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 tabular-nums"
-            />
+            <span className="mb-1 block text-gray-600">核銷門檻次數</span>
+            <input type="number" min="1" value={threshold} onChange={(e) => setThreshold(e.target.value)} placeholder="無門檻" className="w-full rounded-lg border border-gray-300 px-3 py-2 tabular-nums" />
+            <span className="mt-0.5 block text-xs text-gray-400">
+              個案需累積達此次數才可送核銷（人事處系列 4 次、脆弱家庭 8 次）
+            </span>
           </label>
+
           <label className="text-sm">
-            <span className="mb-1 block text-gray-600">年度總次數（留空＝不限）</span>
-            <input
-              type="number"
-              min="1"
-              value={annual}
-              onChange={(e) => setAnnual(e.target.value)}
-              placeholder="不限"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 tabular-nums"
-            />
+            <span className="mb-1 block text-gray-600">價格來源</span>
+            <select value={pricingMode} onChange={(e) => setPricingMode(e.target.value as any)} className="w-full rounded-lg border border-gray-300 px-3 py-2">
+              <option value="contract_fixed">合約談定固定價</option>
+              <option value="therapist_rate">依心理師鐘點費</option>
+            </select>
+            <span className="mt-0.5 block text-xs text-gray-400">
+              聊心茶室、遠距抱抱等機構案價格跟著心理師鐘點費走
+            </span>
           </label>
 
           <label className="text-sm">
@@ -554,6 +677,17 @@ function PlanForm({
               className="w-full rounded-lg border border-gray-300 px-3 py-2"
             />
           </label>
+
+          <div className="col-span-2 rounded-lg border border-gray-200 p-3">
+            {pricingMode === "contract_fixed" ? (
+              <RateItemsEditor items={rateItems} onChange={setRateItems} />
+            ) : (
+              <p className="rounded bg-blue-50 px-3 py-2 text-sm text-blue-800">
+                此方案的價格<b>依心理師鐘點費</b>決定，不需設定方案價目。
+                心理師預約時會帶入自己的鐘點費。
+              </p>
+            )}
+          </div>
 
           <div className="col-span-2">
             <div className="mb-2 flex items-center justify-between">

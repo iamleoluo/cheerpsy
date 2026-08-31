@@ -26,6 +26,9 @@ interface Contract {
   valid_until: string | null;
   is_active: boolean;
   plan_count: number;
+  settlement_direction: "to_clinic" | "to_therapist";
+  rebate_rate: number | null;
+  rebate_method: string | null;
 }
 
 const CAP_LABEL: Record<string, string> = {
@@ -119,6 +122,7 @@ export default function ContractsPage() {
               <th className="px-4 py-3 text-right">個案自付額</th>
               <th className="px-4 py-3 text-right">機構請款額</th>
               <th className="px-4 py-3">核銷上限</th>
+              <th className="px-4 py-3">款項流向</th>
               <th className="px-4 py-3">承辦人</th>
               <th className="px-4 py-3">有效期間</th>
               <th className="px-4 py-3 text-center">方案數</th>
@@ -128,7 +132,7 @@ export default function ContractsPage() {
           <tbody>
             {contracts.length === 0 && (
               <tr>
-                <td colSpan={11} className="px-4 py-10 text-center text-gray-400">
+                <td colSpan={12} className="px-4 py-10 text-center text-gray-400">
                   尚無合約。先在「系統管理 → 機構」建立機構單位，再回來新增合約。
                 </td>
               </tr>
@@ -148,6 +152,16 @@ export default function ContractsPage() {
                     {CAP_LABEL[c.cap_type]}
                   </span>
                   <span className="ml-1.5 tabular-nums">{capText(c)}</span>
+                </td>
+                <td className="px-4 py-3">
+                  {c.settlement_direction === "to_therapist" ? (
+                    <span className="rounded bg-violet-100 px-1.5 py-0.5 text-xs text-violet-700">
+                      回扣型
+                      {c.rebate_rate != null ? ` · 回繳 ${Math.round(c.rebate_rate * 100)}%` : ""}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-gray-500">匯給慈恩</span>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-gray-600">
                   {c.contact_person || "—"}
@@ -221,6 +235,13 @@ function ContractForm({
   );
   const [person, setPerson] = useState(contract?.contact_person ?? "");
   const [phone, setPhone] = useState(contract?.contact_phone ?? "");
+  const [direction, setDirection] = useState<"to_clinic" | "to_therapist">(
+    contract?.settlement_direction ?? "to_clinic"
+  );
+  const [rebateRate, setRebateRate] = useState(
+    contract?.rebate_rate != null ? String(Math.round(contract.rebate_rate * 100)) : ""
+  );
+  const [rebateMethod, setRebateMethod] = useState(contract?.rebate_method ?? "payout_deduct");
   const [from, setFrom] = useState(contract?.valid_from ?? "");
   const [until, setUntil] = useState(contract?.valid_until ?? "");
   const [saving, setSaving] = useState(false);
@@ -245,6 +266,9 @@ function ContractForm({
       contact_phone: phone || null,
       valid_from: from || null,
       valid_until: until || null,
+      settlement_direction: direction,
+      rebate_rate: direction === "to_therapist" && rebateRate !== "" ? Number(rebateRate) / 100 : null,
+      rebate_method: direction === "to_therapist" ? rebateMethod : null,
     };
     try {
       if (contract) {
@@ -391,6 +415,59 @@ function ContractForm({
               className="w-full rounded-lg border border-gray-300 px-3 py-2"
             />
           </label>
+
+          <div className="col-span-2 rounded-lg border border-gray-200 p-3">
+            <div className="mb-2 text-sm text-gray-600">款項流向</div>
+            <div className="space-y-2">
+              <label className="flex items-start gap-2 text-sm">
+                <input type="radio" className="mt-1" checked={direction === "to_clinic"} onChange={() => setDirection("to_clinic")} />
+                <span>
+                  <b>機構匯款給慈恩</b>
+                  <span className="block text-xs text-gray-500">
+                    一般情形。機構請款額會進入「應收帳冊 → 機構」等待撥款。
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-start gap-2 text-sm">
+                <input type="radio" className="mt-1" checked={direction === "to_therapist"} onChange={() => setDirection("to_therapist")} />
+                <span>
+                  <b>回扣型：機構直接匯款給心理師</b>
+                  <span className="block text-xs text-gray-500">
+                    核銷資料是「領據給心理師簽名」「心理師銀行帳戶影本」的方案屬此類。
+                    慈恩對機構沒有應收，要收的是心理師依約回繳的部分。
+                  </span>
+                </span>
+              </label>
+            </div>
+            {direction === "to_therapist" && (
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <label className="text-sm">
+                  <span className="mb-1 block text-gray-600">回繳比例（%）*</span>
+                  <input
+                    required
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={rebateRate}
+                    onChange={(e) => setRebateRate(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 tabular-nums"
+                  />
+                </label>
+                <label className="text-sm">
+                  <span className="mb-1 block text-gray-600">回繳方式</span>
+                  <select value={rebateMethod} onChange={(e) => setRebateMethod(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2">
+                    <option value="payout_deduct">從當月酬勞扣除</option>
+                    <option value="transfer">心理師自行匯款</option>
+                  </select>
+                </label>
+                <p className="col-span-2 rounded bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  ⚠️ 回繳的實際流程尚待慈恩確認（open_questions Q28）。
+                  選「從當月酬勞扣除」時這筆帳歸在心理師酬勞處理；
+                  選「心理師自行匯款」則需要在應收帳冊另開分類追蹤，該分類目前尚未建立。
+                </p>
+              </div>
+            )}
+          </div>
 
           <label className="text-sm">
             <span className="mb-1 block text-gray-600">有效起日</span>
