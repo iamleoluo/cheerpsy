@@ -10,6 +10,9 @@ class SessionRecord(Base):
     id = Column(Integer, primary_key=True)
     appointment_id = Column(Integer, ForeignKey("appointments.id"), unique=True, nullable=True)
     invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=True)  # 收據單一真相（Phase 1b 起為權威來源）
+    daily_closing_id = Column(Integer, ForeignKey("daily_closings.id"), nullable=True, index=True)
+    # 補收款：自動回寫月報表該日，標小字「MM/DD 補收 $X」，不需解鎖、不列覆核
+    supplementary_paid_at = Column(DateTime(timezone=True), nullable=True)
     session_date = Column(Date, nullable=False)
     case_id = Column(Integer, ForeignKey("cases.id"), nullable=True)
     therapist_id = Column(Integer, ForeignKey("users.id"), nullable=False)
@@ -55,4 +58,6 @@ class SessionRecord(Base):
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
 
     appointment = _rel("Appointment", back_populates="session_record")
+    # invoices.session_record_id 與本表 invoice_id 互指，需明確指定 join 路徑
+    invoice = _rel("Invoice", foreign_keys=[invoice_id], lazy="joined")
     claim_batch = _rel("ClaimBatch", foreign_keys=[claim_batch_id], lazy="select")
