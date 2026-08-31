@@ -158,3 +158,47 @@ Cloudflare dashboard → Tunnel 的 Public Hostname 刪掉／改回原本指向 
 
 ### Q: cloudflared 服務起不來
 **A:** `cloudflared.exe service uninstall` 之後重新用 `service install <token>` 安裝一次；確認 Windows 防火牆沒有擋 outbound 443（一般預設不會擋）。
+
+### Q: `docker compose` 出現 `docker-credential-desktop` not found
+完整訊息長這樣：
+
+```
+error getting credentials - err: exec: "docker-credential-desktop":
+executable file not found in %PATH%
+```
+
+**原因：** `%USERPROFILE%\.docker\config.json` 裡有 `"credsStore": "desktop"`，Docker 因此在拉任何 image 前都會先呼叫這支 credential helper。即使 `postgres:16-alpine`、`redis:7-alpine` 都是公開 image、根本不需要認證，helper 找不到一樣會整個失敗。
+
+最容易踩到的情境是**透過 SSH 執行 `deploy.ps1`**：helper 位於 Docker Desktop 的 `resources\bin`，該路徑是安裝時寫進使用者 PATH 的，而 SSH 的非互動 session 往往拿不到完整的使用者 PATH。於是同一台機器上，桌面手動跑沒事、SSH 進去跑就炸。
+
+`deploy.ps1` 開頭已經會自動把 `C:\Program Files\Docker\Docker\resources\bin` 補進 PATH，並在補完仍找不到 helper 時印出警告。若警告出現、或你是手動下 `docker compose` 指令，二選一處理：
+
+**解法 1 — 找出 helper 實際位置並加進 PATH**
+
+本機實測預設路徑下沒有這支執行檔，所以先搜出它在哪：
+
+```powershell
+Get-ChildItem "$env:ProgramFiles\Docker","$env:LOCALAPPDATA\Docker","$env:ProgramData\DockerDesktop" -Recurse -Filter "docker-credential-*.exe" -ErrorAction SilentlyContinue | Select-Object FullName
+```
+
+找到後，永久加進使用者 PATH（新開的 shell 才會生效）：
+
+```powershell
+$p = "<上面搜到的目錄>"
+[Environment]::SetEnvironmentVariable("PATH", "$p;" + [Environment]::GetEnvironmentVariable("PATH", "User"), "User")
+```
+
+**解法 2 — 直接移除 `credsStore` 設定（推薦，這台機器只拉公開 image）**
+
+編輯 `%USERPROFILE%\.docker\config.json`，把 `"credsStore": "desktop"` 那一行刪掉：
+
+```jsonc
+{
+  "auths": {},
+  "credsStore": "desktop"   // ← 刪掉這行（記得處理前一行結尾的逗號）
+}
+```
+
+移除後 Docker 改用純文字方式處理認證。本專案的 `docker-compose.prod.yml` 只拉 Docker Hub 的公開 image（`postgres:16-alpine`、`redis:7-alpine`），api/web 兩個服務是本機 `build` 而非 pull，全程不需要登入任何 registry，所以拿掉不影響部署。
+
+> 之後若真的需要推拉私有 registry 的 image，再把 helper 裝好、或改用 `docker login` 存純文字憑證。
