@@ -21,7 +21,11 @@ services:
     depends_on:
       - postgres
       - redis
+    volumes:
+      # 核銷案附件實際存檔處（B7）
+      - claimdocs:/data/claim_docs
     environment:
+      CLAIM_DOC_ROOT: /data/claim_docs
       DATABASE_URL: postgresql://${POSTGRES_USER:-cheerpsy}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cheerpsy}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
@@ -51,3 +55,4 @@ services:
 
 volumes:
   pgdata:
+  claimdocs:

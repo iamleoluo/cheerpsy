@@ -10,7 +10,9 @@ class Appointment(Base):
 
     id = Column(Integer, primary_key=True)
     appointment_number = Column(String(50), unique=True, nullable=False, index=True)
-    case_id = Column(Integer, ForeignKey("cases.id"), nullable=False)
+    # 一般預約必填；初診預約在個案建立前為空，改綁 referral_id
+    case_id = Column(Integer, ForeignKey("cases.id"), nullable=True)
+    referral_id = Column(Integer, ForeignKey("referral_requests.id"), nullable=True, index=True)
     therapist_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     room_id = Column(Integer, ForeignKey("rooms.id"), nullable=True)
     session_type = Column(String(20), nullable=False)  # in_person, online, outdoor

@@ -4,9 +4,12 @@
 本模組只補上它沒有的能力，避免重寫 727 行既有程式碼。
 """
 
+import os
+import uuid
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status as http
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status as http
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, model_validator
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -509,3 +512,88 @@ def withdraw_docs(
         r.therapist_doc_submitted_by = None
     db.commit()
     return {"withdrawn": len(rows)}
+
+
+# ---------------------------------------------------------------------------
+# 附件實際上傳與下載（B7）
+# ---------------------------------------------------------------------------
+DOC_ROOT = os.environ.get("CLAIM_DOC_ROOT", "/data/claim_docs")
+MAX_BYTES = 20 * 1024 * 1024  # 20 MB
+ALLOWED = {
+    "application/pdf", "image/jpeg", "image/png",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel",
+}
+
+
+@router.post("/{batch_id}/documents/upload", status_code=http.HTTP_201_CREATED)
+def upload_document(
+    batch_id: int,
+    doc_type: str = Form(...),
+    note: str | None = Form(None),
+    file: UploadFile = File(...),
+    user: User = Depends(RequireRole(["therapist", "admin", "staff"])),
+    db: Session = Depends(get_db),
+):
+    """實際上傳檔案。存到 volume，DB 記路徑。"""
+    _batch(db, batch_id)
+    if doc_type not in DOC_TYPES:
+        raise HTTPException(status_code=400, detail=f"doc_type 需為 {list(DOC_TYPES)}")
+    if file.content_type not in ALLOWED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"不支援的檔案型態 {file.content_type}；限 PDF／JPG／PNG／Excel",
+        )
+
+    folder = os.path.join(DOC_ROOT, str(batch_id))
+    os.makedirs(folder, exist_ok=True)
+    ext = os.path.splitext(file.filename or "")[1][:10]
+    stored = os.path.join(folder, f"{uuid.uuid4().hex}{ext}")
+
+    size = 0
+    with open(stored, "wb") as out:
+        while chunk := file.file.read(1024 * 1024):
+            size += len(chunk)
+            if size > MAX_BYTES:
+                out.close()
+                os.remove(stored)
+                raise HTTPException(status_code=413, detail="檔案超過 20 MB 上限")
+            out.write(chunk)
+
+    d = ClaimDocument(
+        claim_batch_id=batch_id,
+        therapist_id=user.id,
+        doc_type=doc_type,
+        file_name=(file.filename or "未命名")[:300],
+        note=note,
+        stored_path=stored,
+        content_type=file.content_type,
+        size_bytes=size,
+    )
+    db.add(d)
+    db.commit()
+    db.refresh(d)
+    return {"id": d.id, "file_name": d.file_name, "size_bytes": size}
+
+
+@router.get("/{batch_id}/documents/{doc_id}/download")
+def download_document(
+    batch_id: int,
+    doc_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    d = db.query(ClaimDocument).filter(
+        ClaimDocument.id == doc_id, ClaimDocument.claim_batch_id == batch_id
+    ).first()
+    if not d:
+        raise HTTPException(status_code=404, detail="Not found")
+    # 心理師只能下載自己上傳的
+    if user.role == "therapist" and d.therapist_id != user.id:
+        raise HTTPException(status_code=403, detail="只能下載自己上傳的文件")
+    if not d.stored_path or not os.path.exists(d.stored_path):
+        raise HTTPException(
+            status_code=404,
+            detail="此附件只登錄了檔名，沒有實際檔案（於支援上傳前建立）",
+        )
+    return FileResponse(d.stored_path, filename=d.file_name, media_type=d.content_type)

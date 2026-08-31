@@ -28,8 +28,10 @@ class QuotaResponse(BaseModel):
     institution_name: str | None = None
     total_count: int
     used_count: int
-    reserved_count: int = 0   # 已預約但未結算（booked appointments）
-    remaining: int            # 實際可用 = total - used - reserved
+    # 額度三態（Phase 3 起以 DB 欄位為唯一真相）
+    reserved_count: int = 0        # 已預約（DB: booked_count）—— 欄位名為相容保留
+    pool_reserved_count: int = 0   # 已預留（DB: reserved_count）
+    remaining: int                 # 還能再排幾次 = 已預留
     valid_from: date | None = None
     valid_until: date | None = None
     note: str | None = None

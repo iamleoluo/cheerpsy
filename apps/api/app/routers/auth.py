@@ -1,3 +1,4 @@
+import uuid
 import secrets
 from datetime import datetime, timedelta, timezone
 
@@ -29,6 +30,10 @@ def _generate_key() -> str:
 @router.post("/login", response_model=TokenResponse)
 def login(body: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == body.email).first()
+    # 名單制心理師沒有登入帳號：一律以「帳號不存在」回應，
+    # 不透露該 email 是否存在於名單中
+    if user is not None and not user.has_account:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     if user is None or not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     if not user.is_active:
@@ -412,3 +417,74 @@ def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
     inv.used_at = datetime.now(timezone.utc)
     db.commit()
     return {"message": "Password updated", "name": target.name}
+
+
+# ── 名單制心理師（可預約、可派案，無登入帳號）─────────────────
+
+class RosterTherapistCreate(BaseModel):
+    name: str
+    user_code: str | None = None
+    commission_rate: float | None = None
+    base_price: float | None = None
+
+
+@router.get("/roster-therapists", response_model=list[UserListResponse])
+def list_roster_therapists(
+    user: User = Depends(RequireRole(["admin", "staff"])),
+    db: Session = Depends(get_db),
+):
+    return (
+        db.query(User)
+        .filter(User.role == "therapist", User.has_account.is_(False))
+        .order_by(User.name)
+        .all()
+    )
+
+
+@router.post("/roster-therapists", response_model=UserListResponse, status_code=status.HTTP_201_CREATED)
+def create_roster_therapist(
+    body: RosterTherapistCreate,
+    user: User = Depends(RequireRole(["admin", "staff"])),
+    db: Session = Depends(get_db),
+):
+    """新增不需帳號的心理師。
+
+    他會出現在「可預約」與「可派案」名單中，但無法登入。
+    仍是 users 的一列，因此預約、派案、酬勞的外鍵都不必改。
+    日後若要開通帳號，改 has_account 並設定 email/密碼即可，
+    既有的預約與派案紀錄不受影響。
+    """
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="姓名為必填")
+
+    # 內部保留網域，避免與真人帳號的 email 衝突
+    slug = uuid.uuid4().hex[:12]
+    email = f"roster-{slug}@roster.invalid"
+
+    if body.user_code:
+        code = body.user_code.strip().upper()
+        if db.query(User).filter(User.user_code == code).first():
+            raise HTTPException(status_code=400, detail=f"代碼 {code} 已被使用")
+    else:
+        code = None
+
+    u = User(
+        email=email,
+        # 不可能通過驗證的雜湊值；登入端另有 has_account 阻擋，此為第二道防線
+        password_hash="!",
+        name=name,
+        role="therapist",
+        user_code=code,
+        commission_rate=body.commission_rate,
+        base_price=body.base_price,
+        is_active=True,
+        has_account=False,
+    )
+    db.add(u)
+    db.commit()
+    db.refresh(u)
+    write_audit(db, "users", u.id, "INSERT", user.id, None,
+                {"name": name, "has_account": False, "roster_only": True})
+    db.commit()
+    return u

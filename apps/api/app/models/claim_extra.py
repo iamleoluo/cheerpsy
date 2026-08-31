@@ -39,6 +39,10 @@ class ClaimDocument(Base):
     doc_type = Column(String(20), nullable=False)  # receipt / monthly_list / other
     file_name = Column(String(300), nullable=False)
     note = Column(String(500), nullable=True)
+    # 實際檔案存於 api 容器的 /data/claim_docs volume，DB 只記路徑
+    stored_path = Column(String(500), nullable=True)
+    content_type = Column(String(100), nullable=True)
+    size_bytes = Column(Integer, nullable=True)
     uploaded_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     therapist = relationship("User", lazy="joined")

@@ -72,7 +72,7 @@ export default function AdminPage() {
   const token = (session?.user as any)?.accessToken;
   const userRole = (session?.user as any)?.role;
 
-  const [tab, setTab] = useState<"users" | "institutions" | "data">("users");
+  const [tab, setTab] = useState<"users" | "roster" | "institutions" | "data">("users");
 
   if (userRole !== "admin") {
     return (
@@ -101,6 +101,14 @@ export default function AdminPage() {
           }`}
         >
           帳號管理
+        </button>
+        <button
+          onClick={() => setTab("roster")}
+          className={`px-4 py-2.5 text-sm font-medium transition-colors ${
+            tab === "roster" ? "border-b-2 border-primary-600 text-primary-700" : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          心理師名單
         </button>
         <button
           onClick={() => setTab("institutions")}
@@ -1388,5 +1396,124 @@ function DataTab({ token }: { token: string }) {
         </div>
       </div>
     </>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   心理師名單：可預約、可派案，但沒有登入帳號
+   ═══════════════════════════════════════════════════ */
+function RosterTab({ token }: { token: string }) {
+  const [rows, setRows] = useState<any[]>([]);
+  const [name, setName] = useState("");
+  const [code, setCode] = useState("");
+  const [rate, setRate] = useState("");
+  const [price, setPrice] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      setRows(await clientFetch("/auth/roster-therapists", token));
+      setErr(null);
+    } catch (e: any) {
+      setErr(e.message);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setErr(null);
+    try {
+      await clientFetch("/auth/roster-therapists", token, {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          user_code: code || null,
+          commission_rate: rate === "" ? null : Number(rate),
+          base_price: price === "" ? null : Number(price),
+        }),
+      });
+      setName(""); setCode(""); setRate(""); setPrice("");
+      load();
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div>
+      <p className="mb-4 text-sm text-gray-500">
+        新增<b>不需帳號</b>的心理師。他會出現在「可預約」與「可派案」名單中，但無法登入系統。
+        日後若要開通帳號，改用「使用者」分頁邀請即可，既有的預約與派案紀錄不受影響。
+      </p>
+
+      {err && <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{err}</div>}
+
+      <form onSubmit={add} className="mb-4 grid grid-cols-2 gap-3 rounded-xl border border-gray-200 bg-white p-4 md:grid-cols-5">
+        <label className="text-sm">
+          <span className="mb-1 block text-gray-600">姓名 *</span>
+          <input required value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2" />
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-gray-600">代碼</span>
+          <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="如 T12" className="w-full rounded-lg border border-gray-300 px-3 py-2" />
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-gray-600">抽成率</span>
+          <input type="number" step="0.01" min="0" max="1" value={rate} onChange={(e) => setRate(e.target.value)} placeholder="0.5" className="w-full rounded-lg border border-gray-300 px-3 py-2 tabular-nums" />
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-gray-600">預設鐘點費</span>
+          <input type="number" min="0" value={price} onChange={(e) => setPrice(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 tabular-nums" />
+        </label>
+        <div className="flex items-end">
+          <button type="submit" disabled={saving} className="w-full rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+            {saving ? "新增中..." : "＋新增"}
+          </button>
+        </div>
+      </form>
+
+      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+        <table className="w-full text-sm">
+          <thead className="border-b border-gray-200 bg-gray-50 text-left text-xs text-gray-500">
+            <tr>
+              <th className="px-3 py-3">姓名</th>
+              <th className="px-3 py-3">代碼</th>
+              <th className="px-3 py-3 text-right">抽成率</th>
+              <th className="px-3 py-3 text-right">預設鐘點費</th>
+              <th className="px-3 py-3">狀態</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && (
+              <tr><td colSpan={5} className="px-4 py-10 text-center text-gray-400">尚無名單制心理師</td></tr>
+            )}
+            {rows.map((r) => (
+              <tr key={r.id} className="border-b border-gray-100 last:border-0">
+                <td className="px-3 py-2.5 font-medium">{r.name}</td>
+                <td className="px-3 py-2.5">{r.user_code ?? "—"}</td>
+                <td className="px-3 py-2.5 text-right tabular-nums">
+                  {r.commission_rate != null ? `${(r.commission_rate * 100).toFixed(0)}%` : "—"}
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums">
+                  {r.base_price != null ? `$${r.base_price.toLocaleString()}` : "—"}
+                </td>
+                <td className="px-3 py-2.5">
+                  <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs text-blue-700">可預約 · 可派案</span>
+                  <span className="ml-1 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">無登入帳號</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }

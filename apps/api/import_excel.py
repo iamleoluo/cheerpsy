@@ -1,4 +1,13 @@
-"""Import data from Excel files into the database.
+"""Excel 匯入。
+
+⚠️ 本腳本需與 schema 同步維護。已對齊到 Phase 6（alembic z9b3c4d5e6fb）。
+未處理的欄位（匯入後為 NULL，屬預期）：
+  - referral_id / dispatch_code：舊資料沒有媒合紀錄
+  - plan_id：機構方案為 Phase 1a 新增，舊 Excel 只有機構名稱
+  - daily_closing_id：歷史紀錄未經對帳，月報表會標為「歷史匯入，未對帳」
+  - invoice_id：舊收據號保留在 receipt_no，Phase 1b 的 migration 會回填成 invoices
+
+Import data from Excel files into the database.
 
 Usage:
     cd apps/api
@@ -224,6 +233,8 @@ def import_cases(filepath: str):
                 emergency_phone=truncate(col("聯絡電話1", row), 50),
                 emergency_phone2=truncate(col("聯絡電話2", row), 50),
                 initial_visit_date=initial_visit,
+                # Phase 1b：cases 的 funding_source／billing_cycle 已降級為「預設值」，
+                # 實際結帳方式由心理師在每次預約當下選填（appointments 才是權威）。
                 funding_source=funding_source,
                 institution_id=institution_id,
                 referral_source=truncate(col("轉介來源", row), 200),
@@ -289,12 +300,15 @@ def import_ledger(filepath: str):
 
         status_raw = truncate(row[8], 20) or "未收"
         funding = truncate(row[4], 100)
+        is_institution = bool(funding and funding != "自費")
+        # Phase 1b：payment_status 只有 unpaid/paid/claimed 三值。
+        # 舊版寫入的 "pending_claim" 不在列舉內，已修正。
         if status_raw == "已收":
             payment_status = "paid"
-        elif funding and funding != "自費":
-            payment_status = "pending_claim"
         else:
             payment_status = "unpaid"
+        # Phase 1b：payment_track 決定它進應收帳冊哪一分頁
+        payment_track = "institution" if is_institution else "immediate"
 
         session_format = truncate(row[12], 20)
         location = truncate(row[7], 20)
@@ -314,6 +328,14 @@ def import_ledger(filepath: str):
             room_id=room_id,
             fee_category="counseling",
             amount=amount,
+            # Phase 1b：金額拆為自付額／機構請款額。
+            # 舊 Excel 只有一個總額，機構案的正確拆帳需要方案資訊（匯入時沒有），
+            # 因此一律先放進自付額，待機構方案定稿後再以方案自付額回算。
+            # 見 document_reference/open_questions.md（機構案完整設計）
+            self_pay_amount=amount,
+            institution_claim_amount=0,
+            payment_track=payment_track,
+            funding_source="institution" if is_institution else "self_pay",
             payment_status=payment_status,
         )
         db.add(record)

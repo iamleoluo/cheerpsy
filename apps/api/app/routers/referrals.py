@@ -534,6 +534,12 @@ def intake_arrived(
     r.status = "intake_done"
     r.intake_at = _now()
     r.case_id = c.id
+    # 回填初診預約的 case_id，讓它與一般預約一致
+    if r.intake_appointment_id:
+        from app.models.appointment import Appointment as _Appt
+        appt = db.query(_Appt).filter(_Appt.id == r.intake_appointment_id).first()
+        if appt and appt.case_id is None:
+            appt.case_id = c.id
     r.closed_at = _now()
     db.commit()
     db.refresh(r)
@@ -697,3 +703,108 @@ def decline_invite(
     db.commit()
     db.refresh(t)
     return _invite_out(t, user.id)
+
+
+# ---------------------------------------------------------------------------
+# 轉預約：把心理師承接時提供的時段，選一個排成初診
+# ---------------------------------------------------------------------------
+class ConvertBody(BaseModel):
+    slot_id: int
+    room_id: int | None = None
+    session_type: str = "in_person"
+    amount: float
+    fee_item: str = "counseling"
+
+
+@router.post("/{referral_id}/convert", status_code=http.HTTP_201_CREATED)
+def convert_to_appointment(
+    referral_id: int,
+    body: ConvertBody,
+    user: User = Depends(RequireRole(STAFF)),
+    db: Session = Depends(get_db),
+):
+    """行政從心理師提供的時段中挑一個，建立初診預約。
+
+    存檔後同步寫入診間日曆與預約總表，並回寫該時段為「已選定」。
+    預約會標 is_intake=True，日曆上以黃框與「初診有到」按鈕呈現。
+    """
+    from datetime import datetime as _dt
+
+    from app.models.appointment import Appointment
+    from app.models.room import Room
+
+    r = db.query(ReferralRequest).filter(ReferralRequest.id == referral_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Not found")
+    if r.status != "converted":
+        raise HTTPException(
+            status_code=400,
+            detail=f"狀態 {r.status} 不可轉預約，需先有心理師承接",
+        )
+    if r.intake_appointment_id:
+        raise HTTPException(status_code=400, detail="此案已排定初診")
+
+    slot = db.query(ReferralSlotOffer).filter(ReferralSlotOffer.id == body.slot_id).first()
+    if not slot:
+        raise HTTPException(status_code=404, detail="時段不存在")
+    target = slot.target
+    if target.status != "accepted":
+        raise HTTPException(status_code=400, detail="該時段所屬的承接已失效")
+    if target.dispatch.referral_id != referral_id:
+        raise HTTPException(status_code=400, detail="時段不屬於此媒合案")
+
+    if body.session_type == "in_person" and not body.room_id:
+        raise HTTPException(status_code=400, detail="現場諮商需指定診間")
+    if body.room_id and not db.query(Room).filter(Room.id == body.room_id).first():
+        raise HTTPException(status_code=404, detail="診間不存在")
+
+    start = _dt.fromisoformat(f"{slot.slot_date}T{slot.start_time}:00+08:00")
+    end = _dt.fromisoformat(f"{slot.slot_date}T{slot.end_time}:00+08:00")
+
+    # 診間衝突檢查（與預約作業同一套規則：僅已預約/已執行佔用空間）
+    if body.room_id:
+        clash = (
+            db.query(Appointment)
+            .filter(
+                Appointment.room_id == body.room_id,
+                Appointment.status.in_(["booked", "executed"]),
+                Appointment.time_range.op("&&")(func.tstzrange(start, end)),
+            )
+            .first()
+        )
+        if clash:
+            raise HTTPException(status_code=409, detail="該診間此時段已被使用")
+
+    seq = (db.query(func.count(Appointment.id)).scalar() or 0) + 1
+    appt = Appointment(
+        appointment_number=f"M-{r.dispatch_code}-{seq:03d}",
+        case_id=None,
+        referral_id=r.id,
+        therapist_id=target.therapist_id,
+        room_id=body.room_id,
+        session_type=body.session_type,
+        time_range=func.tstzrange(start, end),
+        amount=body.amount,
+        funding_source=r.funding_source,
+        plan_id=r.plan_id,
+        fee_item=body.fee_item,
+        is_intake=True,
+        created_by=user.id,
+    )
+    # 初診時個案尚未建立（病歷號要等初診有到才產生），case_id 留空、綁 referral_id
+    db.add(appt)
+    db.flush()
+
+    for s in target.slots:
+        s.is_selected = 1 if s.id == slot.id else 0
+    r.intake_appointment_id = appt.id
+    write_audit(db, "referral_requests", r.id, "UPDATE", user.id, None,
+                {"intake_appointment_id": appt.id, "slot_id": slot.id})
+    db.commit()
+    db.refresh(appt)
+    return {
+        "appointment_id": appt.id,
+        "appointment_number": appt.appointment_number,
+        "slot": {"date": slot.slot_date, "start": slot.start_time, "end": slot.end_time},
+        "therapist_id": target.therapist_id,
+    }

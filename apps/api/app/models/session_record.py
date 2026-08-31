@@ -37,7 +37,9 @@ class SessionRecord(Base):
     commission_rate_used = Column(Numeric(4, 2), nullable=True)
     funding_source = Column(String(20), nullable=True)  # snapshot of case.funding_source at materialization
     # DEPRECATED：收據單一真相已移至 invoices，請改讀 invoice_id。
-    # 保留為唯讀備援，確認 /daily、/ar、PDF 三處都改讀 invoices 後再 drop。
+    # 所有讀取端已切換（/daily、/ar、export、PDF）。欄位仍保留，因為它存著
+    # 歷史 R 格式收據號，且 data_import 的既有資料仍靠它比對；
+    # 實際 DROP 應排在正式資料遷移（Stage 2）完成並核對後。
     receipt_no = Column(String(30), nullable=True, unique=True)
     discount_amount = Column(Numeric(10, 2), nullable=False, default=0, server_default="0")
     discount_note = Column(String(200), nullable=True)

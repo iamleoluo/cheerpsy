@@ -154,7 +154,8 @@ def export_ledger(
             "付款方式": r.payment_method or "",
             "付款備註": r.payment_note or "",
             "付款時間": r.paid_at.isoformat() if r.paid_at else "",
-            "收據編號": r.receipt_no or "",
+            # 收據單一真相為 invoices；receipt_no 只作為歷史資料的 fallback
+            "收據編號": (r.invoice.invoice_number if r.invoice else None) or r.receipt_no or "",
             "是否作廢": "是" if r.is_void else "否",
             "作廢原因": r.void_reason or "",
             "作廢時間": r.voided_at.isoformat() if r.voided_at else "",

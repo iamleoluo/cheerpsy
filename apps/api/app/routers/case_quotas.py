@@ -20,18 +20,13 @@ WRITE_ROLES = ["admin", "staff"]
 
 
 def _to_response(q: CaseInstitutionQuota, db: Session) -> QuotaResponse:
-    # ⚠️ 命名衝突（Phase 1a 引入，Phase 3 解決）
-    # 本 response 的 `reserved_count` 語意是「已預約」＝ 尚未執行的預約筆數，
-    # 與新增的 DB 欄位 CaseInstitutionQuota.reserved_count（「已預留」）**意義不同**。
-    # 目前這個值仍即時由 appointments 算出，所以前端顯示正確；
-    # 等 Phase 3 讓預約流程實際維護 booked_count 之後，這裡改讀 DB 欄位並把
-    # response 欄位更名為 booked_count。在那之前不要把兩者混用。
-    # 見 gap_analysis.md §1.4 額度三態
-    booked_live = db.query(Appointment).filter(
-        Appointment.quota_id == q.id,
-        Appointment.status == "booked",
-    ).count()
-    reserved = booked_live
+    # 額度三態以 DB 欄位為唯一真相（Phase 3 起由 quota_flow 維護，
+    # 並有 CHECK 強制 used+booked+reserved=total）。
+    # 這裡不再即時數 appointments —— 那會變成同一件事的第二個來源。
+    #
+    # 相容說明：response 的 `reserved_count` 欄位語意是「已預約」，
+    # 對應 DB 的 booked_count；DB 的 reserved_count（已預留）另以
+    # `pool_reserved_count` 回傳。欄位名維持不動以免打斷既有前端。
     return QuotaResponse(
         id=q.id,
         case_id=q.case_id,
@@ -40,8 +35,9 @@ def _to_response(q: CaseInstitutionQuota, db: Session) -> QuotaResponse:
         institution_name=q.institution.name if q.institution else None,
         total_count=q.total_count,
         used_count=q.used_count,
-        reserved_count=reserved,
-        remaining=q.total_count - q.used_count - reserved,
+        reserved_count=q.booked_count,
+        pool_reserved_count=q.reserved_count,
+        remaining=q.reserved_count,
         valid_from=q.valid_from,
         valid_until=q.valid_until,
         note=q.note,

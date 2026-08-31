@@ -16,6 +16,9 @@ class User(Base):
     commission_rate = Column(Numeric(4, 2), nullable=True)
     base_price = Column(Numeric(10, 2), nullable=True)  # therapist default appointment fee
     is_active = Column(Boolean, default=True, nullable=False)
+    # False = 名單制心理師：可被預約與派案，但沒有登入帳號。
+    # 仍是 users 的一列，因此 appointments/referrals/payouts 的外鍵都不必改。
+    has_account = Column(Boolean, nullable=False, default=True, server_default="true")
 
     cases = relationship("Case", back_populates="therapist", foreign_keys="[Case.therapist_id]")
     appointments = relationship("Appointment", back_populates="therapist", foreign_keys="[Appointment.therapist_id]")

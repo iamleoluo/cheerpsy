@@ -88,8 +88,8 @@ def issue(
 def reprint(db: Session, invoice: Invoice, created_by: int | None = None) -> Invoice:
     """重印（檢核碼 -2）。沿用同一組流水號，只遞增 print_seq。
 
-    TODO(open_questions#Q8)：「重印」與「重開」的分界尚未定義。目前只提供
-    重印與「作廢後重開」兩條路徑，沒有第三種。
+    Q8 定案（2026-08-31）：收據就是**重印**；若要重開，**必須先作廢**。
+    沒有第三條路徑，因此已作廢的收據在此直接拒絕。
     """
     if invoice.status == "voided":
         raise ValueError("已作廢的收據不可重印，請走作廢後重開")
