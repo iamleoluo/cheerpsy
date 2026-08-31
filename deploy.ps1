@@ -58,9 +58,29 @@ try {
     & $Docker @Compose up -d
     if ($LASTEXITCODE -ne 0) { throw "up 失敗（exit $LASTEXITCODE）" }
 
-    Write-Host '==> alembic upgrade head'
-    & $Docker @Compose exec -T api alembic upgrade head
-    if ($LASTEXITCODE -ne 0) { throw "migration 失敗（exit $LASTEXITCODE）" }
+    # 注意：api 容器的 CMD already 是 `alembic upgrade head && uvicorn ...`，
+    # 啟動時就會自己跑 migration。這裡**不可**再跑一次 —— 兩者會並行搶同一個
+    # migration，其中一邊會拿到 DuplicateColumn 而讓部署看起來像失敗
+    # （實際上另一邊已成功）。改為等它跑完並驗證版本。
+    Write-Host '==> 等待 api 完成 migration 並就緒'
+    $ready = $false
+    foreach ($i in 1..30) {
+        Start-Sleep -Seconds 3
+        try {
+            $null = Invoke-WebRequest -Uri 'http://localhost:8000/health' -UseBasicParsing -TimeoutSec 5
+            $ready = $true
+            break
+        } catch { }
+    }
+    if (-not $ready) {
+        & $Docker @Compose logs --tail 40 api
+        throw 'api 在 90 秒內未就緒（migration 可能失敗，見上方 log）'
+    }
+
+    Write-Host '==> 確認 alembic 版本'
+    # POSTGRES_USER/DB 在 .env.production 裡，PowerShell session 讀不到，
+    # 這裡沿用 docker-compose.prod.yml 的預設值
+    & $Docker @Compose exec -T postgres psql -U cheerpsy -d cheerpsy -t -c 'SELECT version_num FROM alembic_version;'
 
     Write-Host '==> container 狀態'
     & $Docker @Compose ps
