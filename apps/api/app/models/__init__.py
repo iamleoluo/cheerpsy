@@ -17,6 +17,7 @@ from app.models.case_institution_quota import CaseInstitutionQuota
 from app.models.quota_template import QuotaTemplate
 from app.models.institution_contract import InstitutionContract
 from app.models.institution_plan import InstitutionPlan, PlanTransportFee
+from app.models.holiday import Holiday
 from app.models.referral import (
     ReferralRequest,
     ReferralDesignation,
@@ -52,4 +53,5 @@ __all__ = [
     "ReferralDispatch",
     "ReferralDispatchTarget",
     "ReferralSlotOffer",
+    "Holiday",
 ]

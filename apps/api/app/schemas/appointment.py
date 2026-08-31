@@ -75,6 +75,24 @@ class AppointmentResponse(BaseModel):
     status: str
     batch_id: str | None = None
     created_at: datetime | None = None
+    # Phase 3
+    checkin_status: str = "pending"   # pending 待報到／arrived 已到／absent 未到
+    checked_in_at: datetime | None = None
+    no_show_type: str | None = None
+    no_show_fee: float = 0
+    fee_item: str | None = None
+    plan_id: int | None = None
+    transport_fee: float = 0
+    video_link: str | None = None
+    notify_admin_to_forward: bool = False
+    forwarded_at: datetime | None = None
+    outreach_location: str | None = None
+    hourly_rate: float | None = None
+    is_intake: bool = False
+    # 機構最後一次 → 診間日曆方塊加紅框、提示下次轉自費
+    quota_is_last_session: bool = False
+    quota_used: int | None = None
+    quota_total: int | None = None
 
     model_config = {"from_attributes": True}
 
@@ -84,6 +102,7 @@ class RoomResponse(BaseModel):
     name: str
     floor: int
     room_code: str
+    room_type: str = "talk"  # talk 晤談室／play 兒童遊戲室
     has_special_equipment: bool
     notes: str | None = None
 

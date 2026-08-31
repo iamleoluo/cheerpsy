@@ -16,6 +16,7 @@ from app.models.case_institution_quota import CaseInstitutionQuota
 from app.models.room import Room
 from app.models.session_record import SessionRecord
 from app.models.user import User
+from app.services import quota_flow
 from app.services.audit import write_audit
 from app.services.settlement import SETTLEMENT_LEAD_MINUTES
 from app.schemas.appointment import (
@@ -86,6 +87,14 @@ def _to_response(
             couple_name = a.couple_case.name
         elif a.case and a.case.case_type == "couple":
             couple_name = a.case.name
+    # 機構額度：供日曆標示「最後一次」
+    _quota_last, _quota_used, _quota_total = False, None, None
+    if a.quota_id and db is not None:
+        _q = db.query(CaseInstitutionQuota).filter(CaseInstitutionQuota.id == a.quota_id).first()
+        if _q:
+            _quota_used, _quota_total = _q.used_count, _q.total_count
+            _quota_last = (_q.reserved_count + _q.booked_count) == 1
+
     return AppointmentResponse(
         id=a.id,
         appointment_number=a.appointment_number,
@@ -112,6 +121,23 @@ def _to_response(
         status=a.status,
         batch_id=a.batch_id,
         created_at=a.created_at,
+        # Phase 3
+        checkin_status=a.checkin_status,
+        checked_in_at=a.checked_in_at,
+        no_show_type=a.no_show_type,
+        no_show_fee=float(a.no_show_fee or 0),
+        fee_item=a.fee_item,
+        plan_id=a.plan_id,
+        transport_fee=float(a.transport_fee or 0),
+        video_link=a.video_link,
+        notify_admin_to_forward=a.notify_admin_to_forward,
+        forwarded_at=a.forwarded_at,
+        outreach_location=a.outreach_location,
+        hourly_rate=float(a.hourly_rate) if a.hourly_rate is not None else None,
+        is_intake=a.is_intake,
+        quota_is_last_session=_quota_last,
+        quota_used=_quota_used,
+        quota_total=_quota_total,
     )
 
 
@@ -156,12 +182,14 @@ def _resolve_quota(
             raise HTTPException(status_code=400, detail="Quota 不屬於此個案")
         if not (q.valid_from <= appt_date <= q.valid_until):
             raise HTTPException(status_code=400, detail=f"預約日 {appt_date} 不在 Quota 有效期間 {q.valid_from} ~ {q.valid_until}")
-        reserved = db.query(Appointment).filter(
-            Appointment.quota_id == q.id,
-            Appointment.status == "booked",
-        ).count()
-        if q.used_count + reserved >= q.total_count:
-            raise HTTPException(status_code=400, detail="該扣額已用完或被預約鎖定")
+        # Phase 3 起改看三態的 reserved_count（已預留），不再即時數 appointments。
+        # 兩者原本可能不一致；三態由 DB CHECK 強制恆等，是唯一真相。
+        if q.reserved_count < 1:
+            raise HTTPException(
+                status_code=400,
+                detail=(f"該扣額已無可用次數（已使用 {q.used_count}／已預約 "
+                        f"{q.booked_count}／已預留 {q.reserved_count}）"),
+            )
         return q.id
 
     # Auto-pick FIFO by valid_until (also check reserved)
@@ -171,20 +199,14 @@ def _resolve_quota(
             CaseInstitutionQuota.case_id == case_id,
             CaseInstitutionQuota.valid_from <= appt_date,
             CaseInstitutionQuota.valid_until >= appt_date,
-            CaseInstitutionQuota.used_count < CaseInstitutionQuota.total_count,
+            CaseInstitutionQuota.reserved_count > 0,
+            CaseInstitutionQuota.status == "active",
         )
         .order_by(CaseInstitutionQuota.valid_until.asc(), CaseInstitutionQuota.id.asc())
         .all()
     )
-    candidate = None
-    for cq in candidates:
-        reserved = db.query(Appointment).filter(
-            Appointment.quota_id == cq.id,
-            Appointment.status == "booked",
-        ).count()
-        if cq.used_count + reserved < cq.total_count:
-            candidate = cq
-            break
+    # 同時有多個方案時「一個用完才用下一個」，依有效期先到先用
+    candidate = candidates[0] if candidates else None
     if not candidate:
         raise HTTPException(status_code=400, detail=f"該個案於 {appt_date} 無可用機構額度")
     return candidate.id
@@ -304,6 +326,11 @@ def create_appointment(
         created_by=user.id,
     )
     db.add(appt)
+    # 排預約 → 已預留轉已預約
+    if quota_id:
+        q = db.query(CaseInstitutionQuota).filter(CaseInstitutionQuota.id == quota_id).first()
+        if q:
+            quota_flow.reserve_to_booked(q)
     db.commit()
     db.refresh(appt)
     return _to_response(appt, therapist, db)
@@ -374,6 +401,12 @@ def create_batch(
             created_by=user.id,
         )
         db.add(appt)
+        # 批次預約會一次佔用 N 次額度；額度不足時 reserve_to_booked 會擋下並回報
+        # 剩餘可建立的筆數，整批 rollback（不會建到一半）
+        if quota_id:
+            q = db.query(CaseInstitutionQuota).filter(CaseInstitutionQuota.id == quota_id).first()
+            if q:
+                quota_flow.reserve_to_booked(q)
         db.flush()
         results.append(appt)
 
@@ -463,6 +496,12 @@ def cancel_appointment(
             )
 
     a.status = "cancelled"
+    a.checkin_status = "pending"
+    # 取消 → 已預約退回已預留
+    if a.quota_id:
+        q = db.query(CaseInstitutionQuota).filter(CaseInstitutionQuota.id == a.quota_id).first()
+        if q:
+            quota_flow.booked_to_reserved(q)
     write_audit(db, "appointments", a.id, "UPDATE", user.id,
                 {"status": "booked"}, {"status": "cancelled"})
     db.commit()
@@ -626,3 +665,90 @@ def _check_room_conflict(db: Session, room_id: int, start: datetime, end: dateti
     conflict = db.execute(text(sql), params).first()
     if conflict:
         raise HTTPException(status_code=409, detail="Room time slot conflict")
+
+
+# ---------------------------------------------------------------------------
+# 報到（Phase 3）
+#
+# 診間日曆主控台的核心操作。收款與開立收據排在 Phase 4，此處只做報到／未到
+# 與額度流轉。
+# ---------------------------------------------------------------------------
+class CheckInBody(BaseModel):
+    """未到時需指定類型，失約費依原型 rooms 定案⑥自動帶入。"""
+
+    no_show_type: str | None = None
+    note: str | None = None
+
+
+# 24 小時前請假 $0／臨時取消 $200／無故未到 $500
+NO_SHOW_FEES = {"advance_notice": 0, "late_cancel": 200, "no_notice": 500}
+
+
+@router.put("/{appointment_id}/arrive", response_model=AppointmentResponse)
+def mark_arrived(
+    appointment_id: int,
+    user: User = Depends(RequireRole(["admin", "staff", "accountant"])),
+    db: Session = Depends(get_db),
+):
+    """初診／一般預約報到「已到」：轉已執行並把額度由已預約轉已使用。"""
+    a = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if not a:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    if a.checkin_status == "arrived":
+        raise HTTPException(status_code=400, detail="此預約已報到")
+    if a.status == "cancelled":
+        raise HTTPException(status_code=400, detail="已取消的預約不可報到")
+
+    a.checkin_status = "arrived"
+    a.checked_in_at = datetime.now(timezone.utc)
+    a.checked_in_by = user.id
+    a.status = "executed"
+    if a.quota_id:
+        q = db.query(CaseInstitutionQuota).filter(CaseInstitutionQuota.id == a.quota_id).first()
+        if q:
+            quota_flow.booked_to_used(q)
+    write_audit(db, "appointments", a.id, "UPDATE", user.id,
+                {"checkin_status": "pending"}, {"checkin_status": "arrived"})
+    db.commit()
+    db.refresh(a)
+    therapist = db.query(User).filter(User.id == a.therapist_id).first()
+    return _to_response(a, therapist, db, viewer=user)
+
+
+@router.put("/{appointment_id}/absent", response_model=AppointmentResponse)
+def mark_absent(
+    appointment_id: int,
+    body: CheckInBody,
+    user: User = Depends(RequireRole(["admin", "staff", "accountant"])),
+    db: Session = Depends(get_db),
+):
+    """報到「未到」：不產生應收諮商費，機構額度釋回為可用，另計失約費。"""
+    a = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if not a:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    if a.checkin_status == "arrived":
+        raise HTTPException(status_code=400, detail="已報到的預約不可改為未到，請洽管理員")
+    if body.no_show_type not in NO_SHOW_FEES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"no_show_type 需為 {list(NO_SHOW_FEES)}",
+        )
+
+    a.checkin_status = "absent"
+    a.checked_in_at = datetime.now(timezone.utc)
+    a.checked_in_by = user.id
+    a.status = "no_show"
+    a.no_show_type = body.no_show_type
+    a.no_show_fee = NO_SHOW_FEES[body.no_show_type]
+    if a.quota_id:
+        q = db.query(CaseInstitutionQuota).filter(CaseInstitutionQuota.id == a.quota_id).first()
+        if q:
+            quota_flow.booked_to_reserved(q)
+    write_audit(db, "appointments", a.id, "UPDATE", user.id,
+                {"checkin_status": "pending"},
+                {"checkin_status": "absent", "no_show_type": body.no_show_type,
+                 "no_show_fee": float(a.no_show_fee)})
+    db.commit()
+    db.refresh(a)
+    therapist = db.query(User).filter(User.id == a.therapist_id).first()
+    return _to_response(a, therapist, db, viewer=user)
