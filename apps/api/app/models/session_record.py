@@ -51,6 +51,10 @@ class SessionRecord(Base):
     # 行政核對：心理師提交資料後，由行政再做一次資料正確性確認
     admin_verified_at = Column(DateTime(timezone=True), nullable=True)
     admin_verified_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    # 退回補件（Phase 5）：清除心理師確認與行政核對，回「待提交」
+    rejected_at = Column(DateTime(timezone=True), nullable=True)
+    rejected_reason = Column(String(500), nullable=True)
+    rejected_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     locked_at = Column(DateTime(timezone=True), nullable=True)
     parent_record_id = Column(Integer, ForeignKey("session_records.id"), nullable=True)
     outcall_bonus = Column(Numeric(10, 2), nullable=False, default=0, server_default="0")
@@ -60,4 +64,5 @@ class SessionRecord(Base):
     appointment = _rel("Appointment", back_populates="session_record")
     # invoices.session_record_id 與本表 invoice_id 互指，需明確指定 join 路徑
     invoice = _rel("Invoice", foreign_keys=[invoice_id], lazy="joined")
+    case = _rel("Case", foreign_keys=[case_id], lazy="joined")
     claim_batch = _rel("ClaimBatch", foreign_keys=[claim_batch_id], lazy="select")

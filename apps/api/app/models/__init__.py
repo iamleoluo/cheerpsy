@@ -17,6 +17,8 @@ from app.models.case_institution_quota import CaseInstitutionQuota
 from app.models.quota_template import QuotaTemplate
 from app.models.institution_contract import InstitutionContract
 from app.models.institution_plan import InstitutionPlan, PlanTransportFee
+from app.models.availability import TherapistAvailability
+from app.models.claim_extra import ClaimBatchPlan, ClaimDocument
 from app.models.finance import DailyClosing, MonthlyReport, SupervisorReview
 from app.models.holiday import Holiday
 from app.models.referral import (
@@ -58,4 +60,7 @@ __all__ = [
     "DailyClosing",
     "MonthlyReport",
     "SupervisorReview",
+    "ClaimBatchPlan",
+    "ClaimDocument",
+    "TherapistAvailability",
 ]

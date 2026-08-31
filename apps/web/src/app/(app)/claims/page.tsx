@@ -1,180 +1,116 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
-import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
-import ReceiptModal from "@/components/ReceiptModal";
+import { SESSION_TYPE, money, todayISO } from "@/lib/format";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
-const helpContent: HelpContent = {
-  title: "帳冊管理",
-  guideId: "claims",
-  overview: "自費與機構帳務分流處理。自費不需建立核銷案，系統自動帶出個案所有未結清帳務，可逐筆或批次付款；機構維持核銷批次流程。",
-  sections: [
-    {
-      heading: "自費付款",
-      type: "steps",
-      items: [
-        "切到「自費」分頁，系統依個案列出所有未收款帳務（次結/月結同一個案彙整）",
-        "逐筆點「付款」，或勾選多筆點「批次付款」",
-        "選現金或匯款，匯款填末 5 碼",
-        "付款後可下載收據；批次付款時可選擇合併單張或逐筆收據",
-      ],
-    },
-    {
-      heading: "機構核銷案",
-      type: "steps",
-      items: [
-        "切到「機構」分頁，點「＋建立核銷案」",
-        "選擇機構（僅列出有未歸入帳的機構），勾選紀錄，設定期間後建立",
-        "心理師於「文件確認」逐筆確認，全部確認後自動升「待送出」",
-        "點「提交請款」填外部單號 → 款項到帳「確認收款」（即結案）",
-      ],
-    },
-    {
-      heading: "狀態流程",
-      type: "text",
-      items: [
-        "自費：未收款 → 付款（逐筆/批次）→ 可印收據",
-        "機構：收集中 → 文件備妥（自動）→ 已送出 → 已收款（終態）",
-      ],
-    },
-    {
-      heading: "管理員提示",
-      type: "notes",
-      items: [
-        "自費收據編號取自帳冊流水帳的收據編號；機構請款單號 = I-{機構代碼}-{YYYYMM}",
-        "自費不需要心理師文件確認，機構案需要",
-        "既有自費核銷案仍可於「歷史核銷案」檢視與重印收據",
-      ],
-    },
-  ],
-};
-
-/* ───── types ───── */
-
-interface ClaimBatch {
+interface Batch {
   id: number;
   batch_number: string;
-  external_ref: string | null;
   type: string;
-  billing_cycle: string | null;
-  expected_sessions: number | null;
+  is_legacy?: boolean;
   institution_id: number | null;
-  institution_name: string | null;
-  case_id: number | null;
-  case_name: string | null;
+  institution_name?: string | null;
   period_start: string | null;
   period_end: string | null;
   total_amount: number;
-  payment_method: string | null;
-  payment_note: string | null;
-  item_name: string | null;
   status: string;
-  record_count: number;
-  confirmed_count: number;
-  admin_verified_count: number;
-  created_at: string | null;
-  docs_waived_at: string | null;
-  docs_waived_by: number | null;
-  docs_required: boolean;
+  void_reason?: string | null;
+  voided_at?: string | null;
 }
 
-interface BatchRecord {
-  id: number;
-  session_date: string;
-  case_name: string | null;
-  therapist_name: string | null;
-  session_type: string;
-  amount: number;
-  payment_status: string;
-  therapist_doc_submitted_at: string | null;
-  therapist_doc_submitted_by: number | null;
-  admin_verified_at: string | null;
-}
-
-interface UnassignedRecord {
+interface SelRecord {
   id: number;
   session_date: string;
   case_id: number;
   case_name: string | null;
   therapist_name: string | null;
   session_type: string;
-  amount: number;
-  payment_status: string;
-  therapist_doc_submitted_at: string | null;
+  self_pay_amount: number;
+  institution_claim_amount: number;
+  in_this_batch: boolean;
+  locked_by_batch_id: number | null;
+  therapist_confirmed: boolean;
+  admin_verified: boolean;
+  rejected_reason: string | null;
 }
 
-interface InstitutionOption {
+interface Plan {
   id: number;
   name: string;
-  code: string | null;
+  institution_name: string | null;
 }
 
-interface LedgerRecord {
-  id: number;
-  session_date: string;
-  case_id: number | null;
-  case_name: string | null;
-  therapist_name: string | null;
-  session_type: string;
-  amount: number;
-  discount_amount: number;
-  effective_amount: number;
-  payment_status: string;
-  receipt_no: string | null;
-  is_void: boolean;
-  claim_batch_id: number | null;
-  claim_batch_number: string | null;
-  billing_cycle: string | null;
-}
-
-const SESSION_TYPE_LABELS: Record<string, string> = {
-  in_person: "現場",
-  online: "線上",
-  outdoor: "外出",
+const STATUS: Record<string, { label: string; cls: string }> = {
+  collecting: { label: "收集中", cls: "bg-amber-100 text-amber-700" },
+  ready: { label: "待送出", cls: "bg-blue-100 text-blue-700" },
+  submitted: { label: "已送出", cls: "bg-violet-100 text-violet-700" },
+  received: { label: "已結案", cls: "bg-green-100 text-green-700" },
+  voided: { label: "已作廢", cls: "bg-gray-200 text-gray-500" },
 };
-
-const BILLING_CYCLE_LABEL: Record<string, string> = { monthly: "月結", once: "次結", multiple: "多次結" };
-
-/* ───── main page ───── */
 
 export default function ClaimsPage() {
   const { data: session } = useSession();
   const token = (session?.user as any)?.accessToken;
-  const userRole = (session?.user as any)?.role;
-  const [mode, setMode] = useState<"self_pay" | "institution">("self_pay");
-  const [instTab, setInstTab] = useState<"batches" | "docs">("batches");
-  const [helpOpen, setHelpOpen] = useState(false);
+  const role = (session?.user as any)?.role;
+  const [tab, setTab] = useState<"list" | "docs" | "void">("list");
+  const [batches, setBatches] = useState<Batch[]>([]);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<number | null>(null);
+  const [voidFor, setVoidFor] = useState<Batch | null>(null);
 
-  if (!token) return <p>Loading...</p>;
+  const load = useCallback(async () => {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const [bs, ps] = await Promise.all([
+        clientFetch("/claim-batches", token),
+        clientFetch("/institution-plans", token).catch(() => []),
+      ]);
+      setBatches(bs);
+      setPlans(ps);
+      setError(null);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const active = batches.filter((b) => b.status !== "voided" && !b.is_legacy);
+  const voided = batches.filter((b) => b.status === "voided");
+  const legacy = batches.filter((b) => b.is_legacy);
+
+  if (loading) return <p className="p-6 text-gray-400">載入中...</p>;
 
   return (
     <div>
-      <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} guideId="claims" />
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">帳冊管理</h1>
-        <button onClick={() => setHelpOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700">
-          <span>ℹ️</span> 說明
-        </button>
-      </div>
+      <h1 className="text-2xl font-bold">機構核銷案</h1>
+      <p className="mt-1 text-sm text-gray-500">
+        每月 1 號起只要有方案預約即可建案，之後每天把紀錄加進去，讓心理師能提早上傳文件。
+        期間為<b>參考區間</b>，缺口與重疊只提示、不阻擋。
+      </p>
 
-      <div className="mb-4 flex gap-2">
-        {(
-          [
-            ["self_pay", "自費"],
-            ["institution", "機構"],
-          ] as const
-        ).map(([key, label]) => (
+      <div className="mb-4 mt-4 flex gap-2 border-b border-gray-200">
+        {([
+          ["list", `核銷案列表 (${active.length})`],
+          ["docs", "文件狀態與退件"],
+          ["void", `作廢處理 (${voided.length})`],
+        ] as const).map(([k, label]) => (
           <button
-            key={key}
-            onClick={() => setMode(key)}
-            className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-              mode === key
-                ? "bg-primary-600 text-white"
-                : "border border-gray-300 text-gray-600 hover:bg-gray-50"
+            key={k}
+            onClick={() => setTab(k)}
+            className={`px-4 py-2 text-sm ${
+              tab === k
+                ? "border-b-2 border-primary-600 font-medium text-primary-700"
+                : "text-gray-500 hover:text-gray-700"
             }`}
           >
             {label}
@@ -182,1169 +118,463 @@ export default function ClaimsPage() {
         ))}
       </div>
 
-      {mode === "self_pay" && <SelfPayTab token={token} userRole={userRole} />}
+      {error && <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
-      {mode === "institution" && (
-        <div>
-          <div className="mb-4 flex gap-1 border-b border-gray-200">
-            {(
-              [
-                ["batches", "核銷案列表"],
-                ["docs", "文件確認"],
-              ] as const
-            ).map(([key, label]) => (
-              <button
-                key={key}
-                onClick={() => setInstTab(key)}
-                className={`px-4 py-2 text-sm font-medium transition-colors ${
-                  instTab === key
-                    ? "border-b-2 border-primary-600 text-primary-600"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          {instTab === "batches" && <BatchListTab token={token} userRole={userRole} />}
-          {instTab === "docs" && <DocConfirmTab token={token} userRole={userRole} />}
+      {legacy.length > 0 && tab === "list" && (
+        <div className="mb-4 rounded-lg bg-gray-100 px-4 py-2.5 text-sm text-gray-600">
+          另有 {legacy.length} 筆自費月結批次為<b>歷史資料</b>（唯讀）。自費月結已改走
+          「應收帳冊 → 月結」分頁，不再於此建立。
         </div>
       )}
-    </div>
-  );
-}
 
-/* ═══════════════════════════════════════════════
-   helpers
-   ═══════════════════════════════════════════════ */
-
-const STATUS_LABELS: Record<string, string> = {
-  collecting: "收集中",
-  ready: "待送出",
-  submitted: "已送出",
-  received: "已收款",
-  closed: "已結案",
-};
-const STATUS_COLORS: Record<string, string> = {
-  collecting: "bg-yellow-100 text-yellow-800",
-  ready: "bg-blue-100 text-blue-800",
-  submitted: "bg-purple-100 text-purple-800",
-  received: "bg-green-100 text-green-800",
-  closed: "bg-gray-100 text-gray-600",
-};
-
-function StatusBadge({ status }: { status: string }) {
-  return (
-    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[status] ?? "bg-gray-100 text-gray-600"}`}>
-      {STATUS_LABELS[status] ?? status}
-    </span>
-  );
-}
-
-function downloadPdf(path: string, token: string, filename: string) {
-  fetch(`${API_URL}${path}`, { headers: { Authorization: `Bearer ${token}` } })
-    .then((res) => {
-      if (!res.ok) throw new Error(`Download failed: ${res.status}`);
-      return res.blob();
-    })
-    .then((blob) => {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
-    });
-}
-
-/* ═══════════════════════════════════════════════
-   自費 — per-record / batch payment (no claim batch)
-   ═══════════════════════════════════════════════ */
-
-function SelfPayPaymentModal({
-  token,
-  recordIds,
-  total,
-  onClose,
-  onDone,
-}: {
-  token: string;
-  recordIds: number[];
-  total: number;
-  onClose: () => void;
-  onDone: (ids: number[], combine: boolean, batchId?: number | null) => void;
-}) {
-  const [method, setMethod] = useState<"cash" | "transfer">("cash");
-  const [note, setNote] = useState("");
-  const [combine, setCombine] = useState(true);
-  const [paidDate, setPaidDate] = useState(new Date().toISOString().slice(0, 10));
-  const [saving, setSaving] = useState(false);
-  const isBatch = recordIds.length > 1;
-  const today = new Date().toISOString().slice(0, 10);
-
-  const submit = async () => {
-    if (method === "transfer" && !note.trim()) {
-      alert("請填寫匯款資訊");
-      return;
-    }
-    setSaving(true);
-    try {
-      if (isBatch) {
-        const res = await clientFetch("/ledger/pay-batch", token, {
-          method: "POST",
-          body: JSON.stringify({
-            record_ids: recordIds,
-            payment_method: method,
-            payment_note: note.trim() || null,
-            combine_receipt: combine,
-            paid_date: paidDate,
-          }),
-        });
-        onDone(res?.record_ids ?? recordIds, res?.combine_receipt ?? combine, res?.batch_id ?? null);
-      } else {
-        await clientFetch(`/ledger/${recordIds[0]}/pay`, token, {
-          method: "PUT",
-          body: JSON.stringify({ payment_method: method, payment_note: note.trim() || null, paid_date: paidDate }),
-        });
-        onDone(recordIds, false);
-      }
-    } catch (e: any) {
-      alert(e.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="w-80 rounded-lg bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <h3 className="mb-4 text-base font-semibold">{isBatch ? `批次付款（${recordIds.length} 筆）` : "確認付款"}</h3>
-        <p className="mb-3 text-sm text-gray-600">
-          合計：<strong>${total.toLocaleString()}</strong>
-        </p>
-
-        <label className="mb-3 block">
-          <span className="text-xs font-medium text-gray-700">收款日期</span>
-          <input
-            type="date"
-            value={paidDate}
-            max={today}
-            onChange={(e) => setPaidDate(e.target.value)}
-            className="mt-1 block w-full rounded border px-2 py-1.5 text-sm"
-          />
-          {paidDate !== today && (
-            <span className="mt-1 block text-xs text-amber-600">補登：實際收款日 {paidDate}</span>
+      {(tab === "list" || tab === "void") && (
+        <div className="space-y-3">
+          {(tab === "list" ? active : voided).length === 0 && (
+            <div className="rounded-xl border border-gray-200 bg-white px-4 py-10 text-center text-gray-400">
+              {tab === "list" ? "尚無核銷案" : "沒有作廢的核銷案"}
+            </div>
           )}
-        </label>
-
-        <fieldset className="mb-3">
-          <legend className="mb-1 text-xs font-medium text-gray-700">付款方式</legend>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="radio" checked={method === "cash"} onChange={() => setMethod("cash")} />
-            現金
-          </label>
-          <label className="mt-1 flex items-center gap-2 text-sm">
-            <input type="radio" checked={method === "transfer"} onChange={() => setMethod("transfer")} />
-            匯款
-          </label>
-        </fieldset>
-
-        <label className="mb-3 block">
-          <span className="text-xs font-medium text-gray-700">
-            匯款資訊{method === "cash" ? "（選填）" : "（必填）"}
-          </span>
-          <input
-            type="text"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder={method === "transfer" ? "請輸入末5碼或匯款帳號" : ""}
-            className="mt-1 block w-full rounded border px-2 py-1.5 text-sm"
-          />
-        </label>
-
-        {isBatch && (
-          <fieldset className="mb-4">
-            <legend className="mb-1 text-xs font-medium text-gray-700">收據</legend>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="radio" checked={combine} onChange={() => setCombine(true)} />
-              合併一張收據
-            </label>
-            <label className="mt-1 flex items-center gap-2 text-sm">
-              <input type="radio" checked={!combine} onChange={() => setCombine(false)} />
-              逐筆各一張
-            </label>
-          </fieldset>
-        )}
-
-        <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="rounded px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100">
-            取消
-          </button>
-          <button
-            onClick={submit}
-            disabled={saving}
-            className="rounded bg-green-600 px-4 py-1.5 text-sm text-white hover:bg-green-700 disabled:opacity-50"
-          >
-            {saving ? "處理中…" : "確認付款"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
-  const [records, setRecords] = useState<LedgerRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [payIds, setPayIds] = useState<number[] | null>(null);
-  const [expandedCaseId, setExpandedCaseId] = useState<number | string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<"all" | "unpaid" | "paid">("all");
-  const [receiptRecordId, setReceiptRecordId] = useState<number | null>(null);
-  const [receiptBatchId, setReceiptBatchId] = useState<number | null>(null);
-
-  const canEdit = ["admin", "staff"].includes(userRole);
-
-  const fetchRecords = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await clientFetch("/ledger/self-pay-all", token);
-      setRecords(data);
-      setSelected(new Set());
-    } catch { /* ignore */ } finally {
-      setLoading(false);
-    }
-  }, [token]);
-
-  useEffect(() => { fetchRecords(); }, [fetchRecords]);
-
-  const isPaid = (r: LedgerRecord) => r.payment_status === "paid" || r.payment_status === "claimed";
-
-  // Apply status filter
-  const filtered = records.filter((r) => {
-    if (statusFilter === "unpaid") return r.payment_status === "unpaid";
-    if (statusFilter === "paid") return isPaid(r);
-    return true;
-  });
-
-  // group by case_id (fall back to case_name if no id)
-  const groups: Record<string, { name: string; billing_cycle: string | null; records: LedgerRecord[] }> = filtered.reduce<Record<string, { name: string; billing_cycle: string | null; records: LedgerRecord[] }>>(
-    (acc, r) => {
-      const key = r.case_id ?? (r.case_name ?? "?");
-      if (!acc[key]) acc[key] = { name: r.case_name ?? `#${r.case_id}`, billing_cycle: r.billing_cycle, records: [] };
-      acc[key].records.push(r);
-      return acc;
-    }, {}
-  );
-
-  const toggle = (id: number) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-
-  const toggleCase = (key: string | number) => {
-    setExpandedCaseId((prev) => {
-      if (prev === key) return null;
-      // Clear selection when switching cases
-      setSelected(new Set());
-      return key;
-    });
-  };
-
-  const afterPay = (ids: number[], combine: boolean, batchId?: number | null) => {
-    setPayIds(null);
-    fetchRecords();
-    if (combine && batchId) {
-      setReceiptBatchId(batchId);
-    } else if (ids.length === 1) {
-      setReceiptRecordId(ids[0]);
-    }
-  };
-
-  return (
-    <div>
-      {receiptRecordId !== null && (
-        <ReceiptModal token={token} type="single_session" sourceId={receiptRecordId} onClose={() => setReceiptRecordId(null)} />
-      )}
-      {receiptBatchId !== null && (
-        <ReceiptModal token={token} type="self_pay_batch" sourceId={receiptBatchId!} onClose={() => setReceiptBatchId(null)} />
-      )}
-      {payIds && (
-        <SelfPayPaymentModal
-          token={token}
-          recordIds={payIds}
-          total={records.filter((r) => payIds.includes(r.id)).reduce((s, r) => s + r.effective_amount, 0)}
-          onClose={() => setPayIds(null)}
-          onDone={afterPay}
-        />
-      )}
-
-      <div className="mb-3 flex items-center gap-3">
-        <select
-          value={statusFilter}
-          onChange={(e) => { setStatusFilter(e.target.value as "all" | "unpaid" | "paid"); setExpandedCaseId(null); }}
-          className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm"
-        >
-          <option value="all">全部狀態</option>
-          <option value="unpaid">待付款</option>
-          <option value="paid">已付款</option>
-        </select>
-      </div>
-
-      {loading ? (
-        <div className="py-8 text-center text-gray-400">載入中...</div>
-      ) : filtered.length === 0 ? (
-        <div className="py-8 text-center text-gray-400">
-          {statusFilter === "unpaid" ? "沒有待收款的自費帳務 🎉"
-            : statusFilter === "paid" ? "尚無已付款的自費帳務"
-            : "尚無自費帳務"}
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {Object.entries(groups).map(([key, { name: caseName, billing_cycle: caseBillingCycle, records: rs }]) => {
-            const caseKey = key;
-            const isOpen = expandedCaseId === caseKey;
-            const unpaidRs = rs.filter((r) => r.payment_status === "unpaid");
-            const paidRs = rs.filter((r) => isPaid(r));
-            const unpaidTotal = unpaidRs.reduce((s, r) => s + r.effective_amount, 0);
-            const caseSelected = rs.filter((r) => selected.has(r.id));
-            const caseSelectedTotal = caseSelected.reduce((s, r) => s + r.effective_amount, 0);
-
+          {(tab === "list" ? active : voided).map((b) => {
+            const st = STATUS[b.status] ?? { label: b.status, cls: "bg-gray-100" };
+            const open = openId === b.id;
             return (
-              <div key={caseKey} className="rounded-lg border border-gray-200 overflow-hidden">
-                {/* Accordion header */}
-                <button
-                  onClick={() => toggleCase(caseKey)}
-                  className="flex w-full items-center justify-between bg-gray-50 px-4 py-3 hover:bg-gray-100 transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm">
-                      {caseName}
-                      {caseBillingCycle && (
-                        <span className="ml-1 font-normal text-gray-400">（{BILLING_CYCLE_LABEL[caseBillingCycle] ?? caseBillingCycle}）</span>
-                      )}
+              <div key={b.id} className={`overflow-hidden rounded-xl border bg-white ${b.status === "voided" ? "border-gray-200 opacity-70" : "border-gray-200"}`}>
+                <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+                  <button onClick={() => setOpenId(open ? null : b.id)} className="text-gray-400">
+                    {open ? "▾" : "▸"}
+                  </button>
+                  <span className="font-mono text-sm">{b.batch_number}</span>
+                  <span className="text-sm font-medium">{b.institution_name ?? "—"}</span>
+                  <span className="text-xs text-gray-500">
+                    {b.period_start ?? "—"} ~ {b.period_end ?? "—"}
+                  </span>
+                  <span className={`rounded px-1.5 py-0.5 text-xs ${st.cls}`}>{st.label}</span>
+                  <span className="ml-auto tabular-nums">{money(b.total_amount)}</span>
+                  {b.status !== "voided" && ["admin", "accountant"].includes(role) && (
+                    <button onClick={() => setVoidFor(b)} className="text-xs text-red-500 hover:underline">
+                      作廢
+                    </button>
+                  )}
+                </div>
+                {b.void_reason && (
+                  <div className="border-t border-gray-100 bg-gray-50 px-4 py-2 text-xs text-gray-600">
+                    作廢原因：{b.void_reason}
+                    <span className="ml-3 text-gray-400">
+                      紀錄已脫離本案並回到可核銷池；機構額度與心理師酬勞不受影響
                     </span>
-                    {unpaidRs.length > 0 && (
-                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">
-                        {unpaidRs.length} 筆待收
-                      </span>
-                    )}
-                    {paidRs.length > 0 && (
-                      <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700">
-                        {paidRs.length} 筆已付
-                      </span>
-                    )}
                   </div>
-                  <div className="flex items-center gap-3">
-                    {unpaidTotal > 0
-                      ? <span className="text-sm text-amber-600">待收 ${unpaidTotal.toLocaleString()}</span>
-                      : <span className="text-sm text-green-600">全部結清 ✓</span>
-                    }
-                    <span className={`text-gray-400 transition-transform text-xs ${isOpen ? "rotate-180" : ""}`}>▼</span>
-                  </div>
-                </button>
-
-                {/* Accordion body */}
-                {isOpen && (
-                  <>
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-t text-left text-xs text-gray-500 bg-white">
-                          {canEdit && <th className="px-3 py-2 w-8"></th>}
-                          <th className="px-3 py-2">收據編號</th>
-                          <th className="px-3 py-2">日期</th>
-                          <th className="px-3 py-2">心理師</th>
-                          <th className="px-3 py-2">類型</th>
-                          <th className="px-3 py-2 text-right">金額</th>
-                          <th className="px-3 py-2">狀態</th>
-                          <th className="px-3 py-2">操作</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {rs.map((r) => {
-                          const paid = isPaid(r);
-                          return (
-                          <tr key={r.id} className={`border-b hover:bg-gray-50 ${paid ? "bg-green-50/40" : ""}`}>
-                            {canEdit && (
-                              <td className="px-3 py-2">
-                                {!paid && (
-                                  <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggle(r.id)} />
-                                )}
-                              </td>
-                            )}
-                            <td className="px-3 py-2 font-mono text-xs">{r.receipt_no ?? "-"}</td>
-                            <td className="px-3 py-2">{r.session_date}</td>
-                            <td className="px-3 py-2">{r.therapist_name}</td>
-                            <td className="px-3 py-2">{SESSION_TYPE_LABELS[r.session_type] ?? r.session_type}</td>
-                            <td className="px-3 py-2 text-right">
-                              ${r.effective_amount.toLocaleString()}
-                              {r.discount_amount > 0 && (
-                                <span className="ml-1 text-xs text-amber-600">(優待 ${r.discount_amount.toLocaleString()})</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-2">
-                              {paid
-                                ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700">已付款</span>
-                                : <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">待付款</span>
-                              }
-                            </td>
-                            <td className="px-3 py-2">
-                              {canEdit && !paid && (
-                                <button
-                                  onClick={() => setPayIds([r.id])}
-                                  className="rounded bg-green-600 px-2 py-0.5 text-xs text-white hover:bg-green-700"
-                                >
-                                  付款
-                                </button>
-                              )}
-                              {paid && r.claim_batch_id && (
-                                <button
-                                  onClick={() => setReceiptBatchId(r.claim_batch_id!)}
-                                  className="rounded border border-primary-300 px-2 py-0.5 text-xs text-primary-600 hover:bg-primary-50"
-                                >
-                                  整體收據
-                                </button>
-                              )}
-                              {paid && !r.claim_batch_id && (
-                                <button
-                                  onClick={() => setReceiptRecordId(r.id)}
-                                  className="rounded border border-primary-300 px-2 py-0.5 text-xs text-primary-600 hover:bg-primary-50"
-                                >
-                                  開立收據
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                    {/* Per-case payment footer */}
-                    {canEdit && caseSelected.length > 0 && (
-                      <div className="flex items-center justify-end gap-2 border-t bg-gray-50 px-4 py-2">
-                        <span className="text-xs text-gray-500">
-                          已選 {caseSelected.length} 筆 · ${caseSelectedTotal.toLocaleString()}
-                        </span>
-                        <button
-                          onClick={() => setPayIds(caseSelected.map((r) => r.id))}
-                          className="rounded bg-green-600 px-3 py-1.5 text-xs text-white hover:bg-green-700"
-                        >
-                          批次付款
-                        </button>
-                      </div>
-                    )}
-                  </>
                 )}
+                {open && <BatchDetail token={token} batch={b} plans={plans} onChanged={load} />}
               </div>
             );
           })}
         </div>
       )}
-    </div>
-  );
-}
 
-/* ═══════════════════════════════════════════════
-   機構 — 核銷案列表 (institution only)
-   ═══════════════════════════════════════════════ */
+      {tab === "docs" && <DocsStatus token={token} batches={active} onChanged={load} />}
 
-function BatchListTab({ token, userRole }: { token: string; userRole: string }) {
-  const [batches, setBatches] = useState<ClaimBatch[]>([]);
-  const [statusFilter, setStatusFilter] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [showCreate, setShowCreate] = useState(false);
-  const [expandedId, setExpandedId] = useState<number | null>(null);
-
-  const fetchBatches = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({ type: "institution" });
-      if (statusFilter) params.set("status", statusFilter);
-      const data = await clientFetch(`/claim-batches?${params.toString()}`, token);
-      setBatches(data);
-    } catch { /* ignore */ } finally {
-      setLoading(false);
-    }
-  }, [token, statusFilter]);
-
-  useEffect(() => { fetchBatches(); }, [fetchBatches]);
-
-  const canEdit = ["admin", "accountant", "staff"].includes(userRole);
-
-  return (
-    <div>
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded border border-gray-300 px-3 py-1.5 text-sm"
-        >
-          <option value="">全部狀態</option>
-          {Object.entries(STATUS_LABELS).map(([k, v]) => (
-            <option key={k} value={k}>{v}</option>
-          ))}
-        </select>
-        {canEdit && (
-          <button
-            onClick={() => setShowCreate(true)}
-            className="ml-auto rounded bg-primary-600 px-4 py-1.5 text-sm text-white hover:bg-primary-700"
-          >
-            + 建立核銷案
-          </button>
-        )}
-      </div>
-
-      {showCreate && (
-        <CreateBatchModal
+      {voidFor && (
+        <VoidModal
           token={token}
-          onClose={() => setShowCreate(false)}
-          onCreated={() => { setShowCreate(false); fetchBatches(); }}
+          batch={voidFor}
+          onClose={() => setVoidFor(null)}
+          onDone={() => {
+            setVoidFor(null);
+            load();
+          }}
         />
       )}
+    </div>
+  );
+}
 
-      {loading ? (
-        <div className="py-8 text-center text-gray-400">載入中...</div>
-      ) : batches.length === 0 ? (
-        <div className="py-8 text-center text-gray-400">目前沒有機構核銷案</div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-gray-50 text-left text-xs text-gray-500">
-                <th className="px-3 py-2">編號</th>
-                <th className="px-3 py-2">機構</th>
-                <th className="px-3 py-2">期間</th>
-                <th className="px-3 py-2 text-right">金額</th>
-                <th className="px-3 py-2">紀錄</th>
-                <th className="px-3 py-2">狀態</th>
-                <th className="px-3 py-2">操作</th>
+function BatchDetail({
+  token,
+  batch,
+  plans,
+  onChanged,
+}: {
+  token: string;
+  batch: Batch;
+  plans: Plan[];
+  onChanged: () => void;
+}) {
+  const [selPlans, setSelPlans] = useState<number[]>([]);
+  const [planId, setPlanId] = useState<number | 0>(0);
+  const [data, setData] = useState<{ records: SelRecord[]; hint: string | null } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const loadPlans = useCallback(async () => {
+    try {
+      const p = await clientFetch(`/claim-batches/${batch.id}/plans`, token);
+      setSelPlans(p.map((x: any) => x.plan_id));
+      if (p.length && !planId) setPlanId(p[0].plan_id);
+    } catch { /* ignore */ }
+  }, [token, batch.id, planId]);
+
+  useEffect(() => {
+    loadPlans();
+  }, [loadPlans]);
+
+  const loadRecords = useCallback(async () => {
+    if (!planId) return;
+    try {
+      setData(await clientFetch(`/claim-batches/${batch.id}/selectable-records?plan_id=${planId}`, token));
+      setErr(null);
+    } catch (e: any) {
+      setErr(e.message);
+    }
+  }, [token, batch.id, planId]);
+
+  useEffect(() => {
+    loadRecords();
+  }, [loadRecords]);
+
+  async function savePlans(ids: number[]) {
+    try {
+      await clientFetch(`/claim-batches/${batch.id}/plans`, token, {
+        method: "PUT",
+        body: JSON.stringify({ plan_ids: ids }),
+      });
+      setSelPlans(ids);
+      onChanged();
+    } catch (e: any) {
+      setErr(e.message);
+    }
+  }
+
+  async function toggleRecord(r: SelRecord) {
+    try {
+      if (r.in_this_batch) {
+        await clientFetch(`/claim-batches/${batch.id}/records/${r.id}`, token, { method: "DELETE" });
+      } else {
+        await clientFetch(`/claim-batches/${batch.id}/records`, token, {
+          method: "POST",
+          body: JSON.stringify({ record_ids: [r.id] }),
+        });
+      }
+      loadRecords();
+      onChanged();
+    } catch (e: any) {
+      setErr(e.message);
+    }
+  }
+
+  return (
+    <div className="border-t border-gray-100 bg-gray-50 px-4 py-4">
+      {err && <div className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>}
+
+      <div className="mb-3">
+        <div className="mb-1 text-xs font-medium text-gray-600">
+          涵蓋方案（可同時選多個一起核銷）
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {plans.map((p) => {
+            const on = selPlans.includes(p.id);
+            return (
+              <button
+                key={p.id}
+                onClick={() => savePlans(on ? selPlans.filter((x) => x !== p.id) : [...selPlans, p.id])}
+                className={`rounded-lg border px-2 py-1 text-xs ${
+                  on ? "border-primary-500 bg-primary-50 text-primary-700" : "border-gray-300 bg-white"
+                }`}
+              >
+                {p.institution_name} — {p.name}
+              </button>
+            );
+          })}
+          {plans.length === 0 && <span className="text-xs text-gray-400">尚無機構方案</span>}
+        </div>
+      </div>
+
+      {selPlans.length > 0 && (
+        <div className="mb-2 flex items-center gap-2 text-xs">
+          <span className="text-gray-600">從方案挑紀錄：</span>
+          <select value={planId} onChange={(e) => setPlanId(Number(e.target.value))} className="rounded border border-gray-300 px-2 py-1">
+            {plans.filter((p) => selPlans.includes(p.id)).map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {data?.hint && (
+        <div className="mb-2 rounded bg-amber-50 px-3 py-2 text-xs text-amber-800">⚠️ {data.hint}（提示，不阻擋）</div>
+      )}
+
+      {data && (
+        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+          <table className="w-full text-xs">
+            <thead className="border-b border-gray-200 bg-gray-50 text-left text-gray-500">
+              <tr>
+                <th className="w-8 px-2 py-2" />
+                <th className="px-2 py-2">日期</th>
+                <th className="px-2 py-2">姓名</th>
+                <th className="px-2 py-2">心理師</th>
+                <th className="px-2 py-2">類型</th>
+                <th className="px-2 py-2 text-right">自付額</th>
+                <th className="px-2 py-2 text-right">機構請款額</th>
+                <th className="px-2 py-2">心理師確認</th>
+                <th className="px-2 py-2">行政核對</th>
               </tr>
             </thead>
             <tbody>
-              {batches.map((b) => (
-                <BatchRow
-                  key={b.id}
-                  batch={b}
-                  token={token}
-                  canEdit={canEdit}
-                  expanded={expandedId === b.id}
-                  onToggle={() => setExpandedId(expandedId === b.id ? null : b.id)}
-                  onRefresh={fetchBatches}
-                />
+              {data.records.length === 0 && (
+                <tr><td colSpan={9} className="px-2 py-6 text-center text-gray-400">此方案期間內沒有可納入的紀錄</td></tr>
+              )}
+              {data.records.map((r) => (
+                <tr key={r.id} className={`border-b border-gray-100 last:border-0 ${r.locked_by_batch_id ? "opacity-40" : ""}`}>
+                  <td className="px-2 py-1.5">
+                    <input
+                      type="checkbox"
+                      checked={r.in_this_batch}
+                      disabled={!!r.locked_by_batch_id}
+                      onChange={() => toggleRecord(r)}
+                      title={r.locked_by_batch_id ? `已被核銷案 #${r.locked_by_batch_id} 佔用` : undefined}
+                    />
+                  </td>
+                  <td className="px-2 py-1.5">{r.session_date}</td>
+                  <td className="px-2 py-1.5 font-medium">{r.case_name}</td>
+                  <td className="px-2 py-1.5">{r.therapist_name}</td>
+                  <td className="px-2 py-1.5">{SESSION_TYPE[r.session_type] ?? r.session_type}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{money(r.self_pay_amount)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{money(r.institution_claim_amount)}</td>
+                  <td className="px-2 py-1.5">{r.therapist_confirmed ? "已確認" : "待確認"}</td>
+                  <td className="px-2 py-1.5">{r.admin_verified ? "已核對" : "—"}</td>
+                </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+      <p className="mt-2 text-[11px] text-gray-400">
+        子列表可逐筆增減紀錄。已被其他核銷案佔用的紀錄會鎖定不可選。
+      </p>
     </div>
   );
 }
 
-function BatchRow({
-  batch: b,
-  token,
-  canEdit,
-  expanded,
-  onToggle,
-  onRefresh,
-}: {
-  batch: ClaimBatch;
-  token: string;
-  canEdit: boolean;
-  expanded: boolean;
-  onToggle: () => void;
-  onRefresh: () => void;
-}) {
-  const [records, setRecords] = useState<BatchRecord[]>([]);
-  const [editRef, setEditRef] = useState(false);
-  const [extRef, setExtRef] = useState(b.external_ref ?? "");
-  const [payMethod, setPayMethod] = useState(b.payment_method ?? "");
-  const [payNote, setPayNote] = useState(b.payment_note ?? "");
-  const [itemName, setItemName] = useState(b.item_name ?? "");
-  const [showReceiptModal, setShowReceiptModal] = useState(false);
+function DocsStatus({ token, batches, onChanged }: { token: string; batches: Batch[]; onChanged: () => void }) {
+  const [batchId, setBatchId] = useState<number | 0>(batches[0]?.id ?? 0);
+  const [rows, setRows] = useState<SelRecord[]>([]);
+  const [docs, setDocs] = useState<any[]>([]);
+  const [rejectFor, setRejectFor] = useState<SelRecord | null>(null);
+  const [err, setErr] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (expanded) {
-      clientFetch(`/claim-batches/${b.id}/records`, token).then(setRecords).catch(() => {});
-    }
-  }, [expanded, b.id, token]);
-
-  const transition = async (action: string) => {
+  const load = useCallback(async () => {
+    if (!batchId) return;
     try {
-      await clientFetch(`/claim-batches/${b.id}/${action}`, token, { method: "PUT" });
-      onRefresh();
-    } catch (e: any) {
-      alert(e.message);
-    }
-  };
-
-  const submitWithWarning = async () => {
-    // 機構案：若有未確認/未核對紀錄，跳警示讓行政手動確認後送出
-    if (b.type === "institution" && b.docs_required) {
-      const unconfirmed = b.record_count - b.confirmed_count;
-      const unverified = b.record_count - b.admin_verified_count;
-      const msgs: string[] = [];
-      if (unconfirmed > 0) msgs.push(`尚有 ${unconfirmed} 位心理師未提交資料`);
-      if (unverified > 0) msgs.push(`尚有 ${unverified} 筆未經行政核對`);
-      if (msgs.length > 0) {
-        const warn = `${msgs.join("、")}，確定要送出機構案核銷嗎？`;
-        if (!confirm(warn)) return;
-      }
-    }
-    await transition("submit");
-  };
-
-  const verifyAll = async () => {
-    if (!confirm("確認將本批所有紀錄標記為「行政已核對」？")) return;
-    try {
-      await clientFetch(`/claim-batches/${b.id}/admin-verify-all`, token, { method: "POST" });
-      if (expanded) {
-        const updated = await clientFetch(`/claim-batches/${b.id}/records`, token);
-        setRecords(updated);
-      }
-      onRefresh();
-    } catch (e: any) {
-      alert(e.message);
-    }
-  };
-
-  const verifyRecord = async (recordId: number) => {
-    try {
-      await clientFetch(`/ledger/${recordId}/admin-verify`, token, { method: "PUT" });
-      const updated = await clientFetch(`/claim-batches/${b.id}/records`, token);
-      setRecords(updated);
-      onRefresh();
-    } catch (e: any) {
-      alert(e.message);
-    }
-  };
-
-  const saveInfo = async () => {
-    try {
-      await clientFetch(`/claim-batches/${b.id}`, token, {
-        method: "PUT",
-        body: JSON.stringify({
-          external_ref: extRef || null,
-          payment_method: payMethod || null,
-          payment_note: payNote || null,
-          item_name: itemName ?? "",
-        }),
-      });
-      setEditRef(false);
-      onRefresh();
-    } catch (e: any) {
-      alert(e.message);
-    }
-  };
-
-  return (
-    <>
-      {showReceiptModal && (
-        <tr>
-          <td colSpan={7}>
-            <ReceiptModal token={token} type="batch" sourceId={b.id} onClose={() => setShowReceiptModal(false)} />
-          </td>
-        </tr>
-      )}
-      <tr className="border-b hover:bg-gray-50 cursor-pointer" onClick={onToggle}>
-        <td className="px-3 py-2 font-mono text-xs">{b.batch_number}</td>
-        <td className="px-3 py-2">{b.institution_name}</td>
-        <td className="px-3 py-2 text-xs">{b.period_start ?? ""} ~ {b.period_end ?? ""}</td>
-        <td className="px-3 py-2 text-right">${b.total_amount.toLocaleString()}</td>
-        <td className="px-3 py-2 text-xs">
-          {b.docs_required === false ? (
-            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-500">免繳資料</span>
-          ) : (
-            <>
-              {b.confirmed_count}/{b.record_count}
-              {b.record_count > 0 && b.confirmed_count === b.record_count && (
-                <span className="ml-1 text-green-600">&#10003;</span>
-              )}
-            </>
-          )}
-        </td>
-        <td className="px-3 py-2"><StatusBadge status={b.status} /></td>
-        <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
-          <div className="flex flex-wrap gap-1">
-            {canEdit && !["submitted", "received", "closed"].includes(b.status) && (
-              b.docs_waived_at ? (
-                <button onClick={() => transition("unwaive-docs")} className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-100">
-                  恢復需繳資料
-                </button>
-              ) : (
-                <button onClick={() => transition("waive-docs")} className="rounded border border-amber-300 px-2 py-0.5 text-xs text-amber-700 hover:bg-amber-50">
-                  豁免本案資料
-                </button>
-              )
-            )}
-            {canEdit && (b.status === "collecting" || b.status === "ready") && b.type === "institution" && b.docs_required && (
-              b.record_count - b.admin_verified_count > 0 && (
-                <button onClick={verifyAll} className="rounded border border-emerald-300 px-2 py-0.5 text-xs text-emerald-700 hover:bg-emerald-50" title="一鍵將整批紀錄標為已行政核對">
-                  全部核對
-                </button>
-              )
-            )}
-            {canEdit && (b.status === "collecting" || b.status === "ready") && (
-              <button onClick={submitWithWarning} className="rounded bg-blue-600 px-2 py-0.5 text-xs text-white hover:bg-blue-700">
-                提交請款
-              </button>
-            )}
-            {canEdit && b.status === "submitted" && (
-              <button onClick={() => transition("receive")} className="rounded bg-green-600 px-2 py-0.5 text-xs text-white hover:bg-green-700">
-                確認收款
-              </button>
-            )}
-            {b.status === "closed" && (
-              <button
-                onClick={() => downloadPdf(`/claim-batches/${b.id}/claim-form`, token, `claim-${b.batch_number}.pdf`)}
-                className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-100"
-              >
-                請款單
-              </button>
-            )}
-            <button
-              onClick={(e) => { e.stopPropagation(); setShowReceiptModal(true); }}
-              className="rounded border border-primary-300 px-2 py-0.5 text-xs text-primary-600 hover:bg-primary-50"
-            >
-              開立收據
-            </button>
-          </div>
-        </td>
-      </tr>
-      {expanded && (
-        <tr>
-          <td colSpan={7} className="border-b bg-gray-50 px-4 py-3">
-            {canEdit && (
-              <div className="mb-3">
-                {editRef ? (
-                  <div className="flex flex-wrap items-end gap-2">
-                    <label className="text-xs">
-                      外部編號
-                      <input value={extRef} onChange={(e) => setExtRef(e.target.value)} className="ml-1 rounded border px-2 py-1 text-xs" />
-                    </label>
-                    <label className="text-xs">
-                      付款方式
-                      <select value={payMethod} onChange={(e) => setPayMethod(e.target.value)} className="ml-1 rounded border px-2 py-1 text-xs">
-                        <option value="">--</option>
-                        <option value="cash">現金</option>
-                        <option value="transfer">轉帳</option>
-                      </select>
-                    </label>
-                    <label className="text-xs">
-                      備註
-                      <input value={payNote} onChange={(e) => setPayNote(e.target.value)} className="ml-1 rounded border px-2 py-1 text-xs" />
-                    </label>
-                    <label className="text-xs">
-                      收據／請款單服務項目
-                      <input
-                        value={itemName}
-                        onChange={(e) => setItemName(e.target.value)}
-                        placeholder="心理治療"
-                        title="留空或預設「心理治療」；列印 PDF 時顯示在「服務項目」欄"
-                        className="ml-1 rounded border px-2 py-1 text-xs"
-                      />
-                    </label>
-                    <button onClick={saveInfo} className="rounded bg-primary-600 px-3 py-1 text-xs text-white">儲存</button>
-                    <button onClick={() => setEditRef(false)} className="text-xs text-gray-500">取消</button>
-                  </div>
-                ) : (
-                  <button onClick={() => setEditRef(true)} className="text-xs text-primary-600 hover:underline">
-                    編輯付款資訊 {b.external_ref ? `(${b.external_ref})` : ""}
-                    {b.item_name ? `｜服務項目：${b.item_name}` : ""}
-                  </button>
-                )}
-              </div>
-            )}
-
-            {records.length === 0 ? (
-              <p className="text-xs text-gray-400">無紀錄</p>
-            ) : (
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-left text-gray-500">
-                    <th className="px-2 py-1">日期</th>
-                    <th className="px-2 py-1">個案</th>
-                    <th className="px-2 py-1">心理師</th>
-                    <th className="px-2 py-1">類型</th>
-                    <th className="px-2 py-1 text-right">金額</th>
-                    <th className="px-2 py-1">付款狀態</th>
-                    <th className="px-2 py-1">心理師</th>
-                    <th className="px-2 py-1">行政核對</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {records.map((r) => (
-                    <tr key={r.id} className="border-t border-gray-200">
-                      <td className="px-2 py-1">{r.session_date}</td>
-                      <td className="px-2 py-1">{r.case_name}</td>
-                      <td className="px-2 py-1">{r.therapist_name}</td>
-                      <td className="px-2 py-1">{SESSION_TYPE_LABELS[r.session_type] ?? r.session_type}</td>
-                      <td className="px-2 py-1 text-right">${r.amount.toLocaleString()}</td>
-                      <td className="px-2 py-1">{r.payment_status}</td>
-                      <td className="px-2 py-1">
-                        {r.therapist_doc_submitted_at ? (
-                          <span className="text-green-600">&#10003; 已確認</span>
-                        ) : (
-                          <span className="text-amber-600">待確認</span>
-                        )}
-                      </td>
-                      <td className="px-2 py-1">
-                        {r.admin_verified_at ? (
-                          <span className="text-green-700">&#10003; 已核對</span>
-                        ) : r.therapist_doc_submitted_at ? (
-                          canEdit ? (
-                            <button
-                              onClick={() => verifyRecord(r.id)}
-                              className="rounded border border-emerald-300 px-1.5 py-0.5 text-[10px] text-emerald-700 hover:bg-emerald-50"
-                            >
-                              核對
-                            </button>
-                          ) : (
-                            <span className="text-amber-600">待核對</span>
-                          )
-                        ) : (
-                          <span className="text-gray-400">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </td>
-        </tr>
-      )}
-    </>
-  );
-}
-
-/* ── Create batch modal (institution only) ── */
-
-function CreateBatchModal({
-  token,
-  onClose,
-  onCreated,
-}: {
-  token: string;
-  onClose: () => void;
-  onCreated: () => void;
-}) {
-  const [institutions, setInstitutions] = useState<InstitutionOption[]>([]);
-  const [selectedInstId, setSelectedInstId] = useState<number | "">("");
-  const [periodStart, setPeriodStart] = useState("");
-  const [periodEnd, setPeriodEnd] = useState("");
-  const [unassigned, setUnassigned] = useState<UnassignedRecord[]>([]);
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [submitting, setSubmitting] = useState(false);
-  const [step, setStep] = useState(1);
-
-  useEffect(() => {
-    clientFetch("/claim-batches/eligible-institutions", token).then(setInstitutions).catch(() => {});
-  }, [token]);
-
-  const loadUnassigned = async () => {
-    const params = new URLSearchParams();
-    if (selectedInstId) params.set("institution_id", String(selectedInstId));
-    try {
-      const data = await clientFetch(`/claim-batches/unassigned/records?${params.toString()}`, token);
-      setUnassigned(data);
-      setSelectedIds(new Set(data.map((r: UnassignedRecord) => r.id)));
-      setStep(2);
-    } catch (e: any) {
-      alert(e.message);
-    }
-  };
-
-  const toggleId = (id: number) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-
-  const toggleAll = () => {
-    if (selectedIds.size === unassigned.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(unassigned.map((r) => r.id)));
-  };
-
-  const handleCreate = async () => {
-    if (selectedIds.size === 0) { alert("請至少勾選一筆紀錄"); return; }
-    setSubmitting(true);
-    try {
-      await clientFetch("/claim-batches", token, {
-        method: "POST",
-        body: JSON.stringify({
-          type: "institution",
-          case_id: null,
-          institution_id: selectedInstId || null,
-          billing_cycle: null,
-          period_start: periodStart || null,
-          period_end: periodEnd || null,
-          session_record_ids: [...selectedIds],
-        }),
-      });
-      onCreated();
-    } catch (e: any) {
-      alert(e.message);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const totalAmount = unassigned.filter((r) => selectedIds.has(r.id)).reduce((s, r) => s + r.amount, 0);
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 pt-20" onClick={onClose}>
-      <div className="w-full max-w-3xl rounded-lg bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold">建立機構核銷案</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
-        </div>
-
-        {step === 1 && (
-          <div className="space-y-4">
-            <div>
-              <label className="mb-1 block text-sm font-medium">機構</label>
-              <select
-                value={selectedInstId}
-                onChange={(e) => setSelectedInstId(e.target.value ? Number(e.target.value) : "")}
-                className="w-full rounded border px-3 py-2 text-sm"
-              >
-                <option value="">-- 選擇機構 --</option>
-                {institutions.map((i) => (
-                  <option key={i.id} value={i.id}>
-                    {i.code ? `[${i.code}] ` : ""}{i.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex gap-3">
-              <div className="flex-1">
-                <label className="mb-1 block text-sm font-medium">期間起</label>
-                <input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} className="w-full rounded border px-3 py-2 text-sm" />
-              </div>
-              <div className="flex-1">
-                <label className="mb-1 block text-sm font-medium">期間迄</label>
-                <input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} className="w-full rounded border px-3 py-2 text-sm" />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <button onClick={onClose} className="rounded border px-4 py-2 text-sm">取消</button>
-              <button
-                onClick={loadUnassigned}
-                disabled={!selectedInstId}
-                className="rounded bg-primary-600 px-4 py-2 text-sm text-white hover:bg-primary-700 disabled:opacity-50"
-              >
-                下一步：選擇紀錄
-              </button>
-            </div>
-          </div>
-        )}
-
-        {step === 2 && (
-          <div className="space-y-4">
-            <p className="text-sm text-gray-500">
-              找到 {unassigned.length} 筆未歸屬紀錄，已選 {selectedIds.size} 筆，合計 ${totalAmount.toLocaleString()}
-            </p>
-
-            {unassigned.length === 0 ? (
-              <p className="py-4 text-center text-gray-400">沒有可用的未歸屬紀錄</p>
-            ) : (
-              <div className="max-h-64 overflow-y-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b bg-gray-50 text-left text-xs text-gray-500">
-                      <th className="px-2 py-1">
-                        <input type="checkbox" checked={selectedIds.size === unassigned.length} onChange={toggleAll} />
-                      </th>
-                      <th className="px-2 py-1">日期</th>
-                      <th className="px-2 py-1">個案</th>
-                      <th className="px-2 py-1">心理師</th>
-                      <th className="px-2 py-1">類型</th>
-                      <th className="px-2 py-1 text-right">金額</th>
-                      <th className="px-2 py-1">文件</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {unassigned.map((r) => (
-                      <tr key={r.id} className="border-b hover:bg-gray-50">
-                        <td className="px-2 py-1">
-                          <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleId(r.id)} />
-                        </td>
-                        <td className="px-2 py-1">{r.session_date}</td>
-                        <td className="px-2 py-1">{r.case_name}</td>
-                        <td className="px-2 py-1">{r.therapist_name}</td>
-                        <td className="px-2 py-1">{SESSION_TYPE_LABELS[r.session_type] ?? r.session_type}</td>
-                        <td className="px-2 py-1 text-right">${r.amount.toLocaleString()}</td>
-                        <td className="px-2 py-1">
-                          {r.therapist_doc_submitted_at ? (
-                            <span className="text-green-600 text-xs">&#10003;</span>
-                          ) : (
-                            <span className="text-amber-500 text-xs">-</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setStep(1)} className="rounded border px-4 py-2 text-sm">上一步</button>
-              <button
-                onClick={handleCreate}
-                disabled={selectedIds.size === 0 || submitting}
-                className="rounded bg-primary-600 px-4 py-2 text-sm text-white hover:bg-primary-700 disabled:opacity-50"
-              >
-                {submitting ? "建立中..." : `建立核銷案 (${selectedIds.size} 筆)`}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════
-   文件確認（心理師用）
-   ═══════════════════════════════════════════════ */
-
-function DocConfirmTab({ token, userRole }: { token: string; userRole: string }) {
-  const [records, setRecords] = useState<any[]>([]);
-  const [confirmed, setConfirmed] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const canCancel = ["admin", "staff"].includes(userRole);
-
-  const fetchPending = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [pending, done] = await Promise.all([
-        clientFetch("/ledger/pending-docs", token),
-        clientFetch("/ledger/confirmed-docs", token),
+      const [recs, ds] = await Promise.all([
+        clientFetch(`/claim-batches/${batchId}/records`, token).catch(() => []),
+        clientFetch(`/claim-batches/${batchId}/documents`, token).catch(() => []),
       ]);
-      setRecords(pending);
-      setConfirmed(done);
+      setRows(recs);
+      setDocs(ds);
+      setErr(null);
     } catch (e: any) {
-      alert(`載入失敗：${e.message}`);
-    } finally {
-      setLoading(false);
+      setErr(e.message);
     }
-  }, [token]);
+  }, [token, batchId]);
 
-  useEffect(() => { fetchPending(); }, [fetchPending]);
-
-  const confirmDoc = async (recordId: number) => {
-    try {
-      await clientFetch(`/ledger/${recordId}/confirm-doc`, token, { method: "PUT" });
-      fetchPending();
-    } catch (e: any) {
-      alert(e.message);
-    }
-  };
-
-  const cancelDoc = async (recordId: number) => {
-    if (!confirm("確定要撤回此筆文件確認？")) return;
-    try {
-      await clientFetch(`/ledger/${recordId}/cancel-doc`, token, { method: "PUT" });
-      fetchPending();
-    } catch (e: any) {
-      alert(e.message);
-    }
-  };
+  useEffect(() => {
+    load();
+  }, [load]);
 
   return (
     <div>
-      <p className="mb-4 text-sm text-gray-500">
-        以下是您負責且屬於核銷案、尚未確認文件的諮商紀錄。確認後核銷案將自動檢查是否所有紀錄都已確認。
+      <div className="mb-3 flex items-center gap-2 text-sm">
+        <span className="text-gray-500">核銷案</span>
+        <select value={batchId} onChange={(e) => setBatchId(Number(e.target.value))} className="rounded-lg border border-gray-300 px-3 py-1.5">
+          {batches.map((b) => <option key={b.id} value={b.id}>{b.batch_number} · {b.institution_name}</option>)}
+        </select>
+      </div>
+
+      {err && <div className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>}
+
+      <div className="mb-4 rounded-xl border border-gray-200 bg-white">
+        <div className="border-b border-gray-100 px-4 py-2.5 text-sm font-medium">心理師上傳的附件</div>
+        {docs.length === 0 ? (
+          <p className="px-4 py-6 text-sm text-gray-400">尚無附件</p>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {docs.map((d) => (
+              <div key={d.id} className="flex items-center gap-3 px-4 py-2 text-sm">
+                <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs">{d.doc_type_label}</span>
+                <span className="truncate">{d.file_name}</span>
+                <span className="ml-auto text-xs text-gray-400">{d.therapist_name}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+        <table className="w-full text-sm">
+          <thead className="border-b border-gray-200 bg-gray-50 text-left text-xs text-gray-500">
+            <tr>
+              <th className="px-3 py-3">日期</th>
+              <th className="px-3 py-3">姓名</th>
+              <th className="px-3 py-3">心理師確認</th>
+              <th className="px-3 py-3">行政核對</th>
+              <th className="px-3 py-3">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && (
+              <tr><td colSpan={5} className="px-4 py-10 text-center text-gray-400">此核銷案尚無紀錄</td></tr>
+            )}
+            {rows.map((r: any) => (
+              <tr key={r.id} className={`border-b border-gray-100 last:border-0 ${r.rejected_reason ? "bg-red-50" : ""}`}>
+                <td className="px-3 py-2.5">{r.session_date}</td>
+                <td className="px-3 py-2.5 font-medium">{r.case_name}</td>
+                <td className="px-3 py-2.5 text-xs">{r.therapist_confirmed ? "已確認" : "待確認"}</td>
+                <td className="px-3 py-2.5 text-xs">{r.admin_verified ? "已核對" : "—"}</td>
+                <td className="px-3 py-2.5">
+                  <button onClick={() => setRejectFor(r)} className="text-xs text-red-500 hover:underline">
+                    退回補件
+                  </button>
+                  {r.rejected_reason && (
+                    <div className="mt-0.5 text-[11px] text-red-600">退回原因：{r.rejected_reason}</div>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="mt-3 text-xs text-gray-400">
+        退回是<b>單筆</b>操作，不影響同案其他紀錄；但只要有一筆未齊備，整案就無法轉「待送出」。
       </p>
 
-      {loading ? (
-        <div className="py-8 text-center text-gray-400">載入中...</div>
-      ) : records.length === 0 ? (
-        <div className="py-8 text-center text-gray-400">目前沒有待確認的紀錄</div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-gray-50 text-left text-xs text-gray-500">
-                <th className="px-3 py-2">日期</th>
-                <th className="px-3 py-2">個案</th>
-                <th className="px-3 py-2">類型</th>
-                <th className="px-3 py-2 text-right">金額</th>
-                <th className="px-3 py-2">核銷案</th>
-                <th className="px-3 py-2">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {records.map((r: any) => (
-                <tr key={r.id} className="border-b hover:bg-gray-50">
-                  <td className="px-3 py-2">{r.session_date}</td>
-                  <td className="px-3 py-2">{r.case_name}</td>
-                  <td className="px-3 py-2">{SESSION_TYPE_LABELS[r.session_type] ?? r.session_type}</td>
-                  <td className="px-3 py-2 text-right">${r.amount?.toLocaleString()}</td>
-                  <td className="px-3 py-2 font-mono text-xs">{r.claim_batch_number ?? `#${r.claim_batch_id}`}</td>
-                  <td className="px-3 py-2">
-                    <button
-                      onClick={() => confirmDoc(r.id)}
-                      className="rounded bg-green-600 px-3 py-1 text-xs text-white hover:bg-green-700"
-                    >
-                      確認文件
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {rejectFor && (
+        <RejectModal
+          token={token}
+          batchId={batchId as number}
+          record={rejectFor}
+          onClose={() => setRejectFor(null)}
+          onDone={() => {
+            setRejectFor(null);
+            load();
+            onChanged();
+          }}
+        />
       )}
+    </div>
+  );
+}
 
-      {canCancel && confirmed.length > 0 && (
-        <div className="mt-8">
-          <p className="mb-3 text-sm font-medium text-gray-600">已確認文件（可撤回）</p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-gray-50 text-left text-xs text-gray-500">
-                  <th className="px-3 py-2">日期</th>
-                  <th className="px-3 py-2">個案</th>
-                  <th className="px-3 py-2">類型</th>
-                  <th className="px-3 py-2 text-right">金額</th>
-                  <th className="px-3 py-2">核銷案</th>
-                  <th className="px-3 py-2">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {confirmed.map((r: any) => (
-                  <tr key={r.id} className="border-b hover:bg-gray-50">
-                    <td className="px-3 py-2">{r.session_date}</td>
-                    <td className="px-3 py-2">{r.case_name}</td>
-                    <td className="px-3 py-2">{SESSION_TYPE_LABELS[r.session_type] ?? r.session_type}</td>
-                    <td className="px-3 py-2 text-right">${r.amount?.toLocaleString()}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{r.claim_batch_number ?? `#${r.claim_batch_id}`}</td>
-                    <td className="px-3 py-2">
-                      <button
-                        onClick={() => cancelDoc(r.id)}
-                        className="rounded border border-red-300 px-3 py-1 text-xs text-red-600 hover:bg-red-50"
-                      >
-                        撤回確認
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+function RejectModal({ token, batchId, record, onClose, onDone }: any) {
+  const [reason, setReason] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          try {
+            await clientFetch(`/claim-batches/${batchId}/records/${record.id}/reject`, token, {
+              method: "POST",
+              body: JSON.stringify({ reason }),
+            });
+            onDone();
+          } catch (e: any) {
+            setErr(e.message);
+          }
+        }}
+        className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl"
+      >
+        <h2 className="mb-1 text-lg font-bold">退回補件</h2>
+        <p className="mb-4 text-sm text-gray-500">
+          {record.case_name} · {record.session_date}
+          <br />
+          會清除該筆的心理師確認與行政核對，回「待提交」並通知心理師。
+        </p>
+        {err && <div className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>}
+        <textarea
+          required
+          rows={3}
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="退回原因（必填）"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        />
+        <div className="mt-6 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm">取消</button>
+          <button type="submit" className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white">確認退回</button>
         </div>
-      )}
+      </form>
+    </div>
+  );
+}
+
+function VoidModal({ token, batch, onClose, onDone }: any) {
+  const [reason, setReason] = useState("");
+  const [password, setPassword] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [warn, setWarn] = useState<string | null>(null);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          setErr(null);
+          try {
+            const r = await clientFetch(`/claim-batches/${batch.id}/void`, token, {
+              method: "POST",
+              body: JSON.stringify({ reason, password }),
+            });
+            if (r.warning) {
+              setWarn(r.warning);
+              setTimeout(onDone, 2500);
+            } else {
+              onDone();
+            }
+          } catch (e: any) {
+            setErr(e.message);
+          }
+        }}
+        className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl"
+      >
+        <h2 className="mb-1 text-lg font-bold">作廢核銷案 {batch.batch_number}</h2>
+        <div className="mb-4 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
+          作廢後：紀錄脫離本案、付款狀態退回未核銷、回到可核銷池可重新建案。
+          <br />
+          <b>機構額度不受影響</b>（額度在報到時就已扣除，與核銷無關）。
+          <br />
+          <b>心理師酬勞不受影響</b>（依已執行場次計算，與是否請款成功脫鉤）。
+          <br />
+          編號不回收，重開會取新流水號。
+        </div>
+        {batch.status === "received" && (
+          <div className="mb-3 rounded bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            ⚠️ 此案機構已撥款，作廢後的退款需另行處理。
+          </div>
+        )}
+        {err && <div className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>}
+        {warn && <div className="mb-3 rounded bg-amber-50 px-3 py-2 text-sm text-amber-800">{warn}</div>}
+        <textarea
+          required
+          rows={2}
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="作廢原因（必填）"
+          className="mb-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        />
+        <input
+          required
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="請輸入你的密碼以確認"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        />
+        <div className="mt-6 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm">取消</button>
+          <button type="submit" className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white">確認作廢</button>
+        </div>
+      </form>
     </div>
   );
 }
