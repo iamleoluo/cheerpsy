@@ -173,66 +173,76 @@ Cloudflare dashboard → Tunnel 的 Public Hostname 刪掉／改回原本指向 
 ### Q: cloudflared 服務起不來
 **A:** `cloudflared.exe service uninstall` 之後重新用 `service install <token>` 安裝一次；確認 Windows 防火牆沒有擋 outbound 443（一般預設不會擋）。
 
-### Q: `docker compose` 出現 `docker-credential-desktop` not found
-完整訊息長這樣：
+### Q: `docker compose` 出現 `error getting credentials`
+
+**2026-08-31 在本機（114.35.230.241）實測確認並已解決，`deploy.ps1` 現在會自動處理。**
+
+透過 SSH 執行 build 時會看到：
 
 ```
-error getting credentials - err: exec: "docker-credential-desktop":
-executable file not found in %PATH%
+error getting credentials - err: exit status 1,
+out: `A specified logon session does not exist. It may already have been terminated.`
 ```
 
-**原因：** `%USERPROFILE%\.docker\config.json` 裡有 `"credsStore": "desktop"`，Docker 因此會去呼叫 `docker-credential-desktop` 這支 helper。找不到它時，即使拉的是 `postgres:16-alpine`、`redis:7-alpine` 這種公開 image，也可能整個失敗。
+**原因：** `%USERPROFILE%\.docker\config.json` 的 `credsStore` 指向 `wincred`，而
+`docker-credential-wincred.exe` 需要存取 Windows 認證管理員 —— 非互動式的 SSH session
+沒有可用的 logon session，因此必定失敗。即使拉的是公開 image（`postgres`、`redis`、
+`python`、`node`）也一樣整個 build 中斷。桌面手動跑沒事、SSH 進去跑就炸，就是這個原因。
 
-最容易踩到的情境是**透過 SSH 執行 `deploy.ps1`**：helper 應位於 Docker Desktop 的 `resources\bin`，該路徑是安裝時寫進使用者 PATH 的，而 SSH 的非互動 session 往往拿不到完整的使用者 PATH。於是同一台機器上，桌面手動跑沒事、SSH 進去跑就炸。
+#### 實測過程中被推翻的三種做法（別再走一次）
 
-#### 這台機器（114.35.230.241）的實測狀況
-
-2026-08-31 SSH 上去查過，結論跟一般情況不太一樣，先寫在這裡避免下次繞路：
-
-| 檢查項 | 結果 |
+| 做法 | 結果 |
 |---|---|
-| `config.json` 有 `"credsStore": "desktop"` | ✅ 有 |
-| `resources\bin` 目錄存在 | ✅ 存在 |
-| 該目錄下有 `docker-credential-desktop.exe` | ❌ **沒有**。只有 `docker-credential-wincred.exe` 與 `docker-credential-ecr-login.exe` |
-| 全機搜尋（ProgramFiles\Docker、LOCALAPPDATA\Docker、ProgramData\DockerDesktop） | ❌ 整台機器都**找不到** `docker-credential-desktop.exe` |
-| `Get-Command docker-credential-desktop` | ❌ 找不到（所以 `deploy.ps1` 的警告一定會出現） |
-| `docker manifest inspect postgres:16-alpine` | ✅ **成功**，正常回傳 manifest |
+| 找出 `docker-credential-desktop.exe` 加進 PATH | ❌ 整台機器上**不存在**這支。只有 `wincred` 與 `ecr-login` |
+| 從 config.json **移除** `credsStore` | ❌ **反而更糟**。移除後 Docker 改用 Windows 預設 store，還是 `wincred` |
+| 設成 `"credsStore": ""` | ❌ 空字串一樣被當成「用預設」，照樣走 wincred |
 
-也就是說：**helper 確實不存在，但目前拉公開 image 並沒有真的失敗**（`auths` 是空的，Docker 沒有實際需要查詢的憑證）。所以 `deploy.ps1` 的警告在這台機器上屬於預期內的雜訊，看到不必緊張；真的爆 `error getting credentials` 時再依下面處理。
+> 另外兩個實測踩到的坑：
+> 1. Docker Desktop 會**自己改寫** config.json。第一次讀到的值是 `desktop`（一支不存在的
+>    helper，所以當時反而「碰巧能用」＝靜默 fallback 免認證），之後被它自動改成 `wincred`。
+>    不要假設這個檔案的內容不會變。
+> 2. 用 `Set-Content -Encoding utf8` 改寫 config.json 會寫入 **BOM**，Docker 的 Go JSON
+>    parser 直接吃不下：`invalid character 'ï' looking for beginning of value`。
+>    要用 `[System.IO.File]::WriteAllText($path, $json, (New-Object System.Text.UTF8Encoding($false)))`。
 
-**解法 1 — 改指向機器上實際存在的 helper**
+#### ✅ 實際可行的解法
 
-這台機器沒有 `desktop` 這支，但有 `wincred`。把 `config.json` 的值改掉即可：
+Docker CLI 只有在 **PATH 上找得到** `docker-credential-*` 時才會呼叫它，找不到就 fallback
+成純文字 store。所以在 build 期間：
 
-```jsonc
-{
-  "auths": {},
-  "credsStore": "wincred"    // ← 原本是 "desktop"
-}
+1. 把 `C:\Program Files\Docker\Dockeresourcesin` **從 PATH 移除**
+2. 用**絕對路徑**呼叫 `docker.exe`（它就住在那個被移除的目錄裡）
+3. `DOCKER_CONFIG` 指向一份不含 `credsStore` 的乾淨設定
+
+`deploy.ps1` 已內建這三步，正常情況下直接跑即可。本專案不需要登入任何 registry
+（公開 image ＋ api/web 為本機 build），拿掉認證完全不影響。
+
+手動要重現時：
+
+```powershell
+$docker = "$env:ProgramFiles\Docker\Dockeresourcesin\docker.exe"
+$env:DOCKER_CONFIG = "C:\cheerpsy\.docker-ci"   # 內含 {"auths":{}}，無 BOM
+$env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notlike "*Docker\Dockeresourcesin*" }) -join ';'
+& $docker compose -f docker-compose.prod.yml --env-file .env.production build
 ```
 
-`docker-credential-wincred.exe` 位於 `C:\Program Files\Docker\Docker\resources\bin`，`deploy.ps1` 開頭已經會把這個目錄補進 PATH。
+> ⚠️ PATH 只留 `system32` 會讓 `git` 也消失，`git pull` 那步要用原本的 PATH。
+> `deploy.ps1` 是分段切換的，不是整支都用受限 PATH。
 
-> 若你的機器上 `desktop` 那支是存在的、只是不在 PATH 上，那就不用改設定，用這段搜出位置後加進使用者 PATH 即可：
->
-> ```powershell
-> Get-ChildItem "$env:ProgramFiles\Docker","$env:LOCALAPPDATA\Docker","$env:ProgramData\DockerDesktop" -Recurse -Filter "docker-credential-*.exe" -ErrorAction SilentlyContinue | Select-Object FullName
-> $p = "<搜到的目錄>"
-> [Environment]::SetEnvironmentVariable("PATH", "$p;" + [Environment]::GetEnvironmentVariable("PATH", "User"), "User")
-> ```
+> 之後若真的需要推拉私有 registry 的 image，最乾淨的做法是從**互動式桌面 session**
+> （RDP 或現場）執行一次 `docker login`，或改用不依賴 Windows 認證管理員的 helper。
 
-**解法 2 — 直接移除 `credsStore` 設定（最省事，這台機器只拉公開 image）**
+### Q: 主機 build 卡在 `npm ci` 說 lock file 不同步
 
-編輯 `%USERPROFILE%\.docker\config.json`，把 `"credsStore"` 那一行刪掉：
+完整訊息會列出 `Missing: @emnapi/core@... from lock file` 之類的項目。
 
-```jsonc
-{
-  "auths": {},
-  "credsStore": "desktop",   // ← 刪掉這行（記得處理逗號）
-  "currentContext": "desktop-linux"
-}
+**原因：** `package-lock.json` 是在 Windows 上產生的，`@emnapi/*` 這類套件屬於平台相依的
+optional dependency，Windows 解析出來的依賴樹缺少 linux/alpine 變體，`npm ci` 在
+`node:18-alpine` image 內就會判定與 `package.json` 不同步。
+
+**解法：** 在與 image 相同的環境內重新產生 lockfile，然後 commit：
+
+```bash
+docker run --rm -v "C:/path/to/repo/apps/web:/app" -w /app node:18-alpine   npm install --package-lock-only
 ```
 
-移除後 Docker 改用純文字方式處理認證。本專案的 `docker-compose.prod.yml` 只拉 Docker Hub 的公開 image（`postgres:16-alpine`、`redis:7-alpine`），api/web 兩個服務是本機 `build` 而非 pull，全程不需要登入任何 registry，所以拿掉不影響部署。
-
-> 之後若真的需要推拉私有 registry 的 image，再把 helper 裝好、或改用 `docker login` 存純文字憑證。

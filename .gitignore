@@ -51,3 +51,6 @@ pgdata/
 # Misc
 coverage/
 *.log
+
+# Docker credential 繞道用的暫存設定（deploy.ps1 產生）
+.docker-ci/

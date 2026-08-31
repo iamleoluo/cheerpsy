@@ -1,36 +1,75 @@
-﻿# 在 Windows 機器上更新正式站：git pull -> 重建 image -> 重啟 container
+﻿# 在 Windows 機器上更新正式站：git pull -> 重建 image -> migration -> 重啟 container
 # 使用方式：在 C:\cheerpsy 底下執行 .\deploy.ps1
+#
+# 本檔存為 UTF-8 with BOM。Windows PowerShell 5.1 對沒有 BOM 的 .ps1 會用
+# ANSI（本機為 big5）解讀，字串裡的中文會被拆碎並提早終止字串。不要移除 BOM。
 
 $ErrorActionPreference = "Stop"
 
-# --- Docker credential helper 防呆 ---------------------------------------
-# 透過 SSH 執行時常拿不到完整的使用者 PATH，Docker Desktop 的 credential
-# helper 就會找不到。即使只是拉公開 image（postgres / redis），只要
-# ~/.docker/config.json 有 "credsStore": "desktop"，Docker 仍會先呼叫它，
-# 失敗訊息是：
-#   error getting credentials - err: exec: "docker-credential-desktop":
-#   executable file not found in %PATH%
-# 第一層：把 Docker Desktop 的預設 bin 目錄補進 PATH。
-$dockerBin = "$env:ProgramFiles\Docker\Docker\resources\bin"
-if (Test-Path $dockerBin) { $env:PATH = "$dockerBin;$env:PATH" }
+$RepoRoot = $PSScriptRoot
+Set-Location $RepoRoot
 
-# 第二層：補完 PATH 後仍找不到 helper 就先示警。這裡不中止——設定裡若沒有
-# credsStore，沒有 helper 也能正常拉公開 image；真的需要時 docker 會自己報錯。
-if (-not (Get-Command docker-credential-desktop -ErrorAction SilentlyContinue)) {
-    Write-Warning "找不到 docker-credential-desktop（已嘗試 $dockerBin）。"
-    Write-Warning "若接下來出現 'error getting credentials'，請見 WINDOWS_DEPLOY.md 常見問題："
-    Write-Warning "  Q: docker compose 出現 docker-credential-desktop not found"
+# --- Docker credential 防呆 ------------------------------------------------
+# 透過 SSH 執行時，Docker Desktop 設定的 credential helper（wincred）會失敗：
+#   error getting credentials - err: exit status 1,
+#   out: `A specified logon session does not exist. It may already have been terminated.`
+# 因為 wincred 要存取 Windows 認證管理員，而非互動式的 SSH session 沒有可用的
+# logon session。即使只是拉公開 image（postgres / redis / python / node）也會整個失敗。
+#
+# 解法：Docker CLI 只有在 PATH 上找得到 docker-credential-* 才會用它，
+# 找不到就 fallback 成純文字 store。所以 build 期間把 Docker 的 resourcesin
+# 從 PATH 拿掉，並用絕對路徑呼叫 docker.exe，再指向一份不含 credsStore 的
+# DOCKER_CONFIG。本專案不需登入任何 registry（公開 image + 本機 build），
+# 拿掉完全不影響。詳見 WINDOWS_DEPLOY.md 常見問題。
+$DockerBin = Join-Path $env:ProgramFiles "Docker\Dockeresourcesin"
+$Docker = Join-Path $DockerBin "docker.exe"
+if (-not (Test-Path $Docker)) {
+    throw "找不到 docker.exe：$Docker"
 }
-# -------------------------------------------------------------------------
 
-Write-Host "==> git pull"
-git pull
+$CiConfig = Join-Path $RepoRoot ".docker-ci"
+if (-not (Test-Path $CiConfig)) { New-Item -ItemType Directory -Path $CiConfig | Out-Null }
+# 必須是「無 BOM」的 UTF-8，Docker 的 JSON parser 讀到 BOM 會報
+# invalid character 'ï' looking for beginning of value
+$Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText((Join-Path $CiConfig "config.json"), '{"auths":{}}', $Utf8NoBom)
 
-Write-Host "==> docker compose build"
-docker compose -f docker-compose.prod.yml --env-file .env.production build
+$SavedPath = $env:PATH
+$env:DOCKER_CONFIG = $CiConfig
+$env:PATH = ($SavedPath -split ';' | Where-Object { $_ -notlike "*Docker\Dockeresourcesin*" }) -join ';'
+# ---------------------------------------------------------------------------
 
-Write-Host "==> docker compose up -d"
-docker compose -f docker-compose.prod.yml --env-file .env.production up -d
+$Compose = @("compose", "-f", "docker-compose.prod.yml", "--env-file", ".env.production")
 
-Write-Host "==> container 狀態"
-docker compose -f docker-compose.prod.yml ps
+try {
+    Write-Host "==> git pull"
+    # git 需要原本的 PATH
+    $env:PATH = $SavedPath
+    git pull
+    $env:PATH = ($SavedPath -split ';' | Where-Object { $_ -notlike "*Docker\Dockeresourcesin*" }) -join ';'
+
+    Write-Host "==> docker compose build"
+    & $Docker @Compose build
+    if ($LASTEXITCODE -ne 0) { throw "build 失敗（exit $LASTEXITCODE）" }
+
+    Write-Host "==> docker compose up -d"
+    & $Docker @Compose up -d
+    if ($LASTEXITCODE -ne 0) { throw "up 失敗（exit $LASTEXITCODE）" }
+
+    Write-Host "==> alembic upgrade head"
+    & $Docker @Compose exec -T api alembic upgrade head
+    if ($LASTEXITCODE -ne 0) { throw "migration 失敗（exit $LASTEXITCODE）" }
+
+    Write-Host "==> container 狀態"
+    & $Docker @Compose ps
+
+    Write-Host "==> 健康檢查"
+    $health = (Invoke-WebRequest -Uri "http://localhost:8000/health" -UseBasicParsing).Content
+    Write-Host "    api  : $health"
+    $webCode = (Invoke-WebRequest -Uri "http://localhost:3000/login" -UseBasicParsing).StatusCode
+    Write-Host "    web  : HTTP $webCode"
+}
+finally {
+    $env:PATH = $SavedPath
+    Remove-Item Env:\DOCKER_CONFIG -ErrorAction SilentlyContinue
+}
