@@ -16,7 +16,10 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.appointment import Appointment
 from app.models.case import Case
+from app.models.case_institution_quota import CaseInstitutionQuota
+from app.models.institution_plan import InstitutionPlan
 from app.models.session_record import SessionRecord
+from app.services import quota_flow
 from app.models.user import User
 
 DEFAULT_COMMISSION_RATE = Decimal("0.70")
@@ -102,21 +105,39 @@ def materialize_due_appointments(db: Session, up_to: datetime | None = None) -> 
         funding = appt.funding_source or (case.funding_source if case else "self_pay")
         session_date = appt.time_range.lower.date()
 
-        # Atomic quota deduction if institution-funded with quota
-        if funding == "institution" and appt.quota_id:
-            updated = db.execute(
-                text(
-                    "UPDATE case_institution_quotas SET used_count = used_count + 1 "
-                    "WHERE id = :qid AND used_count < total_count"
-                ),
-                {"qid": appt.quota_id},
-            ).rowcount
-            if updated == 0:
-                # Quota exhausted or missing; skip materialization for human review
+        # 額度扣減改走 quota_flow（Phase 3）：已預約 → 已使用。
+        # 舊寫法直接 used_count+1，會與報到端點重複扣、也會打破三態恆等式
+        # （used+booked+reserved=total，由 DB CHECK 強制）。
+        # checkin_status='arrived' 代表已由櫃檯報到並扣過額度，此處不可再扣。
+        if funding == "institution" and appt.quota_id and appt.checkin_status != "arrived":
+            q = db.query(CaseInstitutionQuota).filter(
+                CaseInstitutionQuota.id == appt.quota_id
+            ).with_for_update().first()
+            if not q or q.booked_count < 1:
+                # 額度異常，跳過留待人工檢視
                 skipped += 1
                 continue
+            quota_flow.booked_to_used(q)
+
+        # 拆帳：機構案自付額由方案帶出，其餘為機構請款額
+        total = Decimal(str(appt.amount))
+        if funding == "institution":
+            plan_self_pay = Decimal("0")
+            if appt.plan_id:
+                plan = db.query(InstitutionPlan).filter(InstitutionPlan.id == appt.plan_id).first()
+                if plan and plan.contract:
+                    plan_self_pay = Decimal(str(plan.contract.self_pay_amount))
+            self_pay = min(plan_self_pay, total)
+            inst_claim = total - self_pay
+            track = "institution"
+        else:
+            self_pay, inst_claim = total, Decimal("0")
+            track = "monthly" if (case and case.billing_cycle == "monthly") else "immediate"
 
         appt.status = "executed"
+        if appt.checkin_status == "pending":
+            # 視訊／外展不到櫃檯報到，超過時段自動視為已到
+            appt.checkin_status = "arrived"
         record = SessionRecord(
             appointment_id=appt.id,
             session_date=session_date,
@@ -128,8 +149,13 @@ def materialize_due_appointments(db: Session, up_to: datetime | None = None) -> 
             amount=appt.amount,
             commission_rate_used=rate,
             funding_source=funding,
-            receipt_no=next_receipt_no(db, session_date),
             payment_status="unpaid",
+            # Phase 1b：金額拆為自付額／機構請款額
+            self_pay_amount=self_pay,
+            institution_claim_amount=inst_claim,
+            # Phase 1b：追款方式決定它進應收帳冊哪一個分頁
+            payment_track=track,
+            fee_item=appt.fee_item,
         )
         # 外出諮商保底：心理師抽成不足 OUTPATIENT_MIN_FEE 時自動補足（診所不墊錢）
         if appt.session_type == "outdoor":
@@ -169,3 +195,63 @@ def run_daily_settlement(db: Session, target_date: date | None = None) -> dict:
         "executed": result["materialized"],
         "skipped": result["skipped"],
     }
+
+def materialize_appointment(db: Session, appt) -> "SessionRecord | None":
+    """把單一已報到的預約寫成帳冊紀錄（櫃檯報到當下呼叫）。
+
+    額度已由呼叫端的 quota_flow.booked_to_used 扣過，此處不再扣。
+    已有紀錄則直接回傳，不重複建立。
+    """
+    existing = (
+        db.query(SessionRecord).filter(SessionRecord.appointment_id == appt.id).first()
+    )
+    if existing:
+        return existing
+
+    case = db.query(Case).filter(Case.id == appt.case_id).first()
+    therapist = db.query(User).filter(User.id == appt.therapist_id).first()
+    rate = Decimal("0")
+    if therapist and therapist.commission_rate is not None:
+        rate = Decimal(str(therapist.commission_rate))
+    funding = appt.funding_source or (case.funding_source if case else "self_pay")
+    session_date = appt.time_range.lower.date()
+
+    total = Decimal(str(appt.amount))
+    if funding == "institution":
+        plan_self_pay = Decimal("0")
+        if appt.plan_id:
+            plan = db.query(InstitutionPlan).filter(InstitutionPlan.id == appt.plan_id).first()
+            if plan and plan.contract:
+                plan_self_pay = Decimal(str(plan.contract.self_pay_amount))
+        self_pay = min(plan_self_pay, total)
+        inst_claim = total - self_pay
+        track = "institution"
+    else:
+        self_pay, inst_claim = total, Decimal("0")
+        track = "monthly" if (case and case.billing_cycle == "monthly") else "immediate"
+
+    record = SessionRecord(
+        appointment_id=appt.id,
+        session_date=session_date,
+        case_id=appt.case_id,
+        therapist_id=appt.therapist_id,
+        session_type=appt.session_type,
+        room_id=appt.room_id,
+        fee_category="counseling",
+        amount=appt.amount,
+        self_pay_amount=self_pay,
+        institution_claim_amount=inst_claim,
+        payment_track=track,
+        fee_item=appt.fee_item,
+        commission_rate_used=rate,
+        funding_source=funding,
+        payment_status="unpaid",
+    )
+    if appt.session_type == "outdoor":
+        bonus, note = _calc_outdoor_bonus(total, rate)
+        if bonus > 0:
+            record.outcall_bonus = bonus
+            record.outcall_note = note
+    db.add(record)
+    db.flush()
+    return record

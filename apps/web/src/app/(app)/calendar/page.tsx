@@ -1,847 +1,530 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
-import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
-import FullCalendar from "@fullcalendar/react";
-
-const helpContent: HelpContent = {
-  title: "預約日曆",
-  guideId: "calendar",
-  overview: "排程中心，所有諮商都從建立預約開始。新增預約後，系統在 T+1（隔日）自動執行日結，將已執行預約寫入日結帳冊，無需手動操作。",
-  sections: [
-    {
-      heading: "新增單次預約",
-      type: "steps",
-      items: [
-        "點「＋新增預約」",
-        "選個案（可輸入姓名搜尋）",
-        "選心理師、諮商類型（現場／線上／外出）、診間",
-        "選日期與起始時間，填入諮商費用",
-        "系統自動依心理師抽成比例計算師所分潤，儲存",
-      ],
-    },
-    {
-      heading: "批次預約（定期諮商）",
-      type: "steps",
-      items: [
-        "點「批次預約」",
-        "選個案、心理師、類型、診間",
-        "設定起始日期、頻率（每週／隔週）與總次數",
-        "確認預覽清單後一次建立所有預約",
-      ],
-    },
-    {
-      heading: "取消預約",
-      type: "steps",
-      items: [
-        "找到該筆預約，點「取消」並確認",
-        "請在當日日結前取消，否則隔日日結後帳務自動產生",
-      ],
-    },
-    {
-      heading: "T+1 日結規則",
-      type: "tips",
-      items: [
-        "當日未取消的預約，隔日管理員執行日結後自動寫入帳冊",
-        "個案未到請務必在當日前取消，帳務產生後需透過刪除預約才能撤銷",
-        "管理員可在日結帳冊手動補跑指定日期的結算",
-      ],
-    },
-    {
-      heading: "管理員提示",
-      type: "notes",
-      items: [
-        "診間衝突由系統自動阻擋，同診間同時段只能一個預約",
-        "預約建立後若需修改，請至個案管理或直接刪除重建",
-        "抽成比例在帳號管理中設定，預約建立時自動帶入",
-      ],
-    },
-  ],
-};
-import dayGridPlugin from "@fullcalendar/daygrid";
-import timeGridPlugin from "@fullcalendar/timegrid";
-import interactionPlugin from "@fullcalendar/interaction";
-import type { EventInput, DatesSetArg } from "@fullcalendar/core";
-
-/* ───── types ───── */
+import {
+  DAY_END_MIN,
+  DAY_START_MIN,
+  NO_SHOW_TYPES,
+  SESSION_TYPE,
+  SLOT_MIN,
+  hhmm,
+  minutesOfDay,
+  money,
+  shiftDate,
+  slotLabels,
+  todayISO,
+} from "@/lib/format";
 
 interface Room {
   id: number;
   name: string;
-  floor: number;
   room_code: string;
-  has_special_equipment: boolean;
-  notes: string | null;
+  room_type: string;
 }
 
-interface CalendarAppointment {
+interface Appt {
   id: number;
-  appointment_number: string;
-  case_name: string | null;
-  case_type?: string;
-  is_couple?: boolean;
-  couple_name?: string | null;
-  therapist_name: string | null;
-  room_id: number | null;
-  room_name: string | null;
-  start_time: string | null;
-  end_time: string | null;
-  status: string;
-  session_type: string;
-  amount: number | null;
-}
-
-interface UpcomingAppointment {
-  appointment_id: number;
-  appointment_number: string;
   case_id: number;
   case_name: string | null;
-  case_phone: string | null;
   therapist_name: string | null;
+  room_id: number | null;
   session_type: string;
   start_time: string | null;
+  end_time: string | null;
+  amount: number;
+  funding_source: string;
   status: string;
-  reminder_count: number;
-  last_contact_result: string | null;
+  checkin_status: string;
+  no_show_fee: number;
+  is_intake: boolean;
+  quota_is_last_session: boolean;
+  quota_used: number | null;
+  quota_total: number | null;
 }
 
-interface ReminderLog {
+interface DailyRow {
   id: number;
-  contact_result: string;
-  notes: string | null;
-  contacted_by_name: string | null;
-  contacted_at: string | null;
+  case_name: string | null;
+  self_pay_amount: number;
+  payment_status: string;
+  receipt_no: string | null;
 }
 
-/* ───── constants ───── */
-
-const statusColors: Record<string, string> = {
-  booked: "#3b82f6",
-  executed: "#22c55e",
-  cancelled: "#9ca3af",
+const BADGE: Record<string, { label: string; cls: string }> = {
+  pending: { label: "待報到", cls: "bg-gray-200 text-gray-600" },
+  arrived: { label: "已到", cls: "bg-green-100 text-green-700" },
+  absent: { label: "未到", cls: "bg-red-100 text-red-700" },
 };
-
-const sessionTypeLabels: Record<string, string> = {
-  in_person: "現場",
-  online: "線上",
-  outdoor: "外出",
-};
-
-const contactResultLabels: Record<string, string> = {
-  confirmed: "已確認",
-  wants_cancel: "欲取消",
-  no_answer: "未接聽",
-};
-
-const contactResultColors: Record<string, string> = {
-  confirmed: "bg-green-100 text-green-700",
-  wants_cancel: "bg-red-100 text-red-700",
-  no_answer: "bg-yellow-100 text-yellow-700",
-};
-
-/* ───── main page ───── */
 
 export default function CalendarPage() {
   const { data: session } = useSession();
   const token = (session?.user as any)?.accessToken;
-  const [tab, setTab] = useState<"by_room" | "by_slot" | "reminders">("by_room");
-  const [helpOpen, setHelpOpen] = useState(false);
+  const [day, setDay] = useState(todayISO());
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [appts, setAppts] = useState<Appt[]>([]);
+  const [ledger, setLedger] = useState<DailyRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [absentFor, setAbsentFor] = useState<Appt | null>(null);
+  const [payFor, setPayFor] = useState<{ appt: Appt; row: DailyRow } | null>(null);
 
-  if (!token) return <p>Loading...</p>;
+  const load = useCallback(async () => {
+    if (!token) return;
+    setLoading(true);
+    try {
+      const [rs, as, dl] = await Promise.all([
+        clientFetch("/rooms", token),
+        clientFetch(
+          `/appointments?start=${day}T00:00:00%2B08:00&end=${shiftDate(day, 1)}T00:00:00%2B08:00`,
+          token
+        ),
+        clientFetch(`/finance/daily?day=${day}`, token).catch(() => null),
+      ]);
+      setRooms(rs);
+      setAppts(as);
+      setLedger(dl?.rows ?? []);
+      setError(null);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [token, day]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const inRoom = useMemo(() => appts.filter((a) => a.room_id), [appts]);
+  const offsite = useMemo(() => appts.filter((a) => !a.room_id), [appts]);
+  const labels = slotLabels();
+
+  const stats = useMemo(() => {
+    const active = appts.filter((a) => a.status !== "cancelled");
+    const arrived = active.filter((a) => a.checkin_status === "arrived");
+    const absent = active.filter((a) => a.checkin_status === "absent");
+    const paid = ledger.filter((r) => r.payment_status === "paid");
+    return {
+      due: active.length,
+      arrived: arrived.length,
+      absent: absent.length,
+      pending: active.length - arrived.length - absent.length,
+      collected: paid.reduce((s, r) => s + r.self_pay_amount, 0),
+      outstanding: ledger
+        .filter((r) => r.payment_status !== "paid")
+        .reduce((s, r) => s + r.self_pay_amount, 0),
+    };
+  }, [appts, ledger]);
+
+  async function arrive(a: Appt) {
+    try {
+      await clientFetch(`/appointments/${a.id}/arrive`, token, { method: "PUT" });
+      load();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  }
+
+  function rowFor(a: Appt): DailyRow | undefined {
+    return ledger.find((r) => r.case_name === a.case_name);
+  }
+
+  if (loading) return <p className="p-6 text-gray-400">載入中...</p>;
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">預約日曆</h1>
-        <button onClick={() => setHelpOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700">
-          <span>ℹ️</span> 說明
-        </button>
-      </div>
-      <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} guideId="calendar" />
-
-      <div className="mb-4 flex gap-1 border-b border-gray-200">
-        {(
-          [
-            ["by_room", "診間日曆（空間）"],
-            ["by_slot", "診間日曆（時段）"],
-            ["reminders", "預約提醒"],
-          ] as const
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            className={`px-4 py-2 text-sm font-medium transition-colors ${
-              tab === key
-                ? "border-b-2 border-primary-600 text-primary-600"
-                : "text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            {label}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">診間日曆 — 櫃檯主控台</h1>
+          <p className="mt-1 text-sm text-gray-500">報到 → 收款 → 開收據，一頁完成</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setDay(shiftDate(day, -1))} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm">
+            ◀ 前一天
           </button>
+          <input
+            type="date"
+            value={day}
+            onChange={(e) => setDay(e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm"
+          />
+          <button onClick={() => setDay(shiftDate(day, 1))} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm">
+            後一天 ▶
+          </button>
+          <button onClick={() => setDay(todayISO())} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm">
+            今天
+          </button>
+        </div>
+      </div>
+
+      <div className="mb-4 grid grid-cols-3 gap-3 md:grid-cols-6">
+        {[
+          ["應到", stats.due, ""],
+          ["已報到", stats.arrived, "text-green-600"],
+          ["未到", stats.absent, "text-red-600"],
+          ["待報到", stats.pending, "text-amber-600"],
+          ["今日已收", money(stats.collected), "text-primary-700"],
+          ["尚待收款", money(stats.outstanding), "text-red-600"],
+        ].map(([label, val, cls]) => (
+          <div key={label as string} className="rounded-lg border border-gray-200 bg-white px-3 py-2">
+            <div className="text-xs text-gray-500">{label}</div>
+            <div className={`text-lg font-semibold ${cls}`}>{val}</div>
+          </div>
         ))}
       </div>
 
-      {tab === "by_room" && <RoomCalendarTab token={token} />}
-      {tab === "by_slot" && <SlotCalendarTab token={token} />}
-      {tab === "reminders" && <RemindersTab token={token} />}
-    </div>
-  );
-}
+      {error && <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
-/* ═══════════════════════════════════════════════
-   Tab 1 — 診間日曆
-   ═══════════════════════════════════════════════ */
-
-function RoomCalendarTab({ token }: { token: string }) {
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
-  const [events, setEvents] = useState<EventInput[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingEvents, setLoadingEvents] = useState(false);
-  const dateRangeRef = useRef<{ start: string; end: string } | null>(null);
-  const calendarRef = useRef<FullCalendar>(null);
-
-  const fetchRooms = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await clientFetch("/rooms", token);
-      setRooms(data);
-    } catch {
-      /* ignore */
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
-
-  useEffect(() => {
-    fetchRooms();
-  }, [fetchRooms]);
-
-  const fetchAppointments = useCallback(
-    async (roomId: number, start: string, end: string) => {
-      setLoadingEvents(true);
-      try {
-        const params = new URLSearchParams({ room_id: roomId.toString(), start, end });
-        const data: CalendarAppointment[] = await clientFetch(`/appointments?${params}`, token);
-        setEvents(
-          data.map((a) => ({
-            id: String(a.id),
-            title: `${a.is_couple ? "👫 " : ""}${(a.is_couple && a.couple_name) || a.case_name || "保留時段"} — ${a.therapist_name ?? ""}`,
-            start: a.start_time ?? undefined,
-            end: a.end_time ?? undefined,
-            backgroundColor: statusColors[a.status] ?? "#6b7280",
-            borderColor: statusColors[a.status] ?? "#6b7280",
-            extendedProps: {
-              appointment_number: a.appointment_number,
-              case_name: a.case_name,
-              is_couple: a.is_couple,
-              couple_name: a.couple_name,
-              therapist_name: a.therapist_name,
-              status: a.status,
-              session_type: a.session_type,
-            },
-          })),
-        );
-      } catch {
-        setEvents([]);
-      } finally {
-        setLoadingEvents(false);
-      }
-    },
-    [token],
-  );
-
-  const handleDatesSet = useCallback(
-    (arg: DatesSetArg) => {
-      dateRangeRef.current = { start: arg.startStr, end: arg.endStr };
-      if (selectedRoom) {
-        fetchAppointments(selectedRoom.id, arg.startStr, arg.endStr);
-      }
-    },
-    [selectedRoom, fetchAppointments],
-  );
-
-  const handleSelectRoom = (room: Room) => {
-    setSelectedRoom(room);
-    setEvents([]);
-    if (dateRangeRef.current) {
-      fetchAppointments(room.id, dateRangeRef.current.start, dateRangeRef.current.end);
-    }
-  };
-
-  const handleBack = () => {
-    setSelectedRoom(null);
-    setEvents([]);
-  };
-
-  /* ── per-room calendar view ── */
-  if (selectedRoom) {
-    return (
-      <div>
-        <div className="mb-4 flex items-center gap-3">
-          <button
-            onClick={handleBack}
-            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"
-          >
-            ← 返回診間列表
-          </button>
-          <h2 className="text-xl font-bold">{selectedRoom.name}</h2>
-          <span className="text-sm text-gray-400">
-            {selectedRoom.floor}F · {selectedRoom.room_code}
-            {selectedRoom.has_special_equipment && " · 特殊設備"}
-          </span>
-          {loadingEvents && <span className="text-xs text-gray-400">載入中...</span>}
-        </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-4">
-          <FullCalendar
-            ref={calendarRef}
-            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-            initialView="dayGridMonth"
-            locale="zh-tw"
-            headerToolbar={{
-              left: "prev,next today",
-              center: "title",
-              right: "dayGridMonth,timeGridWeek,timeGridDay",
-            }}
-            buttonText={{ today: "今天", month: "月", week: "週", day: "日" }}
-            events={events}
-            datesSet={handleDatesSet}
-            height="auto"
-            eventTimeFormat={{ hour: "2-digit", minute: "2-digit", hour12: false }}
-            slotMinTime="08:00:00"
-            slotMaxTime="22:00:00"
-            allDaySlot={false}
-            eventDisplay="block"
-            dayMaxEvents={4}
-            eventContent={(arg) => {
-              const props = arg.event.extendedProps;
-              return (
-                <div className="overflow-hidden px-1 py-0.5 text-xs leading-tight">
-                  <div className="font-medium">{arg.timeText}</div>
-                  <div className="truncate">
-                    {props.is_couple ? "👫 " : ""}{(props.is_couple && props.couple_name) || props.case_name || "保留時段"} — {props.therapist_name ?? ""}
-                  </div>
-                </div>
-              );
-            }}
-          />
-        </div>
-      </div>
-    );
-  }
-
-  /* ── room grid ── */
-  const floors = [...new Set(rooms.map((r) => r.floor))].sort();
-
-  if (loading) return <p className="text-gray-400">載入中...</p>;
-
-  return (
-    <div>
-      {floors.map((floor) => (
-        <div key={floor} className="mb-6">
-          <h2 className="mb-3 text-sm font-medium text-gray-500">{floor} 樓</h2>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-            {rooms
-              .filter((r) => r.floor === floor)
-              .map((room) => (
-                <button
-                  key={room.id}
-                  onClick={() => handleSelectRoom(room)}
-                  className="rounded-lg border border-gray-200 p-4 text-left transition-all hover:border-primary-400 hover:shadow-md"
-                >
-                  <div className="text-base font-medium">{room.name}</div>
-                  <div className="mt-1 text-xs text-gray-400">{room.room_code}</div>
-                  {room.has_special_equipment && (
-                    <span className="mt-2 inline-block rounded bg-purple-100 px-1.5 py-0.5 text-xs text-purple-600">
-                      特殊設備
-                    </span>
-                  )}
-                  {room.notes && <div className="mt-1 text-xs text-gray-400">{room.notes}</div>}
-                </button>
-              ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════
-   Tab 2 — 診間時段表（空間使用檢視）
-   ═══════════════════════════════════════════════ */
-
-const SLOT_HOURS = Array.from({ length: 22 }, (_, i) => {
-  const totalMin = 9 * 60 + i * 30;
-  const h = Math.floor(totalMin / 60).toString().padStart(2, "0");
-  const m = (totalMin % 60).toString().padStart(2, "0");
-  return `${h}:${m}`;
-}); // 09:00 ~ 19:30
-
-const DOW_ZH = ["日", "一", "二", "三", "四", "五", "六"];
-
-function toLocalDateString(d: Date): string {
-  const y = d.getFullYear();
-  const m = (d.getMonth() + 1).toString().padStart(2, "0");
-  const day = d.getDate().toString().padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function SlotCalendarTab({ token }: { token: string }) {
-  const [selectedDate, setSelectedDate] = useState<Date>(() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d;
-  });
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [appts, setAppts] = useState<CalendarAppointment[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [popover, setPopover] = useState<CalendarAppointment | null>(null);
-
-  useEffect(() => {
-    clientFetch("/rooms", token).then(setRooms).catch(() => {});
-  }, [token]);
-
-  const fetchAppts = useCallback(async () => {
-    setLoading(true);
-    try {
-      const start = new Date(selectedDate);
-      const end = new Date(selectedDate);
-      end.setDate(end.getDate() + 1);
-      const data = await clientFetch(
-        `/appointments?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`,
-        token,
-      );
-      setAppts(data);
-    } catch { /* ignore */ } finally { setLoading(false); }
-  }, [token, selectedDate]);
-
-  useEffect(() => { fetchAppts(); }, [fetchAppts]);
-
-  // Build matrix: slotKey → room_id → appointment (first occupant)
-  type RoomMatrix = Record<string, Record<number, CalendarAppointment>>;
-  const matrix: RoomMatrix = {};
-  for (const slot of SLOT_HOURS) matrix[slot] = {};
-  for (const a of appts) {
-    if (a.status === "cancelled") continue;
-    if (!a.start_time || !a.end_time || !a.room_id) continue;
-    const start = new Date(a.start_time);
-    const end = new Date(a.end_time);
-    const cur = new Date(start);
-    while (cur < end) {
-      const slotH = cur.getHours().toString().padStart(2, "0");
-      const slotM = cur.getMinutes() < 30 ? "00" : "30";
-      const key = `${slotH}:${slotM}`;
-      if (matrix[key] && !matrix[key][a.room_id]) matrix[key][a.room_id] = a;
-      cur.setMinutes(cur.getMinutes() + 30);
-    }
-  }
-
-  const prevDay = () => setSelectedDate(d => { const n = new Date(d); n.setDate(n.getDate() - 1); return n; });
-  const nextDay = () => setSelectedDate(d => { const n = new Date(d); n.setDate(n.getDate() + 1); return n; });
-  const goToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); setSelectedDate(d); };
-
-  const dateLabel = selectedDate.toLocaleDateString("zh-TW", {
-    year: "numeric", month: "long", day: "numeric", weekday: "short",
-  });
-
-  // Group rooms by floor for header display
-  const floorGroups = rooms.reduce<Record<number, Room[]>>((acc, r) => {
-    (acc[r.floor] ??= []).push(r);
-    return acc;
-  }, {});
-
-  return (
-    <div>
-      {/* date nav */}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <button onClick={prevDay} className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm hover:bg-gray-50">← 前一天</button>
-        <button onClick={goToday} className="rounded-lg border border-primary-300 px-3 py-1.5 text-sm text-primary-600 hover:bg-primary-50">今天</button>
-        <button onClick={nextDay} className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm hover:bg-gray-50">後一天 →</button>
-        <span className="text-sm font-medium text-gray-700">{dateLabel}</span>
-        <input
-          type="date"
-          value={toLocalDateString(selectedDate)}
-          onChange={(e) => {
-            if (!e.target.value) return;
-            const [y, m, d] = e.target.value.split("-").map(Number);
-            const nd = new Date(y, m - 1, d);
-            nd.setHours(0, 0, 0, 0);
-            setSelectedDate(nd);
-          }}
-          className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:border-primary-400 focus:outline-none"
-        />
-        {loading && <span className="text-xs text-gray-400">載入中...</span>}
-      </div>
-
-      {rooms.length === 0 ? (
-        <div className="py-12 text-center text-sm text-gray-400">載入診間中…</div>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-gray-200">
-          <table className="w-full border-collapse text-xs">
-            <thead>
-              <tr className="bg-gray-50">
-                <th className="w-14 border-b border-r border-gray-200 px-2 py-2 text-gray-500 text-left">時段</th>
-                {rooms.map((r) => (
-                  <th key={r.id} className="border-b border-r border-gray-200 px-2 py-2 text-center font-medium min-w-[80px]">
-                    <div className="leading-tight">{r.name}</div>
-                    <div className="text-gray-400 font-normal text-[10px]">{r.floor}F · {r.room_code}</div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {SLOT_HOURS.map((slot) => {
-                const rowHasAny = rooms.some((r) => matrix[slot]?.[r.id]);
-                return (
-                  <tr key={slot} className={rowHasAny ? "bg-white" : "bg-gray-50/30"}>
-                    <td className="border-b border-r border-gray-200 px-2 py-1 text-gray-400 whitespace-nowrap font-mono">{slot}</td>
-                    {rooms.map((r) => {
-                      const appt = matrix[slot]?.[r.id];
-                      return (
-                        <td
-                          key={r.id}
-                          className={`border-b border-r border-gray-200 px-1 py-1 align-middle ${appt ? "bg-primary-50" : ""}`}
-                        >
-                          {appt && (
-                            <button
-                              onClick={() => setPopover(appt)}
-                              title={`${appt.therapist_name ?? ""} | ${appt.start_time?.slice(11, 16)}~${appt.end_time?.slice(11, 16)}`}
-                              className="block w-full rounded px-1 py-0.5 text-left text-primary-700 hover:bg-primary-100 truncate leading-tight"
-                            >
-                              {appt.therapist_name?.slice(0, 4) ?? "—"}
-                            </button>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* popover */}
-      {popover && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setPopover(null)}>
-          <div className="w-72 rounded-lg bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h4 className="mb-2 font-semibold text-sm">{popover.appointment_number}</h4>
-            <dl className="space-y-1 text-sm">
-              <div className="flex gap-2"><dt className="w-14 text-gray-500">心理師</dt><dd>{popover.therapist_name ?? "—"}</dd></div>
-              <div className="flex gap-2"><dt className="w-14 text-gray-500">診間</dt><dd>{popover.room_name ?? "—"}</dd></div>
-              <div className="flex gap-2"><dt className="w-14 text-gray-500">時間</dt><dd>{popover.start_time?.slice(11, 16)} ~ {popover.end_time?.slice(11, 16)}</dd></div>
-              <div className="flex gap-2"><dt className="w-14 text-gray-500">類型</dt><dd>{popover.session_type}</dd></div>
-            </dl>
-            <button onClick={() => setPopover(null)} className="mt-3 w-full rounded bg-gray-100 py-1.5 text-sm hover:bg-gray-200">關閉</button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════
-   Tab 3 — 預約提醒 / 電訪追蹤
-   ═══════════════════════════════════════════════ */
-
-function RemindersTab({ token }: { token: string }) {
-  const [days, setDays] = useState(3);
-  const [appointments, setAppointments] = useState<UpcomingAppointment[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [logModal, setLogModal] = useState<{ appointmentId: number; appointmentNumber: string } | null>(null);
-  const [logs, setLogs] = useState<ReminderLog[]>([]);
-  const [addModal, setAddModal] = useState<{ appointmentId: number } | null>(null);
-  const [formResult, setFormResult] = useState("confirmed");
-  const [formNotes, setFormNotes] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [selectedAppts, setSelectedAppts] = useState<Set<number>>(new Set());
-
-  const toggleAppt = (id: number) => {
-    setSelectedAppts((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-
-  const batchDelete = async () => {
-    if (selectedAppts.size === 0) return;
-    if (!confirm(`確定刪除選取的 ${selectedAppts.size} 筆預約？此操作無法復原。`)) return;
-    try {
-      await clientFetch("/appointments", token, {
-        method: "DELETE",
-        body: JSON.stringify({ ids: [...selectedAppts] }),
-      });
-      setSelectedAppts(new Set());
-      fetchAppointments();
-    } catch (e: any) {
-      alert(e.message);
-    }
-  };
-
-  const fetchAppointments = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await clientFetch(`/reminders/upcoming?days=${days}`, token);
-      setAppointments(data);
-    } catch {
-      /* ignore */
-    } finally {
-      setLoading(false);
-    }
-  }, [token, days]);
-
-  useEffect(() => {
-    fetchAppointments();
-  }, [fetchAppointments]);
-
-  const showLogs = async (appointmentId: number, appointmentNumber: string) => {
-    setLogModal({ appointmentId, appointmentNumber });
-    try {
-      const data = await clientFetch(`/reminders/logs/${appointmentId}`, token);
-      setLogs(data);
-    } catch {
-      setLogs([]);
-    }
-  };
-
-  const handleAddReminder = async () => {
-    if (!addModal) return;
-    setSaving(true);
-    try {
-      await clientFetch("/reminders", token, {
-        method: "POST",
-        body: JSON.stringify({
-          appointment_id: addModal.appointmentId,
-          contact_result: formResult,
-          notes: formNotes || null,
-        }),
-      });
-      setAddModal(null);
-      setFormResult("confirmed");
-      setFormNotes("");
-      fetchAppointments();
-    } catch (e: any) {
-      alert(e.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div>
-      <div className="mb-4 flex items-center gap-2">
-        <label className="text-sm text-gray-500">顯示未來</label>
-        <select
-          value={days}
-          onChange={(e) => setDays(parseInt(e.target.value))}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-        >
-          <option value={1}>1 天</option>
-          <option value={2}>2 天</option>
-          <option value={3}>3 天</option>
-          <option value={5}>5 天</option>
-          <option value={7}>7 天</option>
-          <option value={14}>14 天</option>
-        </select>
-        <span className="text-sm text-gray-500">的預約</span>
-        {selectedAppts.size > 0 && (
-          <button
-            onClick={batchDelete}
-            className="ml-auto rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
-          >
-            批次刪除（{selectedAppts.size} 筆）
-          </button>
-        )}
-      </div>
-
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+        <table className="w-full border-collapse text-xs">
+          <thead className="sticky top-0 bg-gray-50">
             <tr>
-              <th className="px-3 py-3"></th>
-              <th className="px-4 py-3">時間</th>
-              <th className="px-4 py-3">預約編號</th>
-              <th className="px-4 py-3">個案</th>
-              <th className="px-4 py-3">電話</th>
-              <th className="px-4 py-3">心理師</th>
-              <th className="px-4 py-3">類型</th>
-              <th className="px-4 py-3">聯繫狀態</th>
-              <th className="px-4 py-3">操作</th>
+              <th className="w-14 border-b border-r border-gray-200 px-1 py-2 text-gray-500">時間</th>
+              {rooms.map((r) => (
+                <th key={r.id} className="border-b border-r border-gray-200 px-1 py-2 last:border-r-0">
+                  <div className="font-medium">{r.room_code}</div>
+                  <div className="text-[10px] font-normal text-gray-400">
+                    {r.room_type === "play" ? "兒童遊戲室" : "晤談"}
+                  </div>
+                </th>
+              ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
-            {loading ? (
-              <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-gray-400">
-                  載入中...
-                </td>
-              </tr>
-            ) : appointments.length === 0 ? (
-              <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-gray-400">
-                  目前無需提醒的預約
-                </td>
-              </tr>
-            ) : (
-              appointments.map((a) => (
-                <tr key={a.appointment_id} className="hover:bg-gray-50">
-                  <td className="px-3 py-3">
-                    <input
-                      type="checkbox"
-                      checked={selectedAppts.has(a.appointment_id)}
-                      onChange={() => toggleAppt(a.appointment_id)}
-                      className="accent-primary-600"
-                    />
+          <tbody>
+            {labels.map((label, i) => {
+              const slotStart = DAY_START_MIN + i * SLOT_MIN;
+              return (
+                <tr key={label}>
+                  <td className="border-b border-r border-gray-100 px-1 py-1 text-right align-top text-[10px] text-gray-400">
+                    {slotStart % 60 === 0 ? label : ""}
                   </td>
-                  <td className="px-4 py-3 text-xs">
-                    {a.start_time
-                      ? new Date(a.start_time).toLocaleString("zh-TW", {
-                          month: "numeric",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })
-                      : "-"}
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs">{a.appointment_number}</td>
-                  <td className="px-4 py-3 font-medium">{a.case_name ?? "-"}</td>
-                  <td className="px-4 py-3 text-xs">{a.case_phone ?? "-"}</td>
-                  <td className="px-4 py-3">{a.therapist_name ?? "-"}</td>
-                  <td className="px-4 py-3">{sessionTypeLabels[a.session_type] ?? a.session_type}</td>
-                  <td className="px-4 py-3">
-                    {a.last_contact_result ? (
-                      <span
-                        className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${contactResultColors[a.last_contact_result] ?? "bg-gray-100"}`}
+                  {rooms.map((room) => {
+                    const a = inRoom.find(
+                      (x) =>
+                        x.room_id === room.id &&
+                        x.start_time &&
+                        minutesOfDay(x.start_time) <= slotStart &&
+                        (x.end_time ? minutesOfDay(x.end_time) : slotStart + SLOT_MIN) > slotStart
+                    );
+                    if (!a) {
+                      return (
+                        <td key={room.id} className="h-8 border-b border-r border-gray-100 last:border-r-0" />
+                      );
+                    }
+                    const isStart = a.start_time && minutesOfDay(a.start_time) === slotStart;
+                    if (!isStart) {
+                      return (
+                        <td
+                          key={room.id}
+                          className={`border-r border-gray-100 last:border-r-0 ${cellBg(a)}`}
+                        />
+                      );
+                    }
+                    return (
+                      <td
+                        key={room.id}
+                        className={`border-b border-r border-gray-100 p-1 align-top last:border-r-0 ${cellBg(a)}`}
                       >
-                        {contactResultLabels[a.last_contact_result] ?? a.last_contact_result}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-gray-400">未聯繫</span>
-                    )}
-                    {a.reminder_count > 0 && (
-                      <span className="ml-1 text-xs text-gray-400">({a.reminder_count}次)</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setAddModal({ appointmentId: a.appointment_id })}
-                        className="text-xs text-primary-600 hover:underline"
-                      >
-                        記錄聯繫
-                      </button>
-                      {a.reminder_count > 0 && (
-                        <button
-                          onClick={() => showLogs(a.appointment_id, a.appointment_number)}
-                          className="text-xs text-gray-500 hover:underline"
-                        >
-                          歷史
-                        </button>
-                      )}
-                    </div>
-                  </td>
+                        <ApptCell
+                          a={a}
+                          row={rowFor(a)}
+                          onArrive={() => arrive(a)}
+                          onAbsent={() => setAbsentFor(a)}
+                          onPay={(row) => setPayFor({ appt: a, row })}
+                        />
+                      </td>
+                    );
+                  })}
                 </tr>
-              ))
-            )}
+              );
+            })}
           </tbody>
         </table>
       </div>
 
-      {/* Add reminder modal */}
-      {addModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
-            <h2 className="mb-4 text-lg font-bold">記錄聯繫結果</h2>
-            <div className="space-y-3">
-              <label className="block">
-                <span className="mb-1 block text-xs text-gray-500">聯繫結果 *</span>
-                <select
-                  value={formResult}
-                  onChange={(e) => setFormResult(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                >
-                  <option value="confirmed">已確認出席</option>
-                  <option value="wants_cancel">欲取消預約</option>
-                  <option value="no_answer">未接聽</option>
-                </select>
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-xs text-gray-500">備註</span>
-                <textarea
-                  value={formNotes}
-                  onChange={(e) => setFormNotes(e.target.value)}
-                  rows={3}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  placeholder="補充說明..."
+      {offsite.length > 0 && (
+        <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4">
+          <h2 className="mb-2 text-sm font-medium">視訊 / 外展（不佔診間）</h2>
+          <div className="grid gap-2 md:grid-cols-3">
+            {offsite.map((a) => (
+              <div key={a.id} className={`rounded-lg border p-2 ${cellBg(a)}`}>
+                <ApptCell
+                  a={a}
+                  row={rowFor(a)}
+                  onArrive={() => arrive(a)}
+                  onAbsent={() => setAbsentFor(a)}
+                  onPay={(row) => setPayFor({ appt: a, row })}
                 />
-              </label>
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                onClick={() => {
-                  setAddModal(null);
-                  setFormNotes("");
-                }}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
-              >
-                取消
-              </button>
-              <button
-                onClick={handleAddReminder}
-                disabled={saving}
-                className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
-              >
-                {saving ? "儲存中..." : "儲存"}
-              </button>
-            </div>
+              </div>
+            ))}
           </div>
+          <p className="mt-2 text-xs text-gray-400">
+            這兩類個案不會到櫃檯報到，由心理師在「我的班表」處理；超過起始時間後系統自動視為已到。
+          </p>
         </div>
       )}
 
-      {/* Logs modal */}
-      {logModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
-            <h2 className="mb-4 text-lg font-bold">
-              聯繫歷史 — {logModal.appointmentNumber}
-            </h2>
-            {logs.length === 0 ? (
-              <p className="text-sm text-gray-400">無聯繫紀錄</p>
-            ) : (
-              <div className="max-h-80 space-y-3 overflow-y-auto">
-                {logs.map((l) => (
-                  <div key={l.id} className="rounded-lg border border-gray-200 p-3">
-                    <div className="flex items-center justify-between">
-                      <span
-                        className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${contactResultColors[l.contact_result] ?? "bg-gray-100"}`}
-                      >
-                        {contactResultLabels[l.contact_result] ?? l.contact_result}
-                      </span>
-                      <span className="text-xs text-gray-400">
-                        {l.contacted_at ? new Date(l.contacted_at).toLocaleString("zh-TW") : ""}
-                        {l.contacted_by_name && ` · ${l.contacted_by_name}`}
-                      </span>
-                    </div>
-                    {l.notes && <p className="mt-2 text-sm text-gray-600">{l.notes}</p>}
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="mt-4 flex justify-end">
-              <button
-                onClick={() => setLogModal(null)}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
-              >
-                關閉
-              </button>
-            </div>
-          </div>
+      {absentFor && (
+        <AbsentModal
+          token={token}
+          appt={absentFor}
+          onClose={() => setAbsentFor(null)}
+          onDone={() => {
+            setAbsentFor(null);
+            load();
+          }}
+        />
+      )}
+      {payFor && (
+        <PayModal
+          token={token}
+          appt={payFor.appt}
+          row={payFor.row}
+          onClose={() => setPayFor(null)}
+          onDone={() => {
+            setPayFor(null);
+            load();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function cellBg(a: Appt): string {
+  if (a.status === "cancelled") return "bg-gray-100 opacity-50";
+  if (a.checkin_status === "absent") return "bg-red-50";
+  if (a.checkin_status === "arrived") return "bg-gray-100";
+  if (a.is_intake) return "bg-amber-50 ring-1 ring-inset ring-amber-300";
+  return a.funding_source === "institution" ? "bg-violet-50" : "bg-blue-50";
+}
+
+function ApptCell({
+  a,
+  row,
+  onArrive,
+  onAbsent,
+  onPay,
+}: {
+  a: Appt;
+  row: DailyRow | undefined;
+  onArrive: () => void;
+  onAbsent: () => void;
+  onPay: (row: DailyRow) => void;
+}) {
+  const badge = BADGE[a.checkin_status] ?? BADGE.pending;
+  const offsite = !a.room_id;
+  return (
+    <div className={a.quota_is_last_session ? "rounded ring-1 ring-red-400" : ""}>
+      <div className="flex items-start justify-between gap-1">
+        <span className="truncate font-medium">{a.case_name}</span>
+        <span className={`shrink-0 rounded px-1 text-[9px] ${badge.cls}`}>{badge.label}</span>
+      </div>
+      <div className="truncate text-[10px] text-gray-500">
+        {hhmm(a.start_time)}–{hhmm(a.end_time)} · {a.therapist_name}
+      </div>
+      <div className="truncate text-[10px] text-gray-500">
+        {SESSION_TYPE[a.session_type]} ·{" "}
+        {a.funding_source === "institution"
+          ? `機構 ${a.quota_used ?? "?"}/${a.quota_total ?? "?"}`
+          : "自費"}
+      </div>
+      {a.quota_is_last_session && (
+        <div className="text-[10px] font-medium text-red-600">最後一次 · 下次轉自費</div>
+      )}
+      {a.is_intake && <div className="text-[10px] font-medium text-amber-700">⭐ 媒合初診</div>}
+
+      {a.status !== "cancelled" && a.checkin_status === "pending" && !offsite && (
+        <div className="mt-1 flex gap-1">
+          <button onClick={onArrive} className="flex-1 rounded border border-gray-400 bg-white px-1 py-0.5 text-[10px] hover:bg-gray-50">
+            {a.is_intake ? "初診有到" : "已到"}
+          </button>
+          <button onClick={onAbsent} className="flex-1 rounded border border-gray-400 bg-white px-1 py-0.5 text-[10px] hover:bg-gray-50">
+            未到
+          </button>
         </div>
       )}
+      {a.checkin_status === "absent" && a.no_show_fee > 0 && (
+        <div className="mt-1 text-[10px] text-red-600">失約費 {money(a.no_show_fee)}</div>
+      )}
+      {a.checkin_status === "arrived" && row && (
+        <div className="mt-1">
+          {row.payment_status === "paid" ? (
+            <span className="text-[10px] text-primary-700">
+              已收 {money(row.self_pay_amount)}
+              {row.receipt_no && <span className="block font-mono text-[9px] text-gray-400">{row.receipt_no}</span>}
+            </span>
+          ) : (
+            <button
+              onClick={() => onPay(row)}
+              className="w-full rounded bg-primary-600 px-1 py-0.5 text-[10px] text-white hover:bg-primary-700"
+            >
+              收款 {money(row.self_pay_amount)}
+            </button>
+          )}
+        </div>
+      )}
+      {a.checkin_status === "pending" && offsite && (
+        <div className="mt-1 text-[10px] text-gray-400">心理師端確認</div>
+      )}
+    </div>
+  );
+}
+
+function AbsentModal({
+  token,
+  appt,
+  onClose,
+  onDone,
+}: {
+  token: string;
+  appt: Appt;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [type, setType] = useState("late_cancel");
+  const [err, setErr] = useState<string | null>(null);
+  async function go() {
+    try {
+      await clientFetch(`/appointments/${appt.id}/absent`, token, {
+        method: "PUT",
+        body: JSON.stringify({ no_show_type: type }),
+      });
+      onDone();
+    } catch (e: any) {
+      setErr(e.message);
+    }
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+        <h2 className="mb-1 text-lg font-bold">未到原因 — {appt.case_name}</h2>
+        <p className="mb-4 text-sm text-gray-500">
+          不產生應收諮商費，機構額度釋回為可用；失約費另計。
+        </p>
+        {err && <div className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>}
+        <div className="space-y-2">
+          {NO_SHOW_TYPES.map(([k, label, fee]) => (
+            <label key={k} className="flex items-center gap-2 text-sm">
+              <input type="radio" checked={type === k} onChange={() => setType(k)} />
+              {label}
+              <span className="ml-auto tabular-nums text-gray-500">失約費 {money(fee)}</span>
+            </label>
+          ))}
+        </div>
+        <div className="mt-6 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm">
+            取消
+          </button>
+          <button onClick={go} className="rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-white">
+            確認未到
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PayModal({
+  token,
+  appt,
+  row,
+  onClose,
+  onDone,
+}: {
+  token: string;
+  appt: Appt;
+  row: DailyRow;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [method, setMethod] = useState("cash");
+  const [note, setNote] = useState("");
+  const [discount, setDiscount] = useState("0");
+  const [issue, setIssue] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function go(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setErr(null);
+    try {
+      await clientFetch(`/finance/ar/${row.id}/pay`, token, {
+        method: "POST",
+        body: JSON.stringify({
+          payment_method: method,
+          payment_note: note || null,
+          discount_amount: Number(discount) || 0,
+          issue_receipt: issue,
+        }),
+      });
+      onDone();
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+      <form onSubmit={go} className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+        <h2 className="mb-1 text-lg font-bold">收款 — {appt.case_name}</h2>
+        <p className="mb-4 text-sm text-gray-500">
+          應收 <b className="text-lg">{money(row.self_pay_amount)}</b>
+          {appt.funding_source === "institution" && (
+            <span className="ml-2 text-xs">（機構案只收自付額，差額轉核銷）</span>
+          )}
+        </p>
+        {err && <div className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>}
+        <div className="space-y-3">
+          <div className="flex gap-3">
+            {[["cash", "現金"], ["transfer", "匯款"]].map(([k, label]) => (
+              <label key={k} className="flex items-center gap-1.5 text-sm">
+                <input type="radio" checked={method === k} onChange={() => setMethod(k)} />
+                {label}
+              </label>
+            ))}
+          </div>
+          {method === "transfer" && (
+            <input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="匯款末 5 碼"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            />
+          )}
+          <label className="block text-sm">
+            <span className="mb-1 block text-gray-600">優待減免</span>
+            <input
+              type="number"
+              min="0"
+              value={discount}
+              onChange={(e) => setDiscount(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 tabular-nums"
+            />
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={issue} onChange={(e) => setIssue(e.target.checked)} />
+            收款後立即開立收據
+          </label>
+        </div>
+        <div className="mt-6 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm">
+            取消
+          </button>
+          <button
+            type="submit"
+            disabled={saving}
+            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {saving ? "處理中..." : "確認收款"}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

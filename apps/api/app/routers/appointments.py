@@ -707,8 +707,13 @@ def mark_arrived(
         q = db.query(CaseInstitutionQuota).filter(CaseInstitutionQuota.id == a.quota_id).first()
         if q:
             quota_flow.booked_to_used(q)
+    # 立刻寫入當日帳冊，讓櫃檯可以就地收款與開收據（原型 rooms：一頁完成）。
+    # settlement 的自動結算會看 checkin_status='arrived' 而略過，不會重複扣額度。
+    from app.services.settlement import materialize_appointment
+    record = materialize_appointment(db, a)
     write_audit(db, "appointments", a.id, "UPDATE", user.id,
-                {"checkin_status": "pending"}, {"checkin_status": "arrived"})
+                {"checkin_status": "pending"},
+                {"checkin_status": "arrived", "session_record_id": record.id if record else None})
     db.commit()
     db.refresh(a)
     therapist = db.query(User).filter(User.id == a.therapist_id).first()
