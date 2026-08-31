@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
+import { EventsTab } from "@/components/events-tab";
 import { FEE_ITEMS, SESSION_TYPE, hhmm, money, shiftDate, todayISO } from "@/lib/format";
 
 interface Case {
@@ -46,7 +47,7 @@ export default function BookingPage() {
   const role = (session?.user as any)?.role;
   const isTherapist = role === "therapist";
 
-  const [tab, setTab] = useState<"single" | "batch" | "week">("single");
+  const [tab, setTab] = useState<"single" | "batch" | "week" | "events">("single");
   const [cases, setCases] = useState<Case[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [therapists, setTherapists] = useState<Therapist[]>([]);
@@ -198,7 +199,7 @@ export default function BookingPage() {
       </p>
 
       <div className="mb-4 mt-4 flex gap-2 border-b border-gray-200">
-        {([["single", "新增預約（單筆）"], ["batch", "批次預約"], ["week", "診間空間週檢視"]] as const).map(
+        {([["single", "新增預約（單筆）"], ["batch", "批次預約"], ["week", "診間空間週檢視"], ["events", "🏛️ 5F雲燈教室（活動借用）"]] as const).map(
           ([k, label]) => (
             <button
               key={k}
@@ -218,6 +219,9 @@ export default function BookingPage() {
       {error && <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
       {ok && <div className="mb-4 rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700">{ok}</div>}
 
+      {tab === "events" && <EventsTab token={token} rooms={rooms} people={therapists} />}
+
+      {tab !== "events" && (
       <div className={tab === "week" ? "" : "grid gap-4 lg:grid-cols-2"}>
         {tab !== "week" && (
           <form onSubmit={submit} className="rounded-xl border border-gray-200 bg-white p-4">
@@ -394,11 +398,7 @@ export default function BookingPage() {
           )}
         </div>
       </div>
-
-      <p className="mt-4 text-xs text-gray-400">
-        🏛️ 5F 雲燈教室（活動借用）分頁本輪未納入 —— 講師費歸屬與行政服務費規則尚未定案，
-        見 open_questions.md Q16、Q17。
-      </p>
+      )}
     </div>
   );
 }

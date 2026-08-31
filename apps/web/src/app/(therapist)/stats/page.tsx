@@ -1,17 +1,19 @@
-import { PhasePlaceholder } from "@/components/phase-placeholder";
+"use client";
+
+import { useSession } from "next-auth/react";
+import { AnalyticsView } from "@/components/analytics-view";
 
 export default function StatsPage() {
+  const { data: session } = useSession();
+  const token = (session?.user as any)?.accessToken;
+
   return (
-    <PhasePlaceholder
-      title="我的數據"
-      phase={7}
-      summary="只呈現自己的數據，不與其他心理師橫向比較。"
-      contents={[
-        "到案率、留案率、黏著度分布、媒合成功率",
-        "可切換週／月／季與自訂區間，數字可下鑽到個案清單",
-        "時段分析的空檔可一鍵登記為可當診時段",
-      ]}
-      blocked="Q18 目標值由誰設定／Q19 空間使用率分母／留案率算法"
-    />
+    <div>
+      <h1 className="text-2xl font-bold">我的數據</h1>
+      <p className="mb-4 mt-1 text-sm text-gray-500">
+        到案率、留案率、黏著度與媒合成功率。可切換週／月／季。
+      </p>
+      {token && <AnalyticsView token={token} mine />}
+    </div>
   );
 }

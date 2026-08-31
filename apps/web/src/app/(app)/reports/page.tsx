@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch, exportCsv } from "@/lib/client-api";
+import { AnalyticsView } from "@/components/analytics-view";
 import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
 import {
   Chart as ChartJS,
@@ -73,7 +74,7 @@ const helpContent: HelpContent = {
 export default function ReportsPage() {
   const { data: session } = useSession();
   const token = (session?.user as any)?.accessToken;
-  const [outerTab, setOuterTab] = useState<"operations" | "finance" | "charts">("operations");
+  const [outerTab, setOuterTab] = useState<"analytics" | "operations" | "finance" | "charts">("analytics");
   const [helpOpen, setHelpOpen] = useState(false);
 
   if (!token) return <p>Loading...</p>;
@@ -92,6 +93,7 @@ export default function ReportsPage() {
       <div className="mb-4 flex gap-1 border-b border-gray-200">
         {(
           [
+            ["analytics", "🎯 關鍵指標"],
             ["operations", "📊 營運報表"],
             ["finance", "💰 財務報表"],
             ["charts", "📈 圖表"],
@@ -111,6 +113,7 @@ export default function ReportsPage() {
         ))}
       </div>
 
+      {outerTab === "analytics" && <AnalyticsView token={token} />}
       {outerTab === "operations" && <OperationsSection token={token} />}
       {outerTab === "finance" && <FinanceSection token={token} />}
       {outerTab === "charts" && <ChartsView token={token} />}

@@ -19,6 +19,8 @@ class User(Base):
     # False = 名單制心理師：可被預約與派案，但沒有登入帳號。
     # 仍是 users 的一列，因此 appointments/referrals/payouts 的外鍵都不必改。
     has_account = Column(Boolean, nullable=False, default=True, server_default="true")
+    # iCal 訂閱 token：讓心理師把班表訂閱進 Google 日曆（單向，不需 OAuth）
+    ical_token = Column(String(64), unique=True, nullable=True)
 
     cases = relationship("Case", back_populates="therapist", foreign_keys="[Case.therapist_id]")
     appointments = relationship("Appointment", back_populates="therapist", foreign_keys="[Appointment.therapist_id]")
