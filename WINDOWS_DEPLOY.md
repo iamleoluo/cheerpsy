@@ -65,6 +65,20 @@ Register-ScheduledTask -TaskName "DockerDesktopAutoStart" -Action $action -Trigg
 
 `-LogonType Password` 需要互動輸入密碼一次（`Set-ScheduledTask` 或排程器 GUI 都會跳密碼輸入框），無法完全用 SSH 一行指令做完，建議這步用 RDP 或現場操作。
 
+### 開機自動啟動：`start-cheerpsy.bat`
+
+repo 根目錄的 `start-cheerpsy.bat` 是給**開機／登入時自動把整個 stack 叫起來**用的，放進使用者的「啟動」資料夾（`shell:startup`）即可。它做三件事：
+
+1. 檢查 `Docker Desktop.exe` 有沒有在跑，沒有就啟動它
+2. 輪詢 `docker version` 等引擎就緒，每 5 秒一次、最多 36 次（約 3 分鐘）後放行
+3. `cd C:\cheerpsy` 後執行 `docker compose ... up -d`，輸出附加到 `C:\cheerpsy\autostart.log`
+
+它跟前面第 4 節的工作排程器是**兩種擇一的做法**：排程器版只負責啟動 Docker Desktop、且不需要有人登入；這支 .bat 連 compose stack 也一起帶起來，但要等到使用者登入才會觸發。目前主機上採用的是這支 .bat。
+
+日常更新程式碼請用 `deploy.ps1`（會先 `git pull` 再重建 image），不要用這支——它只做 `up -d`，不會拉新版程式碼。
+
+> ⚠️ `autostart.log` 已被 `.gitignore` 的 `*.log` 規則涵蓋，不會進版控。
+
 ### 5. Clone 專案
 
 ```powershell
@@ -167,35 +181,55 @@ error getting credentials - err: exec: "docker-credential-desktop":
 executable file not found in %PATH%
 ```
 
-**原因：** `%USERPROFILE%\.docker\config.json` 裡有 `"credsStore": "desktop"`，Docker 因此在拉任何 image 前都會先呼叫這支 credential helper。即使 `postgres:16-alpine`、`redis:7-alpine` 都是公開 image、根本不需要認證，helper 找不到一樣會整個失敗。
+**原因：** `%USERPROFILE%\.docker\config.json` 裡有 `"credsStore": "desktop"`，Docker 因此會去呼叫 `docker-credential-desktop` 這支 helper。找不到它時，即使拉的是 `postgres:16-alpine`、`redis:7-alpine` 這種公開 image，也可能整個失敗。
 
-最容易踩到的情境是**透過 SSH 執行 `deploy.ps1`**：helper 位於 Docker Desktop 的 `resources\bin`，該路徑是安裝時寫進使用者 PATH 的，而 SSH 的非互動 session 往往拿不到完整的使用者 PATH。於是同一台機器上，桌面手動跑沒事、SSH 進去跑就炸。
+最容易踩到的情境是**透過 SSH 執行 `deploy.ps1`**：helper 應位於 Docker Desktop 的 `resources\bin`，該路徑是安裝時寫進使用者 PATH 的，而 SSH 的非互動 session 往往拿不到完整的使用者 PATH。於是同一台機器上，桌面手動跑沒事、SSH 進去跑就炸。
 
-`deploy.ps1` 開頭已經會自動把 `C:\Program Files\Docker\Docker\resources\bin` 補進 PATH，並在補完仍找不到 helper 時印出警告。若警告出現、或你是手動下 `docker compose` 指令，二選一處理：
+#### 這台機器（114.35.230.241）的實測狀況
 
-**解法 1 — 找出 helper 實際位置並加進 PATH**
+2026-08-31 SSH 上去查過，結論跟一般情況不太一樣，先寫在這裡避免下次繞路：
 
-本機實測預設路徑下沒有這支執行檔，所以先搜出它在哪：
+| 檢查項 | 結果 |
+|---|---|
+| `config.json` 有 `"credsStore": "desktop"` | ✅ 有 |
+| `resources\bin` 目錄存在 | ✅ 存在 |
+| 該目錄下有 `docker-credential-desktop.exe` | ❌ **沒有**。只有 `docker-credential-wincred.exe` 與 `docker-credential-ecr-login.exe` |
+| 全機搜尋（ProgramFiles\Docker、LOCALAPPDATA\Docker、ProgramData\DockerDesktop） | ❌ 整台機器都**找不到** `docker-credential-desktop.exe` |
+| `Get-Command docker-credential-desktop` | ❌ 找不到（所以 `deploy.ps1` 的警告一定會出現） |
+| `docker manifest inspect postgres:16-alpine` | ✅ **成功**，正常回傳 manifest |
 
-```powershell
-Get-ChildItem "$env:ProgramFiles\Docker","$env:LOCALAPPDATA\Docker","$env:ProgramData\DockerDesktop" -Recurse -Filter "docker-credential-*.exe" -ErrorAction SilentlyContinue | Select-Object FullName
-```
+也就是說：**helper 確實不存在，但目前拉公開 image 並沒有真的失敗**（`auths` 是空的，Docker 沒有實際需要查詢的憑證）。所以 `deploy.ps1` 的警告在這台機器上屬於預期內的雜訊，看到不必緊張；真的爆 `error getting credentials` 時再依下面處理。
 
-找到後，永久加進使用者 PATH（新開的 shell 才會生效）：
+**解法 1 — 改指向機器上實際存在的 helper**
 
-```powershell
-$p = "<上面搜到的目錄>"
-[Environment]::SetEnvironmentVariable("PATH", "$p;" + [Environment]::GetEnvironmentVariable("PATH", "User"), "User")
-```
-
-**解法 2 — 直接移除 `credsStore` 設定（推薦，這台機器只拉公開 image）**
-
-編輯 `%USERPROFILE%\.docker\config.json`，把 `"credsStore": "desktop"` 那一行刪掉：
+這台機器沒有 `desktop` 這支，但有 `wincred`。把 `config.json` 的值改掉即可：
 
 ```jsonc
 {
   "auths": {},
-  "credsStore": "desktop"   // ← 刪掉這行（記得處理前一行結尾的逗號）
+  "credsStore": "wincred"    // ← 原本是 "desktop"
+}
+```
+
+`docker-credential-wincred.exe` 位於 `C:\Program Files\Docker\Docker\resources\bin`，`deploy.ps1` 開頭已經會把這個目錄補進 PATH。
+
+> 若你的機器上 `desktop` 那支是存在的、只是不在 PATH 上，那就不用改設定，用這段搜出位置後加進使用者 PATH 即可：
+>
+> ```powershell
+> Get-ChildItem "$env:ProgramFiles\Docker","$env:LOCALAPPDATA\Docker","$env:ProgramData\DockerDesktop" -Recurse -Filter "docker-credential-*.exe" -ErrorAction SilentlyContinue | Select-Object FullName
+> $p = "<搜到的目錄>"
+> [Environment]::SetEnvironmentVariable("PATH", "$p;" + [Environment]::GetEnvironmentVariable("PATH", "User"), "User")
+> ```
+
+**解法 2 — 直接移除 `credsStore` 設定（最省事，這台機器只拉公開 image）**
+
+編輯 `%USERPROFILE%\.docker\config.json`，把 `"credsStore"` 那一行刪掉：
+
+```jsonc
+{
+  "auths": {},
+  "credsStore": "desktop",   // ← 刪掉這行（記得處理逗號）
+  "currentContext": "desktop-linux"
 }
 ```
 
