@@ -17,6 +17,13 @@ from app.models.case_institution_quota import CaseInstitutionQuota
 from app.models.quota_template import QuotaTemplate
 from app.models.institution_contract import InstitutionContract
 from app.models.institution_plan import InstitutionPlan, PlanTransportFee
+from app.models.referral import (
+    ReferralRequest,
+    ReferralDesignation,
+    ReferralDispatch,
+    ReferralDispatchTarget,
+    ReferralSlotOffer,
+)
 
 __all__ = [
     "User",
@@ -40,4 +47,9 @@ __all__ = [
     "InstitutionContract",
     "InstitutionPlan",
     "PlanTransportFee",
+    "ReferralRequest",
+    "ReferralDesignation",
+    "ReferralDispatch",
+    "ReferralDispatchTarget",
+    "ReferralSlotOffer",
 ]

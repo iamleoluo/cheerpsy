@@ -37,6 +37,11 @@ class Case(Base):
     consultation_mode = Column(String(30), nullable=True)
     group_name = Column(String(200), nullable=True)
     group_representative = Column(String(100), nullable=True)
+    # 媒合來源追溯：派案碼與病歷號並存（Phase 2）
+    referral_id = Column(Integer, ForeignKey("referral_requests.id"), nullable=True, index=True)
+    dispatch_code = Column(String(12), nullable=True)
+    chief_complaint = Column(String(500), nullable=True)
+    complaint_note = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
     # 結案/復案：status="closed" 時填入，個案資料保留但從列表預設隱藏
     closed_at = Column(DateTime(timezone=True), nullable=True)
