@@ -17,8 +17,19 @@ class ClaimBatch(Base):
     expected_sessions = Column(Integer, nullable=True)
     institution_id = Column(Integer, ForeignKey("institutions.id"), nullable=True)
     case_id = Column(Integer, ForeignKey("cases.id"), nullable=True)
+    # ⚠️ period_start/end 自 Phase 9 起**不再綁定**，只是撈紀錄用的參考區間。
+    # 最終區間在送出核銷時寫入 final_period_start/end。
+    # （慈恩：「不要綁定核銷案的時間區間，送出核銷案時才會是最終的時間區間」）
     period_start = Column(Date, nullable=True)
     period_end = Column(Date, nullable=True)
+    final_period_start = Column(Date, nullable=True)
+    final_period_end = Column(Date, nullable=True)
+    # 核銷模式：monthly 前一個月／quarterly 前三個月／semester 上下學期／
+    #           threshold 個案次數達標，以達標那個月送出
+    claim_mode = Column(String(20), nullable=False, default="monthly", server_default="monthly")
+    # 撥款模式：claim_first 先核銷後撥款／prepay_then_claim 先撥款後核銷（儲值）／
+    #           prepay_no_claim 先撥款不核銷、後補收據
+    funding_mode = Column(String(20), nullable=False, default="claim_first", server_default="claim_first")
     total_amount = Column(Numeric(10, 2), nullable=False, default=0, server_default="0")
     payment_method = Column(String(20), nullable=True)
     payment_note = Column(String(200), nullable=True)
@@ -32,6 +43,18 @@ class ClaimBatch(Base):
     closed_at = Column(DateTime(timezone=True), nullable=True)
     docs_waived_at = Column(DateTime(timezone=True), nullable=True)
     docs_waived_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    # ── 收款明細（機構清冊畫面）──
+    applied_amount = Column(Numeric(12, 2), nullable=True)   # 申請金額
+    received_date = Column(Date, nullable=True)
+    received_amount = Column(Numeric(12, 2), nullable=True)
+    tax_withheld = Column(Boolean, nullable=False, default=False, server_default="false")
+    tax_amount = Column(Numeric(12, 2), nullable=True)       # 所得稅 10%
+    transfer_fee = Column(Numeric(10, 2), nullable=True)     # 轉帳手續費
+    net_amount = Column(Numeric(12, 2), nullable=True)       # 實際入帳金額
+    # 收款後鎖定；要改需向上一層權限
+    is_locked = Column(Boolean, nullable=False, default=False, server_default="false")
+    unlocked_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    unlock_reason = Column(String(500), nullable=True)
     void_reason = Column(String(500), nullable=True)
     voided_at = Column(DateTime(timezone=True), nullable=True)
     voided_by = Column(Integer, ForeignKey("users.id"), nullable=True)

@@ -31,8 +31,14 @@ class InstitutionContract(Base):
     # to_therapist 回扣型 —— 機構直接匯給心理師，慈恩對機構沒有應收，
     # 要收的是心理師依約回繳的部分
     settlement_direction = Column(String(20), nullable=False, default="to_clinic", server_default="to_clinic")
-    rebate_rate = Column(Numeric(5, 4), nullable=True)      # 回繳比例 0–1
+    # 回繳比例覆寫值；NULL = 依 (1 − 心理師抽成率) 計算
+    # （慈恩：「依方案的鐘點費＋心理師個別的抽成，去計算回扣的金額」）
+    rebate_rate = Column(Numeric(5, 4), nullable=True)
     rebate_method = Column(String(20), nullable=True)       # transfer / payout_deduct
+
+    # Q30：是否需要開立機構收據。衛生局市民／15-45青壯／國軍都不用，
+    # 只有台南教支需要
+    requires_institution_receipt = Column(Boolean, nullable=False, default=False, server_default="false")
 
     contact_person = Column(String(100), nullable=True)
     contact_phone = Column(String(50), nullable=True)

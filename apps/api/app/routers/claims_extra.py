@@ -597,3 +597,226 @@ def download_document(
             detail="此附件只登錄了檔名，沒有實際檔案（於支援上傳前建立）",
         )
     return FileResponse(d.stored_path, filename=d.file_name, media_type=d.content_type)
+
+
+# ---------------------------------------------------------------------------
+# Phase 9：核銷模式、漏單提醒、收款與鎖定
+# ---------------------------------------------------------------------------
+from app.services import claim_rules
+
+
+class ModeBody(BaseModel):
+    claim_mode: str
+    funding_mode: str = "claim_first"
+
+    @model_validator(mode="after")
+    def _check(self):
+        if self.claim_mode not in claim_rules.CLAIM_MODES:
+            raise ValueError(f"claim_mode 需為 {list(claim_rules.CLAIM_MODES)}")
+        if self.funding_mode not in claim_rules.FUNDING_MODES:
+            raise ValueError(f"funding_mode 需為 {list(claim_rules.FUNDING_MODES)}")
+        return self
+
+
+@router.get("/meta/modes")
+def list_modes(user: User = Depends(get_current_user)):
+    """核銷模式與撥款模式的可選值與說明。
+
+    路徑放在 /meta/ 底下，避免與既有 router 先註冊的
+    GET /claim-batches/{batch_id} 衝突（"modes" 會被當成 id 解析）。
+    """
+    return {
+        "claim_modes": claim_rules.CLAIM_MODES,
+        "funding_modes": claim_rules.FUNDING_MODES,
+        "note": (
+            "期間只是撈紀錄用的參考，不綁定核銷案；"
+            "最終區間在送出核銷時才確定。"
+        ),
+    }
+
+
+@router.put("/{batch_id}/mode")
+def set_mode(
+    batch_id: int,
+    body: ModeBody,
+    user: User = Depends(RequireRole(STAFF)),
+    db: Session = Depends(get_db),
+):
+    b = _batch(db, batch_id)
+    if b.is_locked:
+        raise HTTPException(status_code=400, detail="此核銷案已收款鎖定，需先解鎖")
+    b.claim_mode = body.claim_mode
+    b.funding_mode = body.funding_mode
+    start, end = claim_rules.suggested_period(body.claim_mode)
+    db.commit()
+    return {
+        "claim_mode": b.claim_mode,
+        "funding_mode": b.funding_mode,
+        "suggested_period": {"start": start, "end": end},
+        "note": "建議區間僅供撈紀錄，未寫入核銷案",
+    }
+
+
+@router.get("/{batch_id}/pre-submit-check")
+def pre_submit_check(
+    batch_id: int,
+    user: User = Depends(RequireRole(STAFF)),
+    db: Session = Depends(get_db),
+):
+    """送出前檢查：列出符合條件但未被納入任何核銷案的紀錄。
+
+    慈恩：漏掉的紀錄要讓行政確認是「下個月才要核銷」還是「真的遺漏」。
+    這是**提醒不是阻擋**。
+    """
+    b = _batch(db, batch_id)
+    missing = claim_rules.missing_records(db, b)
+    return {
+        "batch_id": b.id,
+        "applied_amount": float(claim_rules.applied_total(db, b)),
+        "missing_count": len(missing),
+        "missing_records": missing,
+        "hint": (
+            f"有 {len(missing)} 筆符合此方案與區間的紀錄未納入任何核銷案。"
+            "請確認是「下個月才要核銷」還是「遺漏」。"
+            if missing else "沒有遺漏的紀錄。"
+        ),
+    }
+
+
+class SubmitBody(BaseModel):
+    final_period_start: date | None = None
+    final_period_end: date | None = None
+    acknowledged_missing: bool = False
+
+
+@router.post("/{batch_id}/submit-claim")
+def submit_claim(
+    batch_id: int,
+    body: SubmitBody,
+    user: User = Depends(RequireRole(STAFF)),
+    db: Session = Depends(get_db),
+):
+    """送出核銷。此時才寫入最終區間，並登記核銷時數。"""
+    b = _batch(db, batch_id)
+    if b.is_locked:
+        raise HTTPException(status_code=400, detail="此核銷案已收款鎖定")
+
+    missing = claim_rules.missing_records(db, b)
+    if missing and not body.acknowledged_missing:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"有 {len(missing)} 筆紀錄未納入，請先確認是下個月才核銷還是遺漏"
+                "（確認後帶 acknowledged_missing=true 再送出）"
+            ),
+        )
+
+    records = db.query(SessionRecord).filter(SessionRecord.claim_batch_id == b.id).all()
+    if not records:
+        raise HTTPException(status_code=400, detail="此核銷案沒有任何紀錄")
+
+    now = _now()
+    for r in records:
+        claim_rules.register_claim_hours(db, r, now)
+
+    dates = [r.session_date for r in records]
+    b.final_period_start = body.final_period_start or min(dates)
+    b.final_period_end = body.final_period_end or max(dates)
+    b.applied_amount = claim_rules.applied_total(db, b)
+    b.status = "submitted"
+    b.submitted_at = now
+    write_audit(db, "claim_batches", b.id, "UPDATE", user.id, {"status": "ready"},
+                {"status": "submitted", "applied_amount": float(b.applied_amount),
+                 "missing_acknowledged": len(missing)})
+    db.commit()
+    return {
+        "batch_id": b.id,
+        "status": b.status,
+        "final_period": {"start": b.final_period_start, "end": b.final_period_end},
+        "applied_amount": float(b.applied_amount),
+        "records": len(records),
+        "note": "已送出，將出現在應收帳冊的機構清冊等待入帳",
+    }
+
+
+class ReceiveBody(BaseModel):
+    received_date: date
+    received_amount: float
+    tax_withheld: bool = False
+    transfer_fee: float = 0
+
+
+@router.post("/{batch_id}/confirm-receipt")
+def confirm_receipt(
+    batch_id: int,
+    body: ReceiveBody,
+    user: User = Depends(RequireRole(STAFF)),
+    db: Session = Depends(get_db),
+):
+    """確認收款。計算所得稅與手續費後鎖定，之後要改需上一層權限。"""
+    b = _batch(db, batch_id)
+    if b.is_locked:
+        raise HTTPException(status_code=400, detail="此核銷案已收款鎖定")
+
+    calc = claim_rules.settle_receipt(
+        body.received_amount, tax_withheld=body.tax_withheld, transfer_fee=body.transfer_fee
+    )
+    b.received_date = body.received_date
+    b.received_amount = calc["received_amount"]
+    b.tax_withheld = body.tax_withheld
+    b.tax_amount = calc["tax_amount"]
+    b.transfer_fee = calc["transfer_fee"]
+    b.net_amount = calc["net_amount"]
+    b.status = "received"
+    b.received_at = _now()
+    b.is_locked = True
+
+    db.query(SessionRecord).filter(SessionRecord.claim_batch_id == b.id).update(
+        {SessionRecord.payment_status: "claimed"}, synchronize_session=False
+    )
+    write_audit(db, "claim_batches", b.id, "UPDATE", user.id, None,
+                {"received_amount": float(b.received_amount),
+                 "tax_amount": float(b.tax_amount),
+                 "net_amount": float(b.net_amount), "locked": True})
+    db.commit()
+    diff = float(b.applied_amount or 0) - float(b.received_amount)
+    return {
+        "batch_id": b.id,
+        "applied_amount": float(b.applied_amount or 0),
+        "received_amount": float(b.received_amount),
+        "tax_amount": float(b.tax_amount),
+        "transfer_fee": float(b.transfer_fee),
+        "net_amount": float(b.net_amount),
+        "locked": True,
+        "difference": diff,
+        "warning": (
+            f"入帳金額與申請金額差 {diff}，請確認是否相符" if abs(diff) > 0.01 else None
+        ),
+        "note": "已歸入機構清冊結案表並鎖定",
+    }
+
+
+class UnlockClaimBody(BaseModel):
+    reason: str
+
+
+@router.post("/{batch_id}/unlock")
+def unlock_batch(
+    batch_id: int,
+    body: UnlockClaimBody,
+    user: User = Depends(RequireRole(["admin", "accountant"])),
+    db: Session = Depends(get_db),
+):
+    """解鎖已收款的核銷案。需要上一層權限（admin／accountant）。"""
+    b = _batch(db, batch_id)
+    if not b.is_locked:
+        raise HTTPException(status_code=400, detail="此核銷案未鎖定")
+    if not (body.reason or "").strip():
+        raise HTTPException(status_code=400, detail="解鎖需填寫原因")
+    b.is_locked = False
+    b.unlocked_by = user.id
+    b.unlock_reason = body.reason.strip()
+    write_audit(db, "claim_batches", b.id, "UPDATE", user.id, {"is_locked": True},
+                {"is_locked": False, "reason": body.reason})
+    db.commit()
+    return {"unlocked": True, "by": user.name}

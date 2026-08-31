@@ -41,8 +41,10 @@ class InstitutionPlan(Base):
     claim_threshold_sessions = Column(Integer, nullable=True)
 
     # ── 價格來源（問題7）──
-    # contract_fixed 合約談定固定價（多數）
-    # therapist_rate 依心理師鐘點費（聊心茶室、遠距抱抱、蛹之生／國泰舊案）
+    # contract_fixed     合約談定固定價（多數）
+    # therapist_rate     依心理師主檔鐘點費（蛹之生／國泰舊案；
+    #                    調價時由心理師自行決定舊案用舊價或新價）
+    # therapist_defined  心理師自己設定金額（聊心茶室、遠距抱抱）
     pricing_mode = Column(String(20), nullable=False, default="contract_fixed", server_default="contract_fixed")
 
     valid_from = Column(Date, nullable=True)
