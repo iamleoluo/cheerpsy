@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
 import { SESSION_TYPE, money, todayISO } from "@/lib/format";
+import { PreSubmitModal, ReceiptModal } from "@/components/claim-receipt-modal";
 
 interface Batch {
   id: number;
@@ -18,6 +19,18 @@ interface Batch {
   status: string;
   void_reason?: string | null;
   voided_at?: string | null;
+  claim_mode?: string;
+  funding_mode?: string;
+  final_period_start?: string | null;
+  final_period_end?: string | null;
+  applied_amount?: number | null;
+  received_date?: string | null;
+  received_amount?: number | null;
+  tax_withheld?: boolean;
+  tax_amount?: number | null;
+  transfer_fee?: number | null;
+  net_amount?: number | null;
+  is_locked?: boolean;
 }
 
 interface SelRecord {
@@ -42,6 +55,18 @@ interface Plan {
   institution_name: string | null;
 }
 
+const CLAIM_MODE: Record<string, string> = {
+  monthly: "月核銷",
+  quarterly: "季核銷",
+  semester: "學期核銷",
+  threshold: "次數達標",
+};
+const FUNDING_MODE: Record<string, string> = {
+  claim_first: "先核銷後撥款",
+  prepay_then_claim: "先撥款後核銷",
+  prepay_no_claim: "先撥款不核銷",
+};
+
 const STATUS: Record<string, { label: string; cls: string }> = {
   collecting: { label: "收集中", cls: "bg-amber-100 text-amber-700" },
   ready: { label: "待送出", cls: "bg-blue-100 text-blue-700" },
@@ -54,13 +79,16 @@ export default function ClaimsPage() {
   const { data: session } = useSession();
   const token = (session?.user as any)?.accessToken;
   const role = (session?.user as any)?.role;
-  const [tab, setTab] = useState<"list" | "docs" | "void">("list");
+  const [tab, setTab] = useState<"list" | "docs" | "settled" | "void">("list");
   const [batches, setBatches] = useState<Batch[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<number | null>(null);
   const [voidFor, setVoidFor] = useState<Batch | null>(null);
+  const [submitFor, setSubmitFor] = useState<Batch | null>(null);
+  const [receiptFor, setReceiptFor] = useState<Batch | null>(null);
+  const [unlockFor, setUnlockFor] = useState<Batch | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -84,8 +112,11 @@ export default function ClaimsPage() {
     load();
   }, [load]);
 
-  const active = batches.filter((b) => b.status !== "voided" && !b.is_legacy);
+  const active = batches.filter(
+    (b) => b.status !== "voided" && b.status !== "received" && !b.is_legacy
+  );
   const voided = batches.filter((b) => b.status === "voided");
+  const settled = batches.filter((b) => b.status === "received" && !b.is_legacy);
   const legacy = batches.filter((b) => b.is_legacy);
 
   if (loading) return <p className="p-6 text-gray-400">載入中...</p>;
@@ -102,6 +133,7 @@ export default function ClaimsPage() {
         {([
           ["list", `核銷案列表 (${active.length})`],
           ["docs", "文件狀態與退件"],
+          ["settled", `機構清冊結案表 (${settled.length})`],
           ["void", `作廢處理 (${voided.length})`],
         ] as const).map(([k, label]) => (
           <button
@@ -149,7 +181,29 @@ export default function ClaimsPage() {
                     {b.period_start ?? "—"} ~ {b.period_end ?? "—"}
                   </span>
                   <span className={`rounded px-1.5 py-0.5 text-xs ${st.cls}`}>{st.label}</span>
-                  <span className="ml-auto tabular-nums">{money(b.total_amount)}</span>
+                  {b.claim_mode && (
+                    <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">
+                      {CLAIM_MODE[b.claim_mode] ?? b.claim_mode}
+                    </span>
+                  )}
+                  {b.funding_mode && b.funding_mode !== "claim_first" && (
+                    <span className="rounded bg-blue-100 px-1.5 py-0.5 text-xs text-blue-700">
+                      {FUNDING_MODE[b.funding_mode]}
+                    </span>
+                  )}
+                  <span className="ml-auto tabular-nums">
+                    {money(b.applied_amount ?? b.total_amount)}
+                  </span>
+                  {b.status === "ready" && (
+                    <button onClick={() => setSubmitFor(b)} className="text-xs font-medium text-primary-600 hover:underline">
+                      送出核銷
+                    </button>
+                  )}
+                  {b.status === "submitted" && (
+                    <button onClick={() => setReceiptFor(b)} className="text-xs font-medium text-green-600 hover:underline">
+                      確認收款
+                    </button>
+                  )}
                   {b.status !== "voided" && ["admin", "accountant"].includes(role) && (
                     <button onClick={() => setVoidFor(b)} className="text-xs text-red-500 hover:underline">
                       作廢
@@ -173,6 +227,113 @@ export default function ClaimsPage() {
 
       {tab === "docs" && <DocsStatus token={token} batches={active} onChanged={load} />}
 
+      {tab === "settled" && (
+        <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+          <table className="w-full text-sm">
+            <thead className="border-b border-gray-200 bg-gray-50 text-left text-xs text-gray-500">
+              <tr>
+                <th className="px-3 py-3">核銷編號</th>
+                <th className="px-3 py-3">機構</th>
+                <th className="px-3 py-3 text-right">申請金額</th>
+                <th className="px-3 py-3">收款日期</th>
+                <th className="px-3 py-3 text-right">收款金額</th>
+                <th className="px-3 py-3">所得稅 10%</th>
+                <th className="px-3 py-3 text-right">手續費</th>
+                <th className="px-3 py-3 text-right">實際入帳</th>
+                <th className="px-3 py-3">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {settled.length === 0 && (
+                <tr><td colSpan={9} className="px-4 py-10 text-center text-gray-400">尚無已收款的核銷案</td></tr>
+              )}
+              {settled.map((b) => {
+                const diff = (b.applied_amount ?? 0) - (b.received_amount ?? 0);
+                return (
+                  <tr key={b.id} className="border-b border-gray-100 last:border-0">
+                    <td className="px-3 py-2.5 font-mono text-xs">{b.batch_number}</td>
+                    <td className="px-3 py-2.5">{b.institution_name}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">{money(b.applied_amount ?? 0)}</td>
+                    <td className="px-3 py-2.5">{b.received_date ?? "—"}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">
+                      {money(b.received_amount ?? 0)}
+                      {Math.abs(diff) > 0.01 && (
+                        <span className="block text-[10px] text-amber-600">
+                          與申請差 {money(Math.abs(diff))}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 text-xs">
+                      {b.tax_withheld ? `是，扣除 ${money(b.tax_amount ?? 0)}` : "否"}
+                    </td>
+                    <td className="px-3 py-2.5 text-right tabular-nums text-gray-500">
+                      {b.transfer_fee ? money(b.transfer_fee) : "—"}
+                    </td>
+                    <td className="px-3 py-2.5 text-right font-semibold tabular-nums">
+                      {money(b.net_amount ?? 0)}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      {b.is_locked ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-400">🔒 已鎖定</span>
+                          {["admin", "accountant"].includes(role) && (
+                            <button onClick={() => setUnlockFor(b)} className="text-xs text-primary-600 hover:underline">
+                              解鎖
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-amber-600">未鎖定</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <p className="border-t border-gray-100 px-4 py-2 text-xs text-gray-400">
+            已收款的紀錄收款後即鎖定，要修改需向上一層權限（管理員／會計）解鎖並填寫原因。
+          </p>
+        </div>
+      )}
+
+      {submitFor && (
+        <PreSubmitModal
+          token={token}
+          batchId={submitFor.id}
+          onClose={() => setSubmitFor(null)}
+          onDone={() => {
+            setSubmitFor(null);
+            load();
+          }}
+        />
+      )}
+      {receiptFor && (
+        <ReceiptModal
+          token={token}
+          batch={{
+            id: receiptFor.id,
+            batch_number: receiptFor.batch_number,
+            applied_amount: receiptFor.applied_amount ?? receiptFor.total_amount,
+          }}
+          onClose={() => setReceiptFor(null)}
+          onDone={() => {
+            setReceiptFor(null);
+            load();
+          }}
+        />
+      )}
+      {unlockFor && (
+        <UnlockClaimModal
+          token={token}
+          batch={unlockFor}
+          onClose={() => setUnlockFor(null)}
+          onDone={() => {
+            setUnlockFor(null);
+            load();
+          }}
+        />
+      )}
       {voidFor && (
         <VoidModal
           token={token}
@@ -573,6 +734,48 @@ function VoidModal({ token, batch, onClose, onDone }: any) {
         <div className="mt-6 flex justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm">取消</button>
           <button type="submit" className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white">確認作廢</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function UnlockClaimModal({ token, batch, onClose, onDone }: any) {
+  const [reason, setReason] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          try {
+            await clientFetch(`/claim-batches/${batch.id}/unlock`, token, {
+              method: "POST",
+              body: JSON.stringify({ reason }),
+            });
+            onDone();
+          } catch (e: any) {
+            setErr(e.message);
+          }
+        }}
+        className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl"
+      >
+        <h2 className="mb-1 text-lg font-bold">解鎖 {batch.batch_number}</h2>
+        <p className="mb-4 text-sm text-gray-500">
+          此核銷案已收款並鎖定。解鎖會留下稽核紀錄。
+        </p>
+        {err && <div className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>}
+        <textarea
+          required
+          rows={3}
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="解鎖原因（必填）"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+        />
+        <div className="mt-6 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm">取消</button>
+          <button type="submit" className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white">確認解鎖</button>
         </div>
       </form>
     </div>

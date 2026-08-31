@@ -29,6 +29,7 @@ interface Contract {
   settlement_direction: "to_clinic" | "to_therapist";
   rebate_rate: number | null;
   rebate_method: string | null;
+  requires_institution_receipt: boolean;
 }
 
 const CAP_LABEL: Record<string, string> = {
@@ -241,7 +242,9 @@ function ContractForm({
   const [rebateRate, setRebateRate] = useState(
     contract?.rebate_rate != null ? String(Math.round(contract.rebate_rate * 100)) : ""
   );
-  const [rebateMethod, setRebateMethod] = useState(contract?.rebate_method ?? "payout_deduct");
+  const [needInstReceipt, setNeedInstReceipt] = useState(
+    contract?.requires_institution_receipt ?? false
+  );
   const [from, setFrom] = useState(contract?.valid_from ?? "");
   const [until, setUntil] = useState(contract?.valid_until ?? "");
   const [saving, setSaving] = useState(false);
@@ -268,7 +271,8 @@ function ContractForm({
       valid_until: until || null,
       settlement_direction: direction,
       rebate_rate: direction === "to_therapist" && rebateRate !== "" ? Number(rebateRate) / 100 : null,
-      rebate_method: direction === "to_therapist" ? rebateMethod : null,
+      rebate_method: direction === "to_therapist" ? "payout_deduct" : null,
+      requires_institution_receipt: needInstReceipt,
     };
     try {
       if (contract) {
@@ -440,34 +444,46 @@ function ContractForm({
               </label>
             </div>
             {direction === "to_therapist" && (
-              <div className="mt-3 grid grid-cols-2 gap-3">
-                <label className="text-sm">
-                  <span className="mb-1 block text-gray-600">回繳比例（%）*</span>
+              <div className="mt-3">
+                <label className="block text-sm">
+                  <span className="mb-1 block text-gray-600">回繳比例覆寫（%，留空＝依抽成計算）</span>
                   <input
-                    required
                     type="number"
                     min="0"
                     max="100"
                     value={rebateRate}
                     onChange={(e) => setRebateRate(e.target.value)}
+                    placeholder="依心理師抽成自動計算"
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 tabular-nums"
                   />
                 </label>
-                <label className="text-sm">
-                  <span className="mb-1 block text-gray-600">回繳方式</span>
-                  <select value={rebateMethod} onChange={(e) => setRebateMethod(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2">
-                    <option value="payout_deduct">從當月酬勞扣除</option>
-                    <option value="transfer">心理師自行匯款</option>
-                  </select>
-                </label>
-                <p className="col-span-2 rounded bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                  ⚠️ 回繳的實際流程尚待慈恩確認（open_questions Q28）。
-                  選「從當月酬勞扣除」時這筆帳歸在心理師酬勞處理；
-                  選「心理師自行匯款」則需要在應收帳冊另開分類追蹤，該分類目前尚未建立。
+                <p className="mt-2 rounded bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                  回扣金額 ＝ 機構請款額 × (1 − 心理師個別抽成率)。
+                  例：請款 $2,000、抽成 60% → 心理師留 $1,200，回繳慈恩 $800。
+                  <b className="mt-1 block">
+                    回繳方式固定為「從當月酬勞扣除」，因此不進應收帳冊，
+                    在日報表確認無誤匯入月報表時算出並扣除。
+                  </b>
                 </p>
               </div>
             )}
           </div>
+
+          <label className="col-span-2 flex items-start gap-2 rounded-lg border border-gray-200 p-3 text-sm">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={needInstReceipt}
+              onChange={(e) => setNeedInstReceipt(e.target.checked)}
+            />
+            <span>
+              <b>需要開立機構收據</b>
+              <span className="block text-xs text-gray-500">
+                多數方案不用（衛生局市民、15-45青壯、國軍都不用），目前只有台南教支需要。
+                個案自付額的收據一律照方案規定開給個案，與此項無關。
+              </span>
+            </span>
+          </label>
 
           <label className="text-sm">
             <span className="mb-1 block text-gray-600">有效起日</span>

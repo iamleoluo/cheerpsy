@@ -46,24 +46,17 @@ export const emptyRateItem = (): RateItem => ({
   note: null,
 });
 
-/** 常見樣態的快速範本，對應清冊裡的實際方案 */
+/** 快速範本。慈恩定案：服務型態不同要**拆成不同方案**，
+ *  因此這裡只保留「第幾次階梯」這種必須放在同一方案內的樣態。 */
 const PRESETS: { name: string; hint: string; make: () => RateItem[] }[] = [
   {
-    name: "單一價目",
-    hint: "多數方案",
-    make: () => [{ ...emptyRateItem(), label: "個別諮商", service_type: "individual" }],
-  },
-  {
-    name: "依服務型態分價",
-    hint: "如家防中心、國軍",
-    make: () => [
-      { ...emptyRateItem(), label: "個別諮商", service_type: "individual" },
-      { ...emptyRateItem(), label: "家族諮商", service_type: "family_group" },
-    ],
+    name: "單一價格",
+    hint: "多數方案。一個方案一種價格",
+    make: () => [{ ...emptyRateItem(), label: "諮商費用" }],
   },
   {
     name: "依次數階梯",
-    hint: "如衛生局市民、蛹之生",
+    hint: "如衛生局市民第1次免費第2次$200、蛹之生第3次起漲價",
     make: () => [
       { ...emptyRateItem(), label: "第 1 次", session_seq_from: 1, session_seq_to: 1 },
       { ...emptyRateItem(), label: "第 2 次", session_seq_from: 2, session_seq_to: 2 },
@@ -71,12 +64,9 @@ const PRESETS: { name: string; hint: string; make: () => RateItem[] }[] = [
     ],
   },
   {
-    name: "依時長分價",
-    hint: "如緯穎智造",
-    make: () => [
-      { ...emptyRateItem(), label: "個別諮商 50 分", duration_minutes: 50 },
-      { ...emptyRateItem(), label: "入廠諮商 100 分", duration_minutes: 100 },
-    ],
+    name: "爽約費",
+    hint: "如南家扶無事先請假 $200",
+    make: () => [{ ...emptyRateItem(), label: "無事先請假爽約費", is_no_show_fee: true }],
   },
 ];
 
@@ -104,7 +94,7 @@ export function RateItemsEditor({
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <span className="text-sm font-medium">方案價目</span>
         <span className="text-xs text-gray-500">
-          一個方案可以有多筆價目 —— 依服務型態、時長或第幾次諮商而不同
+          原則上<b>一個方案一種價格</b>；只有「第幾次不同價」要放在同一方案內
         </span>
         {!disabled && (
           <div className="ml-auto flex flex-wrap gap-1">
@@ -169,8 +159,11 @@ export function RateItemsEditor({
 
               {!r.is_no_show_fee && (
                 <div className="mb-2 grid grid-cols-2 gap-2 md:grid-cols-4">
-                  <label className="text-xs">
-                    <span className="mb-0.5 block text-gray-500">適用服務型態</span>
+                  <label className="text-xs md:col-span-2">
+                    <span className="mb-0.5 block text-gray-500">
+                      適用服務型態
+                      <span className="ml-1 text-gray-400">（通常留「不限」，改用拆方案）</span>
+                    </span>
                     <select
                       disabled={disabled}
                       value={r.service_type ?? ""}

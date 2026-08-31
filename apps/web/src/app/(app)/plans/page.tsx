@@ -35,7 +35,7 @@ interface Plan {
   per_person_monthly_limit: number | null;
   extension_sessions: number | null;
   claim_threshold_sessions: number | null;
-  pricing_mode: "contract_fixed" | "therapist_rate";
+  pricing_mode: "contract_fixed" | "therapist_rate" | "therapist_defined";
   rate_items: RateItem[];
   settlement_direction: string;
   rebate_rate: number | null;
@@ -262,7 +262,12 @@ export default function PlansPage() {
                     ) : null}
                     {p.pricing_mode === "therapist_rate" && (
                       <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[11px] text-blue-700">
-                        依心理師鐘點費
+                        依心理師主檔鐘點費
+                      </span>
+                    )}
+                    {p.pricing_mode === "therapist_defined" && (
+                      <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[11px] text-blue-700">
+                        心理師自訂金額
                       </span>
                     )}
                     {p.settlement_direction === "to_therapist" && (
@@ -443,7 +448,9 @@ function PlanForm({
   const [threshold, setThreshold] = useState(
     plan?.claim_threshold_sessions != null ? String(plan.claim_threshold_sessions) : ""
   );
-  const [pricingMode, setPricingMode] = useState<"contract_fixed" | "therapist_rate">(
+  const [pricingMode, setPricingMode] = useState<
+    "contract_fixed" | "therapist_rate" | "therapist_defined"
+  >(
     plan?.pricing_mode ?? "contract_fixed"
   );
   const [rateItems, setRateItems] = useState<RateItem[]>(
@@ -512,7 +519,12 @@ function PlanForm({
         onSubmit={submit}
         className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-white p-6 shadow-xl"
       >
-        <h2 className="mb-4 text-lg font-bold">{plan ? "編輯機構方案" : "新增機構方案"}</h2>
+        <h2 className="mb-2 text-lg font-bold">{plan ? "編輯機構方案" : "新增機構方案"}</h2>
+        <p className="mb-4 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-800">
+          💡 <b>服務型態不同請拆成不同方案</b>（例：國軍-個別、國軍-講座、國軍-本島團輔），
+          這樣才能給心理師正確的額度。拆開的方案<b>可以一起核銷</b> ——
+          在核銷案裡同時勾選即可。只有「同一種服務但第幾次不同價」才放在同一方案內。
+        </p>
 
         {err && <div className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>}
 
@@ -635,10 +647,13 @@ function PlanForm({
             <span className="mb-1 block text-gray-600">價格來源</span>
             <select value={pricingMode} onChange={(e) => setPricingMode(e.target.value as any)} className="w-full rounded-lg border border-gray-300 px-3 py-2">
               <option value="contract_fixed">合約談定固定價</option>
-              <option value="therapist_rate">依心理師鐘點費</option>
+              <option value="therapist_rate">依心理師主檔鐘點費</option>
+              <option value="therapist_defined">心理師自己設定金額</option>
             </select>
             <span className="mt-0.5 block text-xs text-gray-400">
-              聊心茶室、遠距抱抱等機構案價格跟著心理師鐘點費走
+              多數機構案由合約決定、心理師不能改。
+              蛹之生／國泰舊案跟隨心理師主檔鐘點費（調價時由心理師決定舊案用舊價或新價）；
+              聊心茶室、遠距抱抱則是心理師自己設定金額。
             </span>
           </label>
 
@@ -683,8 +698,17 @@ function PlanForm({
               <RateItemsEditor items={rateItems} onChange={setRateItems} />
             ) : (
               <p className="rounded bg-blue-50 px-3 py-2 text-sm text-blue-800">
-                此方案的價格<b>依心理師鐘點費</b>決定，不需設定方案價目。
-                心理師預約時會帶入自己的鐘點費。
+                {pricingMode === "therapist_rate" ? (
+                  <>
+                    此方案價格<b>跟隨心理師主檔鐘點費</b>，不需設定方案價目。
+                    心理師調價時可自行決定舊案沿用舊價或改用新價。
+                  </>
+                ) : (
+                  <>
+                    此方案由<b>心理師自己設定金額</b>，不需設定方案價目。
+                    預約時直接填寫當次金額。
+                  </>
+                )}
               </p>
             )}
           </div>
