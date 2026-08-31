@@ -16,7 +16,11 @@ class Appointment(Base):
     session_type = Column(String(20), nullable=False)  # in_person, online, outdoor
     time_range = Column(TSTZRANGE, nullable=False)
     amount = Column(Numeric(10, 2), nullable=False)
-    status = Column(String(20), nullable=False, default="booked")  # booked, executed, cancelled
+    # booked / executed / cancelled / no_show（Phase 1b 新增 no_show）
+    status = Column(String(20), nullable=False, default="booked")
+    # advance_notice 24h前請假 $0 / late_cancel 臨時取消 / no_notice 無故未到
+    no_show_type = Column(String(20), nullable=True)
+    no_show_fee = Column(Numeric(10, 2), nullable=False, default=0, server_default="0")
     funding_source = Column(String(20), nullable=False, default="self_pay", server_default="self_pay")  # self_pay | institution
     quota_id = Column(Integer, ForeignKey("case_institution_quotas.id"), nullable=True)
     visit_seq = Column(Integer, nullable=True)

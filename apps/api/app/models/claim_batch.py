@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Date, DateTime, ForeignKey, Integer, Numeric, String, func
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, Numeric, String, func
 
 from app.database import Base
 
@@ -9,7 +9,10 @@ class ClaimBatch(Base):
     id = Column(Integer, primary_key=True)
     batch_number = Column(String(50), unique=True, nullable=False)
     external_ref = Column(String(100), nullable=True)
-    type = Column(String(20), nullable=False)  # self_pay, institution
+    # institution。self_pay 已於 Phase 1b 廢除（改走應收帳冊月結分頁），
+    # 既有列標 is_legacy 供唯讀顯示，不再新建。
+    type = Column(String(20), nullable=False)
+    is_legacy = Column(Boolean, nullable=False, default=False, server_default="false")
     billing_cycle = Column(String(20), nullable=True)
     expected_sessions = Column(Integer, nullable=True)
     institution_id = Column(Integer, ForeignKey("institutions.id"), nullable=True)
@@ -29,3 +32,6 @@ class ClaimBatch(Base):
     closed_at = Column(DateTime(timezone=True), nullable=True)
     docs_waived_at = Column(DateTime(timezone=True), nullable=True)
     docs_waived_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    void_reason = Column(String(500), nullable=True)
+    voided_at = Column(DateTime(timezone=True), nullable=True)
+    voided_by = Column(Integer, ForeignKey("users.id"), nullable=True)

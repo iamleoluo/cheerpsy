@@ -32,6 +32,11 @@ class Case(Base):
     therapist_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     status = Column(String(20), nullable=False, default="initial")
     case_type = Column(String(20), nullable=False, default="individual", server_default="individual")  # individual / couple
+    # 諮商型態：individual／couple／visitation 會面交往／family_group 親子團體／
+    #           outreach_individual／outreach_group／lecture
+    consultation_mode = Column(String(30), nullable=True)
+    group_name = Column(String(200), nullable=True)
+    group_representative = Column(String(100), nullable=True)
     notes = Column(Text, nullable=True)
     # 結案/復案：status="closed" 時填入，個案資料保留但從列表預設隱藏
     closed_at = Column(DateTime(timezone=True), nullable=True)
