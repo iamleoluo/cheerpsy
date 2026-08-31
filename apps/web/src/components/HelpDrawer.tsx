@@ -93,11 +93,11 @@ export default function HelpDrawer({ open, onClose, guideId, content }: Props) {
 
   // Prefer guideId → look up from shared content; fall back to legacy content prop
   const resolvedId = guideId ?? content?.guideId;
-  const module = resolvedId ? guideModules.find((m) => m.id === resolvedId) : null;
+  const guideModule = resolvedId ? guideModules.find((m) => m.id === resolvedId) : null;
 
-  const title = module?.title ?? content?.title ?? "";
-  const overview = module?.overview ?? content?.overview ?? "";
-  const sections = module?.sections ?? content?.sections ?? [];
+  const title = guideModule?.title ?? content?.title ?? "";
+  const overview = guideModule?.overview ?? content?.overview ?? "";
+  const sections = guideModule?.sections ?? content?.sections ?? [];
 
   return (
     <>

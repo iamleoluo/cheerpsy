@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { Sidebar } from "@/components/sidebar";
-import { TopBar } from "@/components/TopBar";
+import { AppShell } from "@/components/app-shell";
 
 export default async function AppLayout({
   children,
@@ -15,12 +14,8 @@ export default async function AppLayout({
   const userRole = (session.user as any).role ?? "therapist";
 
   return (
-    <div className="flex h-screen">
-      <Sidebar userName={userName} userRole={userRole} />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <TopBar />
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
-      </div>
-    </div>
+    <AppShell userName={userName} userRole={userRole}>
+      {children}
+    </AppShell>
   );
 }
