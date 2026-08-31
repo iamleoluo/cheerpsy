@@ -164,6 +164,8 @@ def apply_template(
             institution_id=t.institution_id,
             total_count=t.total_count,
             used_count=0,
+            booked_count=0,
+            reserved_count=t.total_count,
             valid_from=valid_from,
             valid_until=valid_until,
             note=f"套用範本：{t.name}",

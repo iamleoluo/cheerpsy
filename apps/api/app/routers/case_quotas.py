@@ -20,10 +20,18 @@ WRITE_ROLES = ["admin", "staff"]
 
 
 def _to_response(q: CaseInstitutionQuota, db: Session) -> QuotaResponse:
-    reserved = db.query(Appointment).filter(
+    # ⚠️ 命名衝突（Phase 1a 引入，Phase 3 解決）
+    # 本 response 的 `reserved_count` 語意是「已預約」＝ 尚未執行的預約筆數，
+    # 與新增的 DB 欄位 CaseInstitutionQuota.reserved_count（「已預留」）**意義不同**。
+    # 目前這個值仍即時由 appointments 算出，所以前端顯示正確；
+    # 等 Phase 3 讓預約流程實際維護 booked_count 之後，這裡改讀 DB 欄位並把
+    # response 欄位更名為 booked_count。在那之前不要把兩者混用。
+    # 見 gap_analysis.md §1.4 額度三態
+    booked_live = db.query(Appointment).filter(
         Appointment.quota_id == q.id,
         Appointment.status == "booked",
     ).count()
+    reserved = booked_live
     return QuotaResponse(
         id=q.id,
         case_id=q.case_id,
@@ -125,6 +133,10 @@ def create_quota(
         institution_id=body.institution_id,
         total_count=body.total_count,
         used_count=0,
+        # 加入方案時全數進「已預留」，維持 used+booked+reserved=total 恆等式
+        # （gap_analysis §1.4 額度三態）
+        booked_count=0,
+        reserved_count=body.total_count,
         valid_from=body.valid_from,
         valid_until=body.valid_until,
         note=body.note,
@@ -168,6 +180,13 @@ def update_quota(
     if body.total_count is not None:
         if body.total_count < q.used_count:
             raise HTTPException(status_code=400, detail=f"總次數不可少於已用次數 {q.used_count}")
+        if body.total_count < q.used_count + q.booked_count:
+            raise HTTPException(
+                status_code=400,
+                detail=f"總次數不可少於已用 {q.used_count} ＋ 已預約 {q.booked_count}",
+            )
+        # 差額全部反映在「已預留」，維持恆等式
+        q.reserved_count = body.total_count - q.used_count - q.booked_count
         q.total_count = body.total_count
     if body.clear_valid_from:
         q.valid_from = None

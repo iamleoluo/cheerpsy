@@ -329,7 +329,11 @@ def close_case(
     )
     for q in quotas:
         if q.total_count > q.used_count:
+            # 結案：已預留＋已預約全數釋出回方案總池，只保留已使用的歷史
             q.total_count = q.used_count
+            q.booked_count = 0
+            q.reserved_count = 0
+            q.status = "closed"
             quotas_zeroed += 1
 
     c.status = "closed"

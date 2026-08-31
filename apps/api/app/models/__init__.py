@@ -15,6 +15,8 @@ from app.models.claim_batch import ClaimBatch
 from app.models.product_sales import ProductSale
 from app.models.case_institution_quota import CaseInstitutionQuota
 from app.models.quota_template import QuotaTemplate
+from app.models.institution_contract import InstitutionContract
+from app.models.institution_plan import InstitutionPlan, PlanTransportFee
 
 __all__ = [
     "User",
@@ -35,4 +37,7 @@ __all__ = [
     "ProductSale",
     "CaseInstitutionQuota",
     "QuotaTemplate",
+    "InstitutionContract",
+    "InstitutionPlan",
+    "PlanTransportFee",
 ]
