@@ -36,6 +36,11 @@ class CaseInstitutionQuota(Base):
     # valid_from / valid_until 為 None 表「無時間上限」
     valid_from = Column(Date, nullable=True)
     valid_until = Column(Date, nullable=True)
+    # 問題5：經評估後延長的次數（警局、奇美家照 6+3）
+    extension_granted = Column(Integer, nullable=False, default=0, server_default="0")
+    extension_note = Column(String(500), nullable=True)
+    extension_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    extension_at = Column(DateTime(timezone=True), nullable=True)
     note = Column(String(500), nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

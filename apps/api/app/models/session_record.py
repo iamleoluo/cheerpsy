@@ -26,6 +26,10 @@ class SessionRecord(Base):
     # 追款方式（應收帳冊三分頁依此分）：immediate 未收／monthly 月結／institution 機構
     payment_track = Column(String(20), nullable=False, default="immediate", server_default="immediate")
     fee_item = Column(String(30), nullable=True)  # 諮商項目，連動收據名目
+    # 問題2／3：採用的價目項目，以及核銷單上登記的時數與單價
+    rate_item_id = Column(Integer, ForeignKey("plan_rate_items.id"), nullable=True)
+    claim_hours = Column(Numeric(5, 2), nullable=True)
+    claim_unit_rate = Column(Numeric(10, 2), nullable=True)
     is_no_show = Column(Boolean, nullable=False, default=False, server_default="false")
     no_show_fee = Column(Numeric(10, 2), nullable=False, default=0, server_default="0")
     payment_status = Column(String(20), nullable=False, default="unpaid")

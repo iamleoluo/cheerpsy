@@ -9,7 +9,7 @@ from app.auth.dependencies import RequireRole, get_current_user
 from app.database import get_db
 from app.models.case_institution_quota import CaseInstitutionQuota
 from app.models.institution_contract import InstitutionContract
-from app.models.institution_plan import InstitutionPlan, PlanTransportFee
+from app.models.institution_plan import InstitutionPlan, PlanRateItem, PlanTransportFee
 from app.models.user import User
 from app.services.audit import write_audit
 
@@ -31,14 +31,53 @@ class TransportFeeOut(TransportFeeIn):
     model_config = {"from_attributes": True}
 
 
+class RateItemIn(BaseModel):
+    label: str
+    service_type: str | None = None
+    duration_minutes: int | None = None
+    session_seq_from: int | None = None
+    session_seq_to: int | None = None
+    total_amount: float
+    self_pay_amount: float = 0
+    self_pay_receipt_item: str | None = None
+    institution_receipt_item: str | None = None
+    claim_hours: float | None = None
+    claim_unit_rate: float | None = None
+    is_no_show_fee: bool = False
+    note: str | None = None
+
+    @model_validator(mode="after")
+    def _check(self):
+        if self.self_pay_amount > self.total_amount:
+            raise ValueError("個案自付額不可高於總額：" + self.label)
+        if (self.claim_hours is None) != (self.claim_unit_rate is None):
+            raise ValueError("核銷登記時數與單價需成對填寫：" + self.label)
+        return self
+
+
+class RateItemOut(RateItemIn):
+    id: int
+    institution_claim_amount: float
+
+    model_config = {"from_attributes": True}
+
+
 class PlanBase(BaseModel):
     name: str
     claim_unit: str | None = None
     claim_contact: str | None = None
     claim_phone: str | None = None
     # None 代表「不限」
+    quota_unit: str = "count"
     per_person_count: int | None = None
     annual_total_count: int | None = None
+    per_person_amount: float | None = None
+    annual_total_amount: float | None = None
+    per_person_monthly_limit: int | None = None
+    extension_sessions: int | None = None
+    claim_threshold_sessions: int | None = None
+    pricing_mode: str = "contract_fixed"
+    rate_items: list[RateItemIn] = []
     valid_from: date | None = None
     valid_until: date | None = None
     notes: str | None = None
@@ -54,6 +93,16 @@ class PlanBase(BaseModel):
             raise ValueError("有效起日不可晚於迄日")
         if sum(1 for t in self.transport_fees if t.is_default) > 1:
             raise ValueError("交通費選項只能有一個預設值")
+        if self.quota_unit not in ("count", "amount"):
+            raise ValueError("quota_unit 需為 count 或 amount")
+        if self.quota_unit == "amount" and not (self.per_person_amount or self.annual_total_amount):
+            raise ValueError("額度以金額計時，需填寫每人金額或年度總金額")
+        if self.pricing_mode not in ("contract_fixed", "therapist_rate"):
+            raise ValueError("pricing_mode 需為 contract_fixed 或 therapist_rate")
+        if self.pricing_mode == "contract_fixed" and not self.rate_items:
+            raise ValueError("合約固定價的方案至少需要一筆價目")
+        if sum(1 for r in self.rate_items if r.is_no_show_fee) > 1:
+            raise ValueError("爽約費只能設定一筆")
         return self
 
 
@@ -75,8 +124,18 @@ class PlanResponse(BaseModel):
     claim_unit: str | None = None
     claim_contact: str | None = None
     claim_phone: str | None = None
+    quota_unit: str = "count"
     per_person_count: int | None = None
     annual_total_count: int | None = None
+    per_person_amount: float | None = None
+    annual_total_amount: float | None = None
+    per_person_monthly_limit: int | None = None
+    extension_sessions: int | None = None
+    claim_threshold_sessions: int | None = None
+    pricing_mode: str = "contract_fixed"
+    rate_items: list[RateItemOut] = []
+    settlement_direction: str = "to_clinic"
+    rebate_rate: float | None = None
     valid_from: date | None = None
     valid_until: date | None = None
     notes: str | None = None
@@ -145,8 +204,33 @@ def _to_response(p: InstitutionPlan, agg: dict | None = None) -> PlanResponse:
         claim_unit=p.claim_unit,
         claim_contact=p.claim_contact,
         claim_phone=p.claim_phone,
+        quota_unit=p.quota_unit,
         per_person_count=p.per_person_count,
         annual_total_count=p.annual_total_count,
+        per_person_amount=float(p.per_person_amount) if p.per_person_amount is not None else None,
+        annual_total_amount=float(p.annual_total_amount) if p.annual_total_amount is not None else None,
+        per_person_monthly_limit=p.per_person_monthly_limit,
+        extension_sessions=p.extension_sessions,
+        claim_threshold_sessions=p.claim_threshold_sessions,
+        pricing_mode=p.pricing_mode,
+        rate_items=[
+            RateItemOut(
+                id=r.id, label=r.label, service_type=r.service_type,
+                duration_minutes=r.duration_minutes,
+                session_seq_from=r.session_seq_from, session_seq_to=r.session_seq_to,
+                total_amount=float(r.total_amount),
+                self_pay_amount=float(r.self_pay_amount or 0),
+                institution_claim_amount=float(r.institution_claim_amount),
+                self_pay_receipt_item=r.self_pay_receipt_item,
+                institution_receipt_item=r.institution_receipt_item,
+                claim_hours=float(r.claim_hours) if r.claim_hours is not None else None,
+                claim_unit_rate=float(r.claim_unit_rate) if r.claim_unit_rate is not None else None,
+                is_no_show_fee=r.is_no_show_fee, note=r.note,
+            )
+            for r in p.rate_items
+        ],
+        settlement_direction=contract.settlement_direction if contract else "to_clinic",
+        rebate_rate=float(contract.rebate_rate) if contract and contract.rebate_rate is not None else None,
         valid_from=p.valid_from,
         valid_until=p.valid_until,
         notes=p.notes,
@@ -159,6 +243,23 @@ def _to_response(p: InstitutionPlan, agg: dict | None = None) -> PlanResponse:
         annual_reserved=a.get("reserved", 0),
         case_count=a.get("cases", 0),
     )
+
+
+def _sync_rate_items(db: Session, plan: InstitutionPlan, items) -> None:
+    for existing in list(plan.rate_items):
+        db.delete(existing)
+    db.flush()
+    for i, r in enumerate(items):
+        db.add(PlanRateItem(
+            plan_id=plan.id, label=r.label.strip(), service_type=r.service_type,
+            duration_minutes=r.duration_minutes,
+            session_seq_from=r.session_seq_from, session_seq_to=r.session_seq_to,
+            total_amount=r.total_amount, self_pay_amount=r.self_pay_amount,
+            self_pay_receipt_item=r.self_pay_receipt_item,
+            institution_receipt_item=r.institution_receipt_item,
+            claim_hours=r.claim_hours, claim_unit_rate=r.claim_unit_rate,
+            is_no_show_fee=r.is_no_show_fee, note=r.note, sort_order=i,
+        ))
 
 
 def _sync_transport_fees(db: Session, plan: InstitutionPlan, fees: list[TransportFeeIn]) -> None:
@@ -248,8 +349,15 @@ def create_plan(
         claim_unit=body.claim_unit,
         claim_contact=body.claim_contact,
         claim_phone=body.claim_phone,
+        quota_unit=body.quota_unit,
         per_person_count=body.per_person_count,
         annual_total_count=body.annual_total_count,
+        per_person_amount=body.per_person_amount,
+        annual_total_amount=body.annual_total_amount,
+        per_person_monthly_limit=body.per_person_monthly_limit,
+        extension_sessions=body.extension_sessions,
+        claim_threshold_sessions=body.claim_threshold_sessions,
+        pricing_mode=body.pricing_mode,
         valid_from=body.valid_from or contract.valid_from,
         valid_until=body.valid_until or contract.valid_until,
         notes=body.notes,
@@ -258,6 +366,7 @@ def create_plan(
     db.add(p)
     db.flush()
     _sync_transport_fees(db, p, body.transport_fees)
+    _sync_rate_items(db, p, body.rate_items)
     db.commit()
     db.refresh(p)
     write_audit(db, "institution_plans", p.id, "INSERT", user.id, None, {"name": p.name})
@@ -282,12 +391,20 @@ def update_plan(
     p.claim_unit = body.claim_unit
     p.claim_contact = body.claim_contact
     p.claim_phone = body.claim_phone
+    p.quota_unit = body.quota_unit
     p.per_person_count = body.per_person_count
     p.annual_total_count = body.annual_total_count
+    p.per_person_amount = body.per_person_amount
+    p.annual_total_amount = body.annual_total_amount
+    p.per_person_monthly_limit = body.per_person_monthly_limit
+    p.extension_sessions = body.extension_sessions
+    p.claim_threshold_sessions = body.claim_threshold_sessions
+    p.pricing_mode = body.pricing_mode
     p.valid_from = body.valid_from
     p.valid_until = body.valid_until
     p.notes = body.notes
     _sync_transport_fees(db, p, body.transport_fees)
+    _sync_rate_items(db, p, body.rate_items)
     after = {"name": p.name, "per_person_count": p.per_person_count,
              "annual_total_count": p.annual_total_count, "status": p.status}
     write_audit(db, "institution_plans", p.id, "UPDATE", user.id, before, after)

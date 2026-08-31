@@ -29,6 +29,7 @@ class Appointment(Base):
     checked_in_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     fee_item = Column(String(30), nullable=True)  # 諮商項目，連動收據名目
     plan_id = Column(Integer, ForeignKey("institution_plans.id"), nullable=True)
+    rate_item_id = Column(Integer, ForeignKey("plan_rate_items.id"), nullable=True)
     transport_fee = Column(Numeric(10, 2), nullable=False, default=0, server_default="0")
     transport_fee_option_id = Column(Integer, ForeignKey("plan_transport_fees.id"), nullable=True)
     video_link = Column(String(500), nullable=True)

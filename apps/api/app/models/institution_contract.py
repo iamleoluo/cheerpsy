@@ -27,6 +27,13 @@ class InstitutionContract(Base):
     cap_type = Column(String(20), nullable=False, default="unlimited", server_default="unlimited")
     cap_value = Column(Numeric(12, 2), nullable=True)  # cap_type='unlimited' 時為 NULL
 
+    # 問題4：款項流向。to_clinic 機構匯給慈恩（一般）；
+    # to_therapist 回扣型 —— 機構直接匯給心理師，慈恩對機構沒有應收，
+    # 要收的是心理師依約回繳的部分
+    settlement_direction = Column(String(20), nullable=False, default="to_clinic", server_default="to_clinic")
+    rebate_rate = Column(Numeric(5, 4), nullable=True)      # 回繳比例 0–1
+    rebate_method = Column(String(20), nullable=True)       # transfer / payout_deduct
+
     contact_person = Column(String(100), nullable=True)
     contact_phone = Column(String(50), nullable=True)
 
