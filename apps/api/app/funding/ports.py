@@ -75,7 +75,12 @@ class FundingPlanProvider(Protocol):
         ...
 
     def release(self, db: Session, appointment_id: int, reason: str) -> None:
-        """未到／取消／個案請假時呼叫。已預約 → 已預留（不是釋回，個案仍保有額度）。"""
+        """未到／取消／個案請假時呼叫。已預約 → 已預留（不是釋回，個案仍保有額度）。
+
+        機構未到補助（09 §7.1 已裁示）：若該預約掛的方案有設定
+        no_show_fee_numeric，這裡也會順便產生一筆機構請款紀錄（不消耗個
+        人額度）——呼叫端不需要另外處理，這是子系統內部決定要不要做的事。
+        """
         ...
 
     def close_case_enrollments(self, db: Session, case_id: int) -> None:

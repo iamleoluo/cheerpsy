@@ -30,6 +30,11 @@ class InstPlan(Base):
     # 個案代號需求（16 個方案標記「有」，見 07 §1.6）。
     requires_external_code = Column(Boolean, default=False, nullable=False, server_default="false")
 
+    # 機構未到補助（09 §7.1 已裁示）：自費與大部分機構一律不做失約費，
+    # NULL＝不補助（絕大多數方案的預設）；個別機構方案可設定補助金額，
+    # 未到時直接產生一筆可核銷的機構請款紀錄，不消耗個人額度。
+    no_show_fee_numeric = Column(Integer, nullable=True)
+
     # 薪酬模式：commission(抽成) / kickback(回扣) / none(無心理師勞務，如借場地)
     compensation_mode = Column(String(12), nullable=False, default="commission", server_default="commission")
 

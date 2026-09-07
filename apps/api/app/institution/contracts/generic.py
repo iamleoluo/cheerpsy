@@ -108,6 +108,7 @@ def build_generic_panel(db: Session, contract: InstContract) -> dict:
                     "claim_capacity": plan.claim_capacity,
                     "claim_timing": plan.claim_timing,
                     "requires_external_code": plan.requires_external_code,
+                    "no_show_fee_numeric": plan.no_show_fee_numeric,
                     "counts_toward_quota": plan.counts_toward_quota,
                     "is_active": plan.is_active,
                 },

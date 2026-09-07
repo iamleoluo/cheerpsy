@@ -156,6 +156,7 @@ class PlanCreate(BaseModel):
     requires_assessment: bool = False
     counts_toward_quota: bool = True
     requires_external_code: bool = False
+    no_show_fee_numeric: int | None = None
     compensation_mode: str = "commission"
     case_receipt_required: bool = True
     case_receipt_item_name: str | None = None
@@ -185,6 +186,7 @@ class PlanResponse(BaseModel):
     requires_assessment: bool
     counts_toward_quota: bool
     requires_external_code: bool
+    no_show_fee_numeric: int | None = None
     compensation_mode: str
     claim_group_key: str | None = None
     claim_timing: str
@@ -209,6 +211,7 @@ def _plan_to_response(p: InstPlan) -> PlanResponse:
         requires_assessment=p.requires_assessment,
         counts_toward_quota=p.counts_toward_quota,
         requires_external_code=p.requires_external_code,
+        no_show_fee_numeric=p.no_show_fee_numeric,
         compensation_mode=p.compensation_mode,
         claim_group_key=p.claim_group_key,
         claim_timing=p.claim_timing,

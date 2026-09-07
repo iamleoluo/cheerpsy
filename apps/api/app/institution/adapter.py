@@ -47,6 +47,7 @@ from app.institution.models.rate_rule import InstRateRule
 from app.institution.rules.pricing import RateRuleContext, resolve_rate
 from app.models.appointment import Appointment
 from app.models.case import Case
+from app.models.session_record import SessionRecord
 from app.models.user import User
 
 DEFAULT_COMMISSION_RATE = Decimal("0.70")
@@ -496,7 +497,38 @@ class InstitutionFundingProvider:
             return
         # 已預約 → 已預留（不是釋回！個案仍保有額度，見 08 決策 C3）
         e.reserved_count = (e.reserved_count or 0) + 1
+        self._maybe_create_no_show_fee_record(db, appt, e)
         db.flush()
+
+    def _maybe_create_no_show_fee_record(self, db: Session, appt: Appointment, enrollment: InstEnrollment) -> None:
+        """機構未到補助（09 §7.1 已裁示）：自費與大部分機構一律不做失約費，
+        只有方案設定了 no_show_fee_numeric 才會走到這裡。不消耗個人額度
+        （reserved_count 已經在上面還原了），只產生一筆機構請款紀錄，直接
+        可被核銷收納——跟真正執行的場次共用同一套核銷路徑，不需要另外的
+        通道。commission_rate_used 固定 0：沒有實際場次，這筆錢不分給
+        心理師（跟一般場次的抽成計算是兩件事）。
+        """
+        plan = enrollment.plan
+        if plan is None or not plan.no_show_fee_numeric:
+            return
+        fee = Decimal(str(plan.no_show_fee_numeric))
+        record = SessionRecord(
+            appointment_id=appt.id,
+            session_date=appt.time_range.lower.date() if appt.time_range else None,
+            case_id=appt.case_id,
+            therapist_id=appt.therapist_id,
+            session_type=appt.session_type,
+            fee_category="no_show_fee",
+            amount=fee,
+            commission_rate_used=Decimal("0"),
+            funding_source="institution",
+            payment_status="unpaid",
+            plan_id=plan.id,
+            case_payable=Decimal("0"),
+            institution_payable=fee,
+            compensation_mode=plan.compensation_mode,
+        )
+        db.add(record)
 
     def close_case_enrollments(self, db: Session, case_id: int) -> None:
         rows = db.query(InstEnrollment).filter(InstEnrollment.case_id == case_id).all()

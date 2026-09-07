@@ -31,7 +31,7 @@ client = TestClient(app)
 provider = InstitutionFundingProvider()
 
 
-def _seed(db, quota_pool_kwargs=None, period_limit=None, period_unit=None):
+def _seed(db, quota_pool_kwargs=None, period_limit=None, period_unit=None, no_show_fee_numeric=None):
     admin = User(email="l2_admin@test.local", password_hash=hash_password("x"), name="Layer2測試管理員", role="admin", user_code="A900")
     therapist = User(
         email="l2_t@test.local", password_hash=hash_password("x"), name="Layer2測試心理師",
@@ -61,6 +61,7 @@ def _seed(db, quota_pool_kwargs=None, period_limit=None, period_unit=None):
     plan = InstPlan(
         contract_id=contract.id, name="Layer2測試方案", quota_unit="count", default_quota_limit_numeric=10,
         quota_pool_id=pool.id if pool else None, period_limit=period_limit, period_unit=period_unit,
+        no_show_fee_numeric=no_show_fee_numeric,
         compensation_mode="commission", case_receipt_required=True, case_receipt_item_name="場地費",
         claim_group_key="Layer2測試方案", claim_timing="monthly", created_by=admin.id,
     )
@@ -279,3 +280,53 @@ class TestInstitutionDocGateEndpoints:
         assert appt_id not in [row["appointment_id"] for row in pending]
         confirmed = client.get(f"/institution/claim-groups/{ctx['plan'].claim_group_key}/confirmed-docs", headers=headers).json()
         assert appt_id in [row["appointment_id"] for row in confirmed]
+
+
+class TestNoShowFee:
+    """機構未到補助（09 §7.1 已裁示）：自費與大部分機構一律不做，只有
+    方案設定 no_show_fee_numeric 才會產生可核銷的機構請款紀錄，且不消耗
+    個人額度。"""
+
+    def test_no_fee_by_default(self, db, http_db):
+        ctx = _seed(db)  # 沒設 no_show_fee_numeric，絕大多數方案的預設
+        appt_id = _book_and_checkin(db, ctx)
+        headers = {"Authorization": f"Bearer {ctx['admin_token']}"}
+        r = client.put(f"/appointments/{appt_id}/check-in", headers=headers, json={"status": "no_show"})
+        assert r.status_code == 200, r.text
+
+        sr = db.query(SessionRecord).filter(SessionRecord.appointment_id == appt_id).first()
+        assert sr is None, "沒設補助金額時，未到不該產生任何 session_record"
+
+    def test_creates_claimable_record_when_configured(self, db, http_db):
+        ctx = _seed(db, no_show_fee_numeric=300)
+        appt_id = _book_and_checkin(db, ctx)
+        headers = {"Authorization": f"Bearer {ctx['admin_token']}"}
+        r = client.put(f"/appointments/{appt_id}/check-in", headers=headers, json={"status": "no_show"})
+        assert r.status_code == 200, r.text
+
+        sr = db.query(SessionRecord).filter(SessionRecord.appointment_id == appt_id).first()
+        assert sr is not None
+        assert sr.fee_category == "no_show_fee"
+        assert sr.case_payable == Decimal("0")
+        assert sr.institution_payable == Decimal("300")
+        assert sr.funding_source == "institution"
+        assert sr.commission_rate_used == Decimal("0")
+
+    def test_does_not_consume_quota(self, db, http_db):
+        ctx = _seed(db, no_show_fee_numeric=300)
+        appt_id = _book_and_checkin(db, ctx)
+        headers = {"Authorization": f"Bearer {ctx['admin_token']}"}
+        client.put(f"/appointments/{appt_id}/check-in", headers=headers, json={"status": "no_show"})
+
+        e = db.query(InstEnrollment).filter(InstEnrollment.id == ctx["enrollment_id"]).first()
+        assert e.used_count == 0, "未到不應該消耗個人使用額度，即使補助有觸發"
+
+    def test_fee_record_appears_in_uncollected(self, db, http_db):
+        ctx = _seed(db, no_show_fee_numeric=300)
+        appt_id = _book_and_checkin(db, ctx)
+        headers = {"Authorization": f"Bearer {ctx['admin_token']}"}
+        client.put(f"/appointments/{appt_id}/check-in", headers=headers, json={"status": "no_show"})
+
+        rows = claims_service.list_uncollected(db, ctx["plan"].claim_group_key)
+        sr = db.query(SessionRecord).filter(SessionRecord.appointment_id == appt_id).first()
+        assert sr.id in [r.id for r in rows], "應該跟一般場次共用同一條核銷路徑，直接可被收納"
