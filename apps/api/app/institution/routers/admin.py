@@ -28,6 +28,7 @@ from app.institution.models.enrollment import InstEnrollment
 from app.institution.models.plan import InstPlan
 from app.institution.models.rate_rule import InstRateRule
 from app.models.institution import Institution
+from app.models.session_record import SessionRecord
 from app.models.user import User
 
 router = APIRouter(prefix="/institution", tags=["institution-subsystem"])
@@ -106,6 +107,25 @@ def create_contract(
     db.commit()
     db.refresh(c)
     return _contract_to_response(c)
+
+
+@router.get("/contracts/{contract_id}/panel")
+def get_contract_panel(
+    contract_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """合約面板的唯一讀取來源（09 §3.2、§3.5）。回應形狀依合約的 Layer 3
+    模組而定——首批 5 份合約升級成專屬模組前，一律走通用版
+    （app.institution.contracts.generic）。前端是這份 read model 的
+    通用渲染器，不需要理解任何機構規則。"""
+    from app.institution.contracts.registry import get_module_for_contract
+
+    contract = db.query(InstContract).filter(InstContract.id == contract_id).first()
+    if not contract:
+        raise HTTPException(status_code=404, detail="合約不存在")
+    module = get_module_for_contract(contract_id)
+    return module.build_panel(db, contract)
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -349,6 +369,35 @@ def enroll_case(
     return result
 
 
+class ExtendEnrollmentRequest(BaseModel):
+    additional_count: int
+    note: str | None = None
+
+
+@router.post("/enrollments/{enrollment_id}/extend")
+def extend_enrollment(
+    enrollment_id: int,
+    body: ExtendEnrollmentRequest,
+    user: User = Depends(RequireRole(WRITE_ROLES)),
+    db: Session = Depends(get_db),
+):
+    """額度延長（09 §3.3 家防中心「6+3」）。呼叫的是子系統自己的
+    InstitutionFundingProvider，不經 funding.registry——這支操作是機構
+    管理頁專屬的，不在主系統會用到的 8 支 Protocol 方法裡（見 ports.py）。
+    """
+    from app.institution.adapter import InstitutionFundingProvider
+
+    try:
+        result = InstitutionFundingProvider().extend_enrollment(
+            db, enrollment_id, body.additional_count, body.note, approved_by=user.id
+        )
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    db.commit()
+    return result
+
+
 # ─────────────────────────────────────────────────────────────────────────
 # 核銷案容器（Layer 3）—— 見 app/institution/claims/service.py 的完成度說明
 # ─────────────────────────────────────────────────────────────────────────
@@ -383,6 +432,20 @@ def list_uncollected(
     """漏單提醒／跨月遺留提醒共用的查詢。見 07 §4.3。"""
     rows = claims_service.list_uncollected(db, claim_group_key, period_start, period_end)
     return [{"id": r.id, "session_date": r.session_date, "case_id": r.case_id, "amount": r.institution_payable or r.amount} for r in rows]
+
+
+@router.get("/claim-groups/{claim_group_key}/candidates")
+def list_per_case_count_candidates(
+    claim_group_key: str,
+    capacity: int = Query(...),
+    period_start: date | None = None,
+    period_end: date | None = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """次數制核銷（09 §3.5 claim_by_count 區塊）的候選名單，依個案分組並
+    標出誰已達 capacity。裝不滿也能送出，這裡只是提示不是門檻。"""
+    return claims_service.list_per_case_count_candidates(db, claim_group_key, capacity, period_start, period_end)
 
 
 @router.post("/claim-cases", status_code=status.HTTP_201_CREATED)
@@ -437,6 +500,28 @@ def record_claim_payment(
     return {"id": cc.id, "status": cc.status, "net_received": cc.net_received}
 
 
+class VoidClaimCaseRequest(BaseModel):
+    reason: str | None = None
+
+
+@router.put("/claim-cases/{claim_case_id}/void")
+def void_claim_case(
+    claim_case_id: int,
+    body: VoidClaimCaseRequest,
+    user: User = Depends(RequireRole(["admin", "staff"])),
+    db: Session = Depends(get_db),
+):
+    """作廢核銷案（任一階段皆可）。內含紀錄脫離本案、payment_status 退回
+    未核銷，可被收進新核銷案（07 §4.3、09 §3.5）。"""
+    try:
+        cc = claims_service.void_claim_case(db, claim_case_id, body.reason, voided_by=user.id)
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    db.commit()
+    return {"id": cc.id, "status": cc.status, "voided_at": cc.voided_at}
+
+
 @router.get("/claim-cases")
 def list_claim_cases(
     claim_group_key: str | None = None,
@@ -462,3 +547,76 @@ def list_claim_cases(
         }
         for c in rows
     ]
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# 文件雙閘門（心理師提交 + 行政核對）—— 這兩支端點的差異只有一個過濾條件
+# ─────────────────────────────────────────────────────────────────────────
+# app/routers/ledger.py 的 /pending-docs、/confirmed-docs 只認舊路徑
+# （claim_batch_id IS NOT NULL），機構子系統的紀錄走 inst_claim_lines，
+# claim_batch_id 永遠是 NULL，所以完全不會出現在那兩支端點裡——這裡補上
+# 對應的機構版本。實際「提交／核對／撤回」動作沿用 ledger.py 既有的
+# PUT /ledger/{record_id}/confirm-doc 等端點（那幾支本來就是通用的，只操作
+# SessionRecord 欄位，不管走哪條核銷路徑都通用，不需要另外寫一份）。
+
+
+def _query_institution_docs(db: Session, user: User, submitted: bool, plan_ids: list[int] | None = None):
+    from app.routers.ledger import _to_response
+
+    q = db.query(SessionRecord).filter(
+        SessionRecord.funding_source == "institution",
+        SessionRecord.is_void.is_(False),
+        SessionRecord.therapist_doc_submitted_at.isnot(None) if submitted else SessionRecord.therapist_doc_submitted_at.is_(None),
+    )
+    if plan_ids is not None:
+        q = q.filter(SessionRecord.plan_id.in_(plan_ids))
+    if user.role == "therapist":
+        q = q.filter(SessionRecord.therapist_id == user.id)
+    order = SessionRecord.therapist_doc_submitted_at.desc() if submitted else SessionRecord.session_date.desc()
+    return [_to_response(r, db) for r in q.order_by(order).all()]
+
+
+@router.get("/claim-groups/{claim_group_key}/pending-docs")
+def list_institution_pending_docs(
+    claim_group_key: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """此核銷群組裡，心理師尚未提交文件的紀錄。合約面板「文件」分頁用這支
+    （按方案分開看）；心理師自己的「文件確認」頁用下面不分群組的版本。"""
+    plan_ids = [p.id for p in db.query(InstPlan.id).filter(InstPlan.claim_group_key == claim_group_key).all()]
+    if not plan_ids:
+        return []
+    return _query_institution_docs(db, user, submitted=False, plan_ids=plan_ids)
+
+
+@router.get("/claim-groups/{claim_group_key}/confirmed-docs")
+def list_institution_confirmed_docs(
+    claim_group_key: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """此核銷群組裡，心理師已提交、行政尚未核對的紀錄。"""
+    plan_ids = [p.id for p in db.query(InstPlan.id).filter(InstPlan.claim_group_key == claim_group_key).all()]
+    if not plan_ids:
+        return []
+    return _query_institution_docs(db, user, submitted=True, plan_ids=plan_ids)
+
+
+@router.get("/pending-docs")
+def list_all_institution_pending_docs(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """不分核銷群組——心理師端「文件確認」頁用這支：我還有哪些機構紀錄
+    的文件沒交，不用先知道自己被哪個核銷群組管。"""
+    return _query_institution_docs(db, user, submitted=False)
+
+
+@router.get("/confirmed-docs")
+def list_all_institution_confirmed_docs(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """不分核銷群組——心理師端「文件確認」頁的「已確認」分頁。"""
+    return _query_institution_docs(db, user, submitted=True)

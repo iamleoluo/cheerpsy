@@ -130,12 +130,15 @@ class PlanOption(BaseModel):
 
 
 class EnrollmentState(BaseModel):
-    """個案機構狀態列表的一列——個案詳情頁「機構方案」分頁直接渲染這個。"""
+    """個案機構狀態列表的一列——個案詳情頁「機構方案」分頁、以及合約面板
+    「個案與額度」分頁（依方案反查個案，09 §3.5）都直接渲染這個。"""
 
     enrollment_id: int
     plan_id: int
     plan_name: str
     institution_name: str | None = None
+    case_id: int | None = None
+    case_name: str | None = None
     external_case_code: str | None = None
     quota_unit: QuotaUnit = "count"
     quota_limit: Decimal | None = None

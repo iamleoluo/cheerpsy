@@ -13,15 +13,17 @@
        推進 'claiming'（機構應收款／待核銷中）。
     ✅ record_payment：入帳，把紀錄推進 'claimed'，容器鎖定。
 
+✅ list_per_case_count_candidates：grouping_mode="per_case_count" 的候選
+   名單——依個案分組 list_uncollected() 的結果，標出誰已經達到容量門檻
+   （09 §3.5 的 claim_by_count 區塊直接吃這個）。裝不滿也能送出（07 §4.3
+   已定案），所以這支只是「標記」不是「擋下」。
+✅ void_claim_case：作廢核銷案。內含紀錄一律脫離本案、payment_status
+   退回 'unpaid'，可重新被收進新容器（09 §3.5 claim_list 區塊的作廢按鈕）。
+
 尚未實作（TODO，留給下一輪）：
-    - 依 grouping_mode="per_case_count" 自動把「某個案累積滿 N 次」的紀錄
-      自動收進容器——目前 attach_records 需要行政或程式呼叫端自己算出
-      候選 session_record_ids。自動化版本要先確認「同一個案在同一方案
-      裡，哪些紀錄還沒被任何容器收走」，邏輯與 list_uncollected 共用。
     - registered_hours 轉換（台南地院這類）尚未在 attach_records 自動套用，
       呼叫端需自行算好 actual_hours/registered_hours/registered_unit_price
       傳入。
-    - inst_quota_pools 的總量扣減未串接（國軍 $149,000 那種池）。
 """
 
 from __future__ import annotations
@@ -60,6 +62,56 @@ def list_uncollected(
     if period_end:
         q = q.filter(SessionRecord.session_date <= period_end)
     return [r for r in q.all() if r.id not in already_claimed_ids]
+
+
+def list_per_case_count_candidates(
+    db: Session, claim_group_key: str, capacity: int, period_start: date | None = None, period_end: date | None = None
+) -> list[dict]:
+    """次數制核銷（09 §3.3 家防中心「每滿 N 次」代表這種模式）的候選名單。
+
+    依個案分組 list_uncollected() 的結果，每組標出是否已達 capacity——但
+    這只是提示，不是門檻：容器裝不滿也能送出（07 §4.3），行政要提前送
+    一樣可以，只是這支查詢會告訴他「哪些人已經滿了、比較該優先處理」。
+    """
+    rows = list_uncollected(db, claim_group_key, period_start, period_end)
+    by_case: dict[int, list[SessionRecord]] = {}
+    for r in rows:
+        by_case.setdefault(r.case_id, []).append(r)
+    return [
+        {
+            "case_id": case_id,
+            "session_record_ids": [r.id for r in recs],
+            "count": len(recs),
+            "ready": len(recs) >= capacity,
+            "total_amount": sum((r.institution_payable or r.amount) for r in recs),
+        }
+        for case_id, recs in by_case.items()
+    ]
+
+
+def void_claim_case(db: Session, claim_case_id: int, reason: str | None, voided_by: int | None = None) -> InstClaimCase:
+    """作廢核銷案（任一階段皆可，07 §4.3 核銷案流程的回頭路）。
+
+    內含紀錄一律脫離本案：刪掉 inst_claim_lines（不是留著標記，因為
+    「脫離」就是要讓它重新出現在 list_uncollected() 裡，而那支查詢本來
+    就是用「有沒有被任何 line 收納」判斷，line 還在就會被排除）；
+    payment_status 退回 'unpaid'，可被收進新核銷案。
+    """
+    cc = db.query(InstClaimCase).filter(InstClaimCase.id == claim_case_id).first()
+    if cc is None:
+        raise ValueError(f"核銷案不存在：id={claim_case_id}")
+    if cc.status == "void":
+        raise ValueError("此核銷案已經是作廢狀態")
+    for line in list(cc.lines):
+        sr = db.query(SessionRecord).filter(SessionRecord.id == line.session_record_id).first()
+        if sr is not None:
+            sr.payment_status = "unpaid"
+        db.delete(line)
+    cc.status = "void"
+    cc.voided_at = datetime.now(timezone.utc)
+    cc.voided_reason = reason
+    db.flush()
+    return cc
 
 
 def open_claim_case(

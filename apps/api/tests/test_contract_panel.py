@@ -1,0 +1,135 @@
+"""Layer 3 骨架：GET /institution/contracts/{id}/panel（通用版）。
+見 V2升級計畫 09 §3.1–§3.5。這支測試驗證的是「read model 的形狀正確、
+會依方案欄位長出不同區塊」，不是機構規則本身（那些已經在
+test_institution_layer2_primitives.py 覆蓋）。
+"""
+
+from decimal import Decimal
+
+from fastapi.testclient import TestClient
+
+from app.auth.jwt import create_access_token
+from app.auth.password import hash_password
+from app.institution.adapter import InstitutionFundingProvider
+from app.institution.models.contract import InstContract
+from app.institution.models.plan import InstPlan
+from app.institution.models.quota_pool import InstQuotaPool
+from app.institution.models.rate_rule import InstRateRule
+from app.main import app
+from app.models.case import Case
+from app.models.institution import Institution
+from app.models.user import User
+
+client = TestClient(app)
+provider = InstitutionFundingProvider()
+
+
+def _seed_contract_with_two_plans(db):
+    admin = User(email="panel_admin@test.local", password_hash=hash_password("x"), name="面板測試管理員", role="admin", user_code="A950")
+    db.add(admin)
+    db.flush()
+
+    inst = Institution(name="面板測試機構")
+    db.add(inst)
+    db.flush()
+
+    contract = InstContract(institution_id=inst.id, name="面板測試合約", contact_name="王小姐", created_by=admin.id)
+    db.add(contract)
+    db.flush()
+
+    pool = InstQuotaPool(contract_id=contract.id, name="面板測試池", unit="amount", total_limit=Decimal("50000"), consumed_total=Decimal("12000"))
+    db.add(pool)
+    db.flush()
+
+    # 方案 A：金額池型，無個人上限
+    plan_pool = InstPlan(
+        contract_id=contract.id, name="池型方案", quota_pool_id=pool.id, quota_unit="amount",
+        compensation_mode="commission", claim_group_key="面板測試群組", claim_grouping_mode="period",
+        created_by=admin.id,
+    )
+    db.add(plan_pool)
+    db.flush()
+    db.add(InstRateRule(plan_id=plan_pool.id, sort_order=1, when_json="{}", unit_price=1800, case_payable=200, label="固定價"))
+
+    # 方案 B：次數制核銷、有週期子上限、需要外部代號、有文件清單
+    plan_count = InstPlan(
+        contract_id=contract.id, name="次數制方案", quota_unit="count", default_quota_limit_numeric=6,
+        period_limit=4, period_unit="month", requires_external_code=True,
+        compensation_mode="commission", claim_group_key="面板測試群組2", claim_grouping_mode="per_case_count",
+        claim_capacity=4, admin_checklist='["同意書"]', therapist_checklist='["簽到表"]', created_by=admin.id,
+    )
+    db.add(plan_count)
+    db.flush()
+    db.add(InstRateRule(plan_id=plan_count.id, sort_order=1, when_json="{}", unit_price=1000, case_payable=0, label="固定價"))
+    db.flush()
+
+    case = Case(name="面板測試個案", therapist_id=admin.id, funding_source="institution", institution_id=inst.id, status="ongoing", case_number="99PANEL01")
+    db.add(case)
+    db.flush()
+    provider.enroll(db, case_id=case.id, plan_id=plan_count.id, created_by=admin.id)
+    db.flush()
+
+    return {
+        "contract_id": contract.id, "plan_pool_id": plan_pool.id, "plan_count_id": plan_count.id,
+        "admin_token": create_access_token({"sub": str(admin.id), "role": "admin", "name": admin.name}),
+    }
+
+
+class TestGenericPanel:
+    def test_panel_shape_and_contract_fields(self, db, http_db):
+        ctx = _seed_contract_with_two_plans(db)
+        headers = {"Authorization": f"Bearer {ctx['admin_token']}"}
+        r = client.get(f"/institution/contracts/{ctx['contract_id']}/panel", headers=headers)
+        assert r.status_code == 200, r.text
+        body = r.json()
+
+        assert body["module"] == "generic"
+        assert body["contract"]["id"] == ctx["contract_id"]
+        assert body["contract"]["institution_name"] == "面板測試機構"
+        assert body["contract"]["contact_name"] == "王小姐"
+        assert len(body["plans"]) == 2
+
+    def test_pool_plan_gets_quota_pool_block(self, db, http_db):
+        ctx = _seed_contract_with_two_plans(db)
+        headers = {"Authorization": f"Bearer {ctx['admin_token']}"}
+        body = client.get(f"/institution/contracts/{ctx['contract_id']}/panel", headers=headers).json()
+
+        pool_panel = next(p for p in body["plans"] if p["plan"]["id"] == ctx["plan_pool_id"])
+        assert "quota_pool" in pool_panel["blocks"]
+        assert "quota_per_case" not in pool_panel["blocks"]
+        assert pool_panel["quota_pool"]["total_limit"] == 50000
+        assert pool_panel["quota_pool"]["consumed_total"] == 12000
+        assert pool_panel["quota_pool"]["remaining"] == 38000
+        assert "claim_by_period" in pool_panel["blocks"]
+
+    def test_count_plan_gets_all_expected_blocks(self, db, http_db):
+        ctx = _seed_contract_with_two_plans(db)
+        headers = {"Authorization": f"Bearer {ctx['admin_token']}"}
+        body = client.get(f"/institution/contracts/{ctx['contract_id']}/panel", headers=headers).json()
+
+        count_panel = next(p for p in body["plans"] if p["plan"]["id"] == ctx["plan_count_id"])
+        for expected in ["quota_per_case", "period_sublimit", "claim_by_count", "external_code", "doc_gate", "rate_table", "plan_params"]:
+            assert expected in count_panel["blocks"], f"missing block: {expected}"
+        assert "quota_pool" not in count_panel["blocks"]
+
+    def test_count_plan_lists_its_enrollment(self, db, http_db):
+        ctx = _seed_contract_with_two_plans(db)
+        headers = {"Authorization": f"Bearer {ctx['admin_token']}"}
+        body = client.get(f"/institution/contracts/{ctx['contract_id']}/panel", headers=headers).json()
+
+        count_panel = next(p for p in body["plans"] if p["plan"]["id"] == ctx["plan_count_id"])
+        assert len(count_panel["enrollments"]) == 1
+        assert count_panel["enrollments"][0]["case_name"] == "面板測試個案"
+
+    def test_unregistered_contract_falls_back_to_generic(self, db, http_db):
+        """尚未在 registry.py 登記專屬模組的合約，一律拿到通用版——這是
+        「先做 5 個、其餘先能用」的技術前提（09 §6 第 3 步）。"""
+        ctx = _seed_contract_with_two_plans(db)
+        headers = {"Authorization": f"Bearer {ctx['admin_token']}"}
+        body = client.get(f"/institution/contracts/{ctx['contract_id']}/panel", headers=headers).json()
+        assert body["module"] == "generic"
+
+    def test_missing_contract_404(self, db, http_db):
+        headers = {"Authorization": f"Bearer {create_access_token({'sub': '1', 'role': 'admin', 'name': 'x'})}"}
+        r = client.get("/institution/contracts/999999/panel", headers=headers)
+        assert r.status_code == 404
