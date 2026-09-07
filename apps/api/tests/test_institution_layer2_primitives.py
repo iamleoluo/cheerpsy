@@ -330,3 +330,89 @@ class TestNoShowFee:
         rows = claims_service.list_uncollected(db, ctx["plan"].claim_group_key)
         sr = db.query(SessionRecord).filter(SessionRecord.appointment_id == appt_id).first()
         assert sr.id in [r.id for r in rows], "應該跟一般場次共用同一條核銷路徑，直接可被收納"
+
+
+class TestClaimCaseDocWaiver:
+    """文件豁免（從舊 claim_batches 移植，見 09 的裁示：新機制也要有）。"""
+
+    def _open_case_with_two_pending(self, db, ctx):
+        headers = {"Authorization": f"Bearer {ctx['admin_token']}"}
+        appt1 = _book_and_checkin(db, ctx, days_offset=-1)
+        appt2 = _book_and_checkin(db, ctx, days_offset=-2)
+        client.put(f"/appointments/{appt1}/check-in", headers=headers, json={"status": "arrived"})
+        client.put(f"/appointments/{appt2}/check-in", headers=headers, json={"status": "arrived"})
+        sr1 = db.query(SessionRecord).filter(SessionRecord.appointment_id == appt1).first()
+        sr2 = db.query(SessionRecord).filter(SessionRecord.appointment_id == appt2).first()
+        cc = claims_service.open_claim_case(db, claim_group_key=ctx["plan"].claim_group_key, created_by=ctx["admin"].id)
+        claims_service.attach_records(db, cc.id, [sr1.id, sr2.id])
+        db.flush()
+        return cc.id, [sr1.id, sr2.id]
+
+    def test_waive_marks_pending_records_as_submitted(self, db, http_db):
+        ctx = _seed(db)
+        cc_id, sr_ids = self._open_case_with_two_pending(db, ctx)
+        headers = {"Authorization": f"Bearer {ctx['admin_token']}"}
+
+        r = client.put(f"/institution/claim-cases/{cc_id}/waive-docs", headers=headers)
+        assert r.status_code == 200, r.text
+        assert r.json()["waived_count"] == 2
+
+        for sr_id in sr_ids:
+            sr = db.query(SessionRecord).filter(SessionRecord.id == sr_id).first()
+            assert sr.therapist_doc_submitted_at is not None
+            assert sr.therapist_doc_submitted_by == ctx["admin"].id
+
+    def test_waive_does_not_touch_already_submitted(self, db, http_db):
+        ctx = _seed(db)
+        cc_id, sr_ids = self._open_case_with_two_pending(db, ctx)
+        headers = {"Authorization": f"Bearer {ctx['admin_token']}"}
+        client.put(f"/ledger/{sr_ids[0]}/confirm-doc", headers=headers)
+        genuine_submitted_at = db.query(SessionRecord).filter(SessionRecord.id == sr_ids[0]).first().therapist_doc_submitted_at
+
+        client.put(f"/institution/claim-cases/{cc_id}/waive-docs", headers=headers)
+
+        sr = db.query(SessionRecord).filter(SessionRecord.id == sr_ids[0]).first()
+        assert sr.therapist_doc_submitted_at == genuine_submitted_at, "真的心理師自己提交的不該被豁免覆蓋"
+
+    def test_unwaive_reverts_only_the_waived_ones(self, db, http_db):
+        ctx = _seed(db)
+        cc_id, sr_ids = self._open_case_with_two_pending(db, ctx)
+        headers = {"Authorization": f"Bearer {ctx['admin_token']}"}
+        client.put(f"/ledger/{sr_ids[0]}/confirm-doc", headers=headers)
+        genuine_submitted_at = db.query(SessionRecord).filter(SessionRecord.id == sr_ids[0]).first().therapist_doc_submitted_at
+        client.put(f"/institution/claim-cases/{cc_id}/waive-docs", headers=headers)
+
+        r = client.put(f"/institution/claim-cases/{cc_id}/unwaive-docs", headers=headers)
+        assert r.status_code == 200, r.text
+        assert r.json()["reverted_count"] == 1, "只有 sr_ids[1] 是被豁免自動確認的"
+
+        sr0 = db.query(SessionRecord).filter(SessionRecord.id == sr_ids[0]).first()
+        sr1 = db.query(SessionRecord).filter(SessionRecord.id == sr_ids[1]).first()
+        assert sr0.therapist_doc_submitted_at == genuine_submitted_at, "真的提交的維持不變"
+        assert sr1.therapist_doc_submitted_at is None, "被豁免自動確認的還原成未提交"
+
+
+class TestClaimExportData:
+    def test_export_data_shape(self, db, http_db):
+        ctx = _seed(db)
+        headers = {"Authorization": f"Bearer {ctx['admin_token']}"}
+        appt_id = _book_and_checkin(db, ctx)
+        client.put(f"/appointments/{appt_id}/check-in", headers=headers, json={"status": "arrived"})
+        sr = db.query(SessionRecord).filter(SessionRecord.appointment_id == appt_id).first()
+        cc = claims_service.open_claim_case(db, claim_group_key=ctx["plan"].claim_group_key, created_by=ctx["admin"].id)
+        claims_service.attach_records(db, cc.id, [sr.id])
+        db.flush()
+
+        r = client.get(f"/institution/claim-cases/{cc.id}/export-data", headers=headers)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["claim_no"] == cc.claim_no
+        assert body["record_count"] == 1
+        assert body["rows"][0]["case_name"] == "Layer2測試個案"
+        assert body["rows"][0]["therapist_name"] == "Layer2測試心理師"
+
+    def test_missing_claim_case_404(self, db, http_db):
+        ctx = _seed(db)
+        headers = {"Authorization": f"Bearer {ctx['admin_token']}"}
+        r = client.get("/institution/claim-cases/999999/export-data", headers=headers)
+        assert r.status_code == 404

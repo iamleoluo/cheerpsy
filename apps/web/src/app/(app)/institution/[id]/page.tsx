@@ -46,6 +46,28 @@ interface PlanPanel {
 interface ClaimCaseRow {
   id: number; claim_no: string; claim_group_key: string; status: string;
   record_count: number; applied_amount: number | null; net_received: number | null;
+  docs_waived_at: string | null;
+}
+interface ExportRow {
+  session_record_id: number; case_name: string | null; case_number: string | null;
+  external_case_code: string | null; session_date: string; therapist_name: string | null;
+  session_type: string; case_payable: number | null; claimed_amount: number;
+  actual_hours: number | null; registered_hours: number | null; registered_unit_price: number | null;
+}
+interface ExportData {
+  claim_no: string; claim_group_key: string; status: string;
+  period_start: string | null; period_end: string | null;
+  institution_name: string | null; contract_name: string | null; plan_names: string[];
+  total_amount: number; record_count: number; rows: ExportRow[];
+}
+interface GuidanceData {
+  alerts?: string[];
+  headline_pool?: QuotaPoolInfo;
+  ready_to_claim?: (ClaimCandidateRow & { plan_name: string; capacity: number })[];
+  in_progress?: (ClaimCandidateRow & { plan_name: string; capacity: number })[];
+  kickback_summary?: { therapist_id: number; therapist_name: string | null; session_count: number; total_collected: number }[];
+  venue_summary?: { pending_sessions: number; pending_amount: number };
+  note?: string;
 }
 interface Panel {
   contract: {
@@ -56,7 +78,14 @@ interface Panel {
   module: string;
   plans: PlanPanel[];
   claim_cases: ClaimCaseRow[];
+  guidance?: GuidanceData;
 }
+
+const moduleLabel: Record<string, string> = {
+  health_bureau: "衛生局專屬面板", military: "國軍專屬面板",
+  count_based_claim: "次數制核銷專屬面板", kickback: "回饋制專屬面板",
+  venue_rental: "借場地專屬面板", generic: "通用面板",
+};
 interface DocRow {
   id: number; appointment_id: number | null; session_date: string; case_name: string | null;
   therapist_name: string | null;
@@ -84,6 +113,7 @@ export default function ContractPanelPage() {
   const [enrollForPlan, setEnrollForPlan] = useState<PlanPanel | null>(null);
   const [extendTarget, setExtendTarget] = useState<EnrollmentRow | null>(null);
   const [voidTarget, setVoidTarget] = useState<ClaimCaseRow | null>(null);
+  const [exportTarget, setExportTarget] = useState<ClaimCaseRow | null>(null);
 
   const fetchPanel = useCallback(async () => {
     if (!token || !contractId) return;
@@ -140,6 +170,32 @@ export default function ContractPanelPage() {
     }
   }
 
+  async function waiveDocs(id: number) {
+    setBusy(true);
+    setError(null);
+    try {
+      await clientFetch(`/institution/claim-cases/${id}/waive-docs`, token, { method: "PUT" });
+      await fetchPanel();
+    } catch (e: any) {
+      setError(e.message ?? "豁免失敗");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function unwaiveDocs(id: number) {
+    setBusy(true);
+    setError(null);
+    try {
+      await clientFetch(`/institution/claim-cases/${id}/unwaive-docs`, token, { method: "PUT" });
+      await fetchPanel();
+    } catch (e: any) {
+      setError(e.message ?? "撤銷豁免失敗");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function extendQuota(enrollmentId: number, additional: number, note: string) {
     setBusy(true);
     setError(null);
@@ -168,14 +224,19 @@ export default function ContractPanelPage() {
       <div className="mb-1 flex items-center gap-2">
         <h1 className="text-2xl font-bold">{contract.name}</h1>
         {!contract.is_active && <span className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-400">已停用</span>}
+        {panel.module !== "generic" && (
+          <span className="rounded bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700">{moduleLabel[panel.module] ?? panel.module}</span>
+        )}
       </div>
-      <p className="mb-6 text-sm text-gray-400">
+      <p className="mb-4 text-sm text-gray-400">
         {contract.institution_name}
         {contract.valid_from && contract.valid_until ? ` · ${contract.valid_from} ~ ${contract.valid_until}` : ""}
         {contract.contact_name ? ` · 承辦 ${contract.contact_name}${contract.contact_phone ? ` (${contract.contact_phone})` : ""}` : ""}
       </p>
 
       {error && <div className="mb-4 rounded-lg bg-rose-50 px-4 py-2 text-sm text-rose-600">{error}</div>}
+
+      {panel.guidance && <GuidanceBanner guidance={panel.guidance} />}
 
       <div className="mb-4 flex gap-1 border-b border-gray-200">
         {([
@@ -342,6 +403,7 @@ export default function ContractPanelPage() {
                     <th className="px-2 py-1.5 text-right">場次</th>
                     <th className="px-2 py-1.5 text-right">金額</th>
                     <th className="px-2 py-1.5 text-left">狀態</th>
+                    <th className="px-2 py-1.5 text-left">文件</th>
                     <th className="px-2 py-1.5 text-left">操作</th>
                   </tr>
                 </thead>
@@ -353,6 +415,21 @@ export default function ContractPanelPage() {
                       <td className="px-2 py-1.5 text-right">{c.applied_amount != null ? `$${c.applied_amount.toLocaleString()}` : "—"}</td>
                       <td className="px-2 py-1.5"><span className={`rounded px-1.5 py-0.5 ${statusTagClass[c.status] ?? ""}`}>{statusLabel[c.status] ?? c.status}</span></td>
                       <td className="px-2 py-1.5">
+                        {c.docs_waived_at ? (
+                          <span className="rounded bg-sky-100 px-1.5 py-0.5 text-sky-700">已豁免</span>
+                        ) : (
+                          <span className="text-gray-300">—</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-1.5 space-x-2">
+                        <button onClick={() => setExportTarget(c)} className="text-primary-500 hover:underline">請款資料</button>
+                        {c.status !== "void" && c.status !== "closed" && (
+                          c.docs_waived_at ? (
+                            <button disabled={busy} onClick={() => unwaiveDocs(c.id)} className="text-gray-500 hover:underline disabled:opacity-40">撤銷豁免</button>
+                          ) : (
+                            <button disabled={busy} onClick={() => waiveDocs(c.id)} className="text-gray-500 hover:underline disabled:opacity-40">豁免本案資料</button>
+                          )
+                        )}
                         {c.status !== "void" && c.status !== "closed" && (
                           <button disabled={busy} onClick={() => setVoidTarget(c)} className="text-rose-500 hover:underline disabled:opacity-40">作廢</button>
                         )}
@@ -468,6 +545,63 @@ export default function ContractPanelPage() {
           onConfirm={(reason) => voidClaimCase(voidTarget.id, reason)}
         />
       )}
+      {exportTarget && (
+        <ClaimExportModal
+          token={token}
+          claimCaseId={exportTarget.id}
+          onClose={() => setExportTarget(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════
+   導引摘要 — 首批 5 份專屬模組各自附加的 guidance 資料，
+   通用版沒有這個 key（09 §3.4：導引式 vs 工具式的差別就在這裡）
+   ═══════════════════════════════════════════════ */
+
+function GuidanceBanner({ guidance }: { guidance: GuidanceData }) {
+  const hasAnything =
+    (guidance.alerts && guidance.alerts.length > 0) ||
+    guidance.headline_pool || guidance.ready_to_claim?.length || guidance.in_progress?.length ||
+    guidance.kickback_summary?.length || guidance.venue_summary || guidance.note;
+  if (!hasAnything) return null;
+
+  return (
+    <div className="mb-4 space-y-2">
+      {guidance.alerts?.map((a, i) => (
+        <div key={i} className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">⚠️ {a}</div>
+      ))}
+
+      {guidance.ready_to_claim && guidance.ready_to_claim.length > 0 && (
+        <div className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+          ✓ {guidance.ready_to_claim.length} 位個案已達核銷次數，可到「核銷」分頁一鍵開案：
+          {guidance.ready_to_claim.map((c) => ` 個案#${c.case_id}(${c.count}/${c.capacity})`).join("、")}
+        </div>
+      )}
+
+      {guidance.kickback_summary && guidance.kickback_summary.length > 0 && (
+        <div className="rounded-lg border border-gray-200 bg-white p-3 text-xs">
+          <div className="mb-2 font-medium text-gray-600">心理師直接收款彙總</div>
+          <table className="w-full">
+            <thead className="text-gray-400"><tr><th className="text-left">心理師</th><th className="text-right">場次</th><th className="text-right">收款總額</th></tr></thead>
+            <tbody>
+              {guidance.kickback_summary.map((s) => (
+                <tr key={s.therapist_id}><td>{s.therapist_name}</td><td className="text-right">{s.session_count}</td><td className="text-right">${s.total_collected.toLocaleString()}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {guidance.venue_summary && (
+        <div className="rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-700">
+          本期待核銷 {guidance.venue_summary.pending_sessions} 場，場地費合計 ${guidance.venue_summary.pending_amount.toLocaleString()}
+        </div>
+      )}
+
+      {guidance.note && <p className="text-xs text-gray-400">{guidance.note}</p>}
     </div>
   );
 }
@@ -906,6 +1040,99 @@ function VoidClaimCaseModal({
           <button disabled={busy} onClick={() => onConfirm(reason)} className="flex-1 rounded-lg bg-rose-600 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-50">確認作廢</button>
           <button onClick={onClose} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-500 hover:bg-gray-50">取消</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════
+   請款資料檢視（不做 PDF，改成整理好的欄位供複製貼上到
+   各機構自己的 Word 格式，見這輪的裁示）
+   ═══════════════════════════════════════════════ */
+
+const sessionTypeLabelZh: Record<string, string> = { in_person: "現場", online: "視訊", outdoor: "外展" };
+
+function ClaimExportModal({
+  token, claimCaseId, onClose,
+}: { token: string; claimCaseId: number; onClose: () => void }) {
+  const [data, setData] = useState<ExportData | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    clientFetch(`/institution/claim-cases/${claimCaseId}/export-data`, token).then(setData).catch(() => {});
+  }, [claimCaseId, token]);
+
+  function copyAsTable() {
+    if (!data) return;
+    const header = ["個案", "病歷號", "外部代號", "日期", "心理師", "類型", "個案自付", "請款金額"];
+    const lines = [header.join("\t")];
+    for (const r of data.rows) {
+      lines.push([
+        r.case_name ?? "", r.case_number ?? "", r.external_case_code ?? "",
+        r.session_date, r.therapist_name ?? "", sessionTypeLabelZh[r.session_type] ?? r.session_type,
+        r.case_payable != null ? String(r.case_payable) : "", String(r.claimed_amount),
+      ].join("\t"));
+    }
+    navigator.clipboard.writeText(lines.join("\n")).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
+      <div className="max-h-[90vh] w-[720px] overflow-y-auto rounded-xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-start justify-between">
+          <div>
+            <h3 className="font-semibold">請款資料</h3>
+            {data && <p className="text-xs text-gray-400">{data.claim_no} · {data.institution_name} · {data.contract_name} · {data.plan_names.join("、")}</p>}
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
+        </div>
+
+        {!data ? (
+          <p className="text-sm text-gray-400">載入中...</p>
+        ) : (
+          <>
+            <div className="mb-3 flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
+              <span>{data.period_start ?? "—"} ~ {data.period_end ?? "—"} · 共 {data.record_count} 筆 · 合計 ${data.total_amount.toLocaleString()}</span>
+              <button onClick={copyAsTable} className="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700">
+                {copied ? "已複製 ✓" : "複製為表格"}
+              </button>
+            </div>
+            <p className="mb-2 text-xs text-gray-400">複製後可直接貼到 Excel 或 Word 表格——不同機構的請款單格式不同，這裡先把欄位備齊，貼上後再依各自格式調整。</p>
+            <div className="overflow-x-auto rounded-lg border border-gray-200">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50 text-gray-500">
+                  <tr>
+                    <th className="px-2 py-1.5 text-left">個案</th>
+                    <th className="px-2 py-1.5 text-left">病歷號</th>
+                    <th className="px-2 py-1.5 text-left">外部代號</th>
+                    <th className="px-2 py-1.5 text-left">日期</th>
+                    <th className="px-2 py-1.5 text-left">心理師</th>
+                    <th className="px-2 py-1.5 text-left">類型</th>
+                    <th className="px-2 py-1.5 text-right">個案自付</th>
+                    <th className="px-2 py-1.5 text-right">請款金額</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.rows.map((r) => (
+                    <tr key={r.session_record_id} className="border-t border-gray-100">
+                      <td className="px-2 py-1.5">{r.case_name ?? "—"}</td>
+                      <td className="px-2 py-1.5 font-mono">{r.case_number ?? "—"}</td>
+                      <td className="px-2 py-1.5 font-mono">{r.external_case_code ?? "—"}</td>
+                      <td className="px-2 py-1.5">{r.session_date}</td>
+                      <td className="px-2 py-1.5">{r.therapist_name ?? "—"}</td>
+                      <td className="px-2 py-1.5">{sessionTypeLabelZh[r.session_type] ?? r.session_type}</td>
+                      <td className="px-2 py-1.5 text-right">{r.case_payable != null ? `$${r.case_payable.toLocaleString()}` : "—"}</td>
+                      <td className="px-2 py-1.5 text-right font-medium">${r.claimed_amount.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

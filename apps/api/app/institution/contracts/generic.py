@@ -170,6 +170,7 @@ def build_generic_panel(db: Session, contract: InstContract) -> dict:
                 "record_count": len(c.lines),
                 "applied_amount": c.applied_amount,
                 "net_received": c.net_received,
+                "docs_waived_at": c.docs_waived_at,
             }
             for c in claim_cases
         ],

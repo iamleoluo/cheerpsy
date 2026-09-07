@@ -62,11 +62,14 @@ class ContractResponse(BaseModel):
     valid_from: date | None = None
     valid_until: date | None = None
     is_active: bool
+    has_dedicated_module: bool = False  # 09 §3.7：清單頁的「專屬面板／通用面板」標記
 
     model_config = {"from_attributes": True}
 
 
 def _contract_to_response(c: InstContract) -> ContractResponse:
+    from app.institution.contracts.registry import BY_CONTRACT_NAME, BY_ID
+
     return ContractResponse(
         id=c.id,
         institution_id=c.institution_id,
@@ -78,6 +81,7 @@ def _contract_to_response(c: InstContract) -> ContractResponse:
         valid_from=c.valid_from,
         valid_until=c.valid_until,
         is_active=c.is_active,
+        has_dedicated_module=c.id in BY_ID or c.name in BY_CONTRACT_NAME,
     )
 
 
@@ -124,7 +128,7 @@ def get_contract_panel(
     contract = db.query(InstContract).filter(InstContract.id == contract_id).first()
     if not contract:
         raise HTTPException(status_code=404, detail="合約不存在")
-    module = get_module_for_contract(contract_id)
+    module = get_module_for_contract(contract)
     return module.build_panel(db, contract)
 
 
@@ -523,6 +527,53 @@ def void_claim_case(
         raise HTTPException(status_code=400, detail=str(e))
     db.commit()
     return {"id": cc.id, "status": cc.status, "voided_at": cc.voided_at}
+
+
+@router.put("/claim-cases/{claim_case_id}/waive-docs")
+def waive_claim_case_docs(
+    claim_case_id: int,
+    user: User = Depends(RequireRole(WRITE_ROLES)),
+    db: Session = Depends(get_db),
+):
+    """文件豁免（從舊 claim_batches 移植，07 §4.3／09 決策）：免繳文件的
+    機構，行政一鍵把容器內所有紀錄標記成視同已提交。"""
+    try:
+        count = claims_service.waive_docs(db, claim_case_id, user.id)
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    db.commit()
+    return {"waived_count": count}
+
+
+@router.put("/claim-cases/{claim_case_id}/unwaive-docs")
+def unwaive_claim_case_docs(
+    claim_case_id: int,
+    user: User = Depends(RequireRole(WRITE_ROLES)),
+    db: Session = Depends(get_db),
+):
+    """撤銷文件豁免：只還原被該次豁免自動確認的紀錄。"""
+    try:
+        count = claims_service.unwaive_docs(db, claim_case_id)
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    db.commit()
+    return {"reverted_count": count}
+
+
+@router.get("/claim-cases/{claim_case_id}/export-data")
+def get_claim_case_export_data(
+    claim_case_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """請款資料檢視（09 決策：不做 PDF 匯出，改成把所有請款單需要的欄位
+    整理出來，供行政複製貼上到各機構自己的 Word 格式）。"""
+    try:
+        return claims_service.build_claim_export_data(db, claim_case_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.get("/claim-cases")

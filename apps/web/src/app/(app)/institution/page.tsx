@@ -22,6 +22,7 @@ interface ContractRow {
   valid_from: string | null;
   valid_until: string | null;
   is_active: boolean;
+  has_dedicated_module: boolean;
 }
 interface InstitutionOption {
   id: number;
@@ -83,6 +84,11 @@ export default function InstitutionContractListPage() {
                 >
                   <div>
                     <span className="font-medium">{c.name}</span>
+                    {c.has_dedicated_module ? (
+                      <span className="ml-2 rounded bg-primary-100 px-1.5 py-0.5 text-xs text-primary-700">專屬面板</span>
+                    ) : (
+                      <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-400">通用面板</span>
+                    )}
                     {!c.is_active && <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-400">已停用</span>}
                     {c.contact_name && <span className="ml-2 text-xs text-gray-400">承辦 {c.contact_name}{c.contact_phone ? ` · ${c.contact_phone}` : ""}</span>}
                   </div>

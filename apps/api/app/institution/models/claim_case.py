@@ -49,6 +49,12 @@ class InstClaimCase(Base):
     voided_at = Column(DateTime(timezone=True), nullable=True)
     voided_reason = Column(Text, nullable=True)
 
+    # 文件豁免（從舊 claim_batches 移植過來的機制，見 services/claim_batch.py
+    # 的 apply_doc_waiver/revert_doc_waiver）：免繳文件的機構，行政一鍵把
+    # 容器內所有紀錄標記成「視同已提交」，不必等心理師一筆筆確認。
+    docs_waived_at = Column(DateTime(timezone=True), nullable=True)
+    docs_waived_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

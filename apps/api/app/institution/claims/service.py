@@ -35,9 +35,13 @@ from sqlalchemy.orm import Session
 
 from app.institution.models.claim_case import InstClaimCase
 from app.institution.models.claim_line import InstClaimLine
+from app.institution.models.contract import InstContract
+from app.institution.models.enrollment import InstEnrollment
 from app.institution.models.plan import InstPlan
 from app.institution.rules.numbering import next_claim_no
+from app.models.case import Case
 from app.models.session_record import SessionRecord
+from app.models.user import User
 
 
 def list_uncollected(
@@ -210,3 +214,123 @@ def record_payment(
     cc.locked_at = datetime.now(timezone.utc)
     db.flush()
     return cc
+
+
+def waive_docs(db: Session, claim_case_id: int, user_id: int) -> int:
+    """文件豁免（從舊 claim_batches 移植，見 services/claim_batch.py 的
+    apply_doc_waiver）。免繳文件的機構，行政一鍵把容器內所有「心理師還沒
+    提交」的紀錄標記成視同已提交——不動 admin_verified_at，行政核對這一步
+    仍然要做（豁免的是心理師那一關，不是行政核對那一關）。回傳影響筆數。
+    """
+    cc = db.query(InstClaimCase).filter(InstClaimCase.id == claim_case_id).first()
+    if cc is None:
+        raise ValueError(f"核銷案不存在：id={claim_case_id}")
+    now = datetime.now(timezone.utc)
+    sr_ids = [line.session_record_id for line in cc.lines]
+    recs = (
+        db.query(SessionRecord)
+        .filter(SessionRecord.id.in_(sr_ids), SessionRecord.therapist_doc_submitted_at.is_(None))
+        .all()
+    )
+    for r in recs:
+        r.therapist_doc_submitted_at = now
+        r.therapist_doc_submitted_by = user_id
+    cc.docs_waived_at = now
+    cc.docs_waived_by = user_id
+    db.flush()
+    return len(recs)
+
+
+def unwaive_docs(db: Session, claim_case_id: int) -> int:
+    """撤銷豁免：只還原「被這次豁免動作自動確認」的紀錄（比對時間戳與操作
+    人），真正由心理師自己提交的不會被誤還原。見 services/claim_batch.py
+    的 revert_doc_waiver。回傳影響筆數。
+    """
+    cc = db.query(InstClaimCase).filter(InstClaimCase.id == claim_case_id).first()
+    if cc is None:
+        raise ValueError(f"核銷案不存在：id={claim_case_id}")
+    if cc.docs_waived_at is None:
+        return 0
+    sr_ids = [line.session_record_id for line in cc.lines]
+    recs = (
+        db.query(SessionRecord)
+        .filter(
+            SessionRecord.id.in_(sr_ids),
+            SessionRecord.therapist_doc_submitted_at == cc.docs_waived_at,
+            SessionRecord.therapist_doc_submitted_by == cc.docs_waived_by,
+        )
+        .all()
+    )
+    for r in recs:
+        r.therapist_doc_submitted_at = None
+        r.therapist_doc_submitted_by = None
+    cc.docs_waived_at = None
+    cc.docs_waived_by = None
+    db.flush()
+    return len(recs)
+
+
+def build_claim_export_data(db: Session, claim_case_id: int) -> dict:
+    """請款資料檢視（09 決策：不做 PDF 匯出，但核銷時要能一眼看到請款單
+    需要的全部欄位，供行政複製貼上到各機構自己的 Word 格式）。不同機構的
+    請款單格式差異很大，這裡不猜格式，只把「填任何格式都用得到」的欄位
+    整理成一張表：個案、病歷號、日期、心理師、類型、自付額、請款額、
+    外部代號（若方案要求）、登記時數（若方案有轉換規則）。
+    """
+    cc = db.query(InstClaimCase).filter(InstClaimCase.id == claim_case_id).first()
+    if cc is None:
+        raise ValueError(f"核銷案不存在：id={claim_case_id}")
+
+    plans = db.query(InstPlan).filter(InstPlan.claim_group_key == cc.claim_group_key).all()
+    plan_by_id = {p.id: p for p in plans}
+    contract = plans[0].contract if plans else None
+
+    lines = cc.lines
+    sr_ids = [line.session_record_id for line in lines]
+    records = {r.id: r for r in db.query(SessionRecord).filter(SessionRecord.id.in_(sr_ids)).all()}
+    case_ids = {r.case_id for r in records.values() if r.case_id}
+    cases = {c.id: c for c in db.query(Case).filter(Case.id.in_(case_ids)).all()}
+    therapist_ids = {r.therapist_id for r in records.values()}
+    therapists = {u.id: u for u in db.query(User).filter(User.id.in_(therapist_ids)).all()}
+    enrollments = {
+        e.case_id: e
+        for e in db.query(InstEnrollment).filter(InstEnrollment.case_id.in_(case_ids), InstEnrollment.plan_id.in_(plan_by_id.keys())).all()
+    }
+
+    rows = []
+    for line in lines:
+        sr = records.get(line.session_record_id)
+        if sr is None:
+            continue
+        case = cases.get(sr.case_id) if sr.case_id else None
+        therapist = therapists.get(sr.therapist_id)
+        enrollment = enrollments.get(sr.case_id) if sr.case_id else None
+        rows.append({
+            "session_record_id": sr.id,
+            "case_name": case.name if case else None,
+            "case_number": case.case_number if case else None,
+            "external_case_code": enrollment.external_case_code if enrollment else None,
+            "session_date": sr.session_date,
+            "therapist_name": therapist.name if therapist else None,
+            "session_type": sr.session_type,
+            "case_payable": sr.case_payable,
+            "claimed_amount": line.claimed_amount,
+            "actual_hours": line.actual_hours,
+            "registered_hours": line.registered_hours,
+            "registered_unit_price": line.registered_unit_price,
+        })
+    rows.sort(key=lambda r: (r["case_name"] or "", r["session_date"]))
+
+    return {
+        "claim_no": cc.claim_no,
+        "claim_group_key": cc.claim_group_key,
+        "status": cc.status,
+        "period_start": cc.period_start,
+        "period_end": cc.period_end,
+        "institution_name": contract.institution.name if contract and contract.institution else None,
+        "contract_name": contract.name if contract else None,
+        "plan_names": [p.name for p in plans],
+        "total_amount": sum((r["claimed_amount"] or Decimal("0")) for r in rows),
+        "record_count": len(rows),
+        "rows": rows,
+    }
