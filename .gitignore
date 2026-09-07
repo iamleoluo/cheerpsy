@@ -31,6 +31,12 @@ Thumbs.db
 *.xlsx
 # ⚠️ 個案／財務原始資料一律不進版控（含匯出的 CSV，內含姓名、身分證、電話、地址等個資）
 *.csv
+# 資料庫 dump／還原檔：遷移時會產生在 repo 目錄（見 WINDOWS_DEPLOY.md），內含完整個案與財務資料
+*.sql
+*.dump
+# 例外：schema migration 是程式碼的一部分，必須進版控
+# （prisma 的路徑是 migrations/<timestamp>/migration.sql，中間隔一層目錄，所以要用 **）
+!**/migrations/**/*.sql
 
 # 真實個案 / 財務 / 匯入資料夾 — 嚴禁提交
 data_transfer/
