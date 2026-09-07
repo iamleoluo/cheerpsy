@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>04 操作樣本·行政櫃檯 — CheerPsy V2</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+ --bg:#f6f7f9; --panel:#fff; --ink:#111827; --ink2:#374151; --mut:#6b7280; --mut2:#9ca3af;
+ --line:#e5e7eb; --line2:#d1d5db;
+ --p50:#f5f3ff; --p100:#ede9fe; --p200:#ddd6fe; --p500:#8b5cf6; --p600:#7c3aed; --p700:#6d28d9;
+ --blue:#2563eb; --blue-bg:#eff6ff; --green:#16a34a; --green-bg:#f0fdf4;
+ --amber:#d97706; --amber-bg:#fffbeb; --red:#dc2626; --red-bg:#fef2f2;
+ --sky:#0891b2; --sky-bg:#ecfeff; --rose:#e11d48; --rose-bg:#fff1f2;
+ --code:#f3f4f6;
+}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);
+ font:14px/1.75 "Noto Sans TC","PingFang TC","Microsoft JhengHei",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+ -webkit-font-smoothing:antialiased}
+.wrap{max-width:1220px;margin:0 auto;padding:0 20px 90px}
+
+/* ---- header ---- */
+.hd{background:linear-gradient(135deg,#4c1d95,#6d28d9 55%,#7c3aed);color:#fff;padding:30px 0 26px;margin-bottom:26px}
+.hd .wrap{padding-bottom:0}
+.hd .kick{font-size:12px;letter-spacing:.16em;text-transform:uppercase;opacity:.72;font-weight:700}
+.hd h1{font-size:27px;font-weight:800;margin:7px 0 8px;letter-spacing:-.01em}
+.hd p{opacity:.9;font-size:13.5px;max-width:860px}
+.hd .meta{margin-top:14px;display:flex;flex-wrap:wrap;gap:8px}
+.hd .meta span{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.22);
+ border-radius:999px;padding:3px 11px;font-size:11.5px;font-weight:600}
+
+/* ---- layout ---- */
+.cols{display:grid;grid-template-columns:220px 1fr;gap:28px;align-items:start}
+@media(max-width:1000px){.cols{grid-template-columns:1fr}.toc{position:static!important;max-height:none!important}}
+.toc{position:sticky;top:18px;background:var(--panel);border:1px solid var(--line);border-radius:12px;
+ padding:14px 12px;max-height:calc(100vh - 40px);overflow:auto;font-size:12.5px}
+.toc b{display:block;font-size:11px;letter-spacing:.1em;color:var(--mut2);margin:0 0 8px 6px;text-transform:uppercase}
+.toc a{display:block;color:var(--ink2);text-decoration:none;padding:5px 8px;border-radius:7px;line-height:1.45}
+.toc a:hover{background:var(--p50);color:var(--p700)}
+.toc a.sub{padding-left:20px;font-size:12px;color:var(--mut)}
+
+/* ---- sections ---- */
+section{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px 26px;margin-bottom:20px;
+ scroll-margin-top:16px}
+h2{font-size:19px;font-weight:800;letter-spacing:-.01em;padding-bottom:11px;margin-bottom:16px;
+ border-bottom:2px solid var(--p100);display:flex;align-items:center;gap:9px}
+h2 .num{background:var(--p600);color:#fff;font-size:12px;width:26px;height:26px;border-radius:8px;
+ display:inline-flex;align-items:center;justify-content:center;font-weight:800;flex:none}
+h3{font-size:15px;font-weight:700;margin:24px 0 10px;color:var(--p700);
+ padding-left:10px;border-left:3px solid var(--p500)}
+h4{font-size:13.5px;font-weight:700;margin:16px 0 7px;color:var(--ink2)}
+p{margin:9px 0;color:var(--ink2)}
+ul,ol{margin:9px 0 9px 22px;color:var(--ink2)}
+li{margin:4px 0}
+a{color:var(--p700)}
+
+/* ---- tables ---- */
+.tw{overflow-x:auto;margin:13px 0;border:1px solid var(--line);border-radius:10px}
+table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:560px;background:#fff}
+th{background:#fafafa;text-align:left;font-weight:700;color:var(--mut);font-size:11px;
+ letter-spacing:.05em;padding:9px 11px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 11px;border-bottom:1px solid #f1f2f4;vertical-align:top;line-height:1.65}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:#fcfcfd}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+td.c,th.c{text-align:center}
+td.w{white-space:nowrap}
+
+/* ---- code / mono ---- */
+code,.mono{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:11.8px}
+code{background:var(--code);padding:1.5px 5px;border-radius:4px;color:#9333ea;word-break:break-word}
+pre{background:#1e1b2e;color:#e8e5f5;padding:14px 16px;border-radius:10px;overflow-x:auto;
+ font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:11.8px;line-height:1.7;margin:12px 0}
+pre .c{color:#8b83a8}
+pre .k{color:#c4b5fd}
+pre .s{color:#86efac}
+
+/* ---- callouts ---- */
+.note{border-radius:9px;padding:11px 14px;margin:12px 0;font-size:12.8px;line-height:1.7;
+ border:1px solid var(--line);background:#fafafa;color:var(--ink2)}
+.note b{color:var(--ink)}
+.note.blue{background:var(--blue-bg);border-color:#bfdbfe;color:#1e40af}
+.note.green{background:var(--green-bg);border-color:#bbf7d0;color:#15803d}
+.note.amber{background:var(--amber-bg);border-color:#fde68a;color:#92400e}
+.note.red{background:var(--red-bg);border-color:#fecaca;color:#991b1b}
+.note.purple{background:var(--p50);border-color:var(--p200);color:var(--p700)}
+.note .t{font-weight:800;display:block;margin-bottom:3px}
+
+/* ---- tags ---- */
+.tag{display:inline-block;font-size:10.5px;font-weight:700;padding:1.5px 7px;border-radius:5px;
+ border:1px solid transparent;white-space:nowrap;line-height:1.6}
+.t-p{background:var(--p100);color:var(--p700);border-color:var(--p200)}
+.t-b{background:var(--blue-bg);color:var(--blue);border-color:#bfdbfe}
+.t-g{background:var(--green-bg);color:var(--green);border-color:#bbf7d0}
+.t-a{background:var(--amber-bg);color:var(--amber);border-color:#fde68a}
+.t-r{background:var(--red-bg);color:var(--red);border-color:#fecaca}
+.t-s{background:var(--sky-bg);color:var(--sky);border-color:#a5f3fc}
+.t-x{background:#f3f4f6;color:var(--mut);border-color:var(--line2)}
+
+/* ---- checklist ---- */
+.ck{list-style:none;margin:10px 0;padding:0}
+.ck li{display:flex;gap:10px;align-items:flex-start;padding:8px 11px;border:1px solid var(--line);
+ border-radius:8px;margin-bottom:6px;background:#fff;cursor:pointer;transition:.12s;font-size:12.8px}
+.ck li:hover{border-color:var(--p200);background:var(--p50)}
+.ck li .box{width:16px;height:16px;border:2px solid var(--line2);border-radius:4px;flex:none;margin-top:3px;
+ display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;transition:.12s}
+.ck li.on{background:#fafafa;border-color:var(--line)}
+.ck li.on .box{background:var(--green);border-color:var(--green)}
+.ck li.on .box:after{content:"✓"}
+.ck li.on .txt{color:var(--mut2);text-decoration:line-through}
+.ck .txt{flex:1;color:var(--ink2);line-height:1.65}
+.ck .src{font-size:10.5px;color:var(--mut2);white-space:nowrap;margin-left:auto;padding-left:8px}
+
+/* ---- misc ---- */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media(max-width:820px){.grid2,.grid3{grid-template-columns:1fr}}
+.card{border:1px solid var(--line);border-radius:11px;padding:14px 16px;background:#fff}
+.card .h{font-weight:800;font-size:13px;margin-bottom:6px;display:flex;align-items:center;gap:7px}
+.kpi{border:1px solid var(--line);border-radius:11px;padding:13px 15px;background:#fff}
+.kpi .l{font-size:11px;color:var(--mut);font-weight:700;letter-spacing:.04em}
+.kpi .v{font-size:24px;font-weight:800;margin:2px 0;letter-spacing:-.02em}
+.kpi .s{font-size:11.5px;color:var(--mut2)}
+hr{border:none;border-top:1px solid var(--line);margin:22px 0}
+.foot{text-align:center;color:var(--mut2);font-size:11.5px;padding:26px 0 0}
+.arrow{color:var(--p600);font-weight:800}
+.del{color:var(--mut2);text-decoration:line-through}
+.new{color:var(--green);font-weight:700}
+@media print{
+ body{background:#fff}.toc{display:none}.cols{grid-template-columns:1fr}
+ section{break-inside:avoid;border:none;padding:0 0 18px}
+ .hd{background:#4c1d95!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+
+/* ---- interactive prototype (04/05 Part 2) ---- */
+@keyframes flashHi{0%{box-shadow:0 0 0 3px var(--p500)}100%{box-shadow:0 0 0 3px transparent}}
+tr.flash td:first-child{position:relative}
+tr.flash{background:var(--p50)!important;animation:flashHi 2.4s ease-out}
+.proto{background:#fbfbfc;border:1px solid var(--line);border-radius:12px;padding:16px;margin:14px 0}
+.proto .pt{font-size:11px;font-weight:800;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin-bottom:10px}
+.pgrid{display:grid;border:1px solid var(--line2);border-radius:8px;overflow:hidden;font-size:10.5px;background:#fff}
+.pgrid .prow{display:grid;grid-template-columns:52px repeat(var(--cols,5),1fr);border-top:1px solid #eee}
+.pgrid .prow:first-child{border-top:none}
+.pgrid .ph{background:#fafafa;font-weight:700;color:var(--mut);padding:6px 4px;text-align:center;border-right:1px solid #eee}
+.pgrid .pt0{padding:5px 4px;color:var(--mut2);text-align:center;border-right:1px solid #eee;font-variant-numeric:tabular-nums}
+.pgrid .pc{border-right:1px solid #f2f2f2;min-height:34px;padding:2px}
+.pgrid .pc:last-child{border-right:none}
+.hotspot{display:block;height:100%;border-radius:5px;padding:3px 5px;cursor:pointer;transition:.12s;font-size:9.5px;line-height:1.3;border:1px solid transparent}
+.hotspot:hover{outline:2px solid var(--p500);outline-offset:-1px;filter:brightness(.97)}
+.hotspot b{display:block;font-size:10px}
+.hs-self{background:var(--blue-bg);border-color:#bfdbfe;color:#1e3a8a}
+.hs-inst{background:var(--amber-bg);border-color:#fde68a;color:#78350f}
+.hs-no{background:var(--red-bg);border-color:#fecaca;color:#7f1d1d}
+.hs-first{background:#fef9c3;border-color:#fde047;color:#713f12}
+.hs-couple{background:var(--p50);border-color:var(--p200);color:var(--p700)}
+.hs-done{background:#f3f4f6;border-color:#e5e7eb;color:var(--mut2)}
+.hs-empty{border:1px dashed #e5e7eb;color:var(--mut2);display:flex;align-items:center;justify-content:center;font-size:14px}
+.hs-empty:hover{background:var(--p50);border-color:var(--p300,var(--p500))}
+.phint{font-size:11px;color:var(--mut);margin-top:9px;padding-top:9px;border-top:1px dashed var(--line)}
+.mockform{display:grid;gap:8px;font-size:11.5px}
+.mockform label{display:block}
+.mockform .lb{font-size:10.5px;color:var(--mut);font-weight:700;margin-bottom:2px;display:block}
+.mockform .fake{border:1px solid var(--line2);border-radius:6px;padding:6px 9px;background:#fff;cursor:pointer;color:var(--ink2)}
+.mockform .fake:hover{border-color:var(--p500);background:var(--p50)}
+.pbadge{display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;margin-bottom:2px}
+
+
+</style>
+</head>
+<body data-doc="04_操作樣本_行政櫃檯">
+<header class="hd"><div class="wrap">
+  <div class="kick">CheerPsy V2 · 慈恩心理治療所</div>
+  <h1>操作樣本 · 行政櫃檯</h1>
+  <p>一天的真實工作流：報到收款開據、機構案額度轉換、加時、未到、初診分流、新增與批次預約、場地租借、雲燈教室、預約總表。完成品驗收的核心依據。</p>
+  <div class="meta"><span>35 個步驟</span><span>12 個情境段落</span><span>可點互動原型</span><span>與 02 API 契約交叉檢核</span></div>
+</div></header>
+<div class="wrap">
+<div class="cols">
+<nav class="toc" id="toc"></nav>
+<main>
+<section id="how04">
+<h2><span class="num">0</span>如何使用本文件</h2>
+<p>這是行政櫃檯完整操作樣本，作為<b>完成品驗收的核心依據</b>。分兩部分：<b>Part 1</b> 是逐步操作腳本，每一步列出「操作 → 預期畫面 → 觸發的 API → DB 變化」，可逐項打勾；<b>Part 2</b> 是可點互動原型，點擊畫面元素會高亮對應的腳本列，驗收時可一邊點一邊對。</p>
+<div class="note purple"><span class="t">交叉檢核聲明</span>本文件出現的每一個 API 呼叫，都能在 <a href="02_架構變更規格.html">02 架構變更規格</a> §5 找到定義；每一個 DB 欄位變化，都能在 02 §1 找到對應表格。若驗收時發現對不上，代表 02 或本文件其中一份需要修正。</div>
+<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:14px">
+  <div><div class="h" style="margin-bottom:2px">驗收進度</div><div style="font-size:12px;color:var(--mut)">共 <span data-prog="all">–</span> 步</div></div>
+  <button id="ckReset" style="border:1px solid var(--line2);background:#fff;border-radius:8px;padding:7px 14px;font-size:12px;cursor:pointer;color:var(--mut)">清除全部勾選</button>
+</div>
+</section>
+
+<section id="scenario">
+<h2><span class="num">1</span>情境設定</h2>
+<p>2026/08/19（三），慈恩心理治療所永康館。行政人員<b>林怡君</b>登入櫃檯行政端。以下腳本依真實一天的工作順序串接：開機檢視 → 一般案報到收款 → 機構案報到 → 加時調整 → 未到處理 → 初診報到（有到/未到兩線）→ 建立新預約 → 批次預約遇衝突 → 場地租借 → 雲燈教室借用 → 預約總表查詢。</p>
+</section>
+
+<section id="p1">
+<h2><span class="num">2</span>Part 1 · 逐步操作腳本</h2>
+
+<h3>2.1 開機看今日統計</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:36px">#</th><th style="width:190px">操作</th><th>預期畫面</th><th style="width:230px">觸發的 API</th><th style="width:230px">DB 變化</th></tr></thead>
+<tbody>
+<tr id="st1"><td>1</td><td>登入後進入「診間日曆」（左側導覽 · 每日作業 › 診間日曆，主控標籤）</td><td>頂部統計列顯示：今日應到 13、已報到 5、未到 1、待報到 7、今日已收 $5,400、尚待收款 $400、行政流程未完成 2</td><td class="mono">GET /room-calendar?date=2026-08-19&amp;floor=all</td><td>純讀取，無寫入</td></tr>
+<tr id="st2"><td>2</td><td>切換樓層篩選鈕「2F」</td><td>診間欄只剩 2A/2B/2C/2D/2E，其餘欄位隱藏；統計列不變（仍為全日統計）</td><td class="mono">前端過濾（同一份回應資料，不重打 API）</td><td>—</td></tr>
+</tbody></table></div>
+<ul class="ck">
+<li data-k="s01"><span class="txt">1 登入後統計列數字正確</span></li>
+<li data-k="s02"><span class="txt">2 樓層篩選即時生效，不重打 API</span></li>
+</ul>
+
+<h3>2.2 一般自費報到 → 收款 → 開立收據</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:36px">#</th><th style="width:190px">操作</th><th>預期畫面</th><th style="width:230px">觸發的 API</th><th style="width:230px">DB 變化</th></tr></thead>
+<tbody>
+<tr id="st3"><td>3</td><td>點 2B 診間 14:00 「林小花」格子</td><td>開啟報到明細視窗，步驟條顯示 1 報到（當前）／2 收款／3 開立收據，徽章「待報到」</td><td class="mono">GET /appointments/{id}</td><td>純讀取</td></tr>
+<tr id="st4"><td>4</td><td>按「已到」</td><td>步驟條跳到 2，徽章變「已到 · 待收款」，收款區展開（自費次結 $2,000）</td><td class="mono">PUT /appointments/{id}/check-in<br>{status:"arrived"}</td><td><code>appointments.check_in_status='arrived'</code>, <code>checked_in_at</code>=now, <code>status='executed'</code>；<b>新建</b> <code>session_records</code> 一列 <code>payment_status='unpaid'</code></td></tr>
+<tr id="st5"><td>5</td><td>選付款方式「現金」，優待減免留 0，按「確認收款 $2,000」</td><td>步驟條跳到 3，徽章變「已收款 · 待開據」，開立收據區展開</td><td class="mono">POST /appointments/{id}/payment-step<br>{payment_method:"cash"}</td><td><code>session_records.payment_status='paid'</code>, <code>payment_method='cash'</code>, <code>paid_at</code>=now</td></tr>
+<tr id="st6"><td>6</td><td>收款項目選「心理治療」（預設項），備註留空，按「開立收據並完成」</td><td>步驟條全打勾，徽章變「已完成」，顯示「查看收據」「↻ 重看流程」；<b>2B/14:00 格子立即轉灰</b>（自費次結，收款+收據皆完成即滿足轉灰條件）</td><td class="mono">POST /appointments/{id}/receipt<br>{fee_item_id:1}</td><td>新建 <code>receipts</code> 一筆 <code>status='issued'</code>, <code>fee_item_id=1</code>, <code>amount=2000</code></td></tr>
+</tbody></table></div>
+<ul class="ck">
+<li data-k="s03"><span class="txt">3 開窗顯示正確初始狀態</span></li>
+<li data-k="s04"><span class="txt">4 已到後 session_records 正確建立，額度/quota 欄位不受影響（此筆非機構案）</span></li>
+<li data-k="s05"><span class="txt">5 收款狀態正確轉換</span></li>
+<li data-k="s06"><span class="txt">6 開立收據後格子立即轉灰，不需重新整理頁面</span></li>
+</ul>
+
+<h3>2.3 機構案報到（額度轉換 + 行政流程提醒）</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:36px">#</th><th style="width:190px">操作</th><th>預期畫面</th><th style="width:230px">觸發的 API</th><th style="width:230px">DB 變化</th></tr></thead>
+<tbody>
+<tr id="st7"><td>7</td><td>點 3C 診間 13:00「林凱文」格子（衛生局 15-45青壯 2/3）</td><td>明細視窗顯示機構自付 $400、機構請款 $1,600；步驟條 1 待報到</td><td class="mono">GET /appointments/{id}</td><td>純讀取</td></tr>
+<tr id="st8"><td>8</td><td>按「已到」</td><td>徽章「已到 · 待收款」；此格底部出現「行政流程提醒」子區塊：⚠️ 青壯方案｜尚有 2 項未完成</td><td class="mono">PUT /appointments/{id}/check-in<br>{status:"arrived"}</td><td>同 #4；<b>額外</b>：<code>case_institution_quotas.reserved_count -= 1</code>（若此筆先前在 booked 狀態，此步驟等同已預約→已使用中間態的最終確認）；<code>used_count += 1</code></td></tr>
+<tr id="st9"><td>9</td><td>收款 $400 現金 → 開立收據（收款項目「心理治療」）</td><td>步驟條全打勾；<b>但格子不轉灰</b>（機構案第三條件未滿足）</td><td class="mono">POST .../payment-step<br>POST .../receipt</td><td>同 #5#6</td></tr>
+<tr id="st10"><td>10</td><td>點開「行政流程提醒」清單，勾選「第一次需列印身分證」「個案需每次簽到」兩項</td><td>清單文字變「✅ 行政流程已全部完成」；<b>此時 3C/13:00 格子才轉灰</b></td><td class="mono">PUT /appointments/{id}/admin-tasks/{task1_id}<br>{is_done:true}<br>（重複兩次）</td><td><code>appointment_admin_tasks</code> 兩筆 <code>is_done=true</code>, <code>done_by</code>=林怡君, <code>done_at</code>=now；下次 <code>/room-calendar</code> 回應該格 <code>is_settled=true</code></td></tr>
+</tbody></table></div>
+<ul class="ck">
+<li data-k="s07"><span class="txt">7 機構自付/請款金額顯示正確</span></li>
+<li data-k="s08"><span class="txt">8 已到後額度扣減正確反映在方案清冊（若當下開啟）</span></li>
+<li data-k="s09"><span class="txt">9 報到收款收據完成但格子維持原色（機構案第三條件未滿足）</span></li>
+<li data-k="s10"><span class="txt">10 提醒全勾後格子才轉灰，且此刻不需重新整理</span></li>
+</ul>
+
+<h3>2.4 加時調整（含擋下情境）</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:36px">#</th><th style="width:190px">操作</th><th>預期畫面</th><th style="width:230px">觸發的 API</th><th style="width:230px">DB 變化</th></tr></thead>
+<tbody>
+<tr id="st11"><td>11</td><td>2A 診間 13:30「黃詠晨」已到，收款前點「⏱️ ＋ 加時／調整實際時數」</td><td>加時區塊展開，實際開始/結束下拉出現，預設等於原預約時間</td><td>—（前端展開，無 API）</td><td>—</td></tr>
+<tr id="st12"><td>12</td><td>把實際結束從 14:30 改為 15:00（加時 30 分）</td><td>金額即時重算為 $3,000，黃色提示「已加時 30 分鐘，存檔後同步回寫此筆預約的時間與金額」</td><td>—（前端試算，尚未送出）</td><td>—</td></tr>
+<tr id="st13"><td>13</td><td>確認收款 $3,000</td><td>若 2A/15:00 之後無其他預約 → 正常完成，時間軸該格延伸到 15:00</td><td class="mono">POST .../payment-step<br>{actual_end:"...15:00"}</td><td><code>appointments.actual_end</code> 更新，並<b>同步覆寫 time_range 上界</b>；<code>session_records.amount=3000</code></td></tr>
+<tr id="st13b"><td>13b</td><td><b>反例</b>：同樣操作，但 2A/14:30 剛好有下一位個案的預約</td><td>送出時<b>擋下</b>，紅色錯誤：「14:30 已有其他預約（王小明），無法加時。請心理師聯絡行政做更動」，金額試算保留但不寫入</td><td class="mono">POST .../payment-step → 409</td><td>不寫入，<code>time_range</code> 維持原值（衝突檢查由 §02.9 <code>EXCLUDE USING GIST</code> 保證資料庫層也擋得住）</td></tr>
+</tbody></table></div>
+<ul class="ck">
+<li data-k="s11"><span class="txt">11 加時區塊預設收合，按鈕觸發才展開</span></li>
+<li data-k="s12"><span class="txt">12 金額即時重算正確，未送出前不影響任何資料</span></li>
+<li data-k="s13"><span class="txt">13 正常加時：時間與金額同步回寫，日報表明細以修正後金額顯示</span></li>
+<li data-k="s13b"><span class="txt">13b 撞到相鄰預約時正確擋下（C1 裁示），非資料庫例外洩漏到前端</span></li>
+</ul>
+
+<h3>2.5 未到處理</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:36px">#</th><th style="width:190px">操作</th><th>預期畫面</th><th style="width:230px">觸發的 API</th><th style="width:230px">DB 變化</th></tr></thead>
+<tbody>
+<tr id="st14"><td>14</td><td>2E 診間 15:00「陳小蓉」（脆家方案 2/6）格子按「未到」</td><td>立即跳出未到原因欄位（5 選 1 + 其他）</td><td>—</td><td>—</td></tr>
+<tr id="st15"><td>15</td><td>選「未聯繫上」，補充說明留空，儲存</td><td>格子維持紅底標「未到」，提示「不產生應收；機構額度已釋回為可用」；點「查看原因」可見紀錄</td><td class="mono">PUT /appointments/{id}/check-in<br>{status:"no_show",<br>no_show_reason:"unreachable"}</td><td><code>appointments.check_in_status='no_show'</code>；<b>不建立</b> session_records；<code>case_institution_quotas.booked_count -1 / reserved_count +1</code>（還原為已預留，非釋回）</td></tr>
+</tbody></table></div>
+<ul class="ck">
+<li data-k="s14"><span class="txt">14 未到按鈕立即跳原因欄位，不需二次點擊</span></li>
+<li data-k="s15"><span class="txt">15 未到後不產生 session_record；額度正確還原為已預留而非憑空消失</span></li>
+</ul>
+
+<h3>2.6 初診報到（初診單、身分證、產病歷碼）</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:36px">#</th><th style="width:190px">操作</th><th>預期畫面</th><th style="width:230px">觸發的 API</th><th style="width:230px">DB 變化</th></tr></thead>
+<tbody>
+<tr id="st16"><td>16</td><td>2D 診間 16:00 黃框「⭐ 初診報到 ▸」格子</td><td>跳出「初診有到／初診未到」二選一視窗，顯示派案碼、主責心理師</td><td class="mono">GET /appointments/{id}</td><td>純讀取</td></tr>
+<tr id="st17"><td>17</td><td>按「初診有到」</td><td>開啟初診單：上半（姓名/性別/年齡/電話/結帳方式/負責心理師）已鎖定帶入；下半空白待填</td><td class="mono">GET /referrals/{id}</td><td>純讀取</td></tr>
+<tr id="st18"><td>18</td><td>不填身分證，直接按「儲存並產生病歷碼」</td><td><b>擋下</b>：身分證欄位標紅「必填 — 填妥才能產出病歷碼」</td><td>前端驗證擋下，不送出</td><td>—</td></tr>
+<tr id="st19"><td>19</td><td>補填身分證、出生日期、地址，新增一筆緊急聯絡人，按「儲存並產生病歷碼」</td><td>成功；視窗關閉，案件從媒合列表消失，出現在個案管理列表，帶新病歷碼</td><td class="mono">POST /intake-forms/{referral_id}/submit<br>{national_id, birth_date, address, emergency_contacts:[...]}</td><td>新建 <code>cases</code> 一筆（<code>case_number</code> 產生）；<code>intake_forms.submitted_at</code>=now, <code>case_id</code>=新值；<code>referrals.status='converted'</code>；<code>appointments.is_intake</code> 保持 true 供後續統計，check_in 走一般流程</td></tr>
+</tbody></table></div>
+<ul class="ck">
+<li data-k="s16"><span class="txt">16 初診格點開先二選一，不直接開單</span></li>
+<li data-k="s17"><span class="txt">17 上半資料鎖定不可改，下半可填</span></li>
+<li data-k="s18"><span class="txt">18 身分證未填正確擋下</span></li>
+<li data-k="s19"><span class="txt">19 產生病歷碼後案件正確轉移到個案管理</span></li>
+</ul>
+
+<h3>2.7 初診未到 → 後續處理三選一</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:36px">#</th><th style="width:190px">操作</th><th>預期畫面</th><th style="width:230px">觸發的 API</th><th style="width:230px">DB 變化</th></tr></thead>
+<tbody>
+<tr id="st20"><td>20</td><td>另一筆初診格按「初診未到」，填原因「個案來電請假」，儲存</td><td>案件退回媒合列表，狀態顯示「初診未到」，操作欄出現「後續處理」</td><td class="mono">PUT /referrals/{id}<br>{status:"matching", intake_no_show_reason:"case_leave"}</td><td><code>referrals.status</code> 回 'matching'；原掛在該筆的 appointment 標記 cancelled（該次初診時段釋出）</td></tr>
+<tr id="st21"><td>21</td><td>點「後續處理」→ 選「改約」，填新時段 2026/08/28 18:00，送出</td><td>系統推播通知原派案心理師，由心理師回填可行時段後行政再轉預約（此步驟示範到通知發出為止）</td><td class="mono">POST /referrals/{id}/reschedule-request<br>{proposed_slots:[...]}</td><td>新建通知 <code>notifications</code> 一筆給該心理師（<code>type='system'</code>）</td></tr>
+</tbody></table></div>
+<ul class="ck">
+<li data-k="s20"><span class="txt">20 初診未到正確退回媒合列表並標記狀態</span></li>
+<li data-k="s21"><span class="txt">21 後續處理三選一正確分流（此腳本示範改約，更換心理師/取消媒合同理）</span></li>
+</ul>
+
+<h3>2.8 建立一般預約（時間優先，含衝突擋錯）</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:36px">#</th><th style="width:190px">操作</th><th>預期畫面</th><th style="width:230px">觸發的 API</th><th style="width:230px">DB 變化</th></tr></thead>
+<tbody>
+<tr id="st22"><td>22</td><td>切到「預約作業 › 新增預約」，搜尋個案「林凱文」，心理師選「劉柏宏」，類型「現場」，日期 08/22，開始 14:00</td><td>右側先顯示劉柏宏的班表（尚未選時長）</td><td class="mono">GET /therapists/{id}/schedule?date=08-22</td><td>純讀取</td></tr>
+<tr id="st23"><td>23</td><td>選時長「60 分鐘」</td><td>系統檢查劉柏宏 14:00-15:00 本人時段——若無衝突，下方出現診間清單</td><td class="mono">GET /appointments/available-rooms?therapist_id=X&amp;date=08-22&amp;start_time=14:00&amp;duration_min=60</td><td>純讀取</td></tr>
+<tr id="st24"><td>24</td><td><b>反例</b>：改把開始時間改成 14:00 但選另一位「有外展在身」的心理師</td><td>直接顯示紅色擋錯：「你自己的時段衝突：14:00–15:00 與 🚐 陳小明（三村國小·外展，14:00–15:30）重疊，請先改時間或換心理師」；<b>不列出任何診間</b></td><td class="mono">GET /appointments/available-rooms → conflict block</td><td>純讀取，回應內含 <code>conflict: {...}</code>，無 <code>rooms</code> 欄位</td></tr>
+<tr id="st25"><td>25</td><td>選回劉柏宏，點選診間卡「2B」（帶 ⭐ 上次使用標籤）</td><td>右側切換為 2B 當日狀況（他人時段匿名）</td><td>—（前端切換視圖，複用 #23 回應內已含的房間占用資料）</td><td>—</td></tr>
+<tr id="st26"><td>26</td><td>繳費方式選「自費·次結」，金額帶入 $2,000，按「建立預約」</td><td>成功建立，跳回診間日曆可見新格子</td><td class="mono">POST /appointments<br>{case_id, therapist_id, room_id, session_type:"in_person", start_time, end_time, amount, funding_source:"self_pay"}</td><td>新建 <code>appointments</code> 一筆；<code>appointment_number</code> 依序號規則產生</td></tr>
+</tbody></table></div>
+<ul class="ck">
+<li data-k="s22"><span class="txt">22 選時長前面板顯示班表而非空白</span></li>
+<li data-k="s23"><span class="txt">23 選時長後才查診間，順序正確</span></li>
+<li data-k="s24"><span class="txt">24 本人時段衝突正確擋下且不列診間</span></li>
+<li data-k="s25"><span class="txt">25 選診間後面板正確切換為匿名診間視圖</span></li>
+<li data-k="s26"><span class="txt">26 建立成功後立即反映在診間日曆</span></li>
+</ul>
+
+<h3>2.9 批次預約遇衝突</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:36px">#</th><th style="width:190px">操作</th><th>預期畫面</th><th style="width:230px">觸發的 API</th><th style="width:230px">DB 變化</th></tr></thead>
+<tbody>
+<tr id="st27"><td>27</td><td>切到批次預約，個案「林凱文」，診間 3C，每週四 18:00-19:00，共 8 次，按「產生時段預覽」</td><td>8 筆預覽，其中 07/31（四）標紅「空間衝突」，建立鈕文字變「建立 7 筆預約」</td><td class="mono">POST /appointments/batch/preview<br>{...,slots:[8筆]}</td><td>純試算，無寫入</td></tr>
+<tr id="st28"><td>28</td><td>按 ✕ 移除衝突那筆，按「建立 7 筆預約」</td><td>成功建立 7 筆，共用同一 <code>batch_id</code></td><td class="mono">POST /appointments/batch</td><td>新建 7 筆 <code>appointments</code>，<code>batch_id</code> 相同；機構案時額度一次扣 7 次（已預留→已預約）</td></tr>
+</tbody></table></div>
+<ul class="ck">
+<li data-k="s27"><span class="txt">27 衝突正確標紅且不擋其餘 7 筆的預覽</span></li>
+<li data-k="s28"><span class="txt">28 送出後正確排除已移除的那筆</span></li>
+</ul>
+
+<h3>2.10 建立場地租借</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:36px">#</th><th style="width:190px">操作</th><th>預期畫面</th><th style="width:230px">觸發的 API</th><th style="width:230px">DB 變化</th></tr></thead>
+<tbody>
+<tr id="st29"><td>29</td><td>切到「場地租借」，借用人選「林怡君（行政）」，使用類別「機構」，方案「鉅微借場地」</td><td>費率自動帶入 $800/小時</td><td class="mono">GET /venue-plans?category=institution</td><td>純讀取</td></tr>
+<tr id="st30"><td>30</td><td>選診間 3D、08/21 14:00-16:00，場地費用顯示 $1,600，按「建立場地租借」</td><td>成功；3D 診間日曆第一分頁 14:00 出現此筆，行政需做已到/未到</td><td class="mono">POST /venue-rentals<br>{room_id, category:"institution", vendor_institution_id, hours:2, venue_fee_amount:1600,...}</td><td>新建 <code>appointments</code>（session_type='venue_rental'）+ <code>venue_rental_details</code> 1:1</td></tr>
+</tbody></table></div>
+<ul class="ck">
+<li data-k="s29"><span class="txt">29 費率依方案自動帶入，可手動修改</span></li>
+<li data-k="s30"><span class="txt">30 建立後寫入診間日曆並可正常做已到/未到</span></li>
+</ul>
+
+<h3>2.11 建立雲燈教室借用</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:36px">#</th><th style="width:190px">操作</th><th>預期畫面</th><th style="width:230px">觸發的 API</th><th style="width:230px">DB 變化</th></tr></thead>
+<tbody>
+<tr id="st31"><td>31</td><td>切到診間日曆第三分頁，點 08/19 18:00 空白格</td><td>跳出借用表單，日期時間已帶入</td><td>—</td><td>—</td></tr>
+<tr id="st32"><td>32</td><td>填「親職教養講座」，講師外部「邱惟雅」，借用人「林怡君」，講師費 $2,000/小時×3小時=$6,000，勾「入慈恩帳戶」，儲存</td><td>成功；第三分頁該時段出現此筆</td><td class="mono">POST /hall-bookings</td><td>新建 <code>hall_bookings</code> 一筆</td></tr>
+</tbody></table></div>
+<ul class="ck">
+<li data-k="s31"><span class="txt">31 空白格點擊直接帶入日期時間</span></li>
+<li data-k="s32"><span class="txt">32 建立成功後立即顯示在週格上</span></li>
+</ul>
+
+<h3>2.12 預約總表查詢與匯出</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:36px">#</th><th style="width:190px">操作</th><th>預期畫面</th><th style="width:230px">觸發的 API</th><th style="width:230px">DB 變化</th></tr></thead>
+<tbody>
+<tr id="st33"><td>33</td><td>切到「預約總表」，日期區間設 08/19-08/21，心理師「劉柏宏」</td><td>11 欄表格顯示篩選後結果，一般預約操作欄顯示「由心理師端操作」，媒合初診案顯示「取消」</td><td class="mono">GET /appointments/list-view?date_from=08-19&amp;date_to=08-21&amp;therapist_id=X</td><td>純讀取</td></tr>
+<tr id="st34"><td>34</td><td>把篩選改成不存在的組合（如診間「1A」+ 類型「外展」）</td><td>表格中央顯示「沒有符合條件的預約 · 調整日期區間或篩選條件」</td><td class="mono">GET /appointments/list-view?...&amp;total=0</td><td>—</td></tr>
+<tr id="st35"><td>35</td><td>還原篩選，按「匯出 CSV」</td><td>下載 CSV，欄位與畫面一致，日期與時段分開兩欄</td><td class="mono">GET /export/appointments-list-view?...</td><td>—</td></tr>
+</tbody></table></div>
+<ul class="ck">
+<li data-k="s33"><span class="txt">33 篩選與欄位正確，操作欄依 is_intake 正確分流</span></li>
+<li data-k="s34"><span class="txt">34 空狀態文字正確顯示</span></li>
+<li data-k="s35"><span class="txt">35 CSV 匯出欄位與畫面一致</span></li>
+</ul>
+</section>
+
+<section id="p2">
+<h2><span class="num">3</span>Part 2 · 可點互動原型</h2>
+<p>以下每個格子／按鈕都是熱點——點擊會捲動到並高亮 Part 1 對應的腳本列，方便驗收時比對「畫面長這樣」是否等於「腳本寫的這樣」。視覺語言取自診療所回饋原型，配色簡化為與本文件一致的主題色。</p>
+
+<div class="proto">
+<div class="pt">🗓️ 診間日曆 — 櫃檯主控台（08:00–13:30 節錄，完整版為 08:00–22:00 · 28 列）</div>
+<div class="pgrid" style="--cols:5">
+  <div class="prow">
+    <div class="ph">時間</div>
+    <div class="ph">1A</div><div class="ph">2A</div><div class="ph">2B</div><div class="ph">2C<br><span style="font-weight:400">遊戲室</span></div><div class="ph">2D</div>
+  </div>
+  <div class="prow"><div class="pt0">10:00</div>
+    <div class="pc"></div><div class="pc"></div>
+    <div class="pc"><a class="hotspot hs-done" data-goto="st6">✓已完成<b>王小明｜男</b>邱似齡·現場<br>自費月結</a></div>
+    <div class="pc"></div><div class="pc"></div>
+  </div>
+  <div class="prow"><div class="pt0">11:00</div>
+    <div class="pc"></div><div class="pc"></div><div class="pc"></div>
+    <div class="pc"><a class="hotspot hs-inst" data-goto="st7"><b>黃小蘭｜女</b>鄭幼毅·遊戲室<br>衛生局 1/2</a></div>
+    <div class="pc"></div>
+  </div>
+  <div class="prow"><div class="pt0">13:00</div>
+    <div class="pc"></div><div class="pc"></div><div class="pc"></div>
+    <div class="pc"><a class="hotspot hs-inst" data-goto="st9"><b>林凱文｜男</b>呂孟育·現場<br>青壯 2/3</a></div>
+    <div class="pc"></div>
+  </div>
+  <div class="prow"><div class="pt0">13:30</div>
+    <div class="pc"></div>
+    <div class="pc"><a class="hotspot hs-self" data-goto="st11"><b>黃詠晨｜男</b>鄭幼毅·現場<br>自費月結·可加時</a></div>
+    <div class="pc"></div><div class="pc"></div><div class="pc"></div>
+  </div>
+  <div class="prow"><div class="pt0">14:00</div>
+    <div class="pc"></div><div class="pc"></div>
+    <div class="pc"><a class="hotspot hs-self" data-goto="st3"><b>林小花｜女</b>劉柏宏·現場<br>自費次結 $2,000</a></div>
+    <div class="pc"></div><div class="pc"></div>
+  </div>
+  <div class="prow"><div class="pt0">15:00</div>
+    <div class="pc"></div><div class="pc"></div><div class="pc"></div>
+    <div class="pc"><a class="hotspot hs-no" data-goto="st14">未到<b>陳小蓉｜女</b>林紀宇<br>脆家 2/6</a></div>
+    <div class="pc"><a class="hotspot hs-first" data-goto="st16">⭐<b>初診報到 ▸</b>李新源｜男<br>賴憶嫺</a></div>
+  </div>
+</div>
+<div class="phint">💡 點任一預約格 → 高亮 Part 1 對應腳本列（自動捲動）。灰色徽章＝已完成整格轉灰；黃框＝機構最後一次或初診。</div>
+</div>
+
+<div class="grid2">
+<div class="proto">
+<div class="pt">➕ 新增預約（時間優先）</div>
+<div class="mockform">
+  <label><span class="lb">1 諮商類型</span><a class="hotspot fake" data-goto="st22">現場</a></label>
+  <label><span class="lb">2 個案</span><a class="hotspot fake" data-goto="st22">🔍 林凱文（26A7456126）</a></label>
+  <label><span class="lb">3 心理師</span><a class="hotspot fake" data-goto="st22">劉柏宏 ▾</a></label>
+  <label><span class="lb">4 日期 → 5 開始時間</span><a class="hotspot fake" data-goto="st22">2026/08/22（六）14:00</a></label>
+  <label><span class="lb">6 時長</span><a class="hotspot fake" data-goto="st23">60 分鐘 ▾</a></label>
+  <label><span class="lb">7 系統列出的可用診間</span><a class="hotspot fake hs-self" data-goto="st25" style="display:block">2B ⭐上次使用　3C　3E</a></label>
+  <label><span class="lb" style="color:var(--red)">反例：換一位已有外展的心理師</span><a class="hotspot fake" data-goto="st24" style="border-color:#fecaca;background:var(--red-bg);color:#7f1d1d">✕ 你自己的時段衝突 — 點看擋錯訊息</a></label>
+</div>
+</div>
+<div class="proto">
+<div class="pt">🏢 場地租借 ／ 🏛️ 雲燈教室</div>
+<div class="mockform">
+  <label><span class="lb">借用人 / 使用類別 / 方案</span><a class="hotspot fake" data-goto="st29">林怡君（行政） · 機構 · 鉅微借場地</a></label>
+  <label><span class="lb">診間 / 時間 / 費用</span><a class="hotspot fake" data-goto="st30">3D · 08/21 14:00–16:00 · $1,600</a></label>
+  <label><span class="lb" style="margin-top:8px">雲燈教室空白格</span><a class="hotspot fake" data-goto="st31">08/19 18:00 · 點擊建立借用</a></label>
+  <label><a class="hotspot fake" data-goto="st32">親職教養講座 · 邱惟雅 · $6,000 · 已入帳</a></label>
+</div>
+</div>
+</div>
+
+<div class="proto">
+<div class="pt">📋 預約總表（節錄）</div>
+<div class="tw"><table style="min-width:0">
+<thead><tr><th>日期</th><th>病歷號</th><th>姓名</th><th>心理師</th><th>時間</th><th>類型</th><th>方案</th><th>操作</th></tr></thead>
+<tbody>
+<tr><td>08/19</td><td class="mono">26A7456126</td><td>林凱文</td><td>呂孟育</td><td>13:00-14:00</td><td>現場</td><td>青壯·機構自付</td><td><a class="hotspot" data-goto="st33">由心理師端操作</a></td></tr>
+<tr><td>08/19</td><td class="mono">—</td><td>⭐李新源</td><td>賴憶嫺</td><td>16:00-17:00</td><td>現場</td><td>青壯·機構自付</td><td><a class="hotspot t-r tag" data-goto="st33" style="cursor:pointer">取消</a></td></tr>
+<tr><td colspan="8" style="text-align:center;color:var(--mut)"><a class="hotspot" data-goto="st34" style="display:inline">👉 點此模擬「篩選後查無資料」的空狀態</a></td></tr>
+</tbody></table></div>
+</div>
+</section>
+
+<div class="foot">CheerPsy V2 升級計畫 · 依《判定定稿 v4 · 第①組 每日作業 · 2026/08/20》編寫 · 本檔為單檔自足文件</div>
+</main>
+</div>
+</div>
+<script>
+
+/* TOC auto-build from h2/h3 */
+(function(){
+  var toc=document.getElementById('toc'); if(!toc) return;
+  var out='<b>目錄</b>';
+  document.querySelectorAll('main section').forEach(function(s){
+    var h2=s.querySelector('h2'); if(!h2) return;
+    if(!s.id) s.id='s'+Math.random().toString(36).slice(2,7);
+    var t=h2.textContent.replace(/^\s*\d+\s*/,'').trim();
+    out+='<a href="#'+s.id+'">'+t+'</a>';
+    s.querySelectorAll('h3').forEach(function(h3,i){
+      if(!h3.id) h3.id=s.id+'-h'+i;
+      out+='<a class="sub" href="#'+h3.id+'">'+h3.textContent.trim()+'</a>';
+    });
+  });
+  toc.innerHTML=out;
+})();
+/* checklist toggle + persistence + progress */
+(function(){
+  var KEY='cheerpsy-v2-'+(document.body.dataset.doc||'doc');
+  var saved={}; try{saved=JSON.parse(localStorage.getItem(KEY)||'{}');}catch(e){}
+  var items=[].slice.call(document.querySelectorAll('.ck li'));
+  items.forEach(function(li,i){
+    var k=li.dataset.k||('i'+i); li.dataset.k=k;
+    if(!li.querySelector('.box')){var b=document.createElement('span');b.className='box';li.insertBefore(b,li.firstChild);}
+    if(saved[k]) li.classList.add('on');
+    li.addEventListener('click',function(){
+      li.classList.toggle('on');
+      saved[k]=li.classList.contains('on');
+      try{localStorage.setItem(KEY,JSON.stringify(saved));}catch(e){}
+      paint();
+    });
+  });
+  function paint(){
+    document.querySelectorAll('[data-prog]').forEach(function(el){
+      var scope=el.dataset.prog==='all'?document:document.getElementById(el.dataset.prog);
+      if(!scope) return;
+      var all=scope.querySelectorAll('.ck li'), done=scope.querySelectorAll('.ck li.on');
+      el.textContent=done.length+' / '+all.length;
+    });
+  }
+  paint();
+  var rst=document.getElementById('ckReset');
+  if(rst) rst.onclick=function(){ if(!confirm('清除本頁所有勾選狀態？'))return;
+    try{localStorage.removeItem(KEY);}catch(e){} items.forEach(function(li){li.classList.remove('on');}); paint(); };
+})();
+
+/* hotspot -> highlight target row (Part 2 interactive prototype) */
+(function(){
+  document.querySelectorAll('.hotspot[data-goto]').forEach(function(h){
+    h.addEventListener('click', function(){
+      var id=h.dataset.goto, el=document.getElementById(id);
+      if(!el) return;
+      document.querySelectorAll('.flash').forEach(function(x){x.classList.remove('flash');});
+      el.classList.add('flash');
+      el.scrollIntoView({behavior:'smooth', block:'center'});
+      setTimeout(function(){el.classList.remove('flash');}, 2600);
+    });
+  });
+})();
+
+/* tab panels: .tabs span[data-tab] -> #tab-{id} */
+(function(){
+  document.querySelectorAll('.tabs').forEach(function(bar){
+    bar.querySelectorAll('span[data-tab]').forEach(function(t){
+      t.onclick=function(){
+        bar.querySelectorAll('span[data-tab]').forEach(function(x){
+          x.classList.remove('on');
+          var p=document.getElementById('tab-'+x.dataset.tab); if(p)p.style.display='none';
+        });
+        t.classList.add('on');
+        var p=document.getElementById('tab-'+t.dataset.tab); if(p)p.style.display='block';
+      };
+    });
+    var first=bar.querySelector('span[data-tab]'); if(first) first.click();
+  });
+})();
+
+
+</script>
+</body>
+</html>

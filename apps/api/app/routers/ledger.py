@@ -6,7 +6,7 @@ import io
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth.dependencies import RequireRole, get_current_user
@@ -131,6 +131,11 @@ def _to_response(r: SessionRecord, db: Session) -> SessionRecordResponse:
         parent_record_id=r.parent_record_id,
         outcall_bonus=float(r.outcall_bonus or 0),
         outcall_note=r.outcall_note,
+        plan_name=(r.plan_quote or {}).get("plan_name") if r.plan_quote else None,
+        case_payable=float(r.case_payable) if r.case_payable is not None else None,
+        institution_payable=float(r.institution_payable) if r.institution_payable is not None else None,
+        copay_collected_at=r.copay_collected_at,
+        copay_payment_method=r.copay_payment_method,
     )
 
 
@@ -236,7 +241,12 @@ def list_self_pay_unpaid(
     user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
     db: Session = Depends(get_db),
 ):
-    """Self-pay records awaiting payment (no claim batch needed). Grouped by case client-side."""
+    """自付款待收清單——09 §1.4a 已裁示：不分 funding_source，只認「有沒有
+    自付額待收」。純自費案看 payment_status；機構案看 copay_collected_at
+    （那條路徑本來就跟 payment_status 語意分開，見 08 §5.4）。案名沿用舊的
+    'self_pay_unpaid'，因為既有前端（/claims、/finance）還在呼叫這支，
+    改名要動的地方太多；語意已經是「自付款待收」而不是「純自費待收」。
+    """
     materialize_due_appointments(db)
     records = (
         db.query(SessionRecord)
@@ -245,9 +255,22 @@ def list_self_pay_unpaid(
             joinedload(SessionRecord.appointment).joinedload(Appointment.therapist),
         )
         .filter(
-            SessionRecord.payment_status == "unpaid",
             SessionRecord.is_void.is_(False),
-            SessionRecord.funding_source == "self_pay",
+            or_(
+                # 純自費（或舊路徑無 funding_source）：沿用 payment_status。
+                and_(
+                    or_(SessionRecord.funding_source == "self_pay", SessionRecord.funding_source.is_(None)),
+                    SessionRecord.payment_status == "unpaid",
+                ),
+                # 機構案：payment_status 語意是「機構請款進度」，跟這裡的
+                # 「個案自付額收了沒」無關，不能拿來判斷，只看 copay_collected_at
+                # 與 case_payable（見 models/session_record.py 同一段說明）。
+                and_(
+                    SessionRecord.funding_source == "institution",
+                    SessionRecord.case_payable > 0,
+                    SessionRecord.copay_collected_at.is_(None),
+                ),
+            ),
         )
         .order_by(SessionRecord.case_id, SessionRecord.session_date)
         .all()

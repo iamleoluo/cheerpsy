@@ -1,0 +1,777 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>02 架構變更規格 — CheerPsy V2</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+ --bg:#f6f7f9; --panel:#fff; --ink:#111827; --ink2:#374151; --mut:#6b7280; --mut2:#9ca3af;
+ --line:#e5e7eb; --line2:#d1d5db;
+ --p50:#f5f3ff; --p100:#ede9fe; --p200:#ddd6fe; --p500:#8b5cf6; --p600:#7c3aed; --p700:#6d28d9;
+ --blue:#2563eb; --blue-bg:#eff6ff; --green:#16a34a; --green-bg:#f0fdf4;
+ --amber:#d97706; --amber-bg:#fffbeb; --red:#dc2626; --red-bg:#fef2f2;
+ --sky:#0891b2; --sky-bg:#ecfeff; --rose:#e11d48; --rose-bg:#fff1f2;
+ --code:#f3f4f6;
+}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);
+ font:14px/1.75 "Noto Sans TC","PingFang TC","Microsoft JhengHei",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+ -webkit-font-smoothing:antialiased}
+.wrap{max-width:1220px;margin:0 auto;padding:0 20px 90px}
+
+/* ---- header ---- */
+.hd{background:linear-gradient(135deg,#4c1d95,#6d28d9 55%,#7c3aed);color:#fff;padding:30px 0 26px;margin-bottom:26px}
+.hd .wrap{padding-bottom:0}
+.hd .kick{font-size:12px;letter-spacing:.16em;text-transform:uppercase;opacity:.72;font-weight:700}
+.hd h1{font-size:27px;font-weight:800;margin:7px 0 8px;letter-spacing:-.01em}
+.hd p{opacity:.9;font-size:13.5px;max-width:860px}
+.hd .meta{margin-top:14px;display:flex;flex-wrap:wrap;gap:8px}
+.hd .meta span{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.22);
+ border-radius:999px;padding:3px 11px;font-size:11.5px;font-weight:600}
+
+/* ---- layout ---- */
+.cols{display:grid;grid-template-columns:220px 1fr;gap:28px;align-items:start}
+@media(max-width:1000px){.cols{grid-template-columns:1fr}.toc{position:static!important;max-height:none!important}}
+.toc{position:sticky;top:18px;background:var(--panel);border:1px solid var(--line);border-radius:12px;
+ padding:14px 12px;max-height:calc(100vh - 40px);overflow:auto;font-size:12.5px}
+.toc b{display:block;font-size:11px;letter-spacing:.1em;color:var(--mut2);margin:0 0 8px 6px;text-transform:uppercase}
+.toc a{display:block;color:var(--ink2);text-decoration:none;padding:5px 8px;border-radius:7px;line-height:1.45}
+.toc a:hover{background:var(--p50);color:var(--p700)}
+.toc a.sub{padding-left:20px;font-size:12px;color:var(--mut)}
+
+/* ---- sections ---- */
+section{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px 26px;margin-bottom:20px;
+ scroll-margin-top:16px}
+h2{font-size:19px;font-weight:800;letter-spacing:-.01em;padding-bottom:11px;margin-bottom:16px;
+ border-bottom:2px solid var(--p100);display:flex;align-items:center;gap:9px}
+h2 .num{background:var(--p600);color:#fff;font-size:12px;width:26px;height:26px;border-radius:8px;
+ display:inline-flex;align-items:center;justify-content:center;font-weight:800;flex:none}
+h3{font-size:15px;font-weight:700;margin:24px 0 10px;color:var(--p700);
+ padding-left:10px;border-left:3px solid var(--p500)}
+h4{font-size:13.5px;font-weight:700;margin:16px 0 7px;color:var(--ink2)}
+p{margin:9px 0;color:var(--ink2)}
+ul,ol{margin:9px 0 9px 22px;color:var(--ink2)}
+li{margin:4px 0}
+a{color:var(--p700)}
+
+/* ---- tables ---- */
+.tw{overflow-x:auto;margin:13px 0;border:1px solid var(--line);border-radius:10px}
+table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:560px;background:#fff}
+th{background:#fafafa;text-align:left;font-weight:700;color:var(--mut);font-size:11px;
+ letter-spacing:.05em;padding:9px 11px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 11px;border-bottom:1px solid #f1f2f4;vertical-align:top;line-height:1.65}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:#fcfcfd}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+td.c,th.c{text-align:center}
+td.w{white-space:nowrap}
+
+/* ---- code / mono ---- */
+code,.mono{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:11.8px}
+code{background:var(--code);padding:1.5px 5px;border-radius:4px;color:#9333ea;word-break:break-word}
+pre{background:#1e1b2e;color:#e8e5f5;padding:14px 16px;border-radius:10px;overflow-x:auto;
+ font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:11.8px;line-height:1.7;margin:12px 0}
+pre .c{color:#8b83a8}
+pre .k{color:#c4b5fd}
+pre .s{color:#86efac}
+
+/* ---- callouts ---- */
+.note{border-radius:9px;padding:11px 14px;margin:12px 0;font-size:12.8px;line-height:1.7;
+ border:1px solid var(--line);background:#fafafa;color:var(--ink2)}
+.note b{color:var(--ink)}
+.note.blue{background:var(--blue-bg);border-color:#bfdbfe;color:#1e40af}
+.note.green{background:var(--green-bg);border-color:#bbf7d0;color:#15803d}
+.note.amber{background:var(--amber-bg);border-color:#fde68a;color:#92400e}
+.note.red{background:var(--red-bg);border-color:#fecaca;color:#991b1b}
+.note.purple{background:var(--p50);border-color:var(--p200);color:var(--p700)}
+.note .t{font-weight:800;display:block;margin-bottom:3px}
+
+/* ---- tags ---- */
+.tag{display:inline-block;font-size:10.5px;font-weight:700;padding:1.5px 7px;border-radius:5px;
+ border:1px solid transparent;white-space:nowrap;line-height:1.6}
+.t-p{background:var(--p100);color:var(--p700);border-color:var(--p200)}
+.t-b{background:var(--blue-bg);color:var(--blue);border-color:#bfdbfe}
+.t-g{background:var(--green-bg);color:var(--green);border-color:#bbf7d0}
+.t-a{background:var(--amber-bg);color:var(--amber);border-color:#fde68a}
+.t-r{background:var(--red-bg);color:var(--red);border-color:#fecaca}
+.t-s{background:var(--sky-bg);color:var(--sky);border-color:#a5f3fc}
+.t-x{background:#f3f4f6;color:var(--mut);border-color:var(--line2)}
+
+/* ---- checklist ---- */
+.ck{list-style:none;margin:10px 0;padding:0}
+.ck li{display:flex;gap:10px;align-items:flex-start;padding:8px 11px;border:1px solid var(--line);
+ border-radius:8px;margin-bottom:6px;background:#fff;cursor:pointer;transition:.12s;font-size:12.8px}
+.ck li:hover{border-color:var(--p200);background:var(--p50)}
+.ck li .box{width:16px;height:16px;border:2px solid var(--line2);border-radius:4px;flex:none;margin-top:3px;
+ display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;transition:.12s}
+.ck li.on{background:#fafafa;border-color:var(--line)}
+.ck li.on .box{background:var(--green);border-color:var(--green)}
+.ck li.on .box:after{content:"✓"}
+.ck li.on .txt{color:var(--mut2);text-decoration:line-through}
+.ck .txt{flex:1;color:var(--ink2);line-height:1.65}
+.ck .src{font-size:10.5px;color:var(--mut2);white-space:nowrap;margin-left:auto;padding-left:8px}
+
+/* ---- misc ---- */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media(max-width:820px){.grid2,.grid3{grid-template-columns:1fr}}
+.card{border:1px solid var(--line);border-radius:11px;padding:14px 16px;background:#fff}
+.card .h{font-weight:800;font-size:13px;margin-bottom:6px;display:flex;align-items:center;gap:7px}
+.kpi{border:1px solid var(--line);border-radius:11px;padding:13px 15px;background:#fff}
+.kpi .l{font-size:11px;color:var(--mut);font-weight:700;letter-spacing:.04em}
+.kpi .v{font-size:24px;font-weight:800;margin:2px 0;letter-spacing:-.02em}
+.kpi .s{font-size:11.5px;color:var(--mut2)}
+hr{border:none;border-top:1px solid var(--line);margin:22px 0}
+.foot{text-align:center;color:var(--mut2);font-size:11.5px;padding:26px 0 0}
+.arrow{color:var(--p600);font-weight:800}
+.del{color:var(--mut2);text-decoration:line-through}
+.new{color:var(--green);font-weight:700}
+@media print{
+ body{background:#fff}.toc{display:none}.cols{grid-template-columns:1fr}
+ section{break-inside:avoid;border:none;padding:0 0 18px}
+ .hd{background:#4c1d95!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+
+/* ---- interactive prototype (04/05 Part 2) ---- */
+@keyframes flashHi{0%{box-shadow:0 0 0 3px var(--p500)}100%{box-shadow:0 0 0 3px transparent}}
+tr.flash td:first-child{position:relative}
+tr.flash{background:var(--p50)!important;animation:flashHi 2.4s ease-out}
+.proto{background:#fbfbfc;border:1px solid var(--line);border-radius:12px;padding:16px;margin:14px 0}
+.proto .pt{font-size:11px;font-weight:800;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin-bottom:10px}
+.pgrid{display:grid;border:1px solid var(--line2);border-radius:8px;overflow:hidden;font-size:10.5px;background:#fff}
+.pgrid .prow{display:grid;grid-template-columns:52px repeat(var(--cols,5),1fr);border-top:1px solid #eee}
+.pgrid .prow:first-child{border-top:none}
+.pgrid .ph{background:#fafafa;font-weight:700;color:var(--mut);padding:6px 4px;text-align:center;border-right:1px solid #eee}
+.pgrid .pt0{padding:5px 4px;color:var(--mut2);text-align:center;border-right:1px solid #eee;font-variant-numeric:tabular-nums}
+.pgrid .pc{border-right:1px solid #f2f2f2;min-height:34px;padding:2px}
+.pgrid .pc:last-child{border-right:none}
+.hotspot{display:block;height:100%;border-radius:5px;padding:3px 5px;cursor:pointer;transition:.12s;font-size:9.5px;line-height:1.3;border:1px solid transparent}
+.hotspot:hover{outline:2px solid var(--p500);outline-offset:-1px;filter:brightness(.97)}
+.hotspot b{display:block;font-size:10px}
+.hs-self{background:var(--blue-bg);border-color:#bfdbfe;color:#1e3a8a}
+.hs-inst{background:var(--amber-bg);border-color:#fde68a;color:#78350f}
+.hs-no{background:var(--red-bg);border-color:#fecaca;color:#7f1d1d}
+.hs-first{background:#fef9c3;border-color:#fde047;color:#713f12}
+.hs-couple{background:var(--p50);border-color:var(--p200);color:var(--p700)}
+.hs-done{background:#f3f4f6;border-color:#e5e7eb;color:var(--mut2)}
+.hs-empty{border:1px dashed #e5e7eb;color:var(--mut2);display:flex;align-items:center;justify-content:center;font-size:14px}
+.hs-empty:hover{background:var(--p50);border-color:var(--p300,var(--p500))}
+.phint{font-size:11px;color:var(--mut);margin-top:9px;padding-top:9px;border-top:1px dashed var(--line)}
+.mockform{display:grid;gap:8px;font-size:11.5px}
+.mockform label{display:block}
+.mockform .lb{font-size:10.5px;color:var(--mut);font-weight:700;margin-bottom:2px;display:block}
+.mockform .fake{border:1px solid var(--line2);border-radius:6px;padding:6px 9px;background:#fff;cursor:pointer;color:var(--ink2)}
+.mockform .fake:hover{border-color:var(--p500);background:var(--p50)}
+.pbadge{display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;margin-bottom:2px}
+
+
+</style>
+</head>
+<body data-doc="02_架構變更規格">
+<header class="hd"><div class="wrap">
+  <div class="kick">CheerPsy V2 · 慈恩心理治療所</div>
+  <h1>架構變更規格</h1>
+  <p>資料模型變更、Migration 順序、識別碼規則、狀態機、API 契約、畫面→資料對照、權限矩陣。實作的唯一技術依據；04/05 操作樣本的每個 API 呼叫與 DB 變化都必須能在本文件找到定義。</p>
+  <div class="meta"><span>6 張表修改</span><span>10 張表新建</span><span>19 支 migration</span><span>7 個新端點群</span><span>6 個畫面資料對照</span></div>
+</div></header>
+<div class="wrap">
+<div class="cols">
+<nav class="toc" id="toc"></nav>
+<main>
+<section id="how02">
+<h2><span class="num">0</span>如何使用本文件</h2>
+<p>本文件是實作的<b>唯一技術依據</b>。順序是刻意設計的：先資料模型，再狀態機，再 API 契約，最後才是「畫面需要什麼資料」——因為畫面的需求必須能被前面三層滿足，反過來設計會漏掉衝突檢查、額度扣減這類跨畫面的規則。</p>
+<div class="note purple"><span class="t">與 03 / 04 / 05 的關係</span>
+03 操作體驗細節清單記錄「這裡要怎麼做」的視覺與互動規則，本文件不重複。04／05 操作樣本的每一個 API 呼叫，都必須能在本文件 §5 找到定義；每一個 DB 欄位變化，都必須能在 §1 找到。這是刻意的交叉檢核設計。</div>
+<div class="note amber"><span class="t">範圍提醒</span>本文件只涵蓋第①組（診間日曆／預約作業／預約總表／我的今日／我的班表）需要的資料模型與 API。②③組的表結構只列到「需要哪些欄位」的程度，不展開端點細節（見 §1.3）。</div>
+</section>
+
+<section id="s1">
+<h2><span class="num">1</span>資料模型變更總表</h2>
+
+<h3>1.1 既有資料表的修改</h3>
+
+<h4>rooms — 補上診間屬性</h4>
+<div class="tw"><table>
+<thead><tr><th>欄位</th><th>型別</th><th>可空</th><th>預設</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td colspan="5" style="background:#fafafa;color:var(--mut);font-size:11px">既有：id · name · floor · room_code(unique) · has_special_equipment · notes</td></tr>
+<tr><td class="new mono">use_type</td><td>VARCHAR(20)</td><td>NOT NULL</td><td class="mono">'general'</td><td class="new">general（晤談室）| play（兒童遊戲室）。定稿：2C/2E 為兒童遊戲室，其餘晤談室</td></tr>
+<tr><td class="new mono">size</td><td>VARCHAR(20)</td><td>NOT NULL</td><td class="mono">'normal'</td><td class="new">normal | large。原型標記 2D/3D/3F 為大間，供 90 分鐘案排序優先</td></tr>
+</tbody></table></div>
+<div class="note amber">配合 A3：這是<b>資料重建</b>，不是欄位遷移。既有 13 間為測試資料，直接以 seed script 清空重建為定稿的 12 間（1A｜2A-2E｜3A-3F）。舊 room_id 若被既有測試預約引用，一併清空測試預約（已確認可行）。</div>
+
+<h4>appointments — 出席狀態機、加時、視訊、外展、請假、媒合標記</h4>
+<div class="tw"><table>
+<thead><tr><th>欄位</th><th>型別</th><th>可空</th><th>預設</th><th>說明</th><th style="width:60px">分期</th></tr></thead>
+<tbody>
+<tr><td colspan="6" style="background:#fafafa;color:var(--mut);font-size:11px">既有：id · appointment_number · case_id · therapist_id · room_id · session_type · time_range(TSTZRANGE) · amount · status · funding_source · quota_id · visit_seq · batch_id · couple_case_id · created_by · created_at</td></tr>
+<tr><td class="new mono">check_in_status</td><td>VARCHAR(20)</td><td>NOT NULL</td><td class="mono">'pending'</td><td class="new"><b>A1/A2 樞紐欄位</b>。pending | arrived | no_show。取代「時間到自動 executed」的判斷依據</td><td><span class="tag t-p">P1</span></td></tr>
+<tr><td class="new mono">checked_in_at</td><td>TIMESTAMPTZ</td><td>NULL</td><td>—</td><td class="new">按下已到/未到的時間（台北時間換算 UTC 存）</td><td><span class="tag t-p">P1</span></td></tr>
+<tr><td class="new mono">checked_in_by</td><td>INTEGER</td><td>NULL</td><td>—</td><td class="new">FK users；共用帳號時仍記真實 user_id，姓名另存 audit_log.actor_name</td><td><span class="tag t-p">P1</span></td></tr>
+<tr><td class="new mono">no_show_reason</td><td>VARCHAR(20)</td><td>NULL</td><td>—</td><td class="new">case_leave | last_minute_cancel | unreachable | other（5選1的第5項為 other + note）</td><td><span class="tag t-p">P1</span></td></tr>
+<tr><td class="new mono">no_show_note</td><td>VARCHAR(200)</td><td>NULL</td><td>—</td><td class="new">other 原因的補充說明</td><td><span class="tag t-p">P1</span></td></tr>
+<tr><td class="new mono">no_show_followup</td><td>VARCHAR(20)</td><td>NULL</td><td>—</td><td class="new">催繳方式 4 選 1。<span class="tag t-a">具體選項待丙5確認</span>，先開放列舉值可設定</td><td><span class="tag t-p">P1</span></td></tr>
+<tr><td class="new mono">actual_start</td><td>TIMESTAMPTZ</td><td>NULL</td><td>—</td><td class="new">加時後的實際開始；NULL＝與 time_range 相同</td><td><span class="tag t-a">P2</span></td></tr>
+<tr><td class="new mono">actual_end</td><td>TIMESTAMPTZ</td><td>NULL</td><td>—</td><td class="new">加時後的實際結束；存檔時<b>同步覆寫 time_range 上界</b>（C1：撞到就擋下，不寫入）</td><td><span class="tag t-a">P2</span></td></tr>
+<tr><td class="new mono">video_link</td><td>VARCHAR(500)</td><td>NULL</td><td>—</td><td class="new">心理師自行貼上，不自動產生</td><td><span class="tag t-b">P4</span></td></tr>
+<tr><td class="new mono">video_forward_requested</td><td>BOOLEAN</td><td>NOT NULL</td><td class="mono">false</td><td class="new">「請通知行政傳視訊連結給個案」勾選</td><td><span class="tag t-b">P4</span></td></tr>
+<tr><td class="new mono">video_forwarded_at</td><td>TIMESTAMPTZ</td><td>NULL</td><td>—</td><td class="new">行政完成轉發的時間</td><td><span class="tag t-b">P4</span></td></tr>
+<tr><td class="new mono">video_forwarded_by</td><td>INTEGER</td><td>NULL</td><td>—</td><td class="new">FK users</td><td><span class="tag t-b">P4</span></td></tr>
+<tr><td class="new mono">outreach_type</td><td>VARCHAR(20)</td><td>NULL</td><td>—</td><td class="new">individual | group | lecture（外展三模式）；僅 session_type='outdoor' 時有值</td><td><span class="tag t-b">P4</span></td></tr>
+<tr><td class="new mono">outreach_location</td><td>VARCHAR(200)</td><td>NULL</td><td>—</td><td class="new">外展地點，可從常用地點下拉或輸入新地點</td><td><span class="tag t-b">P4</span></td></tr>
+<tr><td class="new mono">outreach_lecturer_fee</td><td>NUMERIC(10,2)</td><td>NULL</td><td>—</td><td class="new">僅 outreach_type='lecture' 才有；鐘點費 × 時數</td><td><span class="tag t-b">P4</span></td></tr>
+<tr><td class="new mono">outreach_fee_to_clinic_account</td><td>BOOLEAN</td><td>NULL</td><td>—</td><td class="new">講師費是否入慈恩帳戶；true → 列入月報表當月收入</td><td><span class="tag t-b">P4</span></td></tr>
+<tr><td class="new mono">leave_reason</td><td>VARCHAR(200)</td><td>NULL</td><td>—</td><td class="new">個案請假原因（選填）</td><td><span class="tag t-b">P4</span></td></tr>
+<tr><td class="new mono">leave_marked_at</td><td>TIMESTAMPTZ</td><td>NULL</td><td>—</td><td class="new">請假時間；非 NULL 即代表此格轉斜線灰底</td><td><span class="tag t-b">P4</span></td></tr>
+<tr><td class="new mono">plan_id</td><td>INTEGER</td><td>NULL</td><td>—</td><td class="new">FK plans；取代目前用 institution_id 拼湊方案資訊的作法</td><td><span class="tag t-a">P2</span></td></tr>
+<tr><td class="new mono">is_intake</td><td>BOOLEAN</td><td>NOT NULL</td><td class="mono">false</td><td class="new"><b>A6 反轉權限的判別欄位</b>：true＝媒合初診新案，行政可取消；false＝一般預約，行政不可改不可取消</td><td><span class="tag t-b">P4</span></td></tr>
+<tr><td class="new mono">referral_id</td><td>INTEGER</td><td>NULL</td><td>—</td><td class="new">FK referrals；初診案回溯到媒合紀錄</td><td><span class="tag t-r">P5</span></td></tr>
+</tbody></table></div>
+
+<h4>case_institution_quotas — 三態化（C3）</h4>
+<div class="tw"><table>
+<thead><tr><th>欄位</th><th>型別</th><th>可空</th><th>預設</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td colspan="5" style="background:#fafafa;color:var(--mut);font-size:11px">既有：id · case_id · institution_id · total_count · used_count · valid_from · valid_until · note · created_by · created_at</td></tr>
+<tr><td class="new mono">reserved_count</td><td>INTEGER</td><td>NOT NULL</td><td class="mono">0</td><td class="new">已預留。加入方案當下（尚未排任何預約）＝ total_count 全數進此欄</td></tr>
+</tbody></table></div>
+<div class="note green"><span class="t">已預約不需要新欄位</span>「已預約」= 指向此 quota、<code>status='booked'</code> 的 appointments 數量，<b>查詢時算，不持久化</b>（避免兩份數字不同步）。恆等式：<code>total_count = used_count + reserved_count + COUNT(booked appointments)</code>。<br>
+<code>CHECK (used_count &gt;= 0 AND reserved_count &gt;= 0 AND used_count + reserved_count &lt;= total_count)</code></div>
+
+<h4>users — 督導拆帳、共用帳號</h4>
+<div class="tw"><table>
+<thead><tr><th>欄位</th><th>型別</th><th>可空</th><th>預設</th><th>說明</th><th style="width:60px">分期</th></tr></thead>
+<tbody>
+<tr><td colspan="6" style="background:#fafafa;color:var(--mut);font-size:11px">既有：id · email · password_hash · name · role · user_code · commission_rate · base_price · is_active</td></tr>
+<tr><td class="new mono">supervision_fee_mode</td><td>VARCHAR(10)</td><td>NULL</td><td>—</td><td class="new">A（櫃台代收）| B（心理師自收）。<span class="tag t-a">待甲3回覆</span>，欄位先建</td><td><span class="tag t-a">P2</span></td></tr>
+<tr><td class="new mono">supervision_split_rate</td><td>NUMERIC(4,2)</td><td>NULL</td><td>—</td><td class="new">督導拆帳比例（B 模式用）</td><td><span class="tag t-a">P2</span></td></tr>
+<tr><td class="new mono">supervision_split_amount</td><td>NUMERIC(10,2)</td><td>NULL</td><td>—</td><td class="new">督導拆帳固定金額（B 模式，若非比例制）</td><td><span class="tag t-a">P2</span></td></tr>
+<tr><td class="new mono">is_shared_account</td><td>BOOLEAN</td><td>NOT NULL</td><td class="mono">false</td><td class="new">A8：目前僅魏啓倫（實習心理師）為 true</td><td><span class="tag t-p">P0</span></td></tr>
+<tr><td class="new mono">supervisor_id</td><td>INTEGER</td><td>NULL</td><td>—</td><td class="new">FK users self；暫待清單#3 預留，暫不使用</td><td><span class="tag t-x">預留</span></td></tr>
+</tbody></table></div>
+
+<h4>audit_log — 修 C6 + 補共用帳號快照</h4>
+<div class="tw"><table>
+<thead><tr><th>欄位</th><th>異動</th></tr></thead>
+<tbody>
+<tr><td class="mono">operation</td><td><span class="del">VARCHAR(10)</span> → <span class="new">VARCHAR(32)</span>（修 C6：現行程式已寫入 16 字元的字串）</td></tr>
+<tr><td class="mono new">actor_name</td><td class="new">新增 VARCHAR(100) NULL — 共用帳號登入時自填的姓名快照，與 changed_by（user_id）並存</td></tr>
+</tbody></table></div>
+
+<h4>notifications — 修 C7</h4>
+<div class="note red">不是欄位異動，是 <b>Python 註冊缺漏</b>：<code>app/models/__init__.py</code> 目前漏了 <code>from .notification import Notification</code>，導致 <code>Base.metadata</code> 抓不到這張表。下次 <code>alembic revision --autogenerate</code> 會產生 <code>op.drop_table("notifications")</code>。修法：補上 import，並確認下次 autogenerate 的 diff 不包含這個 drop。</div>
+
+<h3>1.2 新建資料表</h3>
+
+<h4>plans — 方案主檔</h4>
+<div class="tw"><table>
+<thead><tr><th>欄位</th><th>型別</th><th>可空</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td class="mono">id</td><td>PK</td><td>—</td><td></td></tr>
+<tr><td class="mono">institution_id</td><td>INTEGER</td><td>NOT NULL</td><td>FK institutions</td></tr>
+<tr><td class="mono">name</td><td>VARCHAR(100)</td><td>NOT NULL</td><td>如「衛生局 15-45青壯世代心理健康方案」</td></tr>
+<tr><td class="mono">hourly_rate</td><td>NUMERIC(10,2)</td><td>NOT NULL</td><td>機構鐘點費（該次諮商總價，含自付額）</td></tr>
+<tr><td class="mono">self_pay_amount</td><td>NUMERIC(10,2)</td><td>NOT NULL DEFAULT 0</td><td>個案自付額；機構全額方案為 0</td></tr>
+<tr><td class="mono">default_total_count</td><td>INTEGER</td><td>NULL</td><td>每人年度總次數；NULL＝不限（如外展方案）</td></tr>
+<tr><td class="mono">counts_toward_quota</td><td>BOOLEAN</td><td>NOT NULL DEFAULT true</td><td><b>C8 旗標</b>：false＝該方案不消耗額度計數（外展「出去幾趟核銷幾趟」的候選實作方式，<span class="tag t-a">待丙2確認語意後可能改為 per-appointment 判斷</span>）</td></tr>
+<tr><td class="mono">eligible_session_types</td><td>VARCHAR(100)</td><td>NULL</td><td>CSV，如 <code>in_person,online</code>；NULL＝不限</td></tr>
+<tr><td class="mono">valid_from / valid_until</td><td>DATE</td><td>NULL</td><td>方案本身的有效期間（非個案額度的有效期間，兩者分開）</td></tr>
+<tr><td class="mono">is_active</td><td>BOOLEAN</td><td>NOT NULL DEFAULT true</td><td></td></tr>
+<tr><td class="mono">notes / created_by / created_at</td><td>—</td><td>—</td><td></td></tr>
+</tbody></table></div>
+
+<h4>plan_admin_tasks — 方案的行政流程提醒範本</h4>
+<div class="tw"><table>
+<thead><tr><th>欄位</th><th>型別</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td class="mono">plan_id</td><td>INTEGER NOT NULL</td><td>FK plans</td></tr>
+<tr><td class="mono">task_type</td><td>VARCHAR(20) NOT NULL</td><td>admin（行政端事項，行政沒上班時心理師可代勾）| therapist（心理師端事項，只有心理師能勾）</td></tr>
+<tr><td class="mono">title</td><td>VARCHAR(200) NOT NULL</td><td>如「第一次需列印身分證」「個案需每次簽到」</td></tr>
+<tr><td class="mono">sort_order / is_active</td><td>—</td><td></td></tr>
+</tbody></table></div>
+
+<h4>appointment_admin_tasks — 掛在每筆預約上的提醒實例</h4>
+<div class="tw"><table>
+<thead><tr><th>欄位</th><th>型別</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td class="mono">appointment_id</td><td>INTEGER NOT NULL</td><td>FK appointments</td></tr>
+<tr><td class="mono">source_task_id</td><td>INTEGER NULL</td><td>FK plan_admin_tasks；自費案的臨時提醒可為 NULL</td></tr>
+<tr><td class="mono">task_type</td><td>VARCHAR(20) NOT NULL</td><td>admin | therapist（從範本複製，非即時查範本）</td></tr>
+<tr><td class="mono">title</td><td>VARCHAR(200) NOT NULL</td><td>從範本複製一份，範本改了不影響已建立的預約</td></tr>
+<tr><td class="mono">is_done</td><td>BOOLEAN NOT NULL DEFAULT false</td><td></td></tr>
+<tr><td class="mono">done_by / done_by_name / done_at</td><td>—</td><td>done_by_name 供共用帳號顯示「✓ 林怡君 08/19 09:12」</td></tr>
+</tbody></table></div>
+<div class="note blue">建立預約時，依 <code>plan_id</code> 從 <code>plan_admin_tasks</code> 批次複製出 <code>appointment_admin_tasks</code>。「整格轉灰」判斷讀這張表，不即時比對範本。</div>
+
+<h4>fee_items — 收費項目主檔</h4>
+<div class="tw"><table>
+<thead><tr><th>欄位</th><th>型別</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td class="mono">name</td><td>VARCHAR(50) UNIQUE NOT NULL</td><td>諮商／會談／專業評估／心理治療／人際互動治療／摘要報告／會面交往／工作坊（8 個 seed 值）</td></tr>
+<tr><td class="mono">is_default</td><td>BOOLEAN NOT NULL DEFAULT false</td><td>開立收據時預設帶入的項目（seed：心理治療）</td></tr>
+<tr><td class="mono">is_active / sort_order</td><td>—</td><td>停用項目仍保留在歷史收據上，只是不再出現於下拉</td></tr>
+</tbody></table></div>
+
+<h4>receipts — 收據（取代目前只渲染 PDF、不落地存檔的做法）</h4>
+<div class="tw"><table>
+<thead><tr><th>欄位</th><th>型別</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td class="mono">receipt_no</td><td>VARCHAR(30) UNIQUE NOT NULL</td><td><span class="tag t-a">格式待 C4/乙1 定案</span>，由 <code>services/numbering.py</code> 可抽換策略產生</td></tr>
+<tr><td class="mono">session_record_id</td><td>INTEGER NULL</td><td>FK session_records</td></tr>
+<tr><td class="mono">venue_appointment_id</td><td>INTEGER NULL</td><td>FK appointments（場地租借收據，見下方 venue_rental_details）</td></tr>
+<tr><td class="mono">amount</td><td>NUMERIC(10,2) NOT NULL</td><td></td></tr>
+<tr><td class="mono">fee_item_id</td><td>INTEGER NULL</td><td>FK fee_items</td></tr>
+<tr><td class="mono">fee_item_custom_name</td><td>VARCHAR(100) NULL</td><td>「其他（自行登打）」時使用，存為「未歸類」</td></tr>
+<tr><td class="mono">note</td><td>VARCHAR(200) NULL</td><td></td></tr>
+<tr><td class="mono">status</td><td>VARCHAR(10) NOT NULL DEFAULT 'issued'</td><td>issued | reprinted | voided（對應檢核碼 -1/-2/-3，<span class="tag t-a">重印/重開判定待乙1</span>）</td></tr>
+<tr><td class="mono">reprint_of_id</td><td>INTEGER NULL</td><td>FK receipts self；重印指向原收據</td></tr>
+<tr><td class="mono">void_reason / created_by / created_at</td><td>—</td><td></td></tr>
+</tbody></table></div>
+
+<h4>venue_rental_details — 場地租借（1:1 掛在 appointments）</h4>
+<div class="note blue"><span class="t">設計決定</span>場地租借<b>複用 appointments 主表</b>（<code>session_type='venue_rental'</code>，<code>case_id</code> 為 NULL），這樣房間佔用、衝突檢查、GIST 約束<b>完全不用另外實作</b> —— 定稿要求「與一般預約共用衝突檢查」正好對應這個設計。詳細欄位另開 1:1 表。</div>
+<div class="tw"><table>
+<thead><tr><th>欄位</th><th>型別</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td class="mono">appointment_id</td><td>INTEGER UNIQUE NOT NULL</td><td>FK appointments</td></tr>
+<tr><td class="mono">category</td><td>VARCHAR(10) NOT NULL</td><td>institution | private</td></tr>
+<tr><td class="mono">vendor_institution_id</td><td>INTEGER NULL</td><td>FK institutions；機構類才有（蛹之生／鉅微／EAPC）</td></tr>
+<tr><td class="mono">purpose</td><td>VARCHAR(20) NOT NULL</td><td>counseling | legal | supervision | other</td></tr>
+<tr><td class="mono">external_case_name</td><td>VARCHAR(100) NULL</td><td>外部個案姓名，不建病歷</td></tr>
+<tr><td class="mono">supervision_fee_mode</td><td>VARCHAR(10) NULL</td><td>建立當下從 users.supervision_fee_mode 快照</td></tr>
+<tr><td class="mono">supervision_fee_amount</td><td>NUMERIC(10,2) NULL</td><td>督生應繳金額</td></tr>
+<tr><td class="mono">hourly_rate / hours / venue_fee_amount</td><td>NUMERIC</td><td>依方案帶入，可手動改，允許 $0</td></tr>
+<tr><td class="mono">billed_to</td><td>VARCHAR(10) NOT NULL DEFAULT 'vendor'</td><td>vendor | borrower；未到時改為 borrower</td></tr>
+<tr><td class="mono">borrower_user_id</td><td>INTEGER NOT NULL</td><td>FK users；心理師或行政皆可</td></tr>
+<tr><td class="mono">penalty_amount</td><td>NUMERIC(10,2) NULL</td><td>暫待清單#17 預留，違約金規則未定</td></tr>
+</tbody></table></div>
+
+<h4>hall_bookings — 5F 雲燈教室</h4>
+<div class="tw"><table>
+<thead><tr><th>欄位</th><th>型別</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td class="mono">title</td><td>VARCHAR(200) NOT NULL</td><td>活動／講座名稱</td></tr>
+<tr><td class="mono">lecturer_type</td><td>VARCHAR(10) NOT NULL</td><td>internal | external</td></tr>
+<tr><td class="mono">lecturer_user_id / lecturer_external_name</td><td>—</td><td>二擇一</td></tr>
+<tr><td class="mono">borrower_user_id</td><td>INTEGER NOT NULL</td><td>FK users</td></tr>
+<tr><td class="mono">setup_range</td><td>TSTZRANGE NULL</td><td>場佈時段（通常前一天）</td></tr>
+<tr><td class="mono">event_range</td><td>TSTZRANGE NOT NULL</td><td>活動時段</td></tr>
+<tr><td class="mono">has_lecturer_fee / lecturer_hourly_fee / lecturer_fee_total</td><td>—</td><td></td></tr>
+<tr><td class="mono">fee_to_clinic_account</td><td>BOOLEAN NOT NULL DEFAULT false</td><td>是 → 列入月報表；否 → 不進帳務</td></tr>
+<tr><td class="mono">status</td><td>VARCHAR(20) NOT NULL DEFAULT 'booked'</td><td>booked | executed | cancelled</td></tr>
+</tbody></table></div>
+<div class="note amber"><code>EXCLUDE USING GIST (event_range WITH &&) WHERE status != 'cancelled'</code> —— 獨立的資源池（5F 不是診間），不與 rooms 衝突檢查共用同一個約束。</div>
+
+<h4>referrals / referral_invites / intake_forms — 媒合模組（P5）</h4>
+<div class="tw"><table>
+<thead><tr><th>表</th><th>關鍵欄位</th></tr></thead>
+<tbody>
+<tr><td class="mono">referrals</td><td>referral_code(unique, YYMMDD+3碼) · name · age · gender · phone · plan_id(FK, 可NULL) · referral_source · chief_complaint · designated_therapist_id(FK) · session_mode(individual/couple/family) · available_time_note · status(new/matching/converted/unsuccessful/cancelled/closed)</td></tr>
+<tr><td class="mono">referral_invites</td><td>referral_id(FK) · therapist_id(FK) · sequence_no · status(pending/accepted/declined/expired) · decline_reason · responded_at</td></tr>
+<tr><td class="mono">intake_forms</td><td>referral_id(FK, unique) · case_id(FK, 存檔後寫入) · national_id_encrypted/hmac · birth_date · address · emergency_contacts(JSONB) · submitted_at(即產生病歷碼的時間)</td></tr>
+</tbody></table></div>
+<div class="note blue">P5 為建議時程，非本次驗收範圍的硬性依賴；若時程提前需要，04 的初診報到情境已預留最小可用路徑（見 §6.1 診間日曆）。</div>
+
+<h3>1.3 ②③組表的最小可用預留（不展開細節）</h3>
+<p>依 C9 裁示：<b>寫入端資料模型做完整，讀取端不動</b>。以下表只列出第①組會寫入的欄位，讀取（日報表/月報表/應收帳冊的呈現邏輯）留待第②組定稿：</p>
+<ul>
+<li><b>session_records</b>：出席驅動後仍是既有欄位，新增寫入時機而非新欄位（見 §4.1 狀態機）</li>
+<li><b>claim_batches</b>：不動，沿用現行編號與狀態機；場地租借的機構應收如何併入請款流程，待②組定稿</li>
+<li><b>venue_rental_details.category='institution'</b> 的紀錄：目前只寫入，尚無「機構核銷案自動撈取」的串接</li>
+<li><b>hall_bookings.fee_to_clinic_account=true</b> 的紀錄：目前只寫入，尚無「月報表心理師當月收入」的串接</li>
+</ul>
+</section>
+
+<section id="s2">
+<h2><span class="num">2</span>Alembic Migration 順序</h2>
+<p>現行 head 為 <code>z2a1b2c3d4e5</code>（appointments.couple_case_id）。以下為建議的邏輯順序，<b>實際 revision id 由 <code>alembic revision --autogenerate</code> 產生</b>，此處只標示相依關係與是否需要資料回填。因既有資料為測試資料，「資料回填」欄多數為「不需要（測試資料重建）」。</p>
+
+<div class="tw"><table>
+<thead><tr><th style="width:50px">分期</th><th style="width:150px">邏輯名稱</th><th>內容</th><th style="width:110px">相依</th><th style="width:130px">資料回填</th><th style="width:56px" class="c">可逆</th></tr></thead>
+<tbody>
+<tr><td><span class="tag t-p">P0</span></td><td class="mono">fix_audit_log_operation</td><td>audit_log.operation → VARCHAR(32)；+ actor_name</td><td>head</td><td>不需要</td><td class="c">✓</td></tr>
+<tr><td><span class="tag t-p">P0</span></td><td class="mono">rooms_use_type_size</td><td>rooms + use_type, size</td><td>↑</td><td>不需要（欄位先加，資料重建腳本另跑）</td><td class="c">✓</td></tr>
+<tr><td><span class="tag t-p">P0</span></td><td class="mono">rebuild_room_roster</td><td>資料腳本（非 schema migration）：清空 13 間測試診間，seed 定稿 12 間</td><td>↑</td><td>清空既有測試預約中引用舊 room_id 者</td><td class="c">✗<br><span style="font-size:10px;color:var(--mut)">業務決定不可逆</span></td></tr>
+<tr><td><span class="tag t-p">P0</span></td><td class="mono">room_conflict_exclude</td><td><code>EXCLUDE USING GIST</code>（room_id, time_range）WHERE status IN ('booked','executed')</td><td>↑ 需先清乾淨舊測試資料的重疊紀錄</td><td>需先跑一次重疊檢查 SQL，若有殘留衝突須先清除才能建約束</td><td class="c">✓</td></tr>
+<tr><td><span class="tag t-p">P0</span></td><td class="mono">users_shared_account_flag</td><td>users + is_shared_account, supervisor_id</td><td>↑</td><td>手動勾選魏啓倫該筆為 true</td><td class="c">✓</td></tr>
+<tr><td><span class="tag t-y">P1</span></td><td class="mono">appointment_checkin_fields</td><td>appointments + check_in_status, checked_in_at/_by, no_show_reason, no_show_note, no_show_followup</td><td>P0 完成</td><td>不需要</td><td class="c">✓</td></tr>
+<tr><td><span class="tag t-y">P1</span></td><td class="mono">appointment_actual_time</td><td>appointments + actual_start, actual_end</td><td>↑</td><td>不需要</td><td class="c">✓</td></tr>
+<tr><td><span class="tag t-y">P1</span></td><td class="mono">case_quota_reserved</td><td>case_institution_quotas + reserved_count；CHECK 約束</td><td>↑</td><td><b>需要</b>：既有 quota 若 used_count &lt; total_count，補 reserved_count = total_count - used_count（視為尚未排預約的部分全數預留）</td><td class="c">✓</td></tr>
+<tr><td><span class="tag t-y">P1</span></td><td class="mono">fee_items_table</td><td>新建 fee_items；seed 8 個預設項目</td><td>↑</td><td>seed data</td><td class="c">✓</td></tr>
+<tr><td><span class="tag t-y">P1</span></td><td class="mono">receipts_table</td><td>新建 receipts</td><td>↑ 需 fee_items 先存在</td><td>不需要（PDF 產生歷史不回填）</td><td class="c">✓</td></tr>
+<tr><td><span class="tag t-a">P2</span></td><td class="mono">plans_table</td><td>新建 plans</td><td>P1 完成</td><td>seed：依定稿原型示範資料（衛生局15-45青壯等）</td><td class="c">✓</td></tr>
+<tr><td><span class="tag t-a">P2</span></td><td class="mono">plan_admin_tasks_table</td><td>新建 plan_admin_tasks</td><td>↑</td><td>seed：依定稿示範提醒事項</td><td class="c">✓</td></tr>
+<tr><td><span class="tag t-a">P2</span></td><td class="mono">appointment_admin_tasks_table</td><td>新建 appointment_admin_tasks</td><td>↑</td><td>不需要</td><td class="c">✓</td></tr>
+<tr><td><span class="tag t-a">P2</span></td><td class="mono">appointment_plan_link</td><td>appointments + plan_id</td><td>↑</td><td>不需要</td><td class="c">✓</td></tr>
+<tr><td><span class="tag t-a">P2</span></td><td class="mono">users_supervision_fields</td><td>users + supervision_fee_mode, supervision_split_rate, supervision_split_amount</td><td>↑</td><td>待甲3心理師主檔提供後填值</td><td class="c">✓</td></tr>
+<tr><td><span class="tag t-b">P4</span></td><td class="mono">appointment_video_outreach_leave</td><td>appointments + video_link, video_forward_requested/_at/_by, outreach_type/_location/_lecturer_fee/_fee_to_clinic_account, leave_reason, leave_marked_at, is_intake</td><td>P2 完成</td><td>不需要</td><td class="c">✓</td></tr>
+<tr><td><span class="tag t-r">P5</span></td><td class="mono">referrals_module</td><td>新建 referrals, referral_invites, intake_forms；appointments + referral_id (FK)</td><td>P4 完成</td><td>不需要</td><td class="c">✓</td></tr>
+<tr><td><span class="tag t-x">P6</span></td><td class="mono">venue_rental_hall_booking</td><td>新建 venue_rental_details, hall_bookings（含 GIST）</td><td>P5 完成</td><td>seed 三家廠商 institutions（蛹之生/鉅微/EAPC）</td><td class="c">✓</td></tr>
+</tbody></table></div>
+<div class="note red"><span class="t">P0 執行順序特別注意</span><code>rebuild_room_roster</code> 與 <code>room_conflict_exclude</code> 兩支必須<b>先清空重疊測試資料，才能建立 EXCLUDE 約束</b>——否則 migration 會直接失敗。建議順序：① 加欄位 → ② 資料腳本重建診間並清空測試預約 → ③ 建約束。三步在同一次部署視窗內完成，避免中間態被使用。</div>
+</section>
+
+<section id="s3">
+<h2><span class="num">3</span>識別碼規則統一表</h2>
+<p>與 01 §C+ 對應，這裡定義實作方式：所有編號透過 <code>services/numbering.py</code> 的可抽換策略函式產生，<b>不在各 router 裡分散寫死格式</b>。</p>
+<div class="tw"><table>
+<thead><tr><th style="width:110px">識別碼</th><th>目前實作（沿用）</th><th style="width:230px">狀態</th></tr></thead>
+<tbody>
+<tr><td><b>預約編號</b></td><td class="mono">R-{YYYYMMDD}-{user_code}-{seq:03d}</td><td><span class="tag t-g">三方一致，不動</span></td></tr>
+<tr><td><b>病歷號</b></td><td class="mono">{YY}{SEQ4}{身分證後2碼}<br>伴侶 C{YY}{SEQ4}</td><td><span class="tag t-a">丙1 待確認</span>是否改採原稿版 <code>26A7456126</code> 格式。<b>建議先不動</b> —— 現行版本已跑通兩段式建檔流程，若要換成原稿格式，只需替換 <code>case_numbering.py</code> 內的字串組合邏輯，兩段式流程本身不受影響</td></tr>
+<tr><td><b>收據編號</b></td><td class="mono">R{YYYYMMDD}{seq:04d}</td><td><span class="tag t-r">乙1 待確認</span>是否改採原稿版「館別+日期+流水3碼+分類C/O+檢核碼-1/-2/-3」。<code>receipts</code> 新表的 <code>receipt_no</code> 欄位已預留 VARCHAR(30) 足夠容納兩種格式</td></tr>
+<tr><td><b>核銷案編號</b></td><td class="mono">自費 S{cycle}-{case_number}-{YYYYMM}<br>機構 I-{code}-{YYYYMM}</td><td><span class="tag t-x">第①組未涉及，②組時一併確認</span></td></tr>
+<tr><td><b>派案碼</b></td><td class="tag t-r">不存在</td><td class="mono new">新建：{YYMMDD}{seq:03d}（P5）</td></tr>
+</tbody></table></div>
+<div class="note amber"><span class="t">併發防護（回應 01 §C+ 的 R10）</span>所有編號目前都是 <code>COUNT(*) + 1</code>，P0 一併改為「Postgres SEQUENCE + 應用層格式化」或「INSERT 失敗即重試」兩種其一。建議前者：每個編號類型建一支獨立 sequence（如 <code>appointment_seq_{therapist_code}_{yyyymmdd}</code> 不易用單一 sequence 表達，改用<b>帶 unique 約束 + INSERT ... ON CONFLICT 重試 3 次</b>的通用 helper，寫入 <code>services/numbering.py</code> 一次，所有編號共用）。</div>
+</section>
+
+<section id="s4">
+<h2><span class="num">4</span>狀態機</h2>
+
+<h3>4.1 預約出席狀態機（appointments.check_in_status）— 全案樞紐</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:130px">狀態</th><th>觸發</th><th>副作用</th></tr></thead>
+<tbody>
+<tr><td><span class="tag t-x">pending</span>（待報到）</td><td>建立預約時的初始值</td><td>無</td></tr>
+<tr><td><span class="tag t-g">arrived</span>（已到）</td><td>櫃檯 / 心理師按「已到」</td><td>寫入 <code>checked_in_at/_by</code>；若走機構額度：quota.<code>reserved_count -1</code>（或 booked→used，視當時是否已從 reserved 轉入 booked）；<b>此時才建立 <code>session_records</code></b>（payment_status='unpaid'）；appointments.status 改為 'executed'</td></tr>
+<tr><td><span class="tag t-r">no_show</span>（未到）</td><td>櫃檯 / 心理師按「未到」→ 填原因</td><td>寫入 no_show_reason/_note/_followup；<b>不建立 session_records</b>；額度：quota.<code>booked→reserved</code>還原（不是釋回，個案仍保留額度）；appointments.status 維持 'booked'（供對帳追蹤，不轉 cancelled）</td></tr>
+</tbody></table></div>
+<div class="note purple"><span class="t">與現行 <code>materialize_due_appointments</code> 的關係</span>P1 後該函式<b>停用但不刪除</b>，改為行政手動觸發的「補登」工具（例：行政忘了幫某筆按已到，且已經過了很久）。正常流程完全由 check_in 端點驅動，不再有背景排程或懶惰執行。</div>
+
+<h3>4.2 額度三態流轉（case_institution_quotas）</h3>
+<pre><span class="c">加入方案（尚未排預約）</span>
+  reserved_count = total_count 　<span class="c">// 全數先預留，避免被別人用光</span>
+
+<span class="c">排一次預約（quota_id 指向此筆）</span>
+  reserved_count -= 1　<span class="c">// 已預約 = COUNT(booked appointments WHERE quota_id=this)，查詢時算</span>
+
+<span class="c">按「已到」</span>
+  used_count += 1　　　<span class="c">// 已預約 → 已使用</span>
+
+<span class="c">按「未到」或取消該筆預約</span>
+  reserved_count += 1　<span class="c">// 已預約 → 還原為已預留（不是釋回！個案仍保留額度）</span>
+
+<span class="c">個案結案</span>
+  total_count = used_count；reserved_count = 0　<span class="c">// 已預留+已預約 全數歸零（沿用 cases.py:324-333 現行寫法，僅補上 reserved 歸零）</span></pre>
+<div class="note green">恆等式 <code>used_count + reserved_count + COUNT(booked) = total_count</code> 全程成立，供稽核 SQL 定期檢查。</div>
+
+<h3>4.3 收款狀態（session_records.payment_status）— 沿用既有</h3>
+<p>不變：<code>unpaid → paid</code>（自費）／<code>unpaid → claiming → claimed</code>（機構）。唯一變化是<b>建立時機</b>：從「時間到自動建」改為「按已到才建」（見 4.1）。三步報到流程對應：</p>
+<div class="tw"><table>
+<thead><tr><th style="width:40px">步驟</th><th>UI</th><th>寫入</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>已到 / 未到</td><td>4.1 的狀態轉換</td></tr>
+<tr><td>2</td><td>收款（自費需收款者才出現；月結／機構全額跳過）</td><td><code>session_records.payment_status</code> unpaid→paid（自費）或標記待請款（機構）；<code>payment_method/payment_note/paid_at</code></td></tr>
+<tr><td>3</td><td>開立收據</td><td>新建 <code>receipts</code> 一筆，<code>fee_item_id</code> + 金額</td></tr>
+</tbody></table></div>
+<div class="note amber">「整格轉灰」三條件（自費需收款：收款+收據皆完成；自費月結：已到即可；機構：已到+應收結清+行政流程提醒全勾）由 §6.1 的聚合端點一次計算，不在前端拼湊。</div>
+
+<h3>4.4 媒合狀態（referrals.status，P5）</h3>
+<p class="mono">new → matching → (converted | unsuccessful) → closed；cancelled 可從 new/matching 直接進入</p>
+<p style="font-size:12.5px;color:var(--mut)">初診有到 → converted（同時寫回 intake_forms.submitted_at + case_id）；初診未到 → 退回 matching，referrals 上加一個「後續處理」子動作（改約 / 更換派案心理師 / 取消媒合）</p>
+
+<h3>4.5 雲燈教室（hall_bookings.status）</h3>
+<p class="mono">booked → (executed | cancelled)　— 活動當日結束後仍未按，跳提醒通知借用人與行政</p>
+</section>
+
+<section id="s5">
+<h2><span class="num">5</span>API 契約</h2>
+<p>只列第①組需要的<b>新增／有實質改動</b>端點。未列出者維持現行行為（見 01 附錄的既有 60 個端點清單，本文件不重複）。路徑前綴沿用現行風格，不加 <code>/v2</code>（現行 API 本身就是要被取代的對象，沒有舊版並存的必要 —— 前端全新重寫但後端是同一套資料庫直接演進）。</p>
+
+<h3>5.1 診間日曆（聚合讀取）</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:230px">端點</th><th style="width:90px">角色</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td class="mono new">GET /room-calendar</td><td>ALL</td><td>q: <code>date</code>（必填，台北時區日期字串）、<code>floor</code>（all/1/2/3）。<b>回傳依診間分組、依時段填格的完整聚合結果</b>，每格已算好 <code>is_settled</code>（整格轉灰判斷）、<code>admin_tasks_pending_count</code>、<code>quota_label</code>（如「2/3」）。一次查詢含 join：appointments + cases + users(therapist) + rooms + case_institution_quotas + appointment_admin_tasks。禁止前端逐格再查</td></tr>
+<tr><td class="mono new">GET /room-calendar/remote</td><td>ALL</td><td>第二分頁（外部空間）；q: <code>date</code>、<code>type</code>（online/outdoor/all）。左時間、上心理師的聚合，只回傳當日有此類預約的心理師</td></tr>
+<tr><td class="mono new">GET /hall-bookings</td><td>ALL</td><td>第三分頁；q: <code>week_start</code>。回傳該週 hall_bookings 聚合</td></tr>
+<tr><td class="mono new">PUT /appointments/{id}/check-in</td><td>staff/admin<br>(心理師限視訊/外展)</td><td>Request: <code>{status:"arrived"|"no_show", no_show_reason?, no_show_note?, no_show_followup?}</code>。觸發 §4.1 狀態轉換 + 額度轉換 + 建立 session_record</td></tr>
+<tr><td class="mono new">POST /appointments/{id}/payment-step</td><td>staff/admin</td><td>報到步驟 2。Request: <code>{payment_method, discount_amount?, discount_note?, payment_note?}</code>。若帶 <code>actual_start/actual_end</code>（加時）：先跑衝突檢查，撞到回 409（C1 裁示：擋下）</td></tr>
+<tr><td class="mono new">POST /appointments/{id}/receipt</td><td>staff/admin</td><td>報到步驟 3。Request: <code>{fee_item_id? | fee_item_custom_name?, note?}</code>。建立 <code>receipts</code> 一筆，回傳收據內容供列印</td></tr>
+<tr><td class="mono new">PUT /appointments/{id}/admin-tasks/{task_id}</td><td>staff/admin/therapist<br>（依 task_type 限制）</td><td>Request: <code>{is_done: bool}</code>。寫 done_by/done_by_name/done_at</td></tr>
+<tr><td class="mono">GET /appointments/available-rooms</td><td>ALL</td><td><b>A5 樞紐端點</b>。q: <code>therapist_id, date, start_time, duration_min</code>。先跑本人時段衝突（若撞 → 回傳 <code>conflict</code> 詳情，不列診間）；無衝突才回傳診間清單，每張帶 <code>occupied_by?</code>、<code>is_last_used</code>、<code>is_play_room</code>、<code>is_large</code>，依 01 §A5 的排序規則排序</td></tr>
+</tbody></table></div>
+
+<h3>5.2 預約作業（時間優先表單 + 場地租借 + 雲燈教室）</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:230px">端點</th><th style="width:90px">角色</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td class="mono">POST /appointments</td><td>staff/admin/therapist</td><td>Request 新增欄位：<code>plan_id?, is_intake?, video_link?, outreach_type?, outreach_location?</code>。建立前跑<b>兩層</b>衝突檢查（房間 GIST + 本人時段），並依 <code>plan_id</code> 複製 <code>appointment_admin_tasks</code></td></tr>
+<tr><td class="mono">POST /appointments/batch</td><td>同上</td><td>沿用既有邏輯，新增國定假日提醒（回應中每筆 slot 附 <code>holiday_warning?</code>，僅提醒不擋）</td></tr>
+<tr><td class="mono new">POST /venue-rentals</td><td>staff/admin</td><td>Request: <code>{borrower_user_id, category, vendor_institution_id?, purpose, room_id, date, start_time, end_time, hourly_rate?, external_case_name?, supervision_*}</code>。內部建立 appointments(session_type='venue_rental') + venue_rental_details 1:1</td></tr>
+<tr><td class="mono new">PUT /venue-rentals/{appointment_id}/check-in</td><td>staff/admin</td><td>Request: <code>{status:"arrived"|"no_show"}</code>；no_show → <code>venue_rental_details.billed_to='borrower'</code></td></tr>
+<tr><td class="mono new">POST /hall-bookings</td><td>staff/admin/therapist</td><td>Request 對應 hall_bookings 欄位；建立前跑 hall 專屬 GIST 檢查</td></tr>
+<tr><td class="mono new">POST /appointments/batch/preview</td><td>staff/admin/therapist</td><td>與 <code>POST /appointments/batch</code> 同樣的 request body，但<b>只試算不寫入</b>——回傳每筆 slot 的衝突檢查結果與 <code>holiday_warning?</code>，供預覽畫面的 ✕ 移除互動使用</td></tr>
+<tr><td class="mono new">GET /venue-plans</td><td>staff/admin</td><td>q: <code>category</code>（institution/private）。回傳場地租借可選方案（蛹之生/鉅微/EAPC 借場地、借場地），含 <code>hourly_rate</code>。實作上是 <code>plans</code> 表中一種特殊分類，或獨立小表，取決於是否要與機構方案共用主檔（建議獨立，因為欄位語意不同）</td></tr>
+<tr><td class="mono new">PUT /hall-bookings/{id}/execution</td><td>staff/admin/therapist(borrower)</td><td>Request: <code>{status:"executed"|"cancelled"}</code></td></tr>
+</tbody></table></div>
+
+<h3>5.3 預約總表（純查詢）</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:230px">端點</th><th style="width:90px">角色</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td class="mono">GET /appointments/list-view</td><td>ALL</td><td>q: <code>date_from, date_to, therapist_id?, room_id?, session_type?, status?, q?</code>（病歷號/姓名關鍵字）。<b>11 欄</b>，分頁每頁 20 筆。回傳不含「行政確認」欄（已刪除）</td></tr>
+<tr><td class="mono">GET /export/appointments-list-view</td><td>ALL</td><td>CSV 匯出，欄位與畫面一致</td></tr>
+</tbody></table></div>
+
+<h3>5.4 心理師端 · 我的今日 / 我的班表</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:230px">端點</th><th style="width:90px">角色</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td class="mono new">GET /me/today</td><td>therapist</td><td>今日場次卡 + 待辦清單聚合（派案邀請數、文件確認數、未寫紀錄、額度提醒）。<b>只讀自己</b>，強制 <code>WHERE therapist_id=current_user</code></td></tr>
+<tr><td class="mono new">GET /me/schedule</td><td>therapist</td><td>q: <code>week_start</code>。個人週行事曆聚合，08:00–22:00 半小時格。<b>不含他人任何預約</b>（區別於診間日曆的匿名顯示）</td></tr>
+<tr><td class="mono new">GET /me/admin-tasks-today</td><td>therapist</td><td>登入跳窗用：今日行政事項提醒清單</td></tr>
+<tr><td class="mono">PUT /appointments/{id}/leave</td><td>therapist(本人)</td><td>Request: <code>{reason?}</code>。寫 leave_reason/leave_marked_at，格子轉斜線灰底，通知行政</td></tr>
+</tbody></table></div>
+
+<h3>5.5 診間空間查詢（心理師端，匿名）</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:230px">端點</th><th style="width:90px">角色</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td class="mono">GET /rooms/{id}/week-view</td><td>therapist</td><td>q: <code>week_start</code>。<b>隱私規則</b>：非本人的格子只回傳 <code>{status:"occupied", therapist_name}</code>，<b>絕不回傳 case_name</b>；本人的格子回傳完整資訊。此規則在後端強制，不能只靠前端隱藏（避免 API 被直接呼叫繞過）</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="s5b">
+<h2><span class="num">5+</span>媒合模組端點（P5，供 04 初診情境對照）</h2>
+<div class="note blue">P5 為建議時程，非第①組驗收的硬性依賴（見 §1.2 附註）。但 04 操作樣本的初診報到情境（步驟 16-21）會用到以下端點，故先在此定義，避免腳本與規格對不上。</div>
+<div class="tw"><table>
+<thead><tr><th style="width:230px">端點</th><th style="width:90px">角色</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td class="mono new">GET /referrals/{id}</td><td>staff/admin/therapist(受邀者)</td><td>取得單筆媒合紀錄（含諮商需求表內容），供初診單「上半自動帶入」使用</td></tr>
+<tr><td class="mono new">PUT /referrals/{id}</td><td>staff/admin</td><td>Request: <code>{status, intake_no_show_reason?}</code>。初診未到時呼叫，狀態退回 <code>matching</code></td></tr>
+<tr><td class="mono new">POST /referrals/{id}/reschedule-request</td><td>staff/admin</td><td>Request: <code>{proposed_slots: [{date,time}]}</code>。「後續處理·改約」子動作，寫入通知給原派案心理師</td></tr>
+<tr><td class="mono new">POST /intake-forms/{referral_id}/submit</td><td>staff/admin</td><td>Request: <code>{national_id, birth_date, initial_visit_date?, address?, emergency_contacts:[{name,relation,phone1,phone2?,status,note?}]}</code>。<b>身分證必填</b>，成功後建立 <code>cases</code> 並產生病歷碼，<code>referrals.status→'converted'</code></td></tr>
+</tbody></table></div>
+</section>
+
+<section id="s6">
+<h2><span class="num">6</span>畫面 → 資料對照 ★</h2>
+<p>這是前端設計對應後端要調什麼資料的核心章節。每個畫面區塊列出：顯示什麼、需要哪些欄位、從哪個端點取得、何時觸發、N+1 風險與對策。</p>
+
+<h3>6.1 行政端 · 診間日曆 — 第一分頁（所內診間）</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:170px">UI 元素</th><th>需要的欄位</th><th style="width:220px">來源</th><th>觸發時機</th></tr></thead>
+<tbody>
+<tr><td>時間軸（28 列）</td><td>純前端常數：08:00–22:00 每 30 分</td><td>—</td><td>—</td></tr>
+<tr><td>診間欄（依樓層篩選）</td><td>room_code, floor, use_type</td><td class="mono">GET /rooms</td><td>mount，快取（診間清單極少變動）</td></tr>
+<tr><td>每一格的預約方塊</td><td>case_name(依權限遮蔽), gender, therapist_name, session_type, plan_label, amount_label, check_in_status, is_settled, admin_tasks_pending_count, is_last_of_plan(最後一次紅框), is_intake</td><td class="mono">GET /room-calendar?date=</td><td>切換日期 / 樓層 / mount。<b>一次回傳整天所有格</b>，不逐格查</td></tr>
+<tr><td>頂部統計（今日應到/已報到/未到/待報到/今日已收/尚待收/行政流程未完成）</td><td>聚合數字</td><td>同一個 <code>/room-calendar</code> 回應內的 <code>summary</code> 欄位</td><td>與上同</td></tr>
+<tr><td>空白格點擊 → 帶入新增預約</td><td>room_id, date, time</td><td>前端狀態傳遞（不呼叫 API），導到預約作業 b1 並預填</td><td>click</td></tr>
+<tr><td>報到明細視窗</td><td>完整單筆 appointment + case + quota</td><td class="mono">GET /appointments/{id}</td><td>開窗時才查（避免列表階段就抓詳情）</td></tr>
+</tbody></table></div>
+<div class="note red"><span class="t">N+1 風險與對策</span>「整格轉灰」需要同時看 <code>check_in_status</code> + <code>session_records.payment_status</code> + <code>receipts</code> 是否存在 + <code>appointment_admin_tasks</code> 全勾 —— 四張表。若逐格查會是 <code>4 × 60 筆/天</code> 次查詢。<b>對策</b>：<code>/room-calendar</code> 端點內用一次 join（或兩次批次查詢 + Python 端組裝）算出 <code>is_settled</code> 布林，直接回傳，前端只管畫色。</div>
+
+<h3>6.2 行政端 · 診間日曆 — 第二分頁（外部空間）／第三分頁（雲燈教室）</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:170px">UI 元素</th><th>需要的欄位</th><th style="width:220px">來源</th><th>觸發時機</th></tr></thead>
+<tbody>
+<tr><td>左時間、上心理師矩陣</td><td>therapist_name, case_name(視訊)/outreach_location, check_in_status(唯讀顯示)</td><td class="mono">GET /room-calendar/remote?date=&amp;type=</td><td>切換日期/類型 tab</td></tr>
+<tr><td>雲燈教室週格</td><td>title, lecturer_name, fee_label, status</td><td class="mono">GET /hall-bookings?week_start=</td><td>切換週次</td></tr>
+</tbody></table></div>
+<div class="note blue">兩頁皆<b>唯讀</b>（已到/未到由心理師端確認），行政端不呼叫 check-in 端點。</div>
+
+<h3>6.3 行政端 · 預約作業 b1（新增預約，時間優先）</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:170px">UI 元素</th><th>需要的欄位</th><th style="width:220px">來源</th><th>觸發時機</th></tr></thead>
+<tbody>
+<tr><td>個案搜尋</td><td>case_id, name, case_number</td><td class="mono">GET /cases?q=</td><td>輸入時 debounce 300ms</td></tr>
+<tr><td>心理師下拉</td><td>therapist_id, name</td><td class="mono">GET /auth/therapists</td><td>mount，快取</td></tr>
+<tr><td>時長選定後的診間清單</td><td>room_code, use_type, size, occupied_by?, is_last_used, is_play_room</td><td class="mono">GET /appointments/available-rooms?therapist_id=&amp;date=&amp;start_time=&amp;duration_min=</td><td>類型/日期/開始時間/時長任一改變時重打</td></tr>
+<tr><td>右側面板（依類型切換）</td><td>現場→診間當日狀況；視訊/外展→心理師班表</td><td class="mono">GET /rooms/{id}/day-view 或<br>GET /therapists/{id}/schedule</td><td>選定診間或切換類型；後者是 <code>/me/schedule</code> 的行政視角變體，帶 <code>therapist_id</code> 參數</td></tr>
+<tr><td>繳費方式 → 機構方案</td><td>plan_id, quota remaining(已預留/已預約/已使用), is_last</td><td class="mono">GET /cases/{id}/quotas/available?on_date=</td><td>選機構方案時</td></tr>
+<tr><td>送出</td><td>—</td><td class="mono">POST /appointments</td><td>click 建立</td></tr>
+</tbody></table></div>
+<div class="note amber"><span class="t">關鍵順序</span>「系統列出可用診間」這一步<b>必須先過本人時段衝突檢查</b>（01 §A5）——<code>available-rooms</code> 端點內部順序：① 查本人衝突，撞到直接回 409 附衝突詳情、不查診間；② 無衝突才查診間占用並排序回傳。前端據此判斷要顯示「衝突擋錯」還是「診間清單」，不需要自己再判斷一次。</div>
+
+<h3>6.4 行政端 · 預約作業 b4（場地租借）</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:170px">UI 元素</th><th>需要的欄位</th><th style="width:220px">來源</th><th>觸發時機</th></tr></thead>
+<tbody>
+<tr><td>借用人下拉</td><td>心理師 + 行政人員清單</td><td class="mono">GET /auth/therapists + GET /auth/users?role=staff,admin</td><td>mount</td></tr>
+<tr><td>使用方案（依使用類別帶出費率）</td><td>vendor_institution_id, hourly_rate</td><td class="mono">GET /institutions?tag=venue-vendor（或直接列 plans 中 category=venue 的項目）</td><td>選使用類別時</td></tr>
+<tr><td>督導收費模式預設值</td><td>supervision_fee_mode, supervision_split_rate/amount</td><td class="mono">GET /auth/users/{id}</td><td>借用人是心理師時，選借用人時帶入，畫面仍可單筆改</td></tr>
+<tr><td>右側診間週檢視</td><td>與一般預約共用衝突檢查的顯示</td><td class="mono">GET /rooms/{id}/week-view</td><td>選診間後；行政呼叫時帶 <code>?anonymous=false</code>，回傳完整個案姓名（見 §7 隱私規則僅對心理師端強制）</td></tr>
+<tr><td>送出</td><td>—</td><td class="mono">POST /venue-rentals</td><td>click</td></tr>
+</tbody></table></div>
+
+<h3>6.5 行政端 · 預約總表</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:170px">UI 元素</th><th>需要的欄位</th><th style="width:220px">來源</th><th>觸發時機</th></tr></thead>
+<tbody>
+<tr><td>11 欄表格</td><td>date, case_number, name, therapist_name, time, session_type, room_code, plan_label, amount, status, operation</td><td class="mono">GET /appointments/list-view?...</td><td>篩選變更 / 換頁</td></tr>
+<tr><td>操作欄</td><td>is_intake（決定顯示「取消」還是「由心理師端操作」）</td><td>同上回應內欄位，前端純判斷不額外查</td><td>—</td></tr>
+<tr><td>空狀態</td><td>—</td><td>回應 <code>total=0</code> 時顯示提示文字，非留白</td><td>—</td></tr>
+</tbody></table></div>
+
+<h3>6.6 心理師端 · 我的今日</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:170px">UI 元素</th><th>需要的欄位</th><th style="width:220px">來源</th><th>觸發時機</th></tr></thead>
+<tbody>
+<tr><td>今日場次卡 + 待辦清單</td><td>今日場次數、已完成/待進行、本週預約/目標、待處理派案邀請數、待確認文件數、本月預估酬勞</td><td class="mono">GET /me/today</td><td>mount</td></tr>
+<tr><td>今日班表小表</td><td>time, case_name(現場不顯示已到/未到按鈕；視訊/外展顯示)</td><td>同一回應內含</td><td>—</td></tr>
+</tbody></table></div>
+
+<h3>6.7 心理師端 · 我的班表</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:170px">UI 元素</th><th>需要的欄位</th><th style="width:220px">來源</th><th>觸發時機</th></tr></thead>
+<tbody>
+<tr><td>28 列週行事曆</td><td>case_name, gender, room_or_location, plan_label, check_in_status, admin_tasks_pending(!標記), is_last_of_plan, leave_marked_at</td><td class="mono">GET /me/schedule?week_start=</td><td>切換週次 / mount</td></tr>
+<tr><td>視訊/外展格內已到/未到按鈕</td><td>—</td><td class="mono">PUT /appointments/{id}/check-in</td><td>click，成功後局部更新該格</td></tr>
+<tr><td>登入跳窗（當日行政事項）</td><td>今日所有預約的未完成 admin_tasks</td><td class="mono">GET /me/admin-tasks-today</td><td>登入後首次進入任一頁面時一次性觸發</td></tr>
+<tr><td>個案請假</td><td>—</td><td class="mono">PUT /appointments/{id}/leave</td><td>明細視窗內 click</td></tr>
+</tbody></table></div>
+
+<h3>6.8 心理師端 · 預約作業（時間優先 + 匿名衝突提示）</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:170px">UI 元素</th><th>需要的欄位</th><th style="width:220px">來源</th><th>觸發時機</th></tr></thead>
+<tbody>
+<tr><td>個案下拉</td><td>只列 <code>therapist_id=自己</code> 的個案</td><td class="mono">GET /cases?therapist_id=me</td><td>mount</td></tr>
+<tr><td>可用診間清單</td><td>同 6.3，但 therapist_id 固定為自己</td><td class="mono">GET /appointments/available-rooms?therapist_id=me&amp;...</td><td>同 6.3</td></tr>
+<tr><td>診間空間查詢（匿名）</td><td>status占用/空、therapist_name(他人)，<b>絕不含 case_name</b></td><td class="mono">GET /rooms/{id}/week-view</td><td>切換診間/週次</td></tr>
+</tbody></table></div>
+<div class="note red"><span class="t">隱私規則是後端責任</span>心理師端與行政端呼叫的是<b>不同端點</b>（<code>/rooms/{id}/week-view</code> vs 行政的管理視角版本），不是同一端點靠前端過濾欄位。混用會造成資料外洩風險。</div>
+</section>
+
+<section id="s7">
+<h2><span class="num">7</span>權限矩陣</h2>
+<div class="tw"><table>
+<thead><tr><th style="width:230px">動作</th><th class="c" style="width:90px">admin</th><th class="c" style="width:90px">staff(行政)</th><th class="c" style="width:90px">accountant</th><th class="c" style="width:110px">therapist</th></tr></thead>
+<tbody>
+<tr><td>建立一般預約</td><td class="c">✓</td><td class="c">✓</td><td class="c">✗</td><td class="c">✓(限自己)</td></tr>
+<tr><td><b>修改一般預約</b></td><td class="c">✓</td><td class="c"><span class="tag t-r">✗ 反轉</span></td><td class="c">✗</td><td class="c">✓(限自己·當日起)</td></tr>
+<tr><td><b>取消一般預約</b></td><td class="c">✓</td><td class="c"><span class="tag t-r">✗ 反轉</span></td><td class="c">✗</td><td class="c">✓(限自己)</td></tr>
+<tr><td>取消<b>媒合初診新案</b>（is_intake=true 的例外）</td><td class="c">✓</td><td class="c"><span class="tag t-g">✓ 例外允許</span></td><td class="c">✗</td><td class="c">—</td></tr>
+<tr><td>診間日曆報到（已到/未到）— 現場</td><td class="c">✓</td><td class="c">✓</td><td class="c">✗</td><td class="c">✗</td></tr>
+<tr><td>視訊/外展報到（已到/未到）</td><td class="c">✗</td><td class="c">✗</td><td class="c">✗</td><td class="c">✓(限自己)</td></tr>
+<tr><td>收款 / 開立收據</td><td class="c">✓</td><td class="c">✓</td><td class="c">✓(檢視)</td><td class="c">✗（唯讀金額）</td></tr>
+<tr><td>建立場地租借</td><td class="c">✓</td><td class="c">✓</td><td class="c">✗</td><td class="c">✗（僅可作為借用人被選）</td></tr>
+<tr><td>建立雲燈教室借用</td><td class="c">✓</td><td class="c">✓</td><td class="c">✗</td><td class="c">✓（全權自行，無需核准）</td></tr>
+<tr><td>行政流程提醒 · 行政端事項</td><td class="c">✓</td><td class="c">✓</td><td class="c">✗</td><td class="c">✓（行政沒上班時代勾）</td></tr>
+<tr><td>行政流程提醒 · 心理師端事項</td><td class="c">✗</td><td class="c">✗</td><td class="c">✗</td><td class="c">✓（只有心理師能勾）</td></tr>
+<tr><td>查看個案聯絡資訊</td><td class="c">✓</td><td class="c">✓</td><td class="c">部分</td><td class="c">✓(限自己個案)</td></tr>
+<tr><td>診間空間查詢中看到個案姓名</td><td class="c">✓</td><td class="c">✓</td><td class="c">—</td><td class="c"><span class="tag t-r">✗ 他人一律匿名</span></td></tr>
+<tr><td>方案主檔 / 收費項目維護</td><td class="c">✓</td><td class="c">✓（提醒事項）</td><td class="c">✗</td><td class="c">✗</td></tr>
+</tbody></table></div>
+<div class="note red"><span class="t">實作提醒</span>行政端「不可修改／取消一般預約」是<b>後端強制</b>（403），不是前端隱藏按鈕 —— 直接呼叫 API 也要擋下。判斷邏輯：<code>appointment.is_intake == False and appointment.created_by_role == 'therapist'</code> 時，<code>PUT/{id}</code> 與 <code>/cancel</code> 對 staff 角色一律回 403。</div>
+</section>
+
+<section id="s8">
+<h2><span class="num">8</span>共用帳號的 actor 傳遞設計（A8）</h2>
+<div class="grid2">
+<div class="card"><div class="h">① 登入時</div>
+<p style="font-size:12.5px">共用帳號（<code>is_shared_account=true</code>）登入時，前端多一個「請輸入本人姓名」欄位。後端 <code>POST /auth/login</code> 增加 optional <code>actor_name</code> 參數，寫入 JWT claim：<code>{sub, role, name, actor_name, exp}</code>。</p></div>
+<div class="card"><div class="h">② 每次寫入</div>
+<p style="font-size:12.5px"><code>get_current_user</code> dependency 額外解析 <code>actor_name</code> claim，掛在 <code>request.state</code>。所有寫入 <code>audit_log</code>、<code>appointment_admin_tasks.done_by_name</code>、<code>appointments.checked_in_by</code> 對應的顯示名稱時，優先取 <code>actor_name</code>，否則 fallback 到 <code>user.name</code>。</p></div>
+<div class="card"><div class="h">③ 顯示</div>
+<p style="font-size:12.5px">畫面顯示邏輯統一：<code>is_shared_account ? "實習心理師（{actor_name}）" : user.name</code>。前端只需一個共用的 <code>displayActorName()</code> helper。</p></div>
+<div class="card"><div class="h">④ 登出</div>
+<p style="font-size:12.5px">JWT 過期或登出即清除，不持久化 <code>actor_name</code> 到 <code>users</code> 表 —— 每次登入都要重新填寫（定稿 Q3 明確要求）。</p></div>
+</div>
+<div class="note amber">此設計不解決「異動紀錄無法從系統層面證明是誰做的」這個根本限制（診療所已知悉並接受，見 01 §丙4）。人數變多時的升級路徑：把該心理師的 <code>is_shared_account</code> 設回 false、另開一般帳號即可，資料表結構不需異動。</div>
+</section>
+
+<section id="s9">
+<h2><span class="num">9</span>時區處理（C2）</h2>
+<p>全面採用 <code>Asia/Taipei</code>。DB 儲存仍為 UTC（<code>timestamptz</code> 本質），只有「日界」計算需要注意。</p>
+<div class="tw"><table>
+<thead><tr><th style="width:200px">現況問題點</th><th>修正方式</th></tr></thead>
+<tbody>
+<tr><td class="mono">settlement.py:162<br>UTC 午夜切日</td><td>新增 <code>app/utils/tz.py</code>：<code>today_local() -&gt; date</code>、<code>day_range_utc(d: date) -&gt; (datetime, datetime)</code>（回傳該台北日期對應的 UTC 起訖）。所有「今天」「當日」計算改呼叫此 helper</td></tr>
+<tr><td class="mono">dashboard.py, notifications.py,<br>reports.py, churn.py</td><td>逐一檢查現行的 <code>date.today()</code> 與範圍查詢，改用上述 helper。清單見 01 研究附錄（散落在 settlement/dashboard/notifications/reports/churn）</td></tr>
+<tr><td>前端日期輸入 / 顯示</td><td>一律以「台北時間的年月日」為準，避免用 <code>new Date().toISOString()</code> 這類會受瀏覽器時區影響的寫法；改用固定 <code>Intl.DateTimeFormat('zh-TW', {timeZone:'Asia/Taipei'})</code></td></tr>
+</tbody></table></div>
+<div class="note blue">驗證方式：04/05 操作樣本中安排一個「跨日邊界」情境（例如 21:30 開始、22:00 前後的預約）驗證日曆歸屬與日報表歸日正確。</div>
+</section>
+
+<div class="foot">CheerPsy V2 升級計畫 · 依《判定定稿 v4 · 第①組 每日作業 · 2026/08/20》編寫 · 本檔為單檔自足文件</div>
+</main>
+</div>
+</div>
+<script>
+
+/* TOC auto-build from h2/h3 */
+(function(){
+  var toc=document.getElementById('toc'); if(!toc) return;
+  var out='<b>目錄</b>';
+  document.querySelectorAll('main section').forEach(function(s){
+    var h2=s.querySelector('h2'); if(!h2) return;
+    if(!s.id) s.id='s'+Math.random().toString(36).slice(2,7);
+    var t=h2.textContent.replace(/^\s*\d+\s*/,'').trim();
+    out+='<a href="#'+s.id+'">'+t+'</a>';
+    s.querySelectorAll('h3').forEach(function(h3,i){
+      if(!h3.id) h3.id=s.id+'-h'+i;
+      out+='<a class="sub" href="#'+h3.id+'">'+h3.textContent.trim()+'</a>';
+    });
+  });
+  toc.innerHTML=out;
+})();
+/* checklist toggle + persistence + progress */
+(function(){
+  var KEY='cheerpsy-v2-'+(document.body.dataset.doc||'doc');
+  var saved={}; try{saved=JSON.parse(localStorage.getItem(KEY)||'{}');}catch(e){}
+  var items=[].slice.call(document.querySelectorAll('.ck li'));
+  items.forEach(function(li,i){
+    var k=li.dataset.k||('i'+i); li.dataset.k=k;
+    if(!li.querySelector('.box')){var b=document.createElement('span');b.className='box';li.insertBefore(b,li.firstChild);}
+    if(saved[k]) li.classList.add('on');
+    li.addEventListener('click',function(){
+      li.classList.toggle('on');
+      saved[k]=li.classList.contains('on');
+      try{localStorage.setItem(KEY,JSON.stringify(saved));}catch(e){}
+      paint();
+    });
+  });
+  function paint(){
+    document.querySelectorAll('[data-prog]').forEach(function(el){
+      var scope=el.dataset.prog==='all'?document:document.getElementById(el.dataset.prog);
+      if(!scope) return;
+      var all=scope.querySelectorAll('.ck li'), done=scope.querySelectorAll('.ck li.on');
+      el.textContent=done.length+' / '+all.length;
+    });
+  }
+  paint();
+  var rst=document.getElementById('ckReset');
+  if(rst) rst.onclick=function(){ if(!confirm('清除本頁所有勾選狀態？'))return;
+    try{localStorage.removeItem(KEY);}catch(e){} items.forEach(function(li){li.classList.remove('on');}); paint(); };
+})();
+
+/* hotspot -> highlight target row (Part 2 interactive prototype) */
+(function(){
+  document.querySelectorAll('.hotspot[data-goto]').forEach(function(h){
+    h.addEventListener('click', function(){
+      var id=h.dataset.goto, el=document.getElementById(id);
+      if(!el) return;
+      document.querySelectorAll('.flash').forEach(function(x){x.classList.remove('flash');});
+      el.classList.add('flash');
+      el.scrollIntoView({behavior:'smooth', block:'center'});
+      setTimeout(function(){el.classList.remove('flash');}, 2600);
+    });
+  });
+})();
+
+/* tab panels: .tabs span[data-tab] -> #tab-{id} */
+(function(){
+  document.querySelectorAll('.tabs').forEach(function(bar){
+    bar.querySelectorAll('span[data-tab]').forEach(function(t){
+      t.onclick=function(){
+        bar.querySelectorAll('span[data-tab]').forEach(function(x){
+          x.classList.remove('on');
+          var p=document.getElementById('tab-'+x.dataset.tab); if(p)p.style.display='none';
+        });
+        t.classList.add('on');
+        var p=document.getElementById('tab-'+t.dataset.tab); if(p)p.style.display='block';
+      };
+    });
+    var first=bar.querySelector('span[data-tab]'); if(first) first.click();
+  });
+})();
+
+
+</script>
+</body>
+</html>

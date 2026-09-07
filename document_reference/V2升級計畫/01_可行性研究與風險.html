@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>01 可行性研究與風險 — CheerPsy V2</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+ --bg:#f6f7f9; --panel:#fff; --ink:#111827; --ink2:#374151; --mut:#6b7280; --mut2:#9ca3af;
+ --line:#e5e7eb; --line2:#d1d5db;
+ --p50:#f5f3ff; --p100:#ede9fe; --p200:#ddd6fe; --p500:#8b5cf6; --p600:#7c3aed; --p700:#6d28d9;
+ --blue:#2563eb; --blue-bg:#eff6ff; --green:#16a34a; --green-bg:#f0fdf4;
+ --amber:#d97706; --amber-bg:#fffbeb; --red:#dc2626; --red-bg:#fef2f2;
+ --sky:#0891b2; --sky-bg:#ecfeff; --rose:#e11d48; --rose-bg:#fff1f2;
+ --code:#f3f4f6;
+}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);
+ font:14px/1.75 "Noto Sans TC","PingFang TC","Microsoft JhengHei",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+ -webkit-font-smoothing:antialiased}
+.wrap{max-width:1220px;margin:0 auto;padding:0 20px 90px}
+
+/* ---- header ---- */
+.hd{background:linear-gradient(135deg,#4c1d95,#6d28d9 55%,#7c3aed);color:#fff;padding:30px 0 26px;margin-bottom:26px}
+.hd .wrap{padding-bottom:0}
+.hd .kick{font-size:12px;letter-spacing:.16em;text-transform:uppercase;opacity:.72;font-weight:700}
+.hd h1{font-size:27px;font-weight:800;margin:7px 0 8px;letter-spacing:-.01em}
+.hd p{opacity:.9;font-size:13.5px;max-width:860px}
+.hd .meta{margin-top:14px;display:flex;flex-wrap:wrap;gap:8px}
+.hd .meta span{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.22);
+ border-radius:999px;padding:3px 11px;font-size:11.5px;font-weight:600}
+
+/* ---- layout ---- */
+.cols{display:grid;grid-template-columns:220px 1fr;gap:28px;align-items:start}
+@media(max-width:1000px){.cols{grid-template-columns:1fr}.toc{position:static!important;max-height:none!important}}
+.toc{position:sticky;top:18px;background:var(--panel);border:1px solid var(--line);border-radius:12px;
+ padding:14px 12px;max-height:calc(100vh - 40px);overflow:auto;font-size:12.5px}
+.toc b{display:block;font-size:11px;letter-spacing:.1em;color:var(--mut2);margin:0 0 8px 6px;text-transform:uppercase}
+.toc a{display:block;color:var(--ink2);text-decoration:none;padding:5px 8px;border-radius:7px;line-height:1.45}
+.toc a:hover{background:var(--p50);color:var(--p700)}
+.toc a.sub{padding-left:20px;font-size:12px;color:var(--mut)}
+
+/* ---- sections ---- */
+section{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px 26px;margin-bottom:20px;
+ scroll-margin-top:16px}
+h2{font-size:19px;font-weight:800;letter-spacing:-.01em;padding-bottom:11px;margin-bottom:16px;
+ border-bottom:2px solid var(--p100);display:flex;align-items:center;gap:9px}
+h2 .num{background:var(--p600);color:#fff;font-size:12px;width:26px;height:26px;border-radius:8px;
+ display:inline-flex;align-items:center;justify-content:center;font-weight:800;flex:none}
+h3{font-size:15px;font-weight:700;margin:24px 0 10px;color:var(--p700);
+ padding-left:10px;border-left:3px solid var(--p500)}
+h4{font-size:13.5px;font-weight:700;margin:16px 0 7px;color:var(--ink2)}
+p{margin:9px 0;color:var(--ink2)}
+ul,ol{margin:9px 0 9px 22px;color:var(--ink2)}
+li{margin:4px 0}
+a{color:var(--p700)}
+
+/* ---- tables ---- */
+.tw{overflow-x:auto;margin:13px 0;border:1px solid var(--line);border-radius:10px}
+table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:560px;background:#fff}
+th{background:#fafafa;text-align:left;font-weight:700;color:var(--mut);font-size:11px;
+ letter-spacing:.05em;padding:9px 11px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 11px;border-bottom:1px solid #f1f2f4;vertical-align:top;line-height:1.65}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:#fcfcfd}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+td.c,th.c{text-align:center}
+td.w{white-space:nowrap}
+
+/* ---- code / mono ---- */
+code,.mono{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:11.8px}
+code{background:var(--code);padding:1.5px 5px;border-radius:4px;color:#9333ea;word-break:break-word}
+pre{background:#1e1b2e;color:#e8e5f5;padding:14px 16px;border-radius:10px;overflow-x:auto;
+ font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:11.8px;line-height:1.7;margin:12px 0}
+pre .c{color:#8b83a8}
+pre .k{color:#c4b5fd}
+pre .s{color:#86efac}
+
+/* ---- callouts ---- */
+.note{border-radius:9px;padding:11px 14px;margin:12px 0;font-size:12.8px;line-height:1.7;
+ border:1px solid var(--line);background:#fafafa;color:var(--ink2)}
+.note b{color:var(--ink)}
+.note.blue{background:var(--blue-bg);border-color:#bfdbfe;color:#1e40af}
+.note.green{background:var(--green-bg);border-color:#bbf7d0;color:#15803d}
+.note.amber{background:var(--amber-bg);border-color:#fde68a;color:#92400e}
+.note.red{background:var(--red-bg);border-color:#fecaca;color:#991b1b}
+.note.purple{background:var(--p50);border-color:var(--p200);color:var(--p700)}
+.note .t{font-weight:800;display:block;margin-bottom:3px}
+
+/* ---- tags ---- */
+.tag{display:inline-block;font-size:10.5px;font-weight:700;padding:1.5px 7px;border-radius:5px;
+ border:1px solid transparent;white-space:nowrap;line-height:1.6}
+.t-p{background:var(--p100);color:var(--p700);border-color:var(--p200)}
+.t-b{background:var(--blue-bg);color:var(--blue);border-color:#bfdbfe}
+.t-g{background:var(--green-bg);color:var(--green);border-color:#bbf7d0}
+.t-a{background:var(--amber-bg);color:var(--amber);border-color:#fde68a}
+.t-r{background:var(--red-bg);color:var(--red);border-color:#fecaca}
+.t-s{background:var(--sky-bg);color:var(--sky);border-color:#a5f3fc}
+.t-x{background:#f3f4f6;color:var(--mut);border-color:var(--line2)}
+
+/* ---- checklist ---- */
+.ck{list-style:none;margin:10px 0;padding:0}
+.ck li{display:flex;gap:10px;align-items:flex-start;padding:8px 11px;border:1px solid var(--line);
+ border-radius:8px;margin-bottom:6px;background:#fff;cursor:pointer;transition:.12s;font-size:12.8px}
+.ck li:hover{border-color:var(--p200);background:var(--p50)}
+.ck li .box{width:16px;height:16px;border:2px solid var(--line2);border-radius:4px;flex:none;margin-top:3px;
+ display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;transition:.12s}
+.ck li.on{background:#fafafa;border-color:var(--line)}
+.ck li.on .box{background:var(--green);border-color:var(--green)}
+.ck li.on .box:after{content:"✓"}
+.ck li.on .txt{color:var(--mut2);text-decoration:line-through}
+.ck .txt{flex:1;color:var(--ink2);line-height:1.65}
+.ck .src{font-size:10.5px;color:var(--mut2);white-space:nowrap;margin-left:auto;padding-left:8px}
+
+/* ---- misc ---- */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media(max-width:820px){.grid2,.grid3{grid-template-columns:1fr}}
+.card{border:1px solid var(--line);border-radius:11px;padding:14px 16px;background:#fff}
+.card .h{font-weight:800;font-size:13px;margin-bottom:6px;display:flex;align-items:center;gap:7px}
+.kpi{border:1px solid var(--line);border-radius:11px;padding:13px 15px;background:#fff}
+.kpi .l{font-size:11px;color:var(--mut);font-weight:700;letter-spacing:.04em}
+.kpi .v{font-size:24px;font-weight:800;margin:2px 0;letter-spacing:-.02em}
+.kpi .s{font-size:11.5px;color:var(--mut2)}
+hr{border:none;border-top:1px solid var(--line);margin:22px 0}
+.foot{text-align:center;color:var(--mut2);font-size:11.5px;padding:26px 0 0}
+.arrow{color:var(--p600);font-weight:800}
+.del{color:var(--mut2);text-decoration:line-through}
+.new{color:var(--green);font-weight:700}
+@media print{
+ body{background:#fff}.toc{display:none}.cols{grid-template-columns:1fr}
+ section{break-inside:avoid;border:none;padding:0 0 18px}
+ .hd{background:#4c1d95!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+
+
+</style>
+</head>
+<body data-doc="01_可行性研究與風險">
+<header class="hd"><div class="wrap">
+  <div class="kick">CheerPsy V2 · 慈恩心理治療所</div>
+  <h1>可行性研究與風險</h1>
+  <p>把《判定定稿 v4 · 第①組 每日作業》的 54 項裁決，逐條對照 apps/api 與 apps/web 的實際程式碼之後的可行性判斷。結論在前，證據（檔名與行號）在每一項裡。</p>
+  <div class="meta"><span>定稿 v4 · 2026/08/20</span><span>第①組 每日作業 · 6 頁 54 項</span><span>架構級衝突 8 項</span><span>全新模組 13 個</span><span>待診療所回覆 10 題</span></div>
+</div></header>
+<div class="wrap">
+<div class="cols">
+<nav class="toc" id="toc"></nav>
+<main>
+<section id="how">
+<h2><span class="num">0</span>這份文件是什麼</h2>
+<p>2026/08/20 慈恩心理治療所回覆了三份檔案。其中 <b>《判定定稿 v4 · 第①組 每日作業》</b> 逐項裁決了 6 個頁面共 54 項需求，並明白寫著「作為後續生成可操作原型與工程師對照版的<b>唯一依據</b>」。另外兩份是行政端 v3 / 心理師端 v4 的高保真原型。</p>
+<p>本文件是把那 54 項裁決，逐條對照 <code>apps/api</code> 與 <code>apps/web</code> 的<b>實際程式碼</b>之後的可行性判斷。結論放在最前面，證據（檔名與行號）放在每一項裡。</p>
+
+<div class="grid3" style="margin-top:16px">
+  <div class="kpi"><div class="l">定稿裁決</div><div class="v">54 項</div><div class="s">6 頁 · 行政 3 頁 + 心理師 3 頁</div></div>
+  <div class="kpi"><div class="l">架構級衝突</div><div class="v" style="color:var(--red)">8 項</div><div class="s">推翻後端既有假設，須最先處理</div></div>
+  <div class="kpi"><div class="l">全新模組</div><div class="v" style="color:var(--amber)">13 個</div><div class="s">程式碼中完全不存在</div></div>
+  <div class="kpi"><div class="l">新建資料表</div><div class="v">10 張</div><div class="s">另有 6 張既有表需擴充</div></div>
+  <div class="kpi"><div class="l">可直接沿用</div><div class="v" style="color:var(--green)">6 項</div><div class="s">伴侶案、session_type、時段矩陣…</div></div>
+  <div class="kpi"><div class="l">待診療所回覆</div><div class="v">13 題</div><div class="s">甲 3 · 乙 2 · 丙 4 · 丁 18 項暫待</div></div>
+</div>
+
+<div class="note purple" style="margin-top:18px">
+<span class="t">總結論：可行，但這是一次系統性重構，不是介面換皮。</span>
+主要成本<b>不在前端畫面</b>，而在三個後端根本假設被推翻 ——
+① 場次成立由「時間到」改為「按下已到」；
+② 收款由事後帳冊改為櫃台當場三步；
+③ 衝突檢查由「只擋診間」改為「診間 + 心理師本人」。
+這三件事沒定案之前，任何畫面都不該開始寫。
+</div>
+
+<h3>閱讀順序</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:190px">文件</th><th>用途</th><th style="width:120px">給誰看</th></tr></thead>
+<tbody>
+<tr><td><b>01 可行性研究與風險</b><br><span class="tag t-p">本檔</span></td><td>先讀。判斷「這件事能不能做、風險在哪、還缺什麼資訊」。末尾附可直接轉寄給診療所的問題清單。</td><td>你 · 診療所</td></tr>
+<tr><td><b>02 架構變更規格</b></td><td>資料模型、Migration、API 契約、<b>畫面 → 後端資料對照</b>、狀態機、權限矩陣。實作的唯一技術依據。</td><td>工程師 / AI agent</td></tr>
+<tr><td><b>03 操作體驗細節清單</b></td><td>逐頁逐互動的可勾選清單。刻意與 02 分開，防止「架構做完就忘了細節」。</td><td>工程師 / AI agent</td></tr>
+<tr><td><b>04 / 05 操作樣本</b></td><td>行政櫃檯與心理師的逐步操作腳本（含 API 與 DB 變化）＋可點原型。<b>完成品的驗收依據。</b></td><td>驗收 · 診療所</td></tr>
+<tr><td><b>06 實作順序與里程碑</b></td><td>P0–P6 分期、相依關係、每期完成定義，以及第②組銜接待辦。</td><td>你 · 專案管理</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="secA">
+<h2><span class="num">A</span>架構級衝突 — 必須最先解決</h2>
+<p>這八項共同的特徵是：<b>定稿要求的行為，與現行後端的基本假設相反</b>。不是加欄位就能解決，而是要改變資料如何產生。</p>
+
+<h3>A1　場次成立時機：時間驅動 → 出席驅動</h3>
+<div class="grid2">
+<div class="card"><div class="h"><span class="tag t-r">現況</span>時間到就自動成立</div>
+<p style="font-size:12.5px"><code>services/settlement.py:59</code> 的 <code>materialize_due_appointments()</code> 掃描所有 <code>status=='booked'</code> 且 <code>upper(time_range) - 20min &lt;= now</code> 的預約，一律轉成 <code>executed</code> 並產出 <code>session_record</code>。機構額度也在此刻扣（<code>:106-117</code>）。</p>
+<p style="font-size:12.5px">觸發點是<b>讀取 ledger 時的懶惰執行</b>（<code>routers/ledger.py:147,199,240,264,288</code>）—— 沒有排程器，沒人開帳冊就不會結算。</p></div>
+<div class="card"><div class="h"><span class="tag t-g">定稿</span>按下「已到」才成立</div>
+<p style="font-size:12.5px">未到 → <b>不產生應收</b>，機構額度<b>退回已預留</b>；已到 → 額度由已預約轉已使用，該筆進當日日報表。</p>
+<p style="font-size:12.5px">補充修正 3 明確<b>推翻</b>「起始後 30 分自動視為已到」—— 視訊與外展也必須由心理師實際按下。</p></div>
+</div>
+<div class="note red"><span class="t">衝擊面（全案最大單一改動）</span>
+<code>session_records</code> 是整個財務鏈的上游 —— ledger → claim_batches → payouts → reports 全都建立在「它已經存在」之上。改變它的產生時機，等於改變整條鏈的觸發條件。
+<br>· 必須新增 appointment 層的出席狀態，並讓 <code>session_record</code> 由該狀態轉換產生。
+<br>· 現行 <code>materialize_due_appointments</code> 需停用（不是刪除 —— 保留為補登工具，供「行政忘了按」的例外情境）。
+<br>· 舊資料為測試資料，不需回填策略，這降低了大量風險。</div>
+
+<h3>A2　收款流程：事後帳冊 → 櫃台當場三步</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:90px">步驟</th><th>定稿要求</th><th>現況對應</th></tr></thead>
+<tbody>
+<tr><td><b>1 報到</b></td><td>格子點開 → 「已到 / 未到」二選一。未到跳原因欄位（5 選 1 + 催繳方式 4 選 1）。</td><td><span class="tag t-r">不存在</span>目前無 check-in 概念</td></tr>
+<tr><td><b>2 收款</b></td><td>已到後<b>需收款者才長出</b>收款區：應收金額、付款方式（現金/匯款）、優待減免、匯款末 5 碼、⏱️ 加時。</td><td><code>routers/ledger.py:878</code> <code>PUT /ledger/{id}/pay</code> —— 但在另一個頁面、另一個時間點</td></tr>
+<tr><td><b>3 開立收據</b></td><td>收款完成才長出：收據編號、金額、<b>收款項目</b>（8 選 1 + 其他自行登打）、備註。</td><td><code>routers/receipts.py</code> 有 PDF 產生，但無「收款項目」主檔，且 POST 直接渲染前端送來的內容（<code>:101,149,184</code>），伺服器不重新驗算金額</td></tr>
+</tbody></table></div>
+<div class="note amber"><span class="t">關鍵設計要求</span><b>一次只出現一步</b>（定稿明訂）。三步必須是同一筆交易的狀態機，不能讓行政在步驟 2 中途離開就產生半套資料。建議：三個端點各自冪等，且由 <code>appointments</code> 上的 <code>check_in_status</code> + <code>session_records.payment_status</code> + <code>receipts</code> 三者共同決定目前該顯示哪一步。</div>
+
+<h3>A3　診間主檔：13 間測試資料 → 12 間正式，且需要屬性</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:110px">項目</th><th>現況</th><th>定稿</th></tr></thead>
+<tbody>
+<tr><td>數量與代碼</td><td class="mono">1A 1B 1C 1D / 2A 2B 2C 2D / 3A 3B 3C 3D 3E<br><span style="color:var(--mut)">共 13 間（<code>seed.py:45-57</code>）</span></td><td class="mono">1A / 2A 2B 2C 2D 2E / 3A 3B 3C 3D 3E 3F<br><span style="color:var(--green);font-weight:700">共 12 間 · 1F 僅 1A 一間</span></td></tr>
+<tr><td>用途</td><td>只有布林 <code>has_special_equipment</code>（<code>models/room.py</code>）</td><td><b>2C 與 2E 為兒童遊戲室</b>，其餘晤談室</td></tr>
+<tr><td>尺寸</td><td class="tag t-r">無此欄位</td><td>原型 JS 標記 <code>2D / 3D / 3F</code> 為「大間」，用於 90 分鐘案的診間排序</td></tr>
+</tbody></table></div>
+<div class="note green"><span class="t">已裁示</span>現有 13 間為測試資料，<b>直接重建為定稿的 12 間</b>，無法對應者關閉或刪除皆可。<br>
+但 <code>rooms</code> 必須新增兩個欄位才能支撐定稿的診間卡：<code>use_type</code>（晤談室 / 兒童遊戲室）與 <code>size</code>（一般 / 大 / 遊戲）。沒有它們，「依時長排序」「👶 遊戲室」「大間」三個標籤做不出來。</div>
+
+<h3>A4　衝突檢查缺一層：只擋診間，不擋心理師本人</h3>
+<pre><span class="c">-- 現行唯一的衝突檢查 · routers/appointments.py:614 _check_room_conflict()</span>
+<span class="k">SELECT</span> id <span class="k">FROM</span> appointments
+<span class="k">WHERE</span> room_id = :room_id <span class="k">AND</span> status != <span class="s">'cancelled'</span>
+  <span class="k">AND</span> time_range && tstzrange(:start, :end)
+<span class="k">LIMIT</span> 1;   <span class="c">-- 只看 room_id，完全不看 therapist_id</span></pre>
+<div class="note red"><span class="t">兩個後果</span>
+① 同一位心理師可以被排進兩間診間的同一時段，系統毫無阻擋。<br>
+② <b>視訊與外展不佔診間</b>（<code>room_id</code> 可為 NULL），所以它們目前<b>完全沒有任何衝突檢查</b>。定稿 Q2 明確定案「兩層都做」，而心理師端的「時間優先」表單流程（A5）更是把這層檢查當作前置條件 —— 沒有它，「系統列出可用診間」這一步無從開始。</div>
+
+<h3>A5　表單流程反轉：診間優先 → 時間優先</h3>
+<div class="grid2">
+<div class="card"><div class="h"><span class="tag t-x">現況</span>診間優先</div>
+<p style="font-size:12.5px"><code>cases/page.tsx:1436</code> <code>AppointmentForm</code>：先選個案 → 選診間 → 選日期時間。診間清單是全部 12 間的靜態下拉。</p></div>
+<div class="card"><div class="h"><span class="tag t-g">定稿 F5</span>時間優先（兩端一致）</div>
+<p style="font-size:12.5px">諮商類型 → 個案 → 日期 → 開始時間 → <b>時長</b> → <b>系統列出可用診間</b> → 繳費方式。<br>時長必須在診間之前，因為 90 分鐘與 60 分鐘可用的診間不一樣。</p></div>
+</div>
+<p>需要一個現在不存在的端點：<b>「給定心理師 + 起訖時間 + 時長，回傳可用診間清單」</b>，且每張診間卡要帶：是否被占用、占用者姓名與時段、⭐ 是否為該個案上次使用、👶 是否遊戲室、是否大間。排序規則（原型 JS 已寫死）：未占用優先 → 上次使用 −100 → 時長≥90 且大間 −50 → 遊戲室 +30。</p>
+
+<h3>A6　權限反轉：行政不可修改或取消一般預約</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:230px">端點</th><th style="width:150px">現行權限</th><th>定稿要求</th></tr></thead>
+<tbody>
+<tr><td class="mono">PUT /appointments/{id}</td><td><span class="tag t-b">admin + staff</span></td><td>行政<b>不可修改</b>一般預約（預約是心理師建立的，由心理師端操作）</td></tr>
+<tr><td class="mono">PUT /appointments/{id}/cancel</td><td><span class="tag t-b">任何登入者<br>（therapist 限本人）</span></td><td>行政<b>不可取消</b>一般預約。<b>唯一例外</b>：媒合的初診新案，操作欄提供「取消」由行政處理</td></tr>
+</tbody></table></div>
+<div class="note amber">需要在 <code>appointments</code> 上有辦法判別「這是不是媒合初診新案」（規格中規劃為 <code>is_intake</code> + <code>referral_id</code>），否則例外規則無從實作。</div>
+
+<h3>A7　資訊架構：單一側欄 → 雙角色 App Shell</h3>
+<p>現行 <code>components/sidebar.tsx:7</code> 是一個扁平陣列 11 項，用 <code>roles</code> 欄位過濾。定稿是兩套<b>分群</b>的導覽（行政端 13 項分 5 群、心理師端 8 項分 4 群），且兩端的頁面本質不同（不是同一頁隱藏按鈕）。</p>
+<div class="note blue"><span class="t">已裁示：前端全新重寫</span>此項為預期工作，不算意外成本。但要留意現行前端的體質問題會一併帶進來，須順手處理：<code>cases/page.tsx</code> 單檔 3,364 行內含 18 個元件；全站只有 7 個共用元件、30 個手刻 Modal、37 個手刻表格；<code>zod</code> / <code>clsx</code> / <code>lucide-react</code> 等 5 個相依<b>裝了但從未使用</b>；<code>lib/api.ts</code> 是死碼且用了不同的環境變數名。</div>
+
+<h3>A8　實習心理師共用帳號</h3>
+<p>定稿 Q3 採 A 案：<b>單一共用帳號，登入當下填一次姓名</b>，整個工作階段的操作與紀錄都掛這個名字，登出即清除；畫面顯示為「實習心理師（魏啓倫）」。</p>
+<div class="note amber"><span class="t">稽核弱點（診療所已知悉並接受）</span>共用帳號讓異動紀錄<b>無法從系統層面證明是誰做的</b>，只能靠自填姓名。目前僅 1 位實習生，人數變多再改為一人一帳號。
+<br>技術上需要：登入時填的姓名 → 寫進 JWT claim → 每一次寫入都落到 <code>audit_log.actor_name</code>（新欄位）、行政流程提醒的勾選紀錄、以及預約的建立者顯示。<code>audit_log.changed_by</code> 只有 user_id，不足以還原。</div>
+</section>
+
+<section id="secB">
+<h2><span class="num">B</span>全新模組 — 程式碼中完全不存在</h2>
+<p>已用 grep 確認 <code>apps/api</code> 與 <code>apps/web</code> 內無任何「媒合 / 派案 / referral / matching」相關程式碼，<code>資料庫結構與資料轉換規範.md</code> 的資料表清單中也沒有。以下 13 項皆為新建。</p>
+<div class="tw"><table>
+<thead><tr><th style="width:34px">#</th><th style="width:150px">模組</th><th>內容</th><th style="width:150px">最接近的現況</th><th style="width:64px">量級</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><b>方案主檔</b></td><td>「衛生局 15-45青壯 2/3，機構自付，個案自付 $400、機構請款 $1,600」+ 該方案的行政流程提醒事項清單 + 適用諮商型態 + 是否計額度</td><td><code>quota_templates</code> 只有 institution_id + name + total_count</td><td><span class="tag t-r">大</span></td></tr>
+<tr><td>2</td><td><b>行政流程提醒</b></td><td>方案帶出應辦事項 → 掛在每筆預約 → 就地勾選 → 記錄執行人與時間 → 分行政端 / 心理師端 → 諮商結束前未完成跳通知。<b>且是「整格轉灰」的三條件之一</b></td><td><span class="tag t-r">無</span></td><td><span class="tag t-r">大</span></td></tr>
+<tr><td>3</td><td><b>媒合 / 派案</b></td><td>派案碼 <code>YYMMDD+3碼</code>、諮商需求表、派案邀請、承接/婉拒、初診單（身分證必填才產病歷碼）、初診未到 → 退回媒合列表 → 後續處理三選一、媒合結案表</td><td><span class="tag t-r">無</span></td><td><span class="tag t-r">大</span></td></tr>
+<tr><td>4</td><td><b>收費項目主檔<br>+ 收據升級</b></td><td>8 個預設項目 + 「其他自行登打」（存為未歸類）；可新增 / 停用 / 排序；停用項目仍保留在歷史收據上</td><td><code>fee_category</code> 實際只有 <code>counseling</code> 一個值</td><td><span class="tag t-a">中</span></td></tr>
+<tr><td>5</td><td><b>場地租借 b4</b></td><td>蛹之生 / 鉅微 / EAPC；機構→機構應收、私人→心理師當月收入扣回；督導收費模式 A（櫃台代收、開收據、場地費自動 $0）/ B（心理師自收、場地費回扣、不開收據）；佔用實體診間、共用衝突檢查；需已到 / 未到（未到 → 付款方改為借用人自付）</td><td><span class="tag t-r">無</span></td><td><span class="tag t-r">大</span></td></tr>
+<tr><td>6</td><td><b>5F 雲燈教室</b></td><td>場佈時段 + 活動時段<b>雙區間</b>、講師（所內 / 外部）、講師費與「是否入慈恩帳戶」、執行狀況（已執行 / 已取消）、逾時提醒。行政端在日曆第三分頁、心理師端在預約作業 n4</td><td><span class="tag t-r">無</span></td><td><span class="tag t-a">中</span></td></tr>
+<tr><td>7</td><td><b>加時 / 調整時數</b></td><td>收款前按鈕觸發才展開；改起迄 → 依單價重算 → <b>同步回寫預約時間與金額</b> → 以修正後明細匯入日報表</td><td><code>PUT /appointments/{id}/amount</code> 只能改金額，且限未來場次</td><td><span class="tag t-a">中</span></td></tr>
+<tr><td>8</td><td><b>視訊</b></td><td>視訊連結欄（心理師自行貼上，<b>不自動產生</b>）+「請通知行政轉發給個案」待辦 +「已轉發」狀態；可選使用診間或不使用空間（決定它出現在行政端哪一分頁）</td><td><code>session_type='online'</code> 但無任何連結欄位</td><td><span class="tag t-a">中</span></td></tr>
+<tr><td>9</td><td><b>外展三模式</b></td><td>個別諮商 / 團體輔導 / 講座或活動，各自欄位不同；繳費僅機構方案 / 機構全額；機構清冊不計額度次數；講座另有講師費</td><td><code>session_type='outdoor'</code> + 外出保底，但無地點與模式</td><td><span class="tag t-a">中</span></td></tr>
+<tr><td>10</td><td><b>個案請假</b></td><td>心理師端明細視窗按鈕，原因選填；格子轉斜線灰底標「已請假」；同步通知行政；時段釋出為可用</td><td>只有 <code>cancelled</code>，語意不同</td><td><span class="tag t-g">小</span></td></tr>
+<tr><td>11</td><td><b>未到處理</b></td><td>原因 5 選 1（個案來電請假 / 臨時取消 / 未聯繫上 / 其他）+ 催繳方式 4 選 1；<b>不做失約費</b></td><td><span class="tag t-r">無</span></td><td><span class="tag t-g">小</span></td></tr>
+<tr><td>12</td><td><b>預約總表</b></td><td>獨立頁：11 欄、6 組篩選、每頁 20 筆、空狀態提示、<b>刪除「行政確認」整欄</b>、純查詢</td><td><code>cases/page.tsx</code> 內的 <code>AppointmentsTab</code>（分頁之一，非獨立頁）</td><td><span class="tag t-a">中</span></td></tr>
+<tr><td>13</td><td><b>我的班表</b></td><td>週為欄 × 半小時為列（08:00–22:00，28 列）的個人行事曆，90 分跨 3 列，格內帶已到 / 未到小按鈕</td><td><code>room-mini-calendar.tsx</code> 是 FullCalendar timeGridWeek，非此形式</td><td><span class="tag t-a">中</span></td></tr>
+</tbody></table></div>
+</section>
+
+<section id="secC">
+<h2><span class="num">C</span>研究中發現、定稿沒涵蓋的漏洞（已裁示）</h2>
+<p>以下 9 項是比對程式碼時發現、而《判定定稿 v4》沒有處理到的問題。已於 2026/08/21 逐項裁示。</p>
+<div class="tw"><table>
+<thead><tr><th style="width:38px">#</th><th style="width:210px">問題</th><th>為何重要</th><th style="width:230px">裁示與處置</th></tr></thead>
+<tbody>
+<tr><td><b>C1</b></td><td><b>加時回寫預約時間可能撞到相鄰預約</b><br><span style="color:var(--mut);font-size:11.5px">定稿只說「同步回寫」，沒說撞到怎麼辦</span></td><td>3C 13:00–14:00 加時到 14:30，若 14:00 已有別人 → 無解。而且回寫會直接違反 A3 要新增的 <code>EXCLUDE</code> 約束，DB 會丟例外</td><td><span class="tag t-g">已定案：擋下</span><br>畫面提示「請心理師聯絡行政做更動」。下一位須先取消（時段或空間）才放行。加時前必須先跑一次衝突檢查</td></tr>
+<tr><td><b>C2</b></td><td><b>時區</b><br><code>settlement.py:162</code> 用 UTC 午夜切日</td><td>台北時間會落在早上 08:00 —— 正好在營業時段 08:00–22:00 的第一格上。新設計對「當日」極度敏感（日曆、日報表、報到、額度）</td><td><span class="tag t-g">已定案：台北時間</span><br>全面 <code>Asia/Taipei</code>。所有「日界」計算改用當地時區</td></tr>
+<tr><td><b>C3</b></td><td><b>額度只有兩個計數器</b><br><code>case_institution_quotas</code> 僅 <code>total_count</code> / <code>used_count</code>，且 <code>used_count</code> 只增不減</td><td>未到 / 取消要能把額度還回去；結案要能全數釋出。現行 void / split 都不還額度</td><td><span class="tag t-g">已定案：三態</span><br>已預留 / 已預約 / 已使用。<b>沒有「已釋回」這個狀態</b> —— 取消預約 = 已預約→已預留；個案結案 = 全數回到未使用</td></tr>
+<tr><td><b>C4</b></td><td><b>收據編號規則未定案</b><br>原型示範 <code>A20260819C021-1</code></td><td><b>三份文件三套規則</b>（見下一節），且「重印 vs 重開」的判定規則從未定義。編號規則一旦上線就不能改</td><td><span class="tag t-a">未定案 · 你要拉回去談</span><br>規格中先做成<b>可設定的編號產生器</b>，不寫死格式</td></tr>
+<tr><td><b>C5</b></td><td><b>沒有 DB 層防併發</b><br><code>_check_room_conflict</code>（<code>appointments.py:614</code>）是應用層 SELECT</td><td>兩個併發請求可同時通過檢查。<b>你自己的原稿明寫「同一診間同時段不可重複預約，由資料庫層強制（非僅前端檢查）」，但程式碼裡從來沒有這個約束</b>（已 grep 確認無任何 <code>ExcludeConstraint</code>）</td><td><span class="tag t-g">已定案：需要</span><br>補 <code>EXCLUDE USING GIST</code>（只計 booked / executed），列入 P0</td></tr>
+<tr><td><b>C6</b></td><td><b><code>audit_log.operation</code> 是 <code>String(10)</code></b><br>但程式已寫入 <code>"ADMIN_VERIFY_ALL"</code>（16 字元）</td><td>現存 bug —— Postgres 會丟 <code>value too long</code>。發生點：<code>ledger.py:590,623</code>、<code>claim_batches.py:538,573,601</code></td><td><span class="tag t-g">已定案：修</span><br>擴為 <code>String(32)</code>，列入 P0</td></tr>
+<tr><td><b>C7</b></td><td><b><code>Notification</code> 未列入 <code>models/__init__.py</code></b></td><td><code>alembic/env.py:9</code> 是 <code>from app.models import *</code>，所以 <code>notifications</code> 不在 <code>Base.metadata</code> 裡 —— 下次 autogenerate 會產生 <code>drop_table("notifications")</code>。新流程大量依賴通知</td><td><span class="tag t-g">已定案：修</span><br>列入 P0</td></tr>
+<tr><td><b>C8</b></td><td><b><code>_resolve_quota</code> 對 NULL 日期會 500</b><br><code>appointments.py:157</code> 在 Python 比較可為 NULL 的 <code>valid_from</code> / <code>valid_until</code></td><td>兩件事纏在一起：一是真 bug（<code>t1a2b3c4d5fa</code> 讓日期可為 NULL 之後就壞了，而 <code>case_quotas.py:77</code> 的讀取路徑卻用 <code>or_(...is_(None))</code> 處理正確 —— 兩條路徑互相矛盾）；二是定稿寫「外展不計額度次數，出去幾趟核銷幾趟」</td><td><span class="tag t-g">NULL bug：修</span> <span class="tag t-a">外展不計額度：你去問診療所</span><br>程式先做成<b>方案層級可設定旗標</b> <code>counts_toward_quota</code></td></tr>
+<tr><td><b>C9</b></td><td><b>第②組未定稿的資料流</b><br>場地租借金流、講師費入帳、加時後金額、督導拆帳</td><td>全部指向尚未定稿的日報表 / 月報表 / 應收帳冊。若現在把讀取端寫死，②組定稿後必大改</td><td><span class="tag t-g">已定案：最小可用更動</span><br><b>寫入端資料模型做完整、讀取端不動</b>；06 另立「②組銜接待辦清單」作為後續修改依據</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="secID">
+<h2><span class="num">C+</span>三份文件的識別碼規則互相矛盾</h2>
+<p>比對你的原稿、<code>資料庫結構與資料轉換規範.md</code>、以及現行程式碼之後，發現同一件事有三套規則。這件事沒統一，04/05 的操作樣本就寫不出正確的預期值。</p>
+<div class="tw"><table>
+<thead><tr><th style="width:110px">識別碼</th><th>你的 V2 業務規格 / 原稿</th><th>資料庫規範文件</th><th>現行程式碼</th><th style="width:120px">回饋原型採用</th></tr></thead>
+<tbody>
+<tr><td><b>病歷號</b></td><td class="mono">YY + 代碼(A身分證/B護照/<br>C第三方/X資訊短少) + 末四碼 + 流水2碼<br><span style="color:var(--mut)">26A7456126</span></td><td class="mono">{YY}{SEQ4}{身分證後2碼}<br><span style="color:var(--mut)">26000145</span></td><td class="mono">走資料庫規範版<br><code>services/case_numbering.py:10</code></td><td><span class="tag t-p">原稿版</span><br><code>26A7456126</code></td></tr>
+<tr><td><b>收據編號</b></td><td class="mono">館別A + YYYYMMDD + 流水3碼<br>+ 分類(C諮商/O其他) + 檢核碼(-1/-2/-3)<br><span style="color:var(--mut)">A20260716C001-1</span></td><td class="mono">R{YYYYMMDD}{seq:04d}</td><td class="mono">走 R… 版<br><code>settlement.py:49</code></td><td><span class="tag t-p">原稿版</span><br><code>A20260819C021-1</code></td></tr>
+<tr><td><b>核銷案編號</b></td><td class="mono">YYMM + 流水2碼<br><span style="color:var(--mut)">202607-01</span></td><td class="mono">自費 S{O/M/X}-{case_number}-{YYYYMM}<br>機構 I-{code}-{YYYYMM}</td><td class="mono">走資料庫規範版<br><code>services/claim_batch.py:11</code></td><td><span class="tag t-x">第①組未涉及</span></td></tr>
+<tr><td><b>預約編號</b></td><td colspan="3" class="mono">三者一致：R-{YYYYMMDD}-{user_code}-{seq:03d}　<code>appointments.py:34</code></td><td><span class="tag t-g">無衝突</span></td></tr>
+<tr><td><b>派案碼</b></td><td class="mono">YYMMDD + 流水3碼<br><span style="color:var(--mut)">260801001</span></td><td class="tag t-r">無此概念</td><td class="tag t-r">無此概念</td><td><span class="tag t-p">原稿版</span><br><code>260725002</code></td></tr>
+</tbody></table></div>
+<div class="note amber"><span class="t">建議</span>回饋原型採用的是<b>你原稿那一套</b>，診療所看到的也是那一套。既有資料為測試資料，現在切換成本最低。<br>
+但這件事與 C4 連動 —— 收據編號的檢核碼（-1 開立 / -2 重印 / -3 作廢）牽涉到「重印 vs 重開」的判定規則，那條規則從未定義。<b>建議兩件事一併與診療所確認後再定案</b>；在此之前，02 的規格會把編號產生器做成可抽換的策略函式，避免格式散落在各處。</div>
+<div class="note red"><span class="t">另一個編號隱憂（所有版本共通）</span>現行所有 <code>*_number</code> 都用 <code>COUNT(*) + 1</code> 產生，沒有 advisory lock、沒有唯一鍵重試（<code>appointments.py:39</code>、<code>settlement.py:51</code>、<code>invoices.py:16</code>）。併發建立會直接撞號。<code>next_receipt_no</code> 更會把作廢與拆分的紀錄一起數進去。新流程的併發（櫃台 + 16 位心理師）比現在高，建議在 P0 一併改為序列或帶重試。</div>
+</section>
+
+<section id="secGap">
+<h2><span class="num">C++</span>其他跨文件落差</h2>
+<div class="tw"><table>
+<thead><tr><th style="width:130px">項目</th><th>落差內容</th><th style="width:180px">結論</th></tr></thead>
+<tbody>
+<tr><td><b>診間數量</b></td><td>你的原稿只硬編 5 間（1A / 2B / 2C / 3C / 3D）；<code>完整需求文件.md</code> 說「三層樓、十幾個治療空間」；<code>V2新版-櫃台行政-系統規格</code> 說「需重新匯入所有診間清單」；定稿確定為 12 間</td><td><span class="tag t-g">定稿版本為準</span></td></tr>
+<tr><td><b>營業時段<br>與列高</b></td><td>你原稿的三個表格用了三種列（日曆 7 列、週檢視 9 列、心理師班表 8 列），全部是<b>整點</b>，且待確認欄明白問「是否需要 15/30/45 半格」；定稿已定案 <b>08:00–22:00、每半小時一列共 28 列、每列都標時間</b></td><td><span class="tag t-g">定稿已定案</span><br>90 分案得以正確跨 3 列</td></tr>
+<tr><td><b>自動已到</b></td><td>原稿與 V2 業務規格寫「超過半小時自動列已到」；現行程式是「結束時間前 20 分鐘」（<code>settlement.py:24</code>）；<b>定稿 補充修正 3 明確推翻自動已到</b></td><td><span class="tag t-g">定稿為準：取消</span><br>必須由心理師實際按下</td></tr>
+<tr><td><b>諮商類型</b></td><td>早期需求文件：實體 / 線上 / 家訪；原稿與定稿：現場 / 視訊 / 外展；DB：<code>in_person</code> / <code>online</code> / <code>outdoor</code></td><td><span class="tag t-g">可一一對應</span><br>只需統一顯示字串，DB 不動</td></tr>
+<tr><td><b>抽成</b></td><td>早期文件寫「全所統一 70/30、查詢時計算不儲存」；現行 DB 是<b>每人 <code>commission_rate</code> + 每筆快照 <code>commission_rate_used</code> + 外出保底 <code>outcall_bonus</code></b>；定稿暫待清單也說「抽成依人設定，欄位已預留」</td><td><span class="tag t-g">現行實作正確</span><br>不需改</td></tr>
+<tr><td><b>取消語意</b></td><td>早期文件立場是「忘記取消屬操作疏漏，不得事後修改 —— 錯誤應該被看見，而不是被掩蓋」；定稿把「未到」做成櫃台一級動作（填原因、退回額度、不產生應收）</td><td><span class="tag t-a">需調和</span><br>採定稿的操作方式，但保留完整 audit 軌跡</td></tr>
+<tr><td><b>額度三態</b></td><td>你原稿的「機構方案清冊」頁<b>早已完整定義三態與恆等式</b>「已使用 + 已預約 + 已預留 = 個人上限」，並用三色長條呈現；但 DB 從未實作</td><td><span class="tag t-g">與 C3 裁示一致</span><br>照原稿定義實作即可</td></tr>
+<tr><td><b>資訊架構</b></td><td>原稿與回饋原型的側欄<b>幾乎一致</b> —— 媒合管理、機構合約清冊、機構方案清冊、機構核銷案、日報表、應收帳冊、數據分析都是原稿就有的，診療所只加了「📗 月報表 NEW」</td><td><span class="tag t-g">好消息</span><br>IA 不會再大改，②③組只需留 placeholder</td></tr>
+</tbody></table></div>
+
+<h3>資訊架構全貌（第①組的位置）</h3>
+<div class="grid2">
+<div class="card"><div class="h">🏢 行政端 · 13 項</div>
+<div style="font-size:12.5px;line-height:2">
+<b style="color:var(--mut);font-size:11px">營運</b>　📊 營運總覽 <span class="tag t-x">②③組</span><br>
+<b style="color:var(--mut);font-size:11px">個案流程</b>　🤝 媒合管理 <span class="tag t-a">P5</span>　👤 個案管理 <span class="tag t-x">③組</span><br>
+<b style="color:var(--mut);font-size:11px">每日作業</b>　🗓️ 診間日曆 <span class="tag t-p">第①組</span>　➕ 預約作業 <span class="tag t-p">第①組</span>　📋 預約總表 <span class="tag t-p">第①組</span><br>
+<b style="color:var(--mut);font-size:11px">機構</b>　📑 機構合約清冊 <span class="tag t-x">③組</span>　🏢 機構方案清冊 <span class="tag t-a">P2 部分</span>　💰 機構核銷案 <span class="tag t-x">②組</span><br>
+<b style="color:var(--mut);font-size:11px">財務</b>　📒 日報表/對帳 <span class="tag t-x">②組</span>　📗 月報表 <span class="tag t-x">②組</span>　💳 應收帳冊 <span class="tag t-x">②組</span><br>
+<b style="color:var(--mut);font-size:11px">分析</b>　📈 數據分析 <span class="tag t-x">③組</span>
+</div></div>
+<div class="card"><div class="h">🧑‍⚕️ 心理師端 · 8 項</div>
+<div style="font-size:12.5px;line-height:2">
+<b style="color:var(--mut);font-size:11px">每日</b>　🏠 我的今日 <span class="tag t-p">第①組</span>　🗓️ 我的班表 <span class="tag t-p">第①組</span>　➕ 預約作業 <span class="tag t-p">第①組</span><br>
+<b style="color:var(--mut);font-size:11px">派案</b>　🤝 派案邀請 <span class="tag t-a">P5</span><br>
+<b style="color:var(--mut);font-size:11px">個案</b>　👤 我的個案 <span class="tag t-x">③組</span><br>
+<b style="color:var(--mut);font-size:11px">行政配合</b>　📄 文件確認 <span class="tag t-x">②組（現已有）</span><br>
+<b style="color:var(--mut);font-size:11px">我的</b>　💵 我的酬勞 <span class="tag t-x">②組（現已有）</span>　📈 我的數據 <span class="tag t-x">③組</span>
+</div></div>
+</div>
+<div class="note blue" style="margin-top:14px">第①組實作範圍 = 行政端 3 頁 + 心理師端 3 頁，共 <b>6 頁 54 項</b>。其餘 15 個頁面在 P0–P5 只建立導覽項目與 placeholder，避免 ②③ 組定稿後 IA 大改。</div>
+</section>
+
+<section id="secD">
+<h2><span class="num">D</span>可直接沿用 — 降低風險的部分</h2>
+<div class="tw"><table>
+<thead><tr><th style="width:190px">項目</th><th>為何可沿用</th><th style="width:130px">省下的工</th></tr></thead>
+<tbody>
+<tr><td><b>諮商類型枚舉</b></td><td><code>session_type</code> 現有 <code>in_person</code> / <code>online</code> / <code>outdoor</code>，<b>正好對應</b>定稿的「現場 / 視訊 / 外展」</td><td>不需 migration</td></tr>
+<tr><td><b>伴侶案</b></td><td>已完整實作：<code>case_type='couple'</code> + <code>couple_members</code> 表 + <code>appointments.couple_case_id</code>（合療標記，<code>case_id</code> 為付款方）+ <code>generate_couple_number()</code>。定稿的「陳凡／王震｜伴 · 90 分鐘跨格 · 伴侶自費次結 $3,000」可直接跑</td><td><span class="tag t-g">整個模組</span></td></tr>
+<tr><td><b>診間 × 時段矩陣</b></td><td><code>calendar/page.tsx:391</code> 的 <code>SlotCalendarTab</code> 已經是 30 分鐘 × 診間的手刻矩陣，時段也已是 08:00–22:00。只差 rowspan 合併、狀態色、與格內三行資訊</td><td>日曆骨架</td></tr>
+<tr><td><b>批次預約<br>診間空間週檢視</b></td><td>定稿明示<b>「完全沿用工程師原稿」</b>，只需依定案調整營業時段與半小時列，並補一項「批次遇國定假日僅標示提醒、不自動跳過」</td><td><span class="tag t-g">兩個分頁</span></td></tr>
+<tr><td><b>四個減法</b></td><td>不做失約費、不做自動已到、不做週檢視（日曆只做日檢視）、不做自動產生視訊連結。全部是定稿主動拿掉的</td><td>實作量下降</td></tr>
+<tr><td><b>兩段式病歷碼</b></td><td>現有 <code>temp_seq</code> → <code>case_number</code>（需身分證才轉正式）與初診單「身分證填妥才產病歷碼」<b>同構</b>，可延用 <code>services/case_numbering.py</code>（僅編碼格式待 C4 定案）</td><td>流程邏輯</td></tr>
+<tr><td><b>額度原子扣減</b></td><td><code>settlement.py:107</code> 的 <code>UPDATE ... WHERE used_count &lt; total_count</code> 條件式扣減寫法正確，三態化時可沿用同一手法擴充</td><td>併發安全寫法</td></tr>
+<tr><td><b>權限骨架</b></td><td><code>auth/dependencies.py:25</code> 的 <code>RequireRole</code> 可用；且 <code>get_current_user</code> <b>不信任 token 裡的 role</b>，每次讀 DB —— 角色變更立即生效，這是正確的設計</td><td>不需重寫</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="risk">
+<h2><span class="num">E</span>風險登記表</h2>
+<div class="tw"><table>
+<thead><tr><th style="width:36px">#</th><th style="width:190px">風險</th><th style="width:56px" class="c">機率</th><th style="width:56px" class="c">衝擊</th><th>緩解措施</th></tr></thead>
+<tbody>
+<tr><td>R1</td><td><b>出席驅動改造牽動整條財務鏈</b>，改完之後 ledger / claims / payouts / reports 全部行為改變</td><td class="c"><span class="tag t-r">高</span></td><td class="c"><span class="tag t-r">高</span></td><td>P1 單獨成期，先只做「產生 session_record 的時機」這一件事，並保留舊的 <code>materialize_due_appointments</code> 作為<b>補登工具</b>（行政忘了按時可手動追認）。舊資料為測試資料，不需回填。</td></tr>
+<tr><td>R2</td><td><b>第②組（財務）尚未定稿</b>，但第①組已產生大量流向財務的資料（場地租借、講師費、加時、督導拆帳）</td><td class="c"><span class="tag t-r">高</span></td><td class="c"><span class="tag t-a">中</span></td><td><b>已裁示：最小可用更動。</b>寫入端資料模型一次做完整（欄位齊備、語意明確），讀取端完全不動現有財務頁面。06 附「②組銜接待辦清單」逐項記錄「等定稿後要接上哪裡」。</td></tr>
+<tr><td>R3</td><td><b>方案主檔資料尚未提供</b>（含行政流程提醒事項、額度次數、自付額、核銷金額），定稿明說「目前提醒清單為寫死示範」</td><td class="c"><span class="tag t-r">高</span></td><td class="c"><span class="tag t-a">中</span></td><td>P2 先把<b>主檔結構與維護介面</b>做出來（可新增 / 停用 / 排序），資料留空由診療所自行輸入。開發期用定稿原型的示範資料（衛生局 15-45青壯 3 次 / 自付 $400 / 請款 $1,600 / 3 項提醒）作為 seed。</td></tr>
+<tr><td>R4</td><td><b>心理師主檔未提供</b>（抽成比例、督導收費模式 A/B、督導拆帳設定），影響場地租借 b4 與月報表</td><td class="c"><span class="tag t-a">中</span></td><td class="c"><span class="tag t-a">中</span></td><td>欄位先加上、UI 先做、預設值留空。<code>commission_rate</code> 已存在且結算時有 0.70 fallback，不會卡住流程。</td></tr>
+<tr><td>R5</td><td><b>收據編號規則未定案</b>（C4），且三份文件三套規則</td><td class="c"><span class="tag t-a">中</span></td><td class="c"><span class="tag t-r">高</span></td><td>編號產生器抽成單一策略函式 <code>services/numbering.py</code>，格式由設定決定。定案前用原型示範格式，定案後只改一處。<b>務必在正式資料進入前定案</b>。</td></tr>
+<tr><td>R6</td><td><b>「整格轉灰」的三條件耦合</b>：已到 + 應收結清 + 行政流程提醒全勾。跨三個資料來源</td><td class="c"><span class="tag t-a">中</span></td><td class="c"><span class="tag t-a">中</span></td><td>由後端<b>一次聚合</b>回傳（<code>GET /v2/room-calendar?date=</code> 每格帶 <code>is_settled</code> 布林與三個子條件），<b>禁止前端逐格再查</b>。一天約 30–60 筆，單次 join 即可。</td></tr>
+<tr><td>R7</td><td><b>加時回寫觸發 DB 約束例外</b>（C1 + C5 交互作用）</td><td class="c"><span class="tag t-a">中</span></td><td class="c"><span class="tag t-g">低</span></td><td>已裁示擋下。加時存檔前先跑衝突檢查，撞到就回傳 409 並附上占用者資訊，畫面顯示「請心理師聯絡行政做更動」。</td></tr>
+<tr><td>R8</td><td><b>共用帳號稽核不可追溯</b>（A8）</td><td class="c"><span class="tag t-g">低</span></td><td class="c"><span class="tag t-a">中</span></td><td>診療所已知悉並接受。技術上補 <code>audit_log.actor_name</code>，並在所有勾選 / 建立紀錄上顯示自填姓名 + 時間。人數變多再改一人一帳號（已列入暫待清單）。</td></tr>
+<tr><td>R9</td><td><b>前端全新重寫的範圍蔓延</b> —— 現行 <code>cases/page.tsx</code> 3,364 行、全站僅 7 個共用元件、30 個手刻 Modal</td><td class="c"><span class="tag t-a">中</span></td><td class="c"><span class="tag t-a">中</span></td><td>P3 之前先建立最小設計系統（Modal / Table / Form / Tag / 時段矩陣 六個 primitive）與雙角色 shell，再開始寫頁面。既有 5 個裝了沒用的相依（<code>zod</code> / <code>clsx</code> / <code>tailwind-merge</code> / <code>cva</code> / <code>lucide-react</code>）正好在此時決定用或移除。</td></tr>
+<tr><td>R10</td><td><b>編號併發撞號</b>（所有 <code>*_number</code> 都用 <code>COUNT(*)+1</code>）</td><td class="c"><span class="tag t-a">中</span></td><td class="c"><span class="tag t-a">中</span></td><td>P0 一併改為 Postgres 序列或加唯一鍵重試。新流程併發（櫃台 + 16 位心理師同時排診）比現在高。</td></tr>
+<tr><td>R11</td><td><b>媒合模組是第①組的隱性相依</b> —— 診間日曆的「⭐ 初診報到」入口需要媒合資料才有意義</td><td class="c"><span class="tag t-a">中</span></td><td class="c"><span class="tag t-g">低</span></td><td>P5 排在 P3/P4 之後，但先在 P1 就把 <code>appointments.is_intake</code> / <code>referral_id</code> 欄位加好。第①組先以「行政手動建立初診預約」的最小路徑跑通，媒合模組完成後再接上。</td></tr>
+<tr><td>R12</td><td><b>時區改造範圍廣</b>（C2）—— 日界計算散落在 settlement / dashboard / notifications / reports / churn</td><td class="c"><span class="tag t-g">低</span></td><td class="c"><span class="tag t-r">高</span></td><td>P0 集中處理：建立單一 <code>tz.py</code>（<code>today_local()</code> / <code>day_range_local(d)</code>），把所有 <code>date.today()</code> 與 UTC 午夜計算改為呼叫它。改完後用 04/05 操作樣本的跨日情境驗證。</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="ask">
+<h2><span class="num">F</span>帶回去問診療所的問題清單</h2>
+<div class="note purple">這一節可直接轉寄。分四類：甲＝診療所自己在定稿裡問你的；乙＝你已裁示要拉回去談的；丙＝我在研究中發現、雙方都還沒談到的；丁＝定稿末尾的暫待清單（不需現在回答，但需知道它們會動到哪裡）。</div>
+
+<h3>甲 · 診療所在定稿裡問你的（3 題）</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:34px">#</th><th style="width:200px">問題</th><th>脈絡</th><th style="width:130px">卡住什麼</th></tr></thead>
+<tbody>
+<tr><td>甲1</td><td><b>三家廠商的場地費率實際數字</b></td><td>原型上的 $800／小時是示範值。另需說明<b>是否分半日／全日包時價</b>。蛹之生、鉅微、EAPC 三家皆已簽約並收取場地費</td><td>場地租借 b4 的方案主檔</td></tr>
+<tr><td>甲2</td><td><b>場地租借「未到」的理解是否正確</b></td><td>診療所寫「未到通常會由借場地的那一方額外給我們場地費，就不是當初借場地的單位」。原型理解為：<b>付款方從機構改為借用人個人自付</b>，場地費照收、只是不走機構核銷</td><td>b4 的金流分支</td></tr>
+<tr><td>甲3</td><td><b>心理師主檔要新增的兩個欄位</b></td><td>「督導收費模式（A 櫃台代收 / B 心理師自收）」與「督導拆帳比例或固定金額」。與抽成比例一起維護</td><td>b4 督導模式、月報表拆帳</td></tr>
+</tbody></table></div>
+
+<h3>乙 · 你已裁示要拉回去談的（2 題）</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:34px">#</th><th style="width:200px">問題</th><th>脈絡</th><th style="width:130px">卡住什麼</th></tr></thead>
+<tbody>
+<tr><td>乙1</td><td><b>收據編號規則與「重印 vs 重開」判定</b></td><td>你原稿定義為「館別 + 開立年月日 + 流水3碼 + 分類(C諮商/O其他) + 檢核碼(-1開立/-2重印/-3作廢)」，但<b>什麼情況算重印、什麼情況算重開，從未定義</b>（定稿也把它列在暫待清單）。另需確認：館別代碼是否只有 A 永康館？分類除了 C/O 還有嗎？</td><td>P1 收據模組 · C4</td></tr>
+<tr><td>乙2</td><td><b>「外展不計額度次數」是需求還是表達方式</b></td><td>定稿寫「外展的機構清冊<b>不計算額度與次數</b>，採出去幾趟核銷幾趟」。想確認：是這個方案本身沒有次數上限，還是外展這種類型不扣既有方案的額度？兩者的資料模型不同</td><td>方案主檔的 <code>counts_toward_quota</code> 旗標 · C8</td></tr>
+</tbody></table></div>
+
+<h3>丙 · 研究中發現、雙方都還沒談到的（5 題）</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:34px">#</th><th style="width:200px">問題</th><th>脈絡</th><th style="width:130px">卡住什麼</th></tr></thead>
+<tbody>
+<tr><td>丙1</td><td><b>病歷號與核銷案編號要用哪一套</b></td><td>你的原稿是 <code>26A7456126</code>（YY+代碼+末四碼+流水），資料庫規範文件是 <code>26000145</code>（YY+序號+身分證末2碼），現行程式走後者。核銷案編號同樣有兩套。回饋原型顯示的是原稿那一套</td><td>P0 主檔 · 04/05 操作樣本的預期值</td></tr>
+<tr><td>丙2</td><td><b>加時撞到下一場的實際處理流程</b></td><td>已裁示「擋下 + 提示請心理師聯絡行政」。想確認：行政要不要有「一鍵通知下一場的心理師」的按鈕？還是就是打電話？系統要不要留下這筆「曾嘗試加時但被擋下」的紀錄？</td><td>加時模組的 UX 收尾</td></tr>
+<tr><td>丙3</td><td><b>行政流程提醒的「諮商結束時間前跳通知」要通知誰、用什麼管道</b></td><td>定稿只說「系統跳通知」。要確認：通知對象是行政、心理師、還是兩者？管道是站內通知（現有 <code>notifications</code> 表）、Email、還是 LINE？提前多久跳一次、要不要重複提醒？</td><td>P2 提醒模組</td></tr>
+<tr><td>丙4</td><td><b>共用帳號的稽核責任如何界定</b></td><td>實習心理師用共用帳號、登入時自填姓名。若日後要追溯督導責任，系統只能提供「自填的姓名」而非可驗證的身分。想確認診療所是否接受這個限制，或是否需要在關鍵動作（如勾選心理師端提醒事項）上加第二層確認</td><td>A8 · 暫待清單第 9 項</td></tr>
+<tr><td>丙5</td><td><b>「催繳方式」四選一的具體選項</b></td><td>定稿寫「未到僅填原因（5 選 1，其他可手寫）+ <b>催繳方式（4 選 1）</b>」，但原型只實作了原因，四個催繳選項的內容沒有出現在任何一份文件裡</td><td>未到視窗的欄位定義</td></tr>
+</tbody></table></div>
+
+<h3>丁 · 定稿末尾的暫待清單（19 項）— 不需現在回答</h3>
+<p>這些是診療所「已經想過但目前無法定案」的項目。定稿明確要求：<b>不寫入原型、不做任何 UI，但工程師要預留擴充空間、不要把架構寫死</b>。下表列出每一項定案後會動到哪裡，以及 02 規格中的預留方式。</p>
+<div class="tw"><table>
+<thead><tr><th style="width:34px">#</th><th style="width:160px">項目</th><th style="width:200px">目前狀態</th><th style="width:180px">定案後會動到</th><th>02 中的預留方式</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>未到失約費機制</td><td>v7 曾實作三分類（$0/$200/$500），本輪取消</td><td>診間日曆未到視窗、應收帳冊、心理師酬勞</td><td><code>appointment_no_shows</code> 表保留 <code>fee_amount</code> 欄位（永遠為 0）</td></tr>
+<tr><td>2</td><td>失約費是否計入心理師酬勞</td><td>隨上一項一併暫緩</td><td>月報表 · 心理師當月收入</td><td>同上，酬勞計算不讀該欄</td></tr>
+<tr><td>3</td><td>實習督導機制</td><td>督導配對（行政督導 / 臨床督導）尚未建置</td><td>心理師主檔、派案邀請、文件模組</td><td><code>users</code> 預留 <code>supervisor_id</code>（nullable，暫不使用）</td></tr>
+<tr><td>4</td><td>見習心理師可否獨立承接</td><td>目前無見習心理師</td><td>媒合派案的人員篩選規則</td><td>派案候選人查詢做成可加條件的函式</td></tr>
+<tr><td>5</td><td>臨床督導費金流</td><td>付款人為實習生而非個案，模組歸屬未定</td><td>費用管理或薪酬模組、收據規則</td><td>b4 的督導模式 A/B 已可承載大部分情境</td></tr>
+<tr><td>6</td><td>Google 日曆雙向同步</td><td>授權方式、衝突優先權、個資揭露範圍三件事未定</td><td>我的班表</td><td>不做。班表資料來源集中於單一端點，日後加同步不需改結構</td></tr>
+<tr><td>7</td><td>線上／外展自動已到</td><td>曾定案「起始後 30 分自動視為已到」，本輪<b>取消</b></td><td>我的班表、日報表</td><td><code>check_in_source</code> 欄位（<code>manual</code> / <code>auto</code>），目前只寫 <code>manual</code></td></tr>
+<tr><td>8</td><td>個案固定診間</td><td><b>已回覆：不需要。</b>F5 的 🔒 標籤保留位置但不啟用</td><td>—</td><td>診間卡的標籤陣列保留 <code>fixed</code> 型別，不產生</td></tr>
+<tr><td>9</td><td>實習心理師一人一帳號</td><td>目前僅 1 位，採共用帳號 + 登入填姓名</td><td>帳號權限、異動紀錄的可追溯性</td><td><code>users.is_shared_account</code> 布林；改單人時關掉即可</td></tr>
+<tr><td>10</td><td>抽成比例</td><td><b>已確定依人設定</b>，欄位已預留，等心理師主檔提供</td><td>月報表 · 心理師當月收入</td><td><span class="tag t-g">現行已實作</span> <code>users.commission_rate</code> + 每筆快照</td></tr>
+<tr><td>11</td><td>現金短溢款記錄</td><td>是否需要「調整」欄位與原因，未定</td><td>日報表對帳</td><td>②組範圍，不動</td></tr>
+<tr><td>12</td><td>收據重印 vs 重開</td><td>判定規則未定義</td><td>收據編號檢核碼（-1 / -2 / -3）</td><td><span class="tag t-a">與乙1 同一題</span> 編號產生器可設定</td></tr>
+<tr><td>13</td><td>作廢帳款稽核頁</td><td>是否需要獨立查詢頁，未定</td><td>財務模組</td><td>②組範圍。<code>audit_log</code> 已記錄 VOID</td></tr>
+<tr><td>14</td><td><b>方案主檔</b></td><td>方案、<b>行政提醒事項（含頻率與適用類型）</b>、額度次數、核銷金額，待心療所提供。目前提醒清單為寫死示範</td><td>診間日曆、我的班表、機構方案清冊</td><td><span class="tag t-r">P2 必做</span> 結構做完整，資料留空</td></tr>
+<tr><td>15</td><td><b>心理師主檔</b></td><td>抽成比例、督導收費模式 A/B 與拆帳設定，待提供</td><td>月報表 · 心理師當月收入</td><td><span class="tag t-a">與甲3 同一題</span></td></tr>
+<tr><td>16</td><td>場地租借合約主檔</td><td>是否需要合約主檔（起訖日、費率、付款週期），或每筆手動輸入即可。三家費率待提供</td><td>預約作業 b4、應收帳冊</td><td>b4 的方案下拉先做成資料驅動，日後升級為合約主檔不需改 UI</td></tr>
+<tr><td>17</td><td>場地租借違約金</td><td>臨時取消是否收費，未定</td><td>預約作業 b4</td><td><code>venue_rentals</code> 預留 <code>penalty_amount</code></td></tr>
+<tr><td>18</td><td>租借使用率報表</td><td>哪家用最多、哪個時段最熱門，未定是否需要</td><td>數據分析</td><td>③組範圍。<code>venue_rentals</code> 欄位足以事後統計</td></tr>
+<tr><td>19</td><td>主管覆核例外門檻金額</td><td>優待 ≥ $500 為暫定值（當日應收未收 ≥ 2 筆已定案）</td><td>月報表 · 主管覆核</td><td>②組範圍。門檻做成設定值</td></tr>
+</tbody></table></div>
+</section>
+
+<div class="foot">CheerPsy V2 升級計畫 · 依《判定定稿 v4 · 第①組 每日作業 · 2026/08/20》編寫 · 本檔為單檔自足文件</div>
+</main>
+</div>
+</div>
+<script>
+
+/* TOC auto-build from h2/h3 */
+(function(){
+  var toc=document.getElementById('toc'); if(!toc) return;
+  var out='<b>目錄</b>';
+  document.querySelectorAll('main section').forEach(function(s){
+    var h2=s.querySelector('h2'); if(!h2) return;
+    if(!s.id) s.id='s'+Math.random().toString(36).slice(2,7);
+    var t=h2.textContent.replace(/^\s*\d+\s*/,'').trim();
+    out+='<a href="#'+s.id+'">'+t+'</a>';
+    s.querySelectorAll('h3').forEach(function(h3,i){
+      if(!h3.id) h3.id=s.id+'-h'+i;
+      out+='<a class="sub" href="#'+h3.id+'">'+h3.textContent.trim()+'</a>';
+    });
+  });
+  toc.innerHTML=out;
+})();
+/* checklist toggle + persistence + progress */
+(function(){
+  var KEY='cheerpsy-v2-'+(document.body.dataset.doc||'doc');
+  var saved={}; try{saved=JSON.parse(localStorage.getItem(KEY)||'{}');}catch(e){}
+  var items=[].slice.call(document.querySelectorAll('.ck li'));
+  items.forEach(function(li,i){
+    var k=li.dataset.k||('i'+i); li.dataset.k=k;
+    if(!li.querySelector('.box')){var b=document.createElement('span');b.className='box';li.insertBefore(b,li.firstChild);}
+    if(saved[k]) li.classList.add('on');
+    li.addEventListener('click',function(){
+      li.classList.toggle('on');
+      saved[k]=li.classList.contains('on');
+      try{localStorage.setItem(KEY,JSON.stringify(saved));}catch(e){}
+      paint();
+    });
+  });
+  function paint(){
+    document.querySelectorAll('[data-prog]').forEach(function(el){
+      var scope=el.dataset.prog==='all'?document:document.getElementById(el.dataset.prog);
+      if(!scope) return;
+      var all=scope.querySelectorAll('.ck li'), done=scope.querySelectorAll('.ck li.on');
+      el.textContent=done.length+' / '+all.length;
+    });
+  }
+  paint();
+  var rst=document.getElementById('ckReset');
+  if(rst) rst.onclick=function(){ if(!confirm('清除本頁所有勾選狀態？'))return;
+    try{localStorage.removeItem(KEY);}catch(e){} items.forEach(function(li){li.classList.remove('on');}); paint(); };
+})();
+/* tab panels: .tabs span[data-tab] -> #tab-{id} */
+(function(){
+  document.querySelectorAll('.tabs').forEach(function(bar){
+    bar.querySelectorAll('span[data-tab]').forEach(function(t){
+      t.onclick=function(){
+        bar.querySelectorAll('span[data-tab]').forEach(function(x){
+          x.classList.remove('on');
+          var p=document.getElementById('tab-'+x.dataset.tab); if(p)p.style.display='none';
+        });
+        t.classList.add('on');
+        var p=document.getElementById('tab-'+t.dataset.tab); if(p)p.style.display='block';
+      };
+    });
+    var first=bar.querySelector('span[data-tab]'); if(first) first.click();
+  });
+})();
+
+
+</script>
+</body>
+</html>

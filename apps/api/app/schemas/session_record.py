@@ -43,6 +43,14 @@ class SessionRecordResponse(BaseModel):
     outcall_bonus: float = 0
     outcall_note: str | None = None
     billing_cycle: str | None = None
+    # 機構合約子系統報價快照的攤平欄位（同 appointments，見 08 §5.1）。
+    # 日報表／應收帳冊要同時顯示「個案自付額」與「機構請款額」兩欄，缺這幾
+    # 個欄位就只能顯示 amount 全額，分不出這筆錢誰付多少（09 §1.4a）。
+    plan_name: str | None = None
+    case_payable: float | None = None
+    institution_payable: float | None = None
+    copay_collected_at: datetime | None = None
+    copay_payment_method: str | None = None
 
     model_config = {"from_attributes": True}
 

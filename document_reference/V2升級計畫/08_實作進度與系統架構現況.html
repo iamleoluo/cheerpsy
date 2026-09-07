@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>08 實作進度與系統架構現況 — CheerPsy V2</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+ --bg:#f6f7f9; --panel:#fff; --ink:#111827; --ink2:#374151; --mut:#6b7280; --mut2:#9ca3af;
+ --line:#e5e7eb; --line2:#d1d5db;
+ --p50:#f5f3ff; --p100:#ede9fe; --p200:#ddd6fe; --p500:#8b5cf6; --p600:#7c3aed; --p700:#6d28d9;
+ --blue:#2563eb; --blue-bg:#eff6ff; --green:#16a34a; --green-bg:#f0fdf4;
+ --amber:#d97706; --amber-bg:#fffbeb; --red:#dc2626; --red-bg:#fef2f2;
+ --sky:#0891b2; --sky-bg:#ecfeff; --rose:#e11d48; --rose-bg:#fff1f2;
+ --code:#f3f4f6;
+}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);
+ font:14px/1.75 "Noto Sans TC","PingFang TC","Microsoft JhengHei",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+ -webkit-font-smoothing:antialiased}
+.wrap{max-width:1220px;margin:0 auto;padding:0 20px 90px}
+
+/* ---- header ---- */
+.hd{background:linear-gradient(135deg,#4c1d95,#6d28d9 55%,#7c3aed);color:#fff;padding:30px 0 26px;margin-bottom:26px}
+.hd .wrap{padding-bottom:0}
+.hd .kick{font-size:12px;letter-spacing:.16em;text-transform:uppercase;opacity:.72;font-weight:700}
+.hd h1{font-size:27px;font-weight:800;margin:7px 0 8px;letter-spacing:-.01em}
+.hd p{opacity:.9;font-size:13.5px;max-width:860px}
+.hd .meta{margin-top:14px;display:flex;flex-wrap:wrap;gap:8px}
+.hd .meta span{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.22);
+ border-radius:999px;padding:3px 11px;font-size:11.5px;font-weight:600}
+
+/* ---- layout ---- */
+.cols{display:grid;grid-template-columns:220px 1fr;gap:28px;align-items:start}
+@media(max-width:1000px){.cols{grid-template-columns:1fr}.toc{position:static!important;max-height:none!important}}
+.toc{position:sticky;top:18px;background:var(--panel);border:1px solid var(--line);border-radius:12px;
+ padding:14px 12px;max-height:calc(100vh - 40px);overflow:auto;font-size:12.5px}
+.toc b{display:block;font-size:11px;letter-spacing:.1em;color:var(--mut2);margin:0 0 8px 6px;text-transform:uppercase}
+.toc a{display:block;color:var(--ink2);text-decoration:none;padding:5px 8px;border-radius:7px;line-height:1.45}
+.toc a:hover{background:var(--p50);color:var(--p700)}
+.toc a.sub{padding-left:20px;font-size:12px;color:var(--mut)}
+
+/* ---- sections ---- */
+section{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px 26px;margin-bottom:20px;
+ scroll-margin-top:16px}
+h2{font-size:19px;font-weight:800;letter-spacing:-.01em;padding-bottom:11px;margin-bottom:16px;
+ border-bottom:2px solid var(--p100);display:flex;align-items:center;gap:9px}
+h2 .num{background:var(--p600);color:#fff;font-size:12px;width:26px;height:26px;border-radius:8px;
+ display:inline-flex;align-items:center;justify-content:center;font-weight:800;flex:none}
+h3{font-size:15px;font-weight:700;margin:24px 0 10px;color:var(--p700);
+ padding-left:10px;border-left:3px solid var(--p500)}
+h4{font-size:13.5px;font-weight:700;margin:16px 0 7px;color:var(--ink2)}
+p{margin:9px 0;color:var(--ink2)}
+ul,ol{margin:9px 0 9px 22px;color:var(--ink2)}
+li{margin:4px 0}
+a{color:var(--p700)}
+
+/* ---- tables ---- */
+.tw{overflow-x:auto;margin:13px 0;border:1px solid var(--line);border-radius:10px}
+table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:560px;background:#fff}
+th{background:#fafafa;text-align:left;font-weight:700;color:var(--mut);font-size:11px;
+ letter-spacing:.05em;padding:9px 11px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 11px;border-bottom:1px solid #f1f2f4;vertical-align:top;line-height:1.65}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:#fcfcfd}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+td.c,th.c{text-align:center}
+td.w{white-space:nowrap}
+
+/* ---- code / mono ---- */
+code,.mono{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:11.8px}
+code{background:var(--code);padding:1.5px 5px;border-radius:4px;color:#9333ea;word-break:break-word}
+pre{background:#1e1b2e;color:#e8e5f5;padding:14px 16px;border-radius:10px;overflow-x:auto;
+ font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:11.8px;line-height:1.7;margin:12px 0}
+pre .c{color:#8b83a8}
+pre .k{color:#c4b5fd}
+pre .s{color:#86efac}
+
+/* ---- callouts ---- */
+.note{border-radius:9px;padding:11px 14px;margin:12px 0;font-size:12.8px;line-height:1.7;
+ border:1px solid var(--line);background:#fafafa;color:var(--ink2)}
+.note b{color:var(--ink)}
+.note.blue{background:var(--blue-bg);border-color:#bfdbfe;color:#1e40af}
+.note.green{background:var(--green-bg);border-color:#bbf7d0;color:#15803d}
+.note.amber{background:var(--amber-bg);border-color:#fde68a;color:#92400e}
+.note.red{background:var(--red-bg);border-color:#fecaca;color:#991b1b}
+.note.purple{background:var(--p50);border-color:var(--p200);color:var(--p700)}
+.note .t{font-weight:800;display:block;margin-bottom:3px}
+
+/* ---- tags ---- */
+.tag{display:inline-block;font-size:10.5px;font-weight:700;padding:1.5px 7px;border-radius:5px;
+ border:1px solid transparent;white-space:nowrap;line-height:1.6}
+.t-p{background:var(--p100);color:var(--p700);border-color:var(--p200)}
+.t-b{background:var(--blue-bg);color:var(--blue);border-color:#bfdbfe}
+.t-g{background:var(--green-bg);color:var(--green);border-color:#bbf7d0}
+.t-a{background:var(--amber-bg);color:var(--amber);border-color:#fde68a}
+.t-r{background:var(--red-bg);color:var(--red);border-color:#fecaca}
+.t-s{background:var(--sky-bg);color:var(--sky);border-color:#a5f3fc}
+.t-x{background:#f3f4f6;color:var(--mut);border-color:var(--line2)}
+
+/* ---- checklist ---- */
+.ck{list-style:none;margin:10px 0;padding:0}
+.ck li{display:flex;gap:10px;align-items:flex-start;padding:8px 11px;border:1px solid var(--line);
+ border-radius:8px;margin-bottom:6px;background:#fff;cursor:pointer;transition:.12s;font-size:12.8px}
+.ck li:hover{border-color:var(--p200);background:var(--p50)}
+.ck li .box{width:16px;height:16px;border:2px solid var(--line2);border-radius:4px;flex:none;margin-top:3px;
+ display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;transition:.12s}
+.ck li.on{background:#fafafa;border-color:var(--line)}
+.ck li.on .box{background:var(--green);border-color:var(--green)}
+.ck li.on .box:after{content:"✓"}
+.ck li.on .txt{color:var(--mut2);text-decoration:line-through}
+.ck .txt{flex:1;color:var(--ink2);line-height:1.65}
+.ck .src{font-size:10.5px;color:var(--mut2);white-space:nowrap;margin-left:auto;padding-left:8px}
+
+/* ---- misc ---- */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media(max-width:820px){.grid2,.grid3{grid-template-columns:1fr}}
+.card{border:1px solid var(--line);border-radius:11px;padding:14px 16px;background:#fff}
+.card .h{font-weight:800;font-size:13px;margin-bottom:6px;display:flex;align-items:center;gap:7px}
+.kpi{border:1px solid var(--line);border-radius:11px;padding:13px 15px;background:#fff}
+.kpi .l{font-size:11px;color:var(--mut);font-weight:700;letter-spacing:.04em}
+.kpi .v{font-size:24px;font-weight:800;margin:2px 0;letter-spacing:-.02em}
+.kpi .s{font-size:11.5px;color:var(--mut2)}
+hr{border:none;border-top:1px solid var(--line);margin:22px 0}
+.foot{text-align:center;color:var(--mut2);font-size:11.5px;padding:26px 0 0}
+.arrow{color:var(--p600);font-weight:800}
+.del{color:var(--mut2);text-decoration:line-through}
+.new{color:var(--green);font-weight:700}
+@media print{
+ body{background:#fff}.toc{display:none}.cols{grid-template-columns:1fr}
+ section{break-inside:avoid;border:none;padding:0 0 18px}
+ .hd{background:#4c1d95!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+
+/* ---- interactive prototype (04/05 Part 2) ---- */
+@keyframes flashHi{0%{box-shadow:0 0 0 3px var(--p500)}100%{box-shadow:0 0 0 3px transparent}}
+tr.flash td:first-child{position:relative}
+tr.flash{background:var(--p50)!important;animation:flashHi 2.4s ease-out}
+.proto{background:#fbfbfc;border:1px solid var(--line);border-radius:12px;padding:16px;margin:14px 0}
+.proto .pt{font-size:11px;font-weight:800;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin-bottom:10px}
+.pgrid{display:grid;border:1px solid var(--line2);border-radius:8px;overflow:hidden;font-size:10.5px;background:#fff}
+.pgrid .prow{display:grid;grid-template-columns:52px repeat(var(--cols,5),1fr);border-top:1px solid #eee}
+.pgrid .prow:first-child{border-top:none}
+.pgrid .ph{background:#fafafa;font-weight:700;color:var(--mut);padding:6px 4px;text-align:center;border-right:1px solid #eee}
+.pgrid .pt0{padding:5px 4px;color:var(--mut2);text-align:center;border-right:1px solid #eee;font-variant-numeric:tabular-nums}
+.pgrid .pc{border-right:1px solid #f2f2f2;min-height:34px;padding:2px}
+.pgrid .pc:last-child{border-right:none}
+.hotspot{display:block;height:100%;border-radius:5px;padding:3px 5px;cursor:pointer;transition:.12s;font-size:9.5px;line-height:1.3;border:1px solid transparent}
+.hotspot:hover{outline:2px solid var(--p500);outline-offset:-1px;filter:brightness(.97)}
+.hotspot b{display:block;font-size:10px}
+.hs-self{background:var(--blue-bg);border-color:#bfdbfe;color:#1e3a8a}
+.hs-inst{background:var(--amber-bg);border-color:#fde68a;color:#78350f}
+.hs-no{background:var(--red-bg);border-color:#fecaca;color:#7f1d1d}
+.hs-first{background:#fef9c3;border-color:#fde047;color:#713f12}
+.hs-couple{background:var(--p50);border-color:var(--p200);color:var(--p700)}
+.hs-done{background:#f3f4f6;border-color:#e5e7eb;color:var(--mut2)}
+.hs-empty{border:1px dashed #e5e7eb;color:var(--mut2);display:flex;align-items:center;justify-content:center;font-size:14px}
+.hs-empty:hover{background:var(--p50);border-color:var(--p300,var(--p500))}
+.phint{font-size:11px;color:var(--mut);margin-top:9px;padding-top:9px;border-top:1px dashed var(--line)}
+.mockform{display:grid;gap:8px;font-size:11.5px}
+.mockform label{display:block}
+.mockform .lb{font-size:10.5px;color:var(--mut);font-weight:700;margin-bottom:2px;display:block}
+.mockform .fake{border:1px solid var(--line2);border-radius:6px;padding:6px 9px;background:#fff;cursor:pointer;color:var(--ink2)}
+.mockform .fake:hover{border-color:var(--p500);background:var(--p50)}
+.pbadge{display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;margin-bottom:2px}
+</style>
+</head>
+<body data-doc="08_實作進度與系統架構現況">
+<header class="hd"><div class="wrap">
+  <div class="kick">CheerPsy V2 · 慈恩心理治療所</div>
+  <h1>實作進度與系統架構現況</h1>
+  <p>2026/09/07 四輪連續實作完成的內容：P0 地基（含房間衝突 DB 層防護）、機構合約子系統骨架與主流程整合、P1 出席驅動的完整報到三步驟（已到/未到→收款→開立收據）。全部經本機 Postgres 16 實測（39/39 測試通過，含一次乾淨資料庫的完整重建驗證）。記錄現況，不是計畫。</p>
+  <div class="meta"><span>32 個新檔案</span><span>39/39 測試通過</span><span>Migration head 乾淨</span><span>房間衝突 DB 層已上線</span></div>
+</div></header>
+<div class="wrap">
+<div class="cols">
+<nav class="toc" id="toc"></nav>
+<main>
+<section id="intro08">
+<h2><span class="num">0</span>這份文件是什麼</h2>
+<p>00–07 是<b>計畫</b>；這份是<b>現況</b>——記錄 2026/09/07 那一輪「先把架構寫起來」實際做了什麼、怎麼驗證的、系統現在長什麼樣子。所有數字（測試通過數、檔案清單、migration 狀態）都是<b>剛剛在本機重新跑過一次確認的</b>，不是憑記憶寫的。</p>
+<div class="note green"><span class="t">核心結論（2026/09/07 更新）</span>P0 地基、機構合約子系統骨架、以及<b>與主流程的整合</b>三件事都已完成並通過測試。<code>POST /appointments</code> 帶 <code>plan_id</code> 現在會真的呼叫子系統報價、reserve()；<code>materialize_due_appointments()</code> 會呼叫 consume() 並把完整快照複製進 SessionRecord。既有的自費/舊機構路徑（無 <code>plan_id</code>）行為<b>完全沒變</b>，兩條路徑互斥共存。連同 P1 出席驅動、房間衝突 DB 層防護，全程有 27 個相關 pytest 覆蓋，見 §5。</div>
+
+<div class="grid3" style="margin-top:16px">
+  <div class="kpi"><div class="l">新增檔案</div><div class="v">32</div><div class="s">funding/institution/tests/migrations</div></div>
+  <div class="kpi"><div class="l">修改既有檔案</div><div class="v">12</div><div class="s">全部是加法/條件分支，無刪除既有行為</div></div>
+  <div class="kpi"><div class="l">pytest 通過</div><div class="v" style="color:var(--green)">39 / 39</div><div class="s">真實 Postgres，含 27 個 HTTP 端到端</div></div>
+  <div class="kpi"><div class="l">Migration 狀態</div><div class="v" style="color:var(--green)">head 乾淨</div><div class="s">35 支全部從空 DB 跑過一次</div></div>
+  <div class="kpi"><div class="l">代表方案已種</div><div class="v">11 / 54</div><div class="s">涵蓋全部規則模式</div></div>
+  <div class="kpi"><div class="l">房間衝突防護</div><div class="v" style="color:var(--green)">DB 層已上線</div><div class="s">EXCLUDE USING GIST，見 §5.5</div></div>
+</div>
+</section>
+
+<section id="progress08">
+<h2><span class="num">1</span>進度總覽（對照 06 的 P0–P6）</h2>
+<div class="tw"><table>
+<thead><tr><th style="width:60px">分期</th><th>內容</th><th style="width:130px" class="c">狀態</th><th>備註</th></tr></thead>
+<tbody>
+<tr><td>P0</td><td>地基：修 bug、時區、診間重建、共用帳號</td><td class="c"><span class="tag t-g">完成</span></td><td>6 項全做，含房間衝突 <code>EXCLUDE USING GIST</code>（見 §5.5）；編號防併發<b>未做</b>（見 §6）</td></tr>
+<tr><td>P1</td><td>出席驅動：報到三步驟、額度三態</td><td class="c"><span class="tag t-g">三步驟全部完成並接線</span></td><td><code>check-in</code>（已到/未到）→ <code>payment-step</code>（收款）→ <code>receipt</code>（開立收據）三個端點都已上線，「報到→收款→開據」在後端已經是同一個 appointment 上的一頁式流程。<code>fee_items</code>／<code>receipts</code> 兩張新表已建並 seed 8 個預設收費項目</td></tr>
+<tr><td>P2</td><td>主檔：方案、提醒、收費項目</td><td class="c"><span class="tag t-g">子系統完成並接線</span></td><td>機構方案主檔（合約/方案/費率/額度）已完整實作、11/54 方案已種示範資料，<b>且 <code>POST /appointments</code> 已能實際依此報價、建立預約</b>；<code>fee_items</code>／<code>plan_admin_tasks</code> 獨立表未做（提醒清單已內嵌在 <code>InstPlan.admin_checklist</code>，尚未在建立預約時複製成待勾清單）</td></tr>
+<tr><td>P3</td><td>行政端第①組三頁</td><td class="c"><span class="tag t-x">未開始</span></td><td>前端完全未動</td></tr>
+<tr><td>P4</td><td>心理師端第①組三頁</td><td class="c"><span class="tag t-x">未開始</span></td><td>前端完全未動</td></tr>
+<tr><td>P5</td><td>媒合模組</td><td class="c"><span class="tag t-x">未開始</span></td><td></td></tr>
+<tr><td>P6</td><td>②組銜接（場地租借/雲燈教室/核銷）</td><td class="c"><span class="tag t-a">核銷部分完成</span></td><td>核銷案容器（開容器/收納/送出/入帳）已實作並測試；場地租借/雲燈教室資料表未做</td></tr>
+</tbody></table></div>
+<div class="note amber"><span class="t">為什麼進度看起來「跳著做」</span>這輪的目標不是照 P0→P6 順序推進，是把<b>機構合約子系統這一整條垂直切面</b>先打穿、跑通、測試覆蓋——因為它是這次對話真正要解決的問題（子系統邊界設計），其餘 P1/P3/P4 的常規開發排在它談定之後。</div>
+</section>
+
+<section id="arch08">
+<h2><span class="num">2</span>系統架構現況</h2>
+
+<h3>2.1 整體分層</h3>
+<pre>┌─────────────────────────────────────────────────────────────────┐
+│  apps/web (Next.js)  ── 尚未變動 ──                                │
+└───────────────────────────┬─────────────────────────────────────┘
+                             │ HTTP
+┌───────────────────────────▼─────────────────────────────────────┐
+│  apps/api (FastAPI)                                               │
+│                                                                     │
+│  ┌─── 主系統 ──────────────┐        ┌─── 機構合約子系統 ─────────┐ │
+│  │ routers/  models/       │        │ institution/                │ │
+│  │ services/                │        │  ├─ models/  (7 張表)       │ │
+│  │                          │        │  ├─ rules/   (費率引擎)     │ │
+│  │  appointments.py ───┐   │        │  ├─ claims/  (核銷容器)     │ │
+│  │  settlement.py    ◄─┼───┼─TODO──►│  └─ adapter.py (實作 port)  │ │
+│  │  (未接線，見 §5)     │   │        │      + routers/admin.py     │ │
+│  └──────────┬───────────┘   │        └───────────┬─────────────────┘ │
+│             │ import         │                    │ import           │
+│             ▼                │                    ▼                  │
+│  ┌────────────────────────────────────────────────────────────┐   │
+│  │ funding/  ★ 依賴反轉邊界 ★                                    │   │
+│  │  ports.py     FundingPlanProvider (Protocol, 8 支方法)         │   │
+│  │  dto.py       Quote / PlanOption / EnrollmentState (可序列化)  │   │
+│  │  registry.py  register() / get_provider() / NullProvider      │   │
+│  └────────────────────────────────────────────────────────────┘   │
+│                                                                     │
+│  規則只有一條：主系統只能 import funding/，institution/ 只能被    │
+│  main.py 的註冊那一行碰到。institution/ 可以自由 import 主系統的  │
+│  model（Case/Appointment/SessionRecord）── 依賴方向永遠是「子→主」│
+└─────────────────────────────────────────────────────────────────┘
+      同一個 FastAPI process、同一個 Postgres、同一個 DB session ──
+      模組化單體，不是微服務（07 §3 已定案的理由：額度扣減需要同一交易）</pre>
+
+<h3>2.2 資料模型（實際已建的表）</h3>
+<div class="grid2">
+<div class="card"><div class="h">主系統既有表的新增欄位</div>
+<div style="font-size:12.5px;line-height:1.9">
+<code>rooms</code> +use_type +size<br>
+<code>users</code> +is_shared_account +supervisor_id +supervision_fee_mode/split_rate/split_amount<br>
+<code>audit_log</code> operation VARCHAR(10→32) +actor_name<br>
+<code>appointments</code> +plan_id +case_payable +institution_payable +compensation_mode +commissionable_base +plan_quote(JSONB)<br>
+<code>session_records</code> 同上 6 欄（快照複製自 appointments）
+</div></div>
+<div class="card"><div class="h">機構子系統新表（7 張，前綴 inst_）</div>
+<div style="font-size:12.5px;line-height:1.9">
+<code>inst_contracts</code> 合約<br>
+<code>inst_plans</code> 方案（含費率/額度/核銷路由/確認清單）<br>
+<code>inst_rate_rules</code> 費率規則（有序、先匹配先贏）<br>
+<code>inst_quota_pools</code> 方案層級額度池（次數或金額）<br>
+<code>inst_enrollments</code> 個案機構狀態（額度三態）<br>
+<code>inst_claim_cases</code> 核銷案容器<br>
+<code>inst_claim_lines</code> 容器內明細
+</div></div>
+</div>
+
+<h3>2.3 API 端點（機構子系統，已掛載且測試過）</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:280px">端點</th><th>用途</th><th style="width:90px">驗證</th></tr></thead>
+<tbody>
+<tr><td class="mono">GET/POST /institution/contracts</td><td>合約 CRUD</td><td class="c"><span class="tag t-g">✓</span></td></tr>
+<tr><td class="mono">GET/POST /institution/plans</td><td>方案 CRUD（含 nested 費率規則）</td><td class="c"><span class="tag t-g">✓</span></td></tr>
+<tr><td class="mono">POST /institution/quote-preview</td><td>報價預覽（不落地）</td><td class="c"><span class="tag t-g">✓</span></td></tr>
+<tr><td class="mono">GET /institution/eligible-plans</td><td>個案可選方案下拉</td><td class="c"><span class="tag t-g">✓</span></td></tr>
+<tr><td class="mono">GET /institution/cases/{id}/enrollments</td><td>個案機構狀態列表</td><td class="c"><span class="tag t-g">✓</span></td></tr>
+<tr><td class="mono">POST /institution/enrollments</td><td>個案加入方案</td><td class="c"><span class="tag t-g">✓</span></td></tr>
+<tr><td class="mono">GET /institution/claim-groups/{key}/uncollected</td><td>漏單/跨月遺留提醒查詢</td><td class="c"><span class="tag t-g">✓</span></td></tr>
+<tr><td class="mono">POST /institution/claim-cases</td><td>開核銷容器</td><td class="c"><span class="tag t-g">✓</span></td></tr>
+<tr><td class="mono">POST /institution/claim-cases/{id}/records</td><td>收納紀錄進容器</td><td class="c"><span class="tag t-g">✓</span></td></tr>
+<tr><td class="mono">PUT /institution/claim-cases/{id}/submit</td><td>送出容器（不要求裝滿）</td><td class="c"><span class="tag t-g">✓</span></td></tr>
+<tr><td class="mono">PUT /institution/claim-cases/{id}/payment</td><td>入帳、鎖定</td><td class="c"><span class="tag t-g">✓</span></td></tr>
+<tr><td class="mono">GET /institution/claim-cases</td><td>核銷案列表</td><td class="c"><span class="tag t-a">未寫測試</span></td></tr>
+</tbody></table></div>
+<div class="note blue">上面「驗證」欄的 ✓ 指的是<b>透過 <code>InstitutionFundingProvider</code> 這個 adapter 的邏輯</b>被 pytest 覆蓋，不是每支 HTTP 端點都各自有一條測試——路由層本身在 §3 的手動 TestClient 驗證中打過一輪（含權限 403），但沒有寫成常駐回歸測試。</div>
+</section>
+
+<section id="files08">
+<h2><span class="num">3</span>檔案異動總清單</h2>
+
+<h3>3.1 新增檔案（26 個）</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:340px">路徑</th><th>內容</th></tr></thead>
+<tbody>
+<tr><td class="mono">app/utils/tz.py</td><td>台北時區工具（today_local/day_range_utc/to_local_date）</td></tr>
+<tr><td class="mono">app/models/fee_item.py</td><td>收費項目主檔 model</td></tr>
+<tr><td class="mono">app/models/receipt.py</td><td>收據持久化紀錄 model（與既有 routers/receipts.py 的 PDF-only 機制並存，尚未整合）</td></tr>
+<tr><td class="mono">app/funding/{dto,ports,registry}.py</td><td>依賴反轉邊界：Quote 等 DTO、Protocol、註冊槽</td></tr>
+<tr><td class="mono">app/institution/adapter.py</td><td>子系統對外唯一實作面，8 支 Protocol 方法</td></tr>
+<tr><td class="mono">app/institution/models/*.py</td><td>7 張表的 SQLAlchemy model（含 __init__ 匯總）</td></tr>
+<tr><td class="mono">app/institution/rules/{pricing,numbering}.py</td><td>費率比對引擎、核銷案編號產生器</td></tr>
+<tr><td class="mono">app/institution/claims/service.py</td><td>核銷容器操作：開容器/收納/送出/入帳/查未收納</td></tr>
+<tr><td class="mono">app/institution/routers/admin.py</td><td>子系統管理頁 API，20+ 端點</td></tr>
+<tr><td class="mono">app/institution/seed_plans.py</td><td>11 個代表方案的示範資料（涵蓋全部規則模式）</td></tr>
+<tr><td class="mono">alembic/versions/aa1a2b3c4d5f1_*.py</td><td>P0 欄位遷移</td></tr>
+<tr><td class="mono">alembic/versions/aa2a2b3c4d5f2_*.py</td><td>機構子系統 7 張新表 + 主系統 6 個快照欄位</td></tr>
+<tr><td class="mono">alembic/versions/aa3a2b3c4d5f3_*.py</td><td>appointments 加報到狀態機 6 欄（check_in_status 等），含既有 executed 資料回填</td></tr>
+<tr><td class="mono">alembic/versions/aa4a2b3c4d5f4_*.py</td><td>fee_items／receipts 兩張新表 + session_records 加 3 個 copay 欄位，seed 8 個預設收費項目</td></tr>
+<tr><td class="mono">alembic/versions/aa5a2b3c4d5f5_*.py</td><td>房間衝突 <code>EXCLUDE USING GIST</code> 約束（啟用 btree_gist，見 §5.5）</td></tr>
+<tr><td class="mono">tests/conftest.py</td><td>DB fixture（交易 rollback 隔離）</td></tr>
+<tr><td class="mono">tests/test_institution_subsystem.py</td><td>12 個回歸測試（adapter/claims 單元層級）</td></tr>
+<tr><td class="mono">tests/test_appointment_institution_integration.py</td><td>3 個端到端測試：真的打 HTTP，驗證整合點（見 §5）</td></tr>
+<tr><td class="mono">tests/test_checkin.py</td><td>10 個端到端測試：check-in 端點、權限矩陣、materialize 不重複處理（見 §5.3）</td></tr>
+<tr><td class="mono">tests/test_payment_receipt.py</td><td>11 個端到端測試：收款/開據、機構案自付額隔離、既有 payment_status 同步（見 §5.4）</td></tr>
+<tr><td class="mono">tests/test_room_conflict_gist.py</td><td>3 個測試：GIST 約束 + <code>_flush_with_conflict_guard</code> 轉 409（見 §5.5）</td></tr>
+</tbody></table></div>
+
+<h3>3.2 修改既有檔案（12 個，全部加法）</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:260px">檔案</th><th>改了什麼</th></tr></thead>
+<tbody>
+<tr><td class="mono">app/main.py</td><td>掛載 <code>institution_admin.router</code>；啟動時 <code>funding_registry.register(InstitutionFundingProvider())</code></td></tr>
+<tr><td class="mono">app/models/__init__.py</td><td>補 <code>Notification</code>（P0 bug）+ 註冊 7 張機構子系統表</td></tr>
+<tr><td class="mono">app/models/appointment.py</td><td>+6 欄報價快照（<code>quota_id</code> 保留未刪）</td></tr>
+<tr><td class="mono">app/models/audit_log.py</td><td>operation 欄寬、+actor_name</td></tr>
+<tr><td class="mono">app/models/room.py</td><td>+use_type +size</td></tr>
+<tr><td class="mono">app/models/session_record.py</td><td>+6 欄報價快照</td></tr>
+<tr><td class="mono">app/models/user.py</td><td>+共用帳號、督導欄位</td></tr>
+<tr><td class="mono">app/schemas/appointment.py</td><td>+<code>plan_id</code>；<code>amount</code> 改 optional；Response +5 個報價快照欄位</td></tr>
+<tr><td class="mono">app/routers/appointments.py</td><td>修 <code>_resolve_quota</code> NULL bug；<code>create_appointment</code> <b>已接上</b> <code>funding_registry.quote()/reserve()</code>（見 §5），無 plan_id 時行為不變；+ <code>check_in()</code>/<code>payment_step()</code>/<code>issue_receipt()</code> 三個新端點；+ <code>_flush_with_conflict_guard()</code>，三個寫入路徑都已接上（見 §5.5）</td></tr>
+<tr><td class="mono">app/services/audit.py</td><td><code>_jsonify</code> 補 Decimal 分支（原本 docstring 宣稱有但沒做）；<code>write_audit</code> 加 actor_name 參數</td></tr>
+<tr><td class="mono">app/services/settlement.py</td><td>UTC 午夜 bug 修正為台北日界；<code>materialize_due_appointments()</code> <b>已接上</b> <code>consume()</code> 並複製快照進 SessionRecord（見 §5）</td></tr>
+<tr><td class="mono">seed.py</td><td>診間主檔改為定稿 12 間；新增 <code>rebuild_room_roster()</code>（含安全閘門）</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="tests08">
+<h2><span class="num">4</span>測試涵蓋範圍</h2>
+<div class="tw"><table>
+<thead><tr><th style="width:340px">測試</th><th>驗證什麼</th></tr></thead>
+<tbody>
+<tr><td class="mono">TestEnrollAndQuota::test_enroll_reserves_full_quota</td><td>加入方案時額度全數進「已預留」</td></tr>
+<tr><td class="mono">::test_duplicate_enroll_rejected</td><td>同一個案不可重複加入同一方案</td></tr>
+<tr><td class="mono">::test_list_eligible_plans_not_disabled_when_reserved_available</td><td><b>回歸測試</b>——鎖住這輪抓到的額度判斷 bug（見 §6.1）</td></tr>
+<tr><td class="mono">TestQuotePricing::test_visit_seq_1_pricing</td><td>衛生局市民第一次報價（$1600/自付0）</td></tr>
+<tr><td class="mono">::test_visit_seq_2_is_last</td><td>第二次報價（$1400/自付200）+ 最後一次標記</td></tr>
+<tr><td class="mono">TestReserveConsumeRelease::test_full_lifecycle</td><td>reserve→consume 完整額度轉移</td></tr>
+<tr><td class="mono">::test_release_returns_to_reserved_not_a_new_state</td><td>未到還原為已預留（不是釋回）</td></tr>
+<tr><td class="mono">::test_consume_blocked_before_initial_visit</td><td>08 決策 §8.3：無正式病歷號不能 consume()</td></tr>
+<tr><td class="mono">TestCaseClosure::test_close_zeroes_reserved_and_locks_limit</td><td>結案時額度上限鎖定在已使用量</td></tr>
+<tr><td class="mono">TestClaimContainer::test_submit_without_filling_capacity</td><td>容器裝不滿也能送出</td></tr>
+<tr><td class="mono">::test_uncollected_query_empties_after_attach</td><td>漏單查詢在收納後正確清空</td></tr>
+<tr><td class="mono">::test_income_recognition_month_unaffected_by_payment_month</td><td>收入認列與核銷送件雙時間軸互不影響</td></tr>
+</tbody></table></div>
+<div class="note green"><span class="t">額外做過、沒寫成常駐測試的手動驗證</span>① 全新 DB 從零跑 <code>alembic upgrade head</code> 成功（35 支全部，含 §5.5 的 GIST 約束）② downgrade / re-upgrade 成功 ③ 9 個既有端點（<code>/cases</code> <code>/appointments</code> <code>/ledger</code> 等）HTTP 層重測無異常 ④ 自費預約建立 → 診間衝突 409 → 機構預約無額度時乾淨回傳 400（不是 500）三段既有流程走過一輪 ⑤ <code>rebuild_room_roster()</code> 的安全閘門：有預約引用時拒絕、加 --force 才執行，兩種情況都測過 ⑥ GIST 約束用獨立腳本直接對 Postgres 驗證（拒絕重疊、允許緊接的預約、不擋已取消釋出的時段），與 §5.5 的 pytest 互為驗證 ⑦ 種 <code>seed.py</code> + <code>seed_plans.py</code> 後完整 39 個測試在乾淨資料庫上重跑一次，全部通過。</div>
+</section>
+
+<section id="bugs08">
+<h2><span class="num">5</span>整合點：已接上（2026/09/07 更新，含 P1 出席驅動）</h2>
+<p>這一節原本記錄「哪裡留了 TODO 註解、還沒接」；現在記錄<b>接上之後改了什麼、怎麼驗證的</b>。§5.1–§5.2 是報價/reserve/consume 的整合（同日稍早完成），§5.3–§5.4 是緊接著做的 P1 出席驅動——把 consume()/release() 從「背景排程觸發」換成「使用者按出來的」，並補完收款、開立收據。§5.5 是最後補上的房間衝突 DB 層防護。</p>
+
+<h3>5.1 改動範圍（全部是加法或條件分支，legacy 路徑零改動）</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:230px">位置</th><th>改了什麼</th></tr></thead>
+<tbody>
+<tr><td class="mono">schemas/appointment.py</td><td><code>AppointmentCreate</code> +<code>plan_id</code>，<code>amount</code> 改 optional；<code>AppointmentResponse</code> +<code>plan_id/plan_name/case_payable/institution_payable/compensation_mode</code></td></tr>
+<tr><td class="mono">routers/appointments.py<br>create_appointment()</td><td><code>body.plan_id</code> 有值 → 呼叫 <code>funding_registry.quote()</code>，額度不足回 400；<code>amount</code> 未給時取 <code>quote.pricing.unit_price</code>；<code>funding_source</code> 強制為 <code>institution</code>；建立 appt 後 <code>db.flush()</code> 取得 id、同一交易內呼叫 <code>.reserve()</code>。<b>沒有</b> <code>plan_id</code> 時走原本的 <code>_resolve_quota()</code> 舊路徑，一行都沒變</td></tr>
+<tr><td class="mono">routers/appointments.py<br>_to_response()</td><td>+5 個欄位；<code>plan_name</code> 讀 <code>a.plan_quote</code>（自己存的 JSONB 快照），<b>不查 <code>inst_plans</code></b>——依賴方向規則自然被遵守，不用刻意繞路</td></tr>
+<tr><td class="mono">services/settlement.py<br>materialize_due_appointments()</td><td><code>appt.plan_id</code> 有值 → 呼叫 <code>.consume()</code>；若拋 <code>ValueError</code>（08 決策 §8.3：無正式病歷號）→ 該筆跳過、留給人工，<b>不讓整批結算被一筆卡住</b>；<code>SessionRecord</code> 建立時複製 6 個快照欄位</td></tr>
+</tbody></table></div>
+
+<h3>5.2 驗證：3 個新的端到端測試（<code>tests/test_appointment_institution_integration.py</code>）</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:340px">測試</th><th>驗證什麼</th></tr></thead>
+<tbody>
+<tr><td class="mono">test_create_appointment_with_plan_id_derives_amount_and_reserves</td><td>真的打 <code>POST /appointments</code>：金額由報價推導、回應正確帶出 <code>plan_name</code>（從快照讀）、<code>reserve()</code> 在同一交易內生效（已預留 3→2）</td></tr>
+<tr><td class="mono">test_blocking_quota_rejected_with_400_not_500</td><td>額度用罄時乾淨回 400，不是例外洩漏成 500</td></tr>
+<tr><td class="mono">test_past_appointment_materializes_and_consumes</td><td>完整閉環：建立「過去」的預約 → <code>materialize_due_appointments()</code> → <code>consume()</code> 觸發 → <code>SessionRecord</code> 帶完整快照 → 額度 <code>used_count</code> 正確 +1</td></tr>
+</tbody></table></div>
+<div class="note amber"><span class="t">測試基礎設施補了一塊：<code>http_db</code> fixture</span>FastAPI <code>TestClient</code> 送出的請求，其 <code>Depends(get_db)</code> 預設會開一個全新連線——跟測試的 <code>db</code> fixture（獨立交易＋最後 rollback）是不同連線，在 Postgres 交易隔離下互相看不到對方的未提交資料。加了 <code>http_db</code> fixture 用 <code>app.dependency_overrides</code> 把兩者接成同一個 session，HTTP 層測試才驗證得起來。見 <code>tests/conftest.py</code>。</div>
+
+<div class="tw" style="margin-top:14px"><table>
+<thead><tr><th style="width:200px">回歸驗證</th><th class="c" style="width:90px">結果</th></tr></thead>
+<tbody>
+<tr><td>既有 12 個機構子系統單元測試</td><td class="c"><span class="tag t-g">15/15 全綠</span>（含新增 3 個）</td></tr>
+<tr><td>自費預約：無 <code>plan_id</code> 且無 <code>amount</code></td><td class="c"><span class="tag t-g">正確回 400</span>（沿用既有驗證訊息語意）</td></tr>
+<tr><td>自費預約：無 <code>plan_id</code>、有 <code>amount</code></td><td class="c"><span class="tag t-g">201，新欄位皆為 null</span>，行為與改動前一致</td></tr>
+</tbody></table></div>
+
+<h3>5.3 P1 出席驅動：<code>PUT /appointments/{id}/check-in</code></h3>
+<p>接著往下做的下一步——把 §5.1 剛接上的 <code>consume()/release()</code> 從「背景排程觸發」換成「使用者按出來的」。這是 01 §A1 描述的全案最大單一改動，這輪把<b>骨架</b>做完並測試覆蓋，「收款」「開立收據」兩步（涉及 <code>fee_items</code>/<code>receipts</code> 表）還沒做。</p>
+
+<div class="grid2">
+<div class="card"><div class="h">按「已到」</div>
+<p style="font-size:12.5px">立刻建立 <code>session_record</code>（呼叫 <code>settlement.build_session_record()</code>——從 <code>materialize_due_appointments()</code> 抽出來的共用函式，兩個呼叫端不會各自長出不同邏輯）、<code>plan_id</code> 有值就呼叫 <code>consume()</code>、<code>appt.status→executed</code>。</p></div>
+<div class="card"><div class="h">按「未到」</div>
+<p style="font-size:12.5px">寫入 <code>no_show_reason/note/followup</code>；<code>appt.status</code> 維持 <code>booked</code>（不轉 cancelled，供對帳追蹤，01 §C3）；<code>plan_id</code> 有值就呼叫 <code>release()</code>——已預約還原為已預留，<b>不是</b>釋回。</p></div>
+</div>
+
+<h4>關鍵修正：materialize 必須排除已人工處理過的預約</h4>
+<div class="note red"><span class="t">這是這輪重構真正要修的 bug</span>如果 <code>materialize_due_appointments()</code> 的查詢條件沒有加上 <code>check_in_status == 'pending'</code>，被人工標記「未到」的預約（<code>status</code> 仍是 <code>booked</code>）時間一過，會被這支函式誤判成「沒人管、自動結算」，生出一筆<b>不該存在</b>的 <code>session_record</code>。已加上這個過濾條件，並用兩支測試直接鎖住這個情境（見下表）。</div>
+
+<h4>權限（02 §7 權限矩陣）</h4>
+<div class="tw"><table>
+<thead><tr><th style="width:150px">情境</th><th class="c" style="width:80px">結果</th></tr></thead>
+<tbody>
+<tr><td>admin/staff 對現場（in_person）報到</td><td class="c"><span class="tag t-g">允許</span></td></tr>
+<tr><td>心理師對<b>自己的</b>視訊/外展報到</td><td class="c"><span class="tag t-g">允許</span></td></tr>
+<tr><td>心理師對<b>自己的</b>現場個案報到</td><td class="c"><span class="tag t-r">403</span>（現場一律行政登錄）</td></tr>
+<tr><td>心理師對<b>別人的</b>預約報到</td><td class="c"><span class="tag t-r">403</span></td></tr>
+</tbody></table></div>
+
+<h4>10 個新測試（<code>tests/test_checkin.py</code>）</h4>
+<div class="tw"><table>
+<thead><tr><th style="width:340px">測試</th><th>驗證什麼</th></tr></thead>
+<tbody>
+<tr><td class="mono">test_admin_checks_in_in_person_creates_session_record_immediately</td><td>按已到立刻建立 session_record（不用等時間到），額度正確扣減</td></tr>
+<tr><td class="mono">test_double_checkin_rejected</td><td>重複報到擋下（400）</td></tr>
+<tr><td class="mono">test_no_show_releases_quota_and_keeps_status_booked</td><td>未到還原額度為已預留、appt.status 維持 booked、無 session_record</td></tr>
+<tr><td class="mono">test_therapist_cannot_checkin_own_in_person</td><td>權限矩陣：現場限行政</td></tr>
+<tr><td class="mono">test_therapist_can_checkin_own_online</td><td>權限矩陣：視訊限心理師本人</td></tr>
+<tr><td class="mono">test_therapist_cannot_checkin_others_appointment</td><td>權限矩陣：不能報到別人的預約</td></tr>
+<tr><td class="mono">test_staff_can_checkin_in_person</td><td>行政可報到現場個案</td></tr>
+<tr><td class="mono">test_materialize_skips_already_checked_in_appointment</td><td>不會重複建立 session_record、不會重複扣額度</td></tr>
+<tr><td class="mono"><b>test_materialize_never_processes_no_show_appointment</b></td><td><b>直接鎖住上面那個紅框描述的 bug</b></td></tr>
+<tr><td class="mono">test_materialize_still_catches_forgotten_appointments</td><td>補登安全網仍然有效（行政忘了按已到的情境）</td></tr>
+</tbody></table></div>
+<div class="note green">另外手動驗證過：自費預約透過 <code>/ledger</code> 讀取觸發的舊 fallback 路徑（沒有 <code>plan_id</code>、沒人手動報到）行為完全不變。</div>
+
+<h3>5.4 報到三步驟後兩步：收款、開立收據</h3>
+<p>緊接著把報到流程的剩下兩步做完——<code>POST /appointments/{id}/payment-step</code> 與 <code>POST /appointments/{id}/receipt</code>。到這裡「報到→收款→開據，一頁完成」在後端已經是完整的三個端點，同一個 <code>appointment_id</code> 串起來。</p>
+
+<div class="note amber"><span class="t">關鍵設計決定：新開一組 copay 欄位，不動既有 <code>payment_status</code></span><code>session_records.payment_status</code> 對機構案的語意是「機構請款進度」（<code>unpaid→claiming→claimed</code>，核銷案容器會動它）；「櫃檯今天有沒有收到個案自付額」是另一件事。硬共用會撞語意、可能弄壞既有核銷案流程。所以新增 <code>copay_collected_at/copay_payment_method/copay_payment_note</code> 三個獨立欄位。<b>只有純自費案</b>（無機構那份）才會同步既有 <code>payment_status</code>——因為那條路徑本來就是乾淨的 unpaid→paid 二態，同步不會撞到任何東西，反而讓既有 <code>/ledger</code> 頁面能正確顯示。</p></div>
+
+<div class="grid2">
+<div class="card"><div class="h">收款（payment-step）</div>
+<p style="font-size:12.5px">應收金額 = <code>case_payable</code>（有值就用它）否則整筆 <code>amount</code>。機構那份 <code>institution_payable</code> 完全不動，走既有 <code>/ledger</code> + 核銷案容器流程。<code>case_payable=0</code>（機構全額）→ 擋下並說明「免收」。</p></div>
+<div class="card"><div class="h">開立收據（receipt）</div>
+<p style="font-size:12.5px">新表 <code>receipts</code>，收款項目來自新表 <code>fee_items</code>（8 個定稿預設值 + 自訂名稱）。收據編號沿用既有 <code>R{YYYYMMDD}{seq:04d}</code> 慣例——<b>格式本身待 01 §C4 定案</b>，先求系統內部一致。</p></div>
+</div>
+
+<h4>11 個新測試（<code>tests/test_payment_receipt.py</code>）</h4>
+<div class="tw"><table>
+<thead><tr><th style="width:340px">測試</th><th>驗證什麼</th></tr></thead>
+<tbody>
+<tr><td class="mono">test_payment_step_syncs_legacy_payment_status</td><td>純自費案同步既有 payment_status</td></tr>
+<tr><td class="mono">test_transfer_requires_note / test_double_payment_rejected / test_not_checked_in_yet_rejected</td><td>驗證擋錯訊息（匯款資訊必填、重複收款、未報到不能收款）</td></tr>
+<tr><td class="mono"><b>test_only_case_payable_collected_institution_untouched</b></td><td><b>機構案只收自付額、payment_status 完全不動</b>——這是本節的核心設計驗證</td></tr>
+<tr><td class="mono">test_institution_full_coverage_no_collection_needed</td><td>機構全額（case_payable=0）正確擋下並說明免收</td></tr>
+<tr><td class="mono">test_full_three_step_flow</td><td>報到→收款→開據完整串起來</td></tr>
+<tr><td class="mono">test_custom_fee_item_name</td><td>「其他自行登打」收費項目</td></tr>
+<tr><td class="mono">test_receipt_before_payment_rejected / test_duplicate_receipt_rejected / test_missing_fee_item_rejected</td><td>三個擋錯情境</td></tr>
+</tbody></table></div>
+
+<h3>5.5 房間衝突 DB 層防護：<code>EXCLUDE USING GIST</code></h3>
+<p>01 §C5 定案「同一診間同時段不可重複預約，由資料庫層強制（非僅前端檢查）」，但 <code>_check_room_conflict()</code>（<code>routers/appointments.py</code>）從來只是應用層 SELECT-then-INSERT，兩個併發請求可以同時通過檢查、都插入成功。這輪把這個一直跳過的 §6 缺口補上。</p>
+
+<div class="grid2">
+<div class="card"><div class="h">Migration <code>aa5a2b3c4d5f5</code></div>
+<p style="font-size:12.5px">啟用 <code>btree_gist</code> extension（<code>room_id</code> 是純量整數，靠它才能參與 GIST 索引的等值比較）；<code>ADD CONSTRAINT excl_room_time_overlap EXCLUDE USING GIST (room_id WITH =, time_range WITH &&) WHERE (status != 'cancelled' AND room_id IS NOT NULL)</code>——條件與 <code>_check_room_conflict()</code> 的 SQL 完全一致。升級前用 <code>DO</code> block 先掃一次既有資料，若已有重疊直接 fail-fast 並印出衝突的 appointment id，不靜默建出一個實際上永遠會失敗的壞約束。</p></div>
+<div class="card"><div class="h">應用層轉譯：<code>_flush_with_conflict_guard(db)</code></div>
+<p style="font-size:12.5px">薄封裝 <code>db.flush()</code>，捕捉 <code>excl_room_time_overlap</code> 觸發的 <code>IntegrityError</code>，回滾後轉成跟 <code>_check_room_conflict()</code> 一樣的 <code>409</code>，而不是讓 Postgres 一大串原始 SQL 例外洩漏到 API 回應。已接進三個寫入路徑：<code>create_appointment()</code>、<code>create_batch()</code> 迴圈、<code>update_appointment()</code>（改時間/診間時）。</p></div>
+</div>
+
+<div class="note green">應用層 SELECT 檢查（快、訊息清楚）與 DB 層約束（真正的防線）疊加：正常操作走前者就會被擋下並看到人話訊息；只有兩個請求真的在同一毫秒級窗口內都通過前者檢查時，才會撞上後者，此時 <code>_flush_with_conflict_guard</code> 讓它一樣是乾淨的 409，不會是 500。</div>
+
+<h4>3 個新測試（<code>tests/test_room_conflict_gist.py</code>）</h4>
+<div class="tw"><table>
+<thead><tr><th style="width:340px">測試</th><th>驗證什麼</th></tr></thead>
+<tbody>
+<tr><td class="mono">test_overlapping_insert_raises_409_not_raw_500</td><td>直接繞過應用層檢查（手動 <code>db.add()</code> 一筆重疊預約），驗證 <code>_flush_with_conflict_guard</code> 把 <code>IntegrityError</code> 轉成 409 而非讓例外洩漏</td></tr>
+<tr><td class="mono">test_non_overlapping_insert_succeeds</td><td>回歸測試：確認約束條件沒寫錯，不誤擋不衝突的預約</td></tr>
+<tr><td class="mono">test_cancelled_appointment_does_not_block</td><td><code>status='cancelled'</code> 不參與約束，取消後的時段真的能重新排</td></tr>
+</tbody></table></div>
+<p style="font-size:12.5px;color:var(--muted)">這支測試驗證的是「約束與 guard function 本身正確」，不是模擬真併發（pytest 單執行緒做不到真正同時的兩個請求）；DB 層約束的正確性已用獨立腳本直接對 Postgres 驗證過（拒絕重疊、允許緊接的預約、不擋已取消釋出的時段）。</p>
+</section>
+
+
+<section id="gaps08">
+<h2><span class="num">6</span>已知缺口（誠實列出，程式碼裡也有對應 TODO）</h2>
+<div class="tw"><table>
+<thead><tr><th style="width:230px">缺口</th><th>影響</th><th style="width:90px">優先度</th></tr></thead>
+<tbody>
+<tr><td>編號防併發（序列/重試）</td><td>所有 <code>*_number</code> 仍是 <code>COUNT(*)+1</code>，含新加的 <code>next_claim_no</code>，併發下可能撞號</td><td class="c"><span class="tag t-a">中</span></td></tr>
+<tr><td><code>inst_quota_pools</code> 總量扣減</td><td>國軍 $149,000 這種方案層級池，模型建了、<code>consumed_total</code> 沒有任何地方在更新</td><td class="c"><span class="tag t-a">中</span></td></tr>
+<tr><td><code>period_limit</code> 週期性子上限</td><td>容愛協會「每月4次」，欄位有、adapter 沒讀它</td><td class="c"><span class="tag t-g">低</span></td></tr>
+<tr><td><code>extended_count</code> 延長流程</td><td>警局/奇美家照的「6+3」，欄位有、沒有申請/核准的 API</td><td class="c"><span class="tag t-g">低</span></td></tr>
+<tr><td>核銷容器的 per_case_count 自動收納</td><td>目前 <code>attach_records()</code> 要呼叫端自己算出候選 session_record_ids，沒有「自動找出某個案累積滿 N 次」的邏輯</td><td class="c"><span class="tag t-a">中</span></td></tr>
+<tr><td><code>requires_external_code</code> 在核銷收納時的擋下</td><td>consume() 目前放行、註解說核銷收納時要擋，但 <code>attach_records()</code> 還沒真的檢查</td><td class="c"><span class="tag t-g">低</span></td></tr>
+<tr><td>剩餘 43 個機構方案</td><td>資料在 07 文件 §1 都有，照 <code>seed_plans.py</code> 格式續補即可，非架構問題</td><td class="c"><span class="tag t-g">低</span></td></tr>
+<tr><td>場地租借／雲燈教室資料表</td><td>07 §8.1 已定案「留在主系統、只借用核銷能力」，資料表完全還沒建</td><td class="c"><span class="tag t-x">P6 排程內</span></td></tr>
+</tbody></table></div>
+</section>
+
+<section id="howto08">
+<h2><span class="num">7</span>如何在本機重現</h2>
+<pre><span class="c"># 1. 裝 Postgres 16（本機已裝過，這裡列給其他機器用）</span>
+brew install postgresql@16
+LC_ALL="en_US.UTF-8" /opt/homebrew/opt/postgresql@16/bin/pg_ctl \
+    -D /opt/homebrew/var/postgresql@16 -l /tmp/pg16.log start
+createdb cheerpsy_test
+psql -d cheerpsy_test -c "CREATE ROLE cheerpsy WITH LOGIN PASSWORD 'cheerpsy' SUPERUSER;"
+
+<span class="c"># 2. Python 環境（apps/api 下）</span>
+python3.11 -m venv .venv
+.venv/bin/pip install -r requirements.txt pytest httpx
+
+<span class="c"># 3. 跑 migration</span>
+export DATABASE_URL="postgresql://cheerpsy:cheerpsy@localhost:5432/cheerpsy_test"
+.venv/bin/python -m alembic upgrade head
+
+<span class="c"># 4. 種資料（可選，測試本身不依賴這步）</span>
+.venv/bin/python seed.py                          <span class="c"># 19 使用者 + 12 診間</span>
+.venv/bin/python -m app.institution.seed_plans     <span class="c"># 11 個代表方案</span>
+
+<span class="c"># 5. 跑測試</span>
+.venv/bin/python -m pytest tests/ -v</pre>
+</section>
+
+<section id="next08">
+<h2><span class="num">8</span>下一步優先順序（建議，2026/09/07 四度更新）</h2>
+<div class="note green"><span class="t">房間衝突 DB 層防護（<code>EXCLUDE USING GIST</code>）已完成</span>06 P0 排定、一直跳過的項目補上了，見 §5.5。連同報到三步驟，39/39 測試通過。以下是重新排序後的下一步。</div>
+<ol>
+<li><b>前端接上這整條後端流程</b>——預約作業表單改呼叫 <code>/institution/eligible-plans</code>、<code>/institution/quote-preview</code>；診間日曆的已到/未到/收款/開據按鈕改打 <code>check-in</code>／<code>payment-step</code>／<code>receipt</code> 三個端點。後端已全部就緒，這是目前最大的一塊純前端工作。</li>
+<li><b>續補剩餘 43 個機構方案</b>——照 <code>seed_plans.py</code> 格式，資料來源是 07 §1 與《260831新版-機構合約方案清冊.xlsx》，純資料工作。</li>
+<li><b>加時／調整實際執行時數</b>（01 §C1 已裁示：撞到相鄰預約要擋下）——appointments 尚未加 <code>actual_start</code>/<code>actual_end</code> 欄位，這是報到收款步驟裡「⏱️ 加時」按鈕對應的後端工作，目前完全還沒做。現在有 GIST 約束兜底，回寫預約時間撞到相鄰預約時會乾淨地被擋下而不是產生兩筆重疊資料。</li>
+</ol>
+</section>
+
+<div class="foot">CheerPsy V2 升級計畫 · 依《系統架構new》《260831新版-機構合約方案清冊》《系統架構與機構合約清冊對照確認事項-回覆》編寫 · 本檔為單檔自足文件</div>
+</main>
+</div>
+</div>
+<script>
+/* TOC auto-build from h2/h3 */
+(function(){
+  var toc=document.getElementById('toc'); if(!toc) return;
+  var out='<b>目錄</b>';
+  document.querySelectorAll('main section').forEach(function(s){
+    var h2=s.querySelector('h2'); if(!h2) return;
+    if(!s.id) s.id='s'+Math.random().toString(36).slice(2,7);
+    var t=h2.textContent.replace(/^\s*\d+\s*/,'').trim();
+    out+='<a href="#'+s.id+'">'+t+'</a>';
+    s.querySelectorAll('h3').forEach(function(h3,i){
+      if(!h3.id) h3.id=s.id+'-h'+i;
+      out+='<a class="sub" href="#'+h3.id+'">'+h3.textContent.trim()+'</a>';
+    });
+  });
+  toc.innerHTML=out;
+})();
+/* checklist toggle + persistence + progress */
+(function(){
+  var KEY='cheerpsy-v2-'+(document.body.dataset.doc||'doc');
+  var saved={}; try{saved=JSON.parse(localStorage.getItem(KEY)||'{}');}catch(e){}
+  var items=[].slice.call(document.querySelectorAll('.ck li'));
+  items.forEach(function(li,i){
+    var k=li.dataset.k||('i'+i); li.dataset.k=k;
+    if(!li.querySelector('.box')){var b=document.createElement('span');b.className='box';li.insertBefore(b,li.firstChild);}
+    if(saved[k]) li.classList.add('on');
+    li.addEventListener('click',function(){
+      li.classList.toggle('on');
+      saved[k]=li.classList.contains('on');
+      try{localStorage.setItem(KEY,JSON.stringify(saved));}catch(e){}
+      paint();
+    });
+  });
+  function paint(){
+    document.querySelectorAll('[data-prog]').forEach(function(el){
+      var scope=el.dataset.prog==='all'?document:document.getElementById(el.dataset.prog);
+      if(!scope) return;
+      var all=scope.querySelectorAll('.ck li'), done=scope.querySelectorAll('.ck li.on');
+      el.textContent=done.length+' / '+all.length;
+    });
+  }
+  paint();
+  var rst=document.getElementById('ckReset');
+  if(rst) rst.onclick=function(){ if(!confirm('清除本頁所有勾選狀態？'))return;
+    try{localStorage.removeItem(KEY);}catch(e){} items.forEach(function(li){li.classList.remove('on');}); paint(); };
+})();
+
+/* hotspot -> highlight target row (Part 2 interactive prototype) */
+(function(){
+  document.querySelectorAll('.hotspot[data-goto]').forEach(function(h){
+    h.addEventListener('click', function(){
+      var id=h.dataset.goto, el=document.getElementById(id);
+      if(!el) return;
+      document.querySelectorAll('.flash').forEach(function(x){x.classList.remove('flash');});
+      el.classList.add('flash');
+      el.scrollIntoView({behavior:'smooth', block:'center'});
+      setTimeout(function(){el.classList.remove('flash');}, 2600);
+    });
+  });
+})();
+
+/* tab panels: .tabs span[data-tab] -> #tab-{id} */
+(function(){
+  document.querySelectorAll('.tabs').forEach(function(bar){
+    bar.querySelectorAll('span[data-tab]').forEach(function(t){
+      t.onclick=function(){
+        bar.querySelectorAll('span[data-tab]').forEach(function(x){
+          x.classList.remove('on');
+          var p=document.getElementById('tab-'+x.dataset.tab); if(p)p.style.display='none';
+        });
+        t.classList.add('on');
+        var p=document.getElementById('tab-'+t.dataset.tab); if(p)p.style.display='block';
+      };
+    });
+    var first=bar.querySelector('span[data-tab]'); if(first) first.click();
+  });
+})();
+</script>
+</body>
+</html>

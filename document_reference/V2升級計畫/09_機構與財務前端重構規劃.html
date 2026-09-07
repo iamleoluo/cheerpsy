@@ -1,0 +1,632 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>09 機構與財務前端重構規劃 — CheerPsy V2</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+ --bg:#f6f7f9; --panel:#fff; --ink:#111827; --ink2:#374151; --mut:#6b7280; --mut2:#9ca3af;
+ --line:#e5e7eb; --line2:#d1d5db;
+ --p50:#f5f3ff; --p100:#ede9fe; --p200:#ddd6fe; --p500:#8b5cf6; --p600:#7c3aed; --p700:#6d28d9;
+ --blue:#2563eb; --blue-bg:#eff6ff; --green:#16a34a; --green-bg:#f0fdf4;
+ --amber:#d97706; --amber-bg:#fffbeb; --red:#dc2626; --red-bg:#fef2f2;
+ --sky:#0891b2; --sky-bg:#ecfeff; --rose:#e11d48; --rose-bg:#fff1f2;
+ --code:#f3f4f6;
+}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);
+ font:14px/1.75 "Noto Sans TC","PingFang TC","Microsoft JhengHei",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+ -webkit-font-smoothing:antialiased}
+.wrap{max-width:1220px;margin:0 auto;padding:0 20px 90px}
+
+/* ---- header ---- */
+.hd{background:linear-gradient(135deg,#4c1d95,#6d28d9 55%,#7c3aed);color:#fff;padding:30px 0 26px;margin-bottom:26px}
+.hd .wrap{padding-bottom:0}
+.hd .kick{font-size:12px;letter-spacing:.16em;text-transform:uppercase;opacity:.72;font-weight:700}
+.hd h1{font-size:27px;font-weight:800;margin:7px 0 8px;letter-spacing:-.01em}
+.hd p{opacity:.9;font-size:13.5px;max-width:860px}
+.hd .meta{margin-top:14px;display:flex;flex-wrap:wrap;gap:8px}
+.hd .meta span{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.22);
+ border-radius:999px;padding:3px 11px;font-size:11.5px;font-weight:600}
+
+/* ---- layout ---- */
+.cols{display:grid;grid-template-columns:220px 1fr;gap:28px;align-items:start}
+@media(max-width:1000px){.cols{grid-template-columns:1fr}.toc{position:static!important;max-height:none!important}}
+.toc{position:sticky;top:18px;background:var(--panel);border:1px solid var(--line);border-radius:12px;
+ padding:14px 12px;max-height:calc(100vh - 40px);overflow:auto;font-size:12.5px}
+.toc b{display:block;font-size:11px;letter-spacing:.1em;color:var(--mut2);margin:0 0 8px 6px;text-transform:uppercase}
+.toc a{display:block;color:var(--ink2);text-decoration:none;padding:5px 8px;border-radius:7px;line-height:1.45}
+.toc a:hover{background:var(--p50);color:var(--p700)}
+.toc a.sub{padding-left:20px;font-size:12px;color:var(--mut)}
+
+/* ---- sections ---- */
+section{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px 26px;margin-bottom:20px;
+ scroll-margin-top:16px}
+h2{font-size:19px;font-weight:800;letter-spacing:-.01em;padding-bottom:11px;margin-bottom:16px;
+ border-bottom:2px solid var(--p100);display:flex;align-items:center;gap:9px}
+h2 .num{background:var(--p600);color:#fff;font-size:12px;width:26px;height:26px;border-radius:8px;
+ display:inline-flex;align-items:center;justify-content:center;font-weight:800;flex:none}
+h3{font-size:15px;font-weight:700;margin:24px 0 10px;color:var(--p700);
+ padding-left:10px;border-left:3px solid var(--p500)}
+h4{font-size:13.5px;font-weight:700;margin:16px 0 7px;color:var(--ink2)}
+p{margin:9px 0;color:var(--ink2)}
+ul,ol{margin:9px 0 9px 22px;color:var(--ink2)}
+li{margin:4px 0}
+a{color:var(--p700)}
+
+/* ---- tables ---- */
+.tw{overflow-x:auto;margin:13px 0;border:1px solid var(--line);border-radius:10px}
+table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:560px;background:#fff}
+th{background:#fafafa;text-align:left;font-weight:700;color:var(--mut);font-size:11px;
+ letter-spacing:.05em;padding:9px 11px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 11px;border-bottom:1px solid #f1f2f4;vertical-align:top;line-height:1.65}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:#fcfcfd}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+td.c,th.c{text-align:center}
+td.w{white-space:nowrap}
+
+/* ---- code / mono ---- */
+code,.mono{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:11.8px}
+code{background:var(--code);padding:1.5px 5px;border-radius:4px;color:#9333ea;word-break:break-word}
+pre{background:#1e1b2e;color:#e8e5f5;padding:14px 16px;border-radius:10px;overflow-x:auto;
+ font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:11.8px;line-height:1.7;margin:12px 0}
+pre .c{color:#8b83a8}
+pre .k{color:#c4b5fd}
+pre .s{color:#86efac}
+
+/* ---- callouts ---- */
+.note{border-radius:9px;padding:11px 14px;margin:12px 0;font-size:12.8px;line-height:1.7;
+ border:1px solid var(--line);background:#fafafa;color:var(--ink2)}
+.note b{color:var(--ink)}
+.note.blue{background:var(--blue-bg);border-color:#bfdbfe;color:#1e40af}
+.note.green{background:var(--green-bg);border-color:#bbf7d0;color:#15803d}
+.note.amber{background:var(--amber-bg);border-color:#fde68a;color:#92400e}
+.note.red{background:var(--red-bg);border-color:#fecaca;color:#991b1b}
+.note.purple{background:var(--p50);border-color:var(--p200);color:var(--p700)}
+.note .t{font-weight:800;display:block;margin-bottom:3px}
+
+/* ---- tags ---- */
+.tag{display:inline-block;font-size:10.5px;font-weight:700;padding:1.5px 7px;border-radius:5px;
+ border:1px solid transparent;white-space:nowrap;line-height:1.6}
+.t-p{background:var(--p100);color:var(--p700);border-color:var(--p200)}
+.t-b{background:var(--blue-bg);color:var(--blue);border-color:#bfdbfe}
+.t-g{background:var(--green-bg);color:var(--green);border-color:#bbf7d0}
+.t-a{background:var(--amber-bg);color:var(--amber);border-color:#fde68a}
+.t-r{background:var(--red-bg);color:var(--red);border-color:#fecaca}
+.t-s{background:var(--sky-bg);color:var(--sky);border-color:#a5f3fc}
+.t-x{background:#f3f4f6;color:var(--mut);border-color:var(--line2)}
+
+/* ---- checklist ---- */
+.ck{list-style:none;margin:10px 0;padding:0}
+.ck li{display:flex;gap:10px;align-items:flex-start;padding:8px 11px;border:1px solid var(--line);
+ border-radius:8px;margin-bottom:6px;background:#fff;cursor:pointer;transition:.12s;font-size:12.8px}
+.ck li:hover{border-color:var(--p200);background:var(--p50)}
+.ck li .box{width:16px;height:16px;border:2px solid var(--line2);border-radius:4px;flex:none;margin-top:3px;
+ display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;transition:.12s}
+.ck li.on{background:#fafafa;border-color:var(--line)}
+.ck li.on .box{background:var(--green);border-color:var(--green)}
+.ck li.on .box:after{content:"✓"}
+.ck li.on .txt{color:var(--mut2);text-decoration:line-through}
+.ck .txt{flex:1;color:var(--ink2);line-height:1.65}
+.ck .src{font-size:10.5px;color:var(--mut2);white-space:nowrap;margin-left:auto;padding-left:8px}
+
+/* ---- misc ---- */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media(max-width:820px){.grid2,.grid3{grid-template-columns:1fr}}
+.card{border:1px solid var(--line);border-radius:11px;padding:14px 16px;background:#fff}
+.card .h{font-weight:800;font-size:13px;margin-bottom:6px;display:flex;align-items:center;gap:7px}
+.kpi{border:1px solid var(--line);border-radius:11px;padding:13px 15px;background:#fff}
+.kpi .l{font-size:11px;color:var(--mut);font-weight:700;letter-spacing:.04em}
+.kpi .v{font-size:24px;font-weight:800;margin:2px 0;letter-spacing:-.02em}
+.kpi .s{font-size:11.5px;color:var(--mut2)}
+hr{border:none;border-top:1px solid var(--line);margin:22px 0}
+.foot{text-align:center;color:var(--mut2);font-size:11.5px;padding:26px 0 0}
+.arrow{color:var(--p600);font-weight:800}
+.del{color:var(--mut2);text-decoration:line-through}
+.new{color:var(--green);font-weight:700}
+@media print{
+ body{background:#fff}.toc{display:none}.cols{grid-template-columns:1fr}
+ section{break-inside:avoid;border:none;padding:0 0 18px}
+ .hd{background:#4c1d95!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+
+/* ---- interactive prototype (04/05 Part 2) ---- */
+@keyframes flashHi{0%{box-shadow:0 0 0 3px var(--p500)}100%{box-shadow:0 0 0 3px transparent}}
+tr.flash td:first-child{position:relative}
+tr.flash{background:var(--p50)!important;animation:flashHi 2.4s ease-out}
+.proto{background:#fbfbfc;border:1px solid var(--line);border-radius:12px;padding:16px;margin:14px 0}
+.proto .pt{font-size:11px;font-weight:800;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin-bottom:10px}
+.pgrid{display:grid;border:1px solid var(--line2);border-radius:8px;overflow:hidden;font-size:10.5px;background:#fff}
+.pgrid .prow{display:grid;grid-template-columns:52px repeat(var(--cols,5),1fr);border-top:1px solid #eee}
+.pgrid .prow:first-child{border-top:none}
+.pgrid .ph{background:#fafafa;font-weight:700;color:var(--mut);padding:6px 4px;text-align:center;border-right:1px solid #eee}
+.pgrid .pt0{padding:5px 4px;color:var(--mut2);text-align:center;border-right:1px solid #eee;font-variant-numeric:tabular-nums}
+.pgrid .pc{border-right:1px solid #f2f2f2;min-height:34px;padding:2px}
+.pgrid .pc:last-child{border-right:none}
+.hotspot{display:block;height:100%;border-radius:5px;padding:3px 5px;cursor:pointer;transition:.12s;font-size:9.5px;line-height:1.3;border:1px solid transparent}
+.hotspot:hover{outline:2px solid var(--p500);outline-offset:-1px;filter:brightness(.97)}
+.hotspot b{display:block;font-size:10px}
+.hs-self{background:var(--blue-bg);border-color:#bfdbfe;color:#1e3a8a}
+.hs-inst{background:var(--amber-bg);border-color:#fde68a;color:#78350f}
+.hs-no{background:var(--red-bg);border-color:#fecaca;color:#7f1d1d}
+.hs-first{background:#fef9c3;border-color:#fde047;color:#713f12}
+.hs-couple{background:var(--p50);border-color:var(--p200);color:var(--p700)}
+.hs-done{background:#f3f4f6;border-color:#e5e7eb;color:var(--mut2)}
+.hs-empty{border:1px dashed #e5e7eb;color:var(--mut2);display:flex;align-items:center;justify-content:center;font-size:14px}
+.hs-empty:hover{background:var(--p50);border-color:var(--p300,var(--p500))}
+.phint{font-size:11px;color:var(--mut);margin-top:9px;padding-top:9px;border-top:1px dashed var(--line)}
+.mockform{display:grid;gap:8px;font-size:11.5px}
+.mockform label{display:block}
+.mockform .lb{font-size:10.5px;color:var(--mut);font-weight:700;margin-bottom:2px;display:block}
+.mockform .fake{border:1px solid var(--line2);border-radius:6px;padding:6px 9px;background:#fff;cursor:pointer;color:var(--ink2)}
+.mockform .fake:hover{border-color:var(--p500);background:var(--p50)}
+.pbadge{display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;margin-bottom:2px}
+</style>
+</head>
+<body data-doc="09_機構與財務前端重構規劃">
+<header class="hd"><div class="wrap">
+  <div class="kick">CheerPsy V2 · 慈恩心理治療所</div>
+  <h1>機構與財務前端重構規劃</h1>
+  <p>預約／媒合／每日作業照 v7 原型實作；機構與財務兩塊重新設計。機構改為<b>以合約為單位的四層架構</b>：原語做紮實、每份合約只寫一層薄的組裝碼與專屬面板，首批 5 份、其餘走通用版並可隨時升級。本文件說明落差分析、分層設計、後端缺口與待裁示決策。</p>
+  <div class="meta"><span>以合約為單位 · 四層架構</span><span>首批 5 份 + 通用版</span><span>讀專屬 / 寫共用</span><span>核銷/失約費已裁示</span><span>僅收據編號待診療所</span></div>
+</div></header>
+<div class="wrap">
+<div class="cols">
+<nav class="toc" id="toc"></nav>
+<main>
+<section id="intro09">
+<h2><span class="num">0</span>這份文件解決什麼問題</h2>
+<p>你的裁示：<b>「預約媒合每日作業的地方大部分都照樣本，但機構跟財務的部分要重新設計跟重構」</b>，以及後續補充的<b>「以合約為一件、先做 5 份、其餘走通用版，靠分層讓新合約只需薄薄一層」</b>。這份文件先把「為什麼機構與財務不能照樣本做」講清楚（§1 落差分析），再給出重構後的頁面架構（§2）、<b>機構的四層架構與合約面板（§3，本文件的核心）</b>、財務兩頁的設計（§4），最後列出這次重構<b>不是純前端</b>、後端還缺什麼（§5）與建議順序（§6）、以及裁示狀態（§7，多數已定案，只剩一項卡在診療所）。</p>
+
+<div class="note green"><span class="t">先講最重要的發現</span><code>cheerpsy_v7_prototype_20260817.html</code> 這份原型<b>本身就分成兩半</b>：每日作業那半有真的 JS 引擎（可點、有狀態、資料會變），機構與財務那半<b>只是靜態 HTML 表格</b>——連原型自己都還沒把這塊想完。這正好對應你的判斷，也解釋了為什麼那半可以照抄、這半必須重新設計。</div>
+
+<h3>0.1 v7 原型的真實分界（實際查證，不是憑印象）</h3>
+<p>判斷依據：原型用 <code>data-dyn="xxx"</code> 標記「由 JS 動態渲染」的區塊，並有對應的 <code>renderXxx()</code> 函式。沒有這個標記的頁面就是寫死的 HTML。</p>
+<div class="tw"><table>
+<thead><tr><th style="width:150px">頁面</th><th style="width:110px" class="c">原型狀態</th><th style="width:110px" class="c">本次處置</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td colspan="4" style="background:var(--g50);font-weight:700">行政端 13 頁</td></tr>
+<tr><td>營運總覽</td><td class="c"><span class="tag t-x">靜態</span></td><td class="c"><span class="tag t-a">後補</span></td><td>KPI 卡與待辦清單，等機構／財務定案後才知道要匯總什麼</td></tr>
+<tr><td>媒合管理</td><td class="c"><span class="tag t-g">動態 m1/m2/m3</span></td><td class="c"><span class="tag t-g">照樣本</span></td><td>派案批次、逾時退回、諮商需求表都有完整互動邏輯</td></tr>
+<tr><td>個案管理</td><td class="c"><span class="tag t-g">動態 c1/c2</span></td><td class="c"><span class="tag t-g">照樣本</span></td><td></td></tr>
+<tr><td>診間日曆</td><td class="c"><span class="tag t-g">動態 rooms</span></td><td class="c"><span class="tag t-g">照樣本</span></td><td>30 分格矩陣、報到三步驟，後端已全部就緒（08 §5.3–§5.4）</td></tr>
+<tr><td>預約作業</td><td class="c"><span class="tag t-g">動態 b1–b4</span></td><td class="c"><span class="tag t-g">照樣本</span></td><td>四分頁；b4 場地租借的<b>金流出口</b>要接財務（見 §5）</td></tr>
+<tr><td>預約總表</td><td class="c"><span class="tag t-g">動態 appts</span></td><td class="c"><span class="tag t-g">照樣本</span></td><td></td></tr>
+<tr><td><b>機構合約清冊</b></td><td class="c"><span class="tag t-x">靜態</span></td><td class="c"><span class="tag t-r">重新設計</span></td><td>資料模型只有「一個方案一個價」，撐不住實際費率規則</td></tr>
+<tr><td><b>機構方案清冊</b></td><td class="c"><span class="tag t-x">靜態</span></td><td class="c"><span class="tag t-r">重新設計</span></td><td>額度三態的呈現可留，但方案層級的欄位全部要換</td></tr>
+<tr><td><b>機構核銷案</b></td><td class="c"><span class="tag t-x">靜態</span></td><td class="c"><span class="tag t-r">重新設計</span></td><td>系統裡目前有<b>兩套核銷機制</b>並存，必須先合併（§1.4）</td></tr>
+<tr><td><b>日報表／對帳</b></td><td class="c"><span class="tag t-x">靜態</span></td><td class="c"><span class="tag t-r">重新設計</span></td><td>表格欄位有一半後端還沒有（優待／拆帳／作廢／對帳鎖定）</td></tr>
+<tr><td><b>應收帳冊</b></td><td class="c"><span class="tag t-a">半動態 a1/a2</span></td><td class="c"><span class="tag t-r">重新設計</span></td><td>未收／月結兩分頁有 <code>renderAR()</code>；機構應收分頁是靜態的</td></tr>
+<tr><td>數據分析</td><td class="c"><span class="tag t-x">靜態</span></td><td class="c"><span class="tag t-a">後補</span></td><td>既有 <code>/reports</code> 已有 9 張圖表可沿用</td></tr>
+<tr><td colspan="4" style="background:var(--g50);font-weight:700">心理師端 8 頁</td></tr>
+<tr><td>我的今日</td><td class="c"><span class="tag t-a">半動態</span></td><td class="c"><span class="tag t-g">照樣本</span></td><td></td></tr>
+<tr><td>我的班表</td><td class="c"><span class="tag t-g">動態 sched</span></td><td class="c"><span class="tag t-g">照樣本</span></td><td>週×半小時個人行事曆</td></tr>
+<tr><td>預約作業</td><td class="c"><span class="tag t-g">動態 n1/n3</span></td><td class="c"><span class="tag t-g">照樣本</span></td><td>時間優先表單</td></tr>
+<tr><td>派案邀請</td><td class="c"><span class="tag t-g">動態 pool</span></td><td class="c"><span class="tag t-g">照樣本</span></td><td></td></tr>
+<tr><td>我的個案</td><td class="c"><span class="tag t-g">動態</span></td><td class="c"><span class="tag t-g">照樣本</span></td><td></td></tr>
+<tr><td><b>文件確認</b></td><td class="c"><span class="tag t-x">靜態</span></td><td class="c"><span class="tag t-r">重新設計</span></td><td>直接掛在核銷案上，核銷案改了這頁就得跟著改</td></tr>
+<tr><td><b>我的酬勞</b></td><td class="c"><span class="tag t-x">靜態</span></td><td class="c"><span class="tag t-r">重新設計</span></td><td>「金額 × 抽成」的算式在新的酬勞模式下不成立</td></tr>
+<tr><td>我的數據</td><td class="c"><span class="tag t-g">動態 psystats</span></td><td class="c"><span class="tag t-g">照樣本</span></td><td></td></tr>
+</tbody></table></div>
+<div class="note"><span class="t">結論</span>21 頁裡，<b>11 頁照樣本</b>（原型已經幫我們想完，照著接 API 即可）、<b>7 頁重新設計</b>（機構 3＋財務 2＋心理師 2）、<b>3 頁後補</b>（兩張總覽／分析頁與其資料來源相依，等前面定案）。其中機構那 3 頁不只是重畫，是整個<b>換一種擴充方式</b>——見 §3。</div>
+</section>
+
+<section id="gap09">
+<h2><span class="num">1</span>為什麼機構與財務不能照樣本做</h2>
+
+<h3>1.1 機構：原型假設「一個方案一個價」，實際是「有序的費率規則」</h3>
+<p>原型的機構資料模型只有這樣一行（v7 第 2538 行）：</p>
+<pre>const INST = {
+  "衛生局 / 15-45青壯":{quota:3, self:400, inst:1600},
+  "衛生局 / 脆家方案" :{quota:6, self:0,   inst:2000},
+  "國防部 / 國軍EAP"  :{quota:6, self:0,   inst:1800},
+  "教育局 / 教支"     :{quota:4, self:0,   inst:1800}
+};</pre>
+<p>一個方案 ＝ 一個額度上限 ＋ 一個自付額 ＋ 一個機構請款額。但《260831新版-機構合約方案清冊》裡的實際規則沒有一個是這樣：</p>
+<div class="tw"><table>
+<thead><tr><th style="width:190px">實際方案</th><th>實際計價規則</th><th style="width:130px" class="c">原型能表達嗎</th></tr></thead>
+<tbody>
+<tr><td>衛生局 15-45 青壯</td><td><b>依次數分級</b>：第 1 次 $1,600／自付 $0；第 2 次起 $1,400／自付 $200</td><td class="c"><span class="tag t-x">不能</span></td></tr>
+<tr><td>國軍 EAP</td><td><b>金額池</b>：方案層級總額 $149,000，扣的是錢不是次數</td><td class="c"><span class="tag t-x">不能</span></td></tr>
+<tr><td>聊心茶室</td><td><b>回饋制</b>：心理師自收，診所收回饋金——不是抽成</td><td class="c"><span class="tag t-x">不能</span></td></tr>
+<tr><td>鉅微（借場地）</td><td><b>不佔額度</b>、只收場地費，酬勞模式又不同</td><td class="c"><span class="tag t-x">不能</span></td></tr>
+<tr><td>容愛協會</td><td>年度上限之外還有<b>每月 4 次</b>的週期性子上限</td><td class="c"><span class="tag t-x">不能</span></td></tr>
+<tr><td>警局／奇美家照</td><td><b>6+3</b>：基本 6 次，可申請延長 3 次</td><td class="c"><span class="tag t-x">不能</span></td></tr>
+</tbody></table></div>
+<p>後端（07 §1、已實作）用的是<b>有序費率規則</b>：<code>inst_rate_rules</code> 一張表，每條規則帶一個 <code>when_json</code> 條件（次數區間／諮商類型／心理師），由上往下<b>先匹配先贏</b>，命中後給出 <code>unit_price</code> 與 <code>case_payable</code>。這是原型 UI 完全沒有的東西——<b>費率規則編輯器是一塊全新的畫面</b>，不是把舊表格改欄位就好。</p>
+
+<h3>1.2 機構：原型缺「酬勞模式」這個維度</h3>
+<p>後端 <code>inst_plans.compensation_mode</code> 有三種值，原型與樣板都只認得第一種：</p>
+<div class="grid3">
+<div class="card"><div class="h"><code>commission</code> 抽成</div><p style="font-size:12.5px">診所收全額，依心理師抽成率拆分。這是原型唯一認得的模式。</p></div>
+<div class="card"><div class="h"><code>kickback</code> 回饋</div><p style="font-size:12.5px">心理師自收費用，回饋一部分給診所。<b>金流方向相反</b>，日報表的「已收現金」不能算進來。</p></div>
+<div class="card"><div class="h"><code>therapist_rate</code> 心理師定價</div><p style="font-size:12.5px">單價由心理師個人費率決定，不是方案決定。報價時要帶心理師 id 進去。</p></div>
+</div>
+<div class="note amber"><span class="t">影響範圍比看起來大</span>這一欄同時影響：機構方案編輯畫面（要能選）、預約報價（要帶心理師）、日報表（回饋制不計入診所現金收入）、心理師「我的酬勞」（三種算式）、以及月結酬勞計算。這是<b>財務也要一起重構</b>的根本原因之一。</div>
+
+<h3>1.3 機構：核銷案的分組方式不只「期間制」</h3>
+<p>原型的核銷案固定是「選機構 → 選期間 → 選人 → 建立」，也就是<b>期間制</b>。但後端 <code>inst_claim_cases.grouping_mode</code> 有兩種：</p>
+<ul>
+<li><code>period</code> 期間制：某機構某方案在 7/01–7/31 之間的紀錄整批請款。原型有的就是這種。</li>
+<li><code>per_case_count</code> 次數制：某個案<b>每滿 N 次</b>請一次，與月份無關。原型完全沒有這個概念，但實際清冊裡有這種方案。</li>
+</ul>
+<p>另外後端的容器是<b>可以裝不滿就送出</b>的（07 §4.3 你的裁示：核銷案是彈性容器，不是硬性門檻），原型則寫死「資料齊備才能轉待送出」。這兩件事的 UI 呈現完全不同。</p>
+
+<h3>1.4 ★ 系統裡目前有兩套核銷機制並存，已裁示如何合併</h3>
+<div class="note"><span class="t">這是本次重構最重要的一個決定</span>不先解決這個，機構核銷案這一頁不管怎麼畫都會錯。<b>已裁示，見下方定案框與 §1.4a。</b></div>
+<div class="tw"><table>
+<thead><tr><th style="width:170px"></th><th>舊：<code>claim_batches</code></th><th>新：<code>inst_claim_cases</code></th></tr></thead>
+<tbody>
+<tr><td class="strong">現況</td><td>18 支 API、前端 <code>/claims</code> 已有 1,350 行完整實作、正在正式環境跑</td><td>7 支 API、有 pytest 覆蓋、<b>前端還沒有任何畫面</b></td></tr>
+<tr><td class="strong">狀態機</td><td>collecting → ready →<br>submitted → received</td><td>collecting → submitted →<br>paid（可 void）</td></tr>
+<tr><td class="strong">文件雙閘門</td><td class="c"><span class="tag t-g">有</span>心理師提交 + 行政核對 + 豁免 + 退回補件，欄位在 <code>session_records</code> 上</td><td class="c"><span class="tag t-x">沒有</span></td></tr>
+<tr><td class="strong">出席單／請款單 PDF</td><td class="c"><span class="tag t-g">有</span><code>/attendance-sheet</code>、<code>/claim-form</code></td><td class="c"><span class="tag t-x">沒有</span></td></tr>
+<tr><td class="strong">分組方式</td><td>期間制（單一機構或單一個案）</td><td class="c"><span class="tag t-g">期間制 ＋ 次數制</span></td></tr>
+<tr><td class="strong">核銷路由</td><td class="c"><span class="tag t-x">沒有</span>靠 institution_id 硬綁</td><td class="c"><span class="tag t-g">有</span><code>claim_group_key</code>，不同方案可併同一窗口請款</td></tr>
+<tr><td class="strong">入帳金額細節</td><td>只有 total_amount</td><td class="c"><span class="tag t-g">完整</span>申請額／實收額／扣繳稅／手續費／淨收</td></tr>
+<tr><td class="strong">漏單提醒</td><td class="c"><span class="tag t-x">沒有</span></td><td class="c"><span class="tag t-g">有</span><code>list_uncollected()</code></td></tr>
+<tr><td class="strong">自費月結批次</td><td class="c"><span class="tag t-g">有</span>type=self_pay 也走這張表</td><td class="c"><span class="tag t-x">不做</span>子系統只管機構</td></tr>
+</tbody></table></div>
+<p><b>兩邊都不完整</b>：新的有正確的分組／路由／金額模型，舊的有文件雙閘門與 PDF 產出，而且舊的還兼著自費月結批次在用。</p>
+<div class="note green"><span class="t">定案（§7.1 已裁示）</span>依<b>付款方</b>切開——但「付款方」不是「這張預約的 <code>funding_source</code>」，而是<b>每一筆錢自己的付款方</b>：<br>
+<b>機構請款流程</b>（<code>institution_payable</code>）一律走新的 <code>inst_claim_cases</code>，把文件雙閘門與兩張 PDF <b>移植</b>過去（雙閘門的欄位本來就在 <code>session_records</code> 上，不用搬資料）；<br>
+<b>自付款流程</b>（<code>case_payable</code>）留在舊的 <code>claim_batches</code> 體系並正名為「自費結帳批次」——<b>這條路徑不分自費案還是機構案，只要是個案自己要付的錢，一律走這裡。</b><br>
+這樣切的理由：這正是子系統邊界本來的定義（07 §3），機構的複雜度留在子系統內；但你補充的重點是<b>金流方向</b>而不是<b>案件種類</b>——一筆機構預約可以同時產生兩筆各自獨立的錢，各走各的路徑。見 §1.4a。</div>
+
+<h3>1.4a ★ 補充裁示：機構案的自付額必須併入「每日該收」，不能只在機構頁面才看得到</h3>
+<div class="note rose"><span class="t">你的裁示，逐字記錄</span>「機構案有時候會需要自費款。例如一筆 1600 元的款項，可能有 400 元是個案要自付，剩下 1200 元是機構補助。那這 400 元自費款也要納入整個自費流程，一般來說當日就要結清……不管付款方式是日結還是月結，都屬於自費流程」「自費部分：在櫃檯當下就要看到……如果上個月的月結還沒結清，行政在報到或開收據當下就必須看得到」「機構案部分：基本上是行政人員點開特定頁面才需要看到」。</div>
+<p>這決定了整個財務前端的分界，不是「機構頁 vs 財務頁」兩塊各自獨立，而是<b>一筆機構預約的兩段金流各自併入不同的日常節奏</b>：</p>
+<div class="grid2">
+<div class="card"><div class="h">自付款流程（case_payable）— 每天都要看到</div>
+<p style="font-size:12.5px">不論這筆預約的 <code>funding_source</code> 是 <code>self_pay</code> 還是 <code>institution</code>，只要有個案自己要付的錢，<b>一律出現在日常收款動線</b>：診間日曆報到收款步驟、日報表流水帳、應收帳冊「未收」／「月結」分頁。上月月結未清，個案這次來報到／開收據時<b>當場就要跳出來</b>，不是等行政自己想到去查。</p></div>
+<div class="card"><div class="h">機構請款流程（institution_payable）— 主動點開才看到</div>
+<p style="font-size:12.5px">只有機構要補的那一段錢（$1,200），走合約專頁的「核銷」分頁，行政<b>主動點開合約才處理</b>，不會也不該出現在每天的收款清單裡——這不是行政每天的例行工作。</p></div>
+</div>
+<div class="note amber"><span class="t">這是一個真正的後端缺口，不只是前端分頁問題</span>目前 <code>/ledger</code> 的「未收」查詢（<code>routers/ledger.py</code> 約 248 行）過濾條件是 <code>payment_status=='unpaid' AND funding_source=='self_pay'</code>——<b>機構案的 <code>case_payable</code> 完全被排除在外</b>，因為機構案走的是 <code>copay_collected_at</code>（08 §5.4 新欄位），不是 <code>payment_status</code>。這表示現在系統裡<b>沒有任何一個查詢會把機構案的自付額顯示成「未收」</b>。這條要在 §5 補一個明確的後端項目：一個不分 <code>funding_source</code>、只認「有沒有自付額待收」的統一查詢，日報表／應收帳冊／報到收款頁全部共用同一個來源，別各自兜一套邏輯出來。</div>
+
+<h3>1.5 財務：日報表要的欄位有一半後端還沒有</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:150px">原型表格欄位／操作</th><th style="width:110px" class="c">後端現況</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td>個案自付額 / 機構請款額</td><td class="c"><span class="tag t-g">已有</span></td><td><code>case_payable</code>／<code>institution_payable</code> 快照（08 §5.1）</td></tr>
+<tr><td>收款狀態、結帳方式</td><td class="c"><span class="tag t-g">已有</span></td><td><code>copay_collected_at/method/note</code>（08 §5.4）</td></tr>
+<tr><td>收據編號</td><td class="c"><span class="tag t-a">格式未定</span></td><td>目前 <code>R{YYYYMMDD}{seq}</code>，原型是 <code>A20260801C021-1</code>（01 §C4 待你與診療所談定）</td></tr>
+<tr><td>結帳批次（可點擊連動）</td><td class="c"><span class="tag t-a">半有</span></td><td>機構那邊要接新核銷案；自費月結要接 claim_batches</td></tr>
+<tr><td><b>優待／減免</b></td><td class="c"><span class="tag t-x">沒有</span></td><td>完全沒有欄位，但影響應收金額與酬勞計算基礎</td></tr>
+<tr><td><b>拆帳</b>（伴侶案分開收）</td><td class="c"><span class="tag t-x">沒有</span></td><td>伴侶案目前是一筆合併金額</td></tr>
+<tr><td><b>作廢</b></td><td class="c"><span class="tag t-x">沒有</span></td><td>收據有 <code>void</code> 欄位但沒有 API；帳款本身無作廢機制</td></tr>
+<tr><td><b>完成當日對帳（鎖定）</b></td><td class="c"><span class="tag t-x">沒有</span></td><td>沒有「日結」這個物件，也沒有鎖定機制</td></tr>
+<tr><td><b>商品販售併入</b></td><td class="c"><span class="tag t-a">半有</span></td><td><code>product_sales</code> 表存在、有 <code>/products</code> 頁，但沒併進日報表</td></tr>
+<tr><td><b>失約費</b></td><td class="c"><span class="tag t-a">部分</span></td><td>見下方——已裁示，非全有全無</td></tr>
+</tbody></table></div>
+<div class="note green"><span class="t">定案（§7.1 已裁示）</span>「一般來說是不做，但實際上機構有時候會補助失約費……不拿白不拿，會一起跟著去核銷出去」。也就是：<b>自費流程與大部分機構一律不做</b>（沿用定稿），但<b>個別機構方案可以設定要補助未到</b>，補助的部分照樣走機構核銷。不需要複雜的三級費率表（那是 v7 原型早三天的舊構想，定稿已推翻），只需要：<br>
+① <code>inst_plans</code> 加一個<b>可選</b>欄位（如 <code>no_show_fee_numeric</code>，NULL＝不補助，這是絕大多數機構的預設）；<br>
+② 報到「未到」時，若該預約掛在有設定這個欄位的方案上，<b>連同這筆未到一起產生一筆可核銷的機構請款紀錄</b>（不消耗個人額度，因為沒有真的執行）；<br>
+③ 這筆紀錄跟其他場次一樣進 <code>inst_claim_cases</code>，不需要新的核銷路徑。<br>
+這是一個小型後端補丁，不是新模組，見 §5。</div>
+
+<h3>1.6 財務：「我的酬勞」的算式在新模式下不成立</h3>
+<p>原型的酬勞明細是固定五欄：<code>場次金額 × 抽成率 ＋ 外出保底 = 我的酬勞</code>。在 <code>compensation_mode</code> 之下：</p>
+<ul>
+<li><code>commission</code>：維持原算式（診所收 → 拆給心理師）。</li>
+<li><code>kickback</code>：<b>心理師先收到全額</b>，欠診所回饋金。這一列在「我的酬勞」裡是<b>負的</b>或應該獨立一區呈現，混在同一張表會讓心理師誤讀。</li>
+<li><code>therapist_rate</code>：單價來自心理師個人費率，「抽成率」這一欄意義不同。</li>
+</ul>
+<p>另外督導模式 A／B（<code>users.supervision_fee_mode</code>，P0 已加欄位）也會產生第四種金流。這頁需要的是<b>分區呈現</b>，不是加一欄。</p>
+</section>
+
+<section id="ia09">
+<h2><span class="num">2</span>重構後的頁面架構</h2>
+<p>財務與心理師端的導覽項目<b>不動</b>（IA 是診療所已經看過並認可的，07 §C-bis），只換裡面裝什麼。機構那三項則<b>收斂成兩項</b>——理由見 §3.7。</p>
+<div class="tw"><table>
+<thead><tr><th style="width:150px">導覽項目</th><th style="width:110px" class="c">改動幅度</th><th>重構後裝什麼</th></tr></thead>
+<tbody>
+<tr><td>📑 機構合約清冊<br><span style="font-size:11px;color:var(--muted)">→ 改名「機構合約」</span></td><td class="c"><span class="tag t-r">整頁重寫</span></td><td><b>合約面板</b>：清單 ＋ 每份合約的專屬頁面（四分頁骨架）。一頁的單位是<b>合約</b>，方案包在裡面（§3）</td></tr>
+<tr><td>🏢 機構方案清冊</td><td class="c"><span class="tag t-r">併入上者</span></td><td>不再是獨立頁——成為合約專頁裡的「個案與額度」與「設定」兩個分頁。個案額度三態長條<b>視覺完全保留</b>，只換資料來源</td></tr>
+<tr><td>💰 機構核銷案<br><span style="font-size:11px;color:var(--muted)">→ 改名「核銷案總表」</span></td><td class="c"><span class="tag t-r">整頁重寫</span></td><td>降為<b>跨機構的純查詢視角</b>（本月待送出有哪些）；建立／收納／送出／入帳等<b>操作一律回合約專頁</b>執行</td></tr>
+<tr><td>📒 日報表／對帳</td><td class="c"><span class="tag t-r">整頁重寫</span></td><td>版面照原型，但要等 §5 的後端補完才做得出來</td></tr>
+<tr><td>💳 應收帳冊</td><td class="c"><span class="tag t-a">分頁重整</span></td><td>未收／月結兩頁照原型 <code>renderAR()</code>；機構應收頁改成核銷案的檢視</td></tr>
+<tr><td>📄 文件確認（心理師）</td><td class="c"><span class="tag t-a">改接口</span></td><td>畫面照原型，資料來源改接新核銷案</td></tr>
+<tr><td>💵 我的酬勞（心理師）</td><td class="c"><span class="tag t-r">改版面</span></td><td>依 <code>compensation_mode</code> <b>分區呈現</b>，不是一張大表</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="inst09">
+<h2><span class="num">3</span>機構：分層架構與合約面板</h2>
+
+<div class="note green"><span class="t">兩個已定案的前提</span>
+① <b>一頁的單位是「合約」</b>，不是機構、也不是方案——一份合約 ＝ 與某機構的一段合作關係，底下的多個方案<b>包在裡面</b>，因為額度可能要整體計算。<br>
+② <b>首批只做 5 份合約的專屬面板</b>，其餘走通用版，由行政以較手動的方式操作；等作業方式摸清楚後再逐一升級。</div>
+
+<p>幸運的是 ①<b>不用改 schema</b>：<code>inst_quota_pools.contract_id</code> 本來就掛在合約層級，同一份合約底下多個方案天生共用同一個額度池（國軍 $149,000 就是這樣建的）。要改的只有 UI 的單位。</p>
+
+<h3>3.1 四層架構</h3>
+<pre>Layer 0  主系統           appointments / cases / session_records / 收款
+                          ── 完全不知道機構的存在
+Layer 1  funding port     Quote / EnrollmentState / Protocol          ← 已完成
+Layer 2  通用原語          費率比對 · 額度帳本（三態／池／週期子上限）
+                          核銷容器 · 文件雙閘門 · 編號產生器            ← 大半已完成
+Layer 3  合約模組 ★新      每份合約一個模組，只做「組裝 Layer 2」
+                          並產出這份合約專屬的 read model
+Layer 4  合約面板          每份合約一個前端頁面</pre>
+
+<pre>app/institution/
+├── primitives/          Layer 2　pricing / quota / claims / docgate
+├── contracts/           Layer 3　★新增的一層
+│   ├── base.py          ContractModule 基底（預設行為 ＝ 通用版）
+│   ├── health_bureau.py 衛生局
+│   ├── military.py      國軍
+│   ├── family_protect.py 家防中心
+│   ├── liaoxin.py       聊心茶室
+│   ├── juwei.py         鉅微
+│   └── generic.py       長尾合約共用
+└── routers/panel.py     GET /institution/contracts/{id}/panel → 分派到對應模組</pre>
+
+<div class="note amber"><span class="t">這一層要解決的問題</span>54 份合約的規則差異太大，寫成一套「什麼都能表達」的通用設定檔，最後會變成一個小型程式語言——設定比寫程式還難。反過來，把<b>原語做紮實</b>，每份合約只寫一層薄薄的組裝碼，才是可維護的作法。Layer 3 的每個模組應該只有<b>組裝與查詢</b>，不含業務規則本身。</div>
+
+<h3>3.2 關鍵設計：讀是專屬的，寫是共用的</h3>
+<p>這是讓「每份合約各有一個量身打造的畫面」不會演變成 54 份重複程式碼的關鍵切法。</p>
+<div class="grid2">
+<div class="card"><div class="h">讀 — 每份合約不同</div>
+<p style="font-size:12.5px"><code>GET /institution/contracts/{id}/panel</code> 一次回傳該面板需要的<b>全部</b>資料，形狀由該合約的 Layer 3 模組決定，各自有自己的 Pydantic schema。<br><br>
+衛生局回的是「每人額度三態 ＋ 本期待核銷名單」；國軍回的是「池子消耗 ＋ 各個案累計金額 ＋ 剩餘可用」。<b>形狀完全不同，這是刻意的。</b></p></div>
+<div class="card"><div class="h">寫 — 所有合約共用</div>
+<p style="font-size:12.5px">加入方案、報價、reserve、報到 consume、開核銷案、收納、送出、入帳、文件提交、行政核對——<b>這些動作不管哪個機構都一樣</b>，只是參數不同。<br><br>
+就是已經寫好並有測試覆蓋的那組 API（08 §2.3），一支都不用改。</p></div>
+</div>
+<div class="note green"><span class="t">為什麼這個切法重要</span>前端只需要做兩件事：把 read model 渲染出來、按鈕呼叫共用的 write API。<b>它不需要理解任何機構規則</b>——規則在 Layer 3 已經算完了。這讓每份合約的面板可以獨立、快速地生出來，而且不會因為前端寫錯而算錯額度或金額。<b>N 個 read model，1 組 write API。</b></div>
+
+<h3>3.3 首批 5 份合約 — 依模式空間覆蓋率挑選</h3>
+<p>挑選標準不是規模大小，是<b>能不能把模式空間蓋滿</b>。這 5 份做完，架構就被五種結構性不同的規則驗證過。</p>
+<div class="tw"><table>
+<thead><tr><th style="width:130px">合約</th><th style="width:230px">代表的模式</th><th>面板重點</th></tr></thead>
+<tbody>
+<tr><td class="strong">衛生局</td><td><b>次數分級計價</b><br>第 1 次 $1,600／自付 $0；第 2 次起 $1,400／自付 $200</td><td>每人額度三態長條 · 本期待核銷（期間制）· 最後一次紅框提示</td></tr>
+<tr><td class="strong">國軍</td><td><b>合約層級金額池</b><br>$149,000，扣的是錢不是次數</td><td>池子進度條 · 各個案累計金額 · 剩餘可用 · 快見底預警</td></tr>
+<tr><td class="strong">家防中心</td><td><b>每滿 N 次核銷</b> ＋ 6+3 延長</td><td>已達 4 次待核銷名單（導引式）· 延長申請與核准</td></tr>
+<tr><td class="strong">聊心茶室</td><td><b>回饋制</b><br>心理師自收、診所收回饋</td><td>金流方向相反 · 應收回饋金 · <b>不計入診所現金收入</b></td></tr>
+<tr><td class="strong">鉅微</td><td><b>借場地</b>、不計額度</td><td>無額度區塊 · 只列場次與場地費</td></tr>
+</tbody></table></div>
+<p>這 5 份蓋掉：<b>分級計價／金額池／次數制核銷／回饋制／無額度租場</b>。剩下 40 幾份多半是「固定單價 ＋ 次數上限 ＋ 期間制核銷」這個最單純的形狀，通用版就吃得下。</p>
+<div class="note"><span class="t">待你確認</span>「家防中心」是我依 07 §1 的清冊挑的次數制代表，若你實際上比較常合作的是警局或奇美家照，換掉即可——模式一樣，只是資料不同。</div>
+
+<h3>3.4 通用版 vs 專屬版：工具式 vs 導引式</h3>
+<p>兩者的差別<b>不是「陽春 vs 完整」</b>，而是系統要不要替行政做判斷：</p>
+<div class="grid2">
+<div class="card"><div class="h">通用版 — 工具式</div>
+<p style="font-size:12.5px">系統不猜你要幹嘛。行政自己挑人、自己開核銷案、自己填金額、自己決定期間。畫面是<b>一組工具</b>。<br><br>好處：任何形狀的合約都能用，不會因為規則沒被建模就卡住。</p></div>
+<div class="card"><div class="h">專屬版 — 導引式</div>
+<p style="font-size:12.5px">系統主動說「這 3 個人已達 4 次，該開核銷了」「池子剩 $12,000，約剩 6 次」。畫面是<b>一條動線</b>。<br><br>好處：把重複判斷交給系統，行政只需要確認與執行。</p></div>
+</div>
+<div class="note green"><span class="t">升級路徑：通用版是起點，專屬版是升級</span>新合約一律<b>先掛通用版跑著</b>，等實際作業方式摸清楚了（也就是「比較清楚的新樣本出來」），再補一個 Layer 3 模組把它升級成專屬版。<b>升級不用搬資料</b>——底層一直都跑在同一套原語上，變的只有讀取與呈現方式。這也表示第一天就能上線 54 份合約，不必等 54 個面板做完。</div>
+
+<h3>3.5 合約面板的骨架</h3>
+<pre>┌ 衛生局 · 心理健康服務合約                              [生效中] ┐
+│ 2026/01/01–12/31 · 承辦 陳專員 · 核銷窗口 衛生局              │
+│ 底下方案：15-45青壯 · 衛生局市民 · 脆弱家庭                    │
+├───────────────────────────────────────────────┤
+│ [個案與額度]   [核銷]   [文件]   [設定]                        │
+└───────────────────────────────────────────────┘</pre>
+<p>四個分頁對應你描述的三個部分＋設定。骨架與分頁是<b>所有合約共用</b>的，差異全部發生在每個分頁裡面裝哪些區塊：</p>
+<div class="tw"><table>
+<thead><tr><th style="width:150px">區塊</th><th style="width:170px">何時出現</th><th>內容</th></tr></thead>
+<tbody>
+<tr><td colspan="3" style="background:var(--g50);font-weight:700">個案與額度</td></tr>
+<tr><td class="mono">quota_per_case</td><td>有個人次數上限</td><td>三態長條（<b>視覺照原型抄</b>，那塊設計得最好）· 最後一次黃標 · 尚未初診藍標</td></tr>
+<tr><td class="mono">quota_pool</td><td>合約有額度池</td><td>池子進度條、已消耗／剩餘、預估還能用幾次</td></tr>
+<tr><td class="mono">quota_unlimited</td><td>上限為 NULL</td><td>不顯示額度，只列累計使用次數</td></tr>
+<tr><td class="mono">period_sublimit</td><td>有 <code>period_limit</code></td><td>附加一行「本月 3/4」（容愛協會每月 4 次）</td></tr>
+<tr><td colspan="3" style="background:var(--g50);font-weight:700">核銷</td></tr>
+<tr><td class="mono">claim_by_period</td><td><code>grouping_mode=period</code></td><td>期間制：選期間 → 選人 → 建立；含期間缺口／重疊警示</td></tr>
+<tr><td class="mono">claim_by_count</td><td><code>grouping_mode=per_case_count</code></td><td>次數制：<b>已達 N 次待核銷名單</b>，一鍵開案</td></tr>
+<tr><td class="mono">claim_uncollected</td><td>一律</td><td>漏單提醒：跨月遺留、尚未被任何核銷案收納的紀錄</td></tr>
+<tr><td class="mono">claim_list</td><td>一律</td><td>本合約的核銷案清單與狀態</td></tr>
+<tr><td colspan="3" style="background:var(--g50);font-weight:700">文件</td></tr>
+<tr><td class="mono">doc_gate</td><td>需心理師文件</td><td>雙閘門：提交／核對／豁免／退回補件</td></tr>
+<tr><td class="mono">external_code</td><td><code>requires_external_code</code></td><td>外部案號登錄（初診完成後才給號）</td></tr>
+<tr><td colspan="3" style="background:var(--g50);font-weight:700">設定</td></tr>
+<tr><td class="mono">rate_table</td><td>一律</td><td>費率規則（有序、先匹配先贏）＋試算按鈕（打 <code>quote-preview</code>）</td></tr>
+<tr><td class="mono">plan_params</td><td>一律</td><td>方案層級的 15 個設定欄位（額度／酬勞／收據／核銷路由／提醒清單）</td></tr>
+</tbody></table></div>
+<div class="note"><span class="t">費率規則編輯器</span>這是整個機構重構裡唯一沒有既有畫面可參考的元件，收在「設定」分頁裡（低頻操作，不該佔據主畫面）：<br>
+<code>#1 當[次數][＝][1] → 單價 $1600 自付 $0　　#2 當[次數][≥][2] → 單價 $1400 自付 $200　　#3（無條件·保底）→ …</code><br>
+可拖曳排序，附<b>試算</b>按鈕：輸入次數／類型／心理師，直接顯示會命中哪一條、算出多少。<code>POST /institution/quote-preview</code> 就是為此存在的——不落地、純報價，已寫好且有測試覆蓋。</div>
+
+<h3>3.6 兩條紀律</h3>
+<div class="note rose"><span class="t">紀律一：合約模組不准直接寫 DB</span>Layer 3 只能<b>組裝 Layer 2 的原語</b>。如果某份合約需要原語做不到的事，那是「該擴充原語」的訊號，不是在模組裡硬寫一段 SQL。這條守住，Layer 2 才會越用越紮實、每多做一份合約整體就更強一點；守不住，三個月後 <code>contracts/</code> 會變成邏輯垃圾場，業務規則散落各處且無法測試。</div>
+<div class="note rose"><span class="t">紀律二：面板的候選名單，必須跟寫入端用同一個函式算</span>「已達 4 次待核銷」這份名單，要由核銷收納時所用的<b>同一個查詢函式</b>產生。否則會出現「面板說可以、按下去被拒絕」——這種不一致在財務作業上特別傷，行政會開始不信任系統。</div>
+
+<h3>3.7 導覽與入口</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:170px">頁面</th><th>內容</th></tr></thead>
+<tbody>
+<tr><td class="strong">機構合約面板<br><span class="mono" style="font-weight:400">/institution</span></td><td>所有合約的清單（依機構分組），每列顯示：機構 · 合約名 · 期間 · 使用中個案數 · 額度概況 · <span class="tag t-g">專屬面板</span>／<span class="tag t-a">通用面板</span> 標記。點入 → 該合約專頁</td></tr>
+<tr><td class="strong">合約專頁<br><span class="mono" style="font-weight:400">/institution/{id}</span></td><td>§3.5 的四分頁骨架。<b>所有機構相關操作都在這裡完成</b></td></tr>
+<tr><td class="strong">核銷案總表<br><span class="mono" style="font-weight:400">/institution/claims</span></td><td>跨機構的核銷案清單，回答「這個月所有待送出的有哪些」。<b>純查詢視角，不做操作</b>——操作一律回到合約專頁，避免同一筆錢有兩個地方可以改、狀態打架</td></tr>
+</tbody></table></div>
+<p>原本的三個導覽項目（機構合約清冊／機構方案清冊／機構核銷案）收斂成兩個：<b>機構合約</b>與<b>核銷案總表</b>。方案清冊不再是獨立頁，它是合約專頁裡的「個案與額度」＋「設定」兩個分頁。</p>
+</section>
+
+<section id="fin09">
+<h2><span class="num">4</span>財務兩頁的重新設計</h2>
+
+<h3>4.1 日報表／對帳 — 先做「大概」的版本就好（已裁示）</h3>
+<p>版面照原型（四張 KPI ＋ 流水帳表 ＋ 應收/已收切換），用既有資料就能生出來：當日 session_records ＋ copay 收款狀態 ＋ 收據 ＋ 機構請款額。<b>不追求一次到位</b>——優待／拆帳／作廢／完成當日對帳（鎖定）這些暫緩，等②組財務定稿再補（見 §5 的優先度標記）。</p>
+<div class="note amber"><span class="t">但有一件事不能省：§1.4a 的統一自付款查詢</span>日報表的流水帳表<b>必須</b>把機構案的 <code>case_payable</code> 與自費案的應收混在同一份清單裡（依裁示，這是每天要看到的東西），不能只顯示純自費案。這不是「先做大概版」可以跳過的部分——是這頁存在的核心目的。</div>
+
+<h3>4.2 應收帳冊</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:130px">分頁</th><th>內容</th><th style="width:180px" class="c">處置</th></tr></thead>
+<tbody>
+<tr><td>未收</td><td>當日該收沒收到、<b>不分自費案或機構案</b>——只要是個案自己要付的錢；逾期天數分色</td><td class="c"><span class="tag t-a">照原型 renderAR() ＋ 資料來源改接 §1.4a 統一查詢</span></td></tr>
+<tr><td>月結</td><td>約定月底結的款項，可整批產生帳單；<b>機構案的自付額若走月結，也在這裡</b></td><td class="c"><span class="tag t-a">照原型 ＋ 接舊 claim_batches</span></td></tr>
+<tr><td>機構應收</td><td>等機構撥款的那一段（<code>institution_payable</code>），與個案自付額無關</td><td class="c"><span class="tag t-r">改成核銷案的唯讀檢視</span></td></tr>
+</tbody></table></div>
+<div class="note">「未收」「月結」兩分頁現在的定義是<b>自付款流程</b>本身（§1.4a），不是「自費案的帳」——這是措辭上容易混淆但影響資料查詢範圍的地方。「機構應收」分頁則單純是機構請款流程的唯讀檢視，收款動作一律回到合約專頁執行，避免同一筆錢有兩個地方可以按「已收到款項」。</div>
+
+<h3>4.3 心理師端：我的酬勞（分區呈現）</h3>
+<pre>┌ 本月摘要 ────────────────────────────────┐
+│ 已執行 38 場   預估酬勞 $68,400   上月已發 $72,100 │
+└─────────────────────────────────────────┘
+┌ A. 抽成場次（commission）──────────────────┐  ← 照原型那張表
+│ 日期 個案 類型 方案 場次金額 抽成率 保底 我的酬勞 狀態 │
+└─────────────────────────────────────────┘
+┌ B. 回饋制場次（kickback）★新增區 ────────────┐
+│ 心理師自收 $X ／ 應回饋診所 $Y ／ 淨得 $Z          │
+└─────────────────────────────────────────┘
+┌ C. 督導費（模式 A／B）★新增區 ────────────────┐
+└─────────────────────────────────────────┘</pre>
+</section>
+
+<section id="be09">
+<h2><span class="num">5</span>這次重構不是純前端 — 後端缺口清單</h2>
+<div class="tw"><table>
+<thead><tr><th style="width:210px">缺口</th><th style="width:130px">卡住哪一頁</th><th style="width:80px" class="c">優先</th><th>備註</th></tr></thead>
+<tbody>
+<tr><td><b>統一自付款查詢</b><br>不分 <code>funding_source</code></td><td>日報表、應收帳冊、報到收款頁</td><td class="c"><span class="tag t-r">高</span></td><td>★§1.4a 已裁示。現況 <code>/ledger</code> 未收查詢過濾 <code>funding_source=='self_pay'</code>，機構案的 <code>case_payable</code> 完全不會出現——現在<b>沒有任何查詢會把機構案自付額顯示成未收</b>，這是裁示直接點出的缺口</td></tr>
+<tr><td><b>機構未到補助</b><br><code>inst_plans.no_show_fee_numeric</code></td><td>報到未到、合約面板「核銷」</td><td class="c"><span class="tag t-a">中</span></td><td>★§7.1 已裁示。新增可選欄位（NULL＝不補助）＋ check-in no_show 分支：若設定，產生一筆不消耗額度、直接可核銷的機構請款紀錄</td></tr>
+<tr><td><b>Layer 3 合約模組層</b><br><code>institution/contracts/</code></td><td>全部合約面板</td><td class="c"><span class="tag t-r">高</span></td><td>★新增的一層。<code>base.py</code>＋<code>generic.py</code> 先做，5 個專屬模組再逐一補（§3.1）</td></tr>
+<tr><td><b>合約 read model 端點</b><br><code>GET /contracts/{id}/panel</code></td><td>全部合約面板</td><td class="c"><span class="tag t-r">高</span></td><td>★每份合約一個回應形狀，前端的唯一讀取來源（§3.2）</td></tr>
+<tr><td><code>inst_quota_pools</code> 扣減</td><td>合約面板<br>（國軍等池型）</td><td class="c"><span class="tag t-r">高</span><br><span style="font-size:10.5px;color:var(--muted)">原為「中」</span></td><td><b>因分層而升級</b>：合約層級整體額度現在是一等公民，且國軍是首批 5 份之一。<code>consumed_total</code> 目前沒有任何地方在更新（08 §6）</td></tr>
+<tr><td>核銷案移植文件雙閘門</td><td>合約面板「文件」分頁、心理師文件確認</td><td class="c"><span class="tag t-r">高</span></td><td>欄位已在 session_records，只需新端點</td></tr>
+<tr><td>核銷案作廢 API</td><td>合約面板「核銷」分頁</td><td class="c"><span class="tag t-r">高</span></td><td><code>voided_at/reason</code> 欄位已有</td></tr>
+<tr><td>依合約／方案反查個案清單</td><td>合約面板「個案與額度」</td><td class="c"><span class="tag t-r">高</span></td><td>現在只能依個案查方案，反向缺</td></tr>
+<tr><td>待核銷候選查詢<br>（次數制的「已達 N 次」）</td><td>合約面板「核銷」分頁</td><td class="c"><span class="tag t-r">高</span></td><td>紀律二：必須與收納時的驗證用<b>同一個函式</b>（§3.6）</td></tr>
+<tr><td>出席單／請款單 PDF 移植</td><td>合約面板「核銷」分頁</td><td class="c"><span class="tag t-a">中</span></td><td>舊的可直接改資料來源</td></tr>
+<tr><td><code>period_limit</code> 週期性子上限</td><td>合約面板<br>（容愛協會等）</td><td class="c"><span class="tag t-a">中</span></td><td>欄位有、adapter 沒讀它（08 §6）</td></tr>
+<tr><td><code>extended_count</code> 延長流程</td><td>合約面板<br>（家防中心 6+3）</td><td class="c"><span class="tag t-a">中</span></td><td>欄位有、沒有申請／核准 API；首批 5 份用得到（08 §6）</td></tr>
+<tr><td>日結物件＋鎖定（完成當日對帳）</td><td>日報表</td><td class="c"><span class="tag t-g">低</span><br><span style="font-size:10.5px;color:var(--muted)">先大概做</span></td><td>新表；等②組定稿再做（§4.1 已裁示先簡化）</td></tr>
+<tr><td>優待／減免</td><td>日報表、應收帳冊、酬勞</td><td class="c"><span class="tag t-g">低</span><br><span style="font-size:10.5px;color:var(--muted)">先大概做</span></td><td>影響酬勞計算基礎，要跟②組一起想，暫緩</td></tr>
+<tr><td>帳款作廢</td><td>日報表</td><td class="c"><span class="tag t-g">低</span><br><span style="font-size:10.5px;color:var(--muted)">先大概做</span></td><td>暫緩</td></tr>
+<tr><td>拆帳（伴侶案）</td><td>日報表</td><td class="c"><span class="tag t-g">低</span></td><td>暫緩</td></tr>
+<tr><td>商品販售併入日報表</td><td>日報表</td><td class="c"><span class="tag t-g">低</span></td><td>表已存在，非必要</td></tr>
+<tr><td>收據編號格式</td><td>日報表、收據</td><td class="c"><span class="tag t-x">卡在裁示</span></td><td>01 §C4，唯一還卡著的裁示，需與診療所談定</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="order09">
+<h2><span class="num">6</span>建議實作順序</h2>
+<ol>
+<li><b>先做「照樣本」那 11 頁的骨架</b>（App Shell ＋ 導覽 ＋ 診間日曆 ＋ 預約作業 ＋ 報到三步驟）。後端已 100% 就緒（08 §5），這段是純接線，做完就有一個能實際操作的系統，也能讓診療所提早試用回饋。</li>
+<li><b>補齊 Layer 2 原語</b>：統一自付款查詢（§1.4a，優先做，日報表/應收帳冊都靠它）、額度池扣減、週期子上限、延長流程、待核銷候選查詢、文件雙閘門移植、核銷案作廢、機構未到補助欄位。<b>這一步決定後面每份合約好不好寫</b>——原語越紮實，Layer 3 越薄。</li>
+<li><b>Layer 3 骨架 ＋ 通用版</b>：<code>ContractModule</code> 基底、<code>generic.py</code>、<code>GET /contracts/{id}/panel</code> 分派。做完這步，<b>54 份合約全部可用（通用面板）</b>，不必等專屬面板做完才能上線。</li>
+<li><b>合約面板骨架 ＋ 通用面板前端</b>：清單頁 ＋ 四分頁骨架 ＋ 共用區塊庫（三態長條、核銷清單、文件閘門、費率表）。</li>
+<li><b>逐一做 5 份專屬合約</b>，順序建議：衛生局（最典型）→ 國軍（驗證池型）→ 家防中心（驗證次數制核銷）→ 聊心茶室（驗證回饋制金流）→ 鉅微（最簡單，收尾）。<b>每做完一份就檢查一次紀律一</b>：有沒有東西該往 Layer 2 沉？</li>
+<li><b>核銷案總表 ＋ 心理師端文件確認</b>。機構這條線的收尾。</li>
+<li><b>日報表第一期（唯讀）＋ 應收帳冊三分頁</b>。用既有資料先讓財務看得到數字。</li>
+<li><b>日報表第二期</b>（對帳鎖定／優待／作廢／拆帳／商品）。要先補後端，且與②組定稿相依，建議等診療所財務定稿。</li>
+<li><b>我的酬勞分區改版</b>。相依於優待與 <code>compensation_mode</code> 都確定之後。</li>
+</ol>
+<div class="note amber"><span class="t">為什麼把「照樣本」那 11 頁排在最前面</span>不是因為它簡單，而是因為它<b>零阻塞</b>——後端全好、設計全定、不等任何裁示。機構與財務原本有 3 個決策待定，這輪你已經裁示了核銷合併方式與失約費（§1.4/§1.4a/1.5），現在只剩<b>收據編號格式</b>卡在診療所（01 §C4）。</div>
+<div class="note green"><span class="t">第 3 步是這份計畫的關鍵轉折</span>通用版一做完，<b>機構這塊就不再是「全有或全無」</b>——54 份合約立刻都能用，之後每寫一個 Layer 3 模組就升級一份，隨時可以停在任何進度而系統仍然完整可用。這是「先做 5 個」這個決定能成立的技術前提。</div>
+</section>
+
+<section id="dec09">
+<h2><span class="num">7</span>裁示狀態</h2>
+
+<div class="note rose"><span class="t">唯一還開著的決策：收據編號格式</span>目前 <code>R{YYYYMMDD}{seq:04d}</code>，原型與你的原稿是 <code>A20260801C021-1</code>（館別＋日期＋流水號＋分類＋檢核碼）。01 §C4 已標記這件要拉回去跟診療所談，包含「重印 vs 重開」的判定規則。日報表與收據頁在格式定案前先用現行格式，之後只需改編號產生器，不影響資料結構。</div>
+
+<h3>7.1 本輪已定案（記錄備查）</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:200px">項目</th><th>定案</th></tr></thead>
+<tbody>
+<tr><td>一頁的單位</td><td><b>合約</b>（一份合約 ＝ 與某機構的一段合作），方案包在裡面——因為額度可能需要整體計算。資料模型本來就支援（<code>inst_quota_pools.contract_id</code> 是合約層級）</td></tr>
+<tr><td>首批範圍</td><td><b>5 份專屬合約</b>，其餘走通用版由行政較手動地操作；等作業方式清楚後再逐一升級</td></tr>
+<tr><td>擴充方式</td><td><b>分層</b>：Layer 2 原語做紮實，每份新合約只寫一層薄的 Layer 3 組裝碼 ＋ 一個為它設計的前端面板</td></tr>
+<tr><td>前後端介面</td><td><b>讀專屬、寫共用</b>：N 個 read model，1 組 write API</td></tr>
+<tr><td>核銷機制合併</td><td><b>依錢的付款方切，不依案件種類切</b>：機構請款流程走新 <code>inst_claim_cases</code>；自付款流程（不分自費案或機構案的自付額）走舊 <code>claim_batches</code>，正名「自費結帳批次」。一筆機構預約的兩段錢各走各的（§1.4／§1.4a）</td></tr>
+<tr><td>自付款的每日可見性</td><td>機構案的 <code>case_payable</code> <b>必須併入日常收款動線</b>（報到收款、日報表、應收帳冊），不能只在機構頁面才看得到；機構請款那段（<code>institution_payable</code>）則相反，只在合約專頁主動點開才處理（§1.4a）</td></tr>
+<tr><td>失約費</td><td>自費與大部分機構<b>一律不做</b>；個別機構方案可設定補助未到，補助金額直接進機構核銷、不消耗個人額度。不做原型那套三級費率表（§1.5）</td></tr>
+<tr><td>日報表</td><td>第一期先做「大概版」：KPI＋流水帳＋應收/已收切換，且必須整合統一自付款查詢。優待／拆帳／作廢／對帳鎖定全部暫緩，等②組財務定稿（§4.1）</td></tr>
+<tr><td>導覽改名</td><td><b>不需知會診療所</b>——系統尚未上線，機構三項收斂成兩項可直接執行</td></tr>
+</tbody></table></div>
+</section>
+
+<div class="foot">CheerPsy V2 升級計畫 · 依《系統架構new》《260831新版-機構合約方案清冊》《系統架構與機構合約清冊對照確認事項-回覆》編寫 · 本檔為單檔自足文件</div>
+</main>
+</div>
+</div>
+<script>
+/* TOC auto-build from h2/h3 */
+(function(){
+  var toc=document.getElementById('toc'); if(!toc) return;
+  var out='<b>目錄</b>';
+  document.querySelectorAll('main section').forEach(function(s){
+    var h2=s.querySelector('h2'); if(!h2) return;
+    if(!s.id) s.id='s'+Math.random().toString(36).slice(2,7);
+    var t=h2.textContent.replace(/^\s*\d+\s*/,'').trim();
+    out+='<a href="#'+s.id+'">'+t+'</a>';
+    s.querySelectorAll('h3').forEach(function(h3,i){
+      if(!h3.id) h3.id=s.id+'-h'+i;
+      out+='<a class="sub" href="#'+h3.id+'">'+h3.textContent.trim()+'</a>';
+    });
+  });
+  toc.innerHTML=out;
+})();
+/* checklist toggle + persistence + progress */
+(function(){
+  var KEY='cheerpsy-v2-'+(document.body.dataset.doc||'doc');
+  var saved={}; try{saved=JSON.parse(localStorage.getItem(KEY)||'{}');}catch(e){}
+  var items=[].slice.call(document.querySelectorAll('.ck li'));
+  items.forEach(function(li,i){
+    var k=li.dataset.k||('i'+i); li.dataset.k=k;
+    if(!li.querySelector('.box')){var b=document.createElement('span');b.className='box';li.insertBefore(b,li.firstChild);}
+    if(saved[k]) li.classList.add('on');
+    li.addEventListener('click',function(){
+      li.classList.toggle('on');
+      saved[k]=li.classList.contains('on');
+      try{localStorage.setItem(KEY,JSON.stringify(saved));}catch(e){}
+      paint();
+    });
+  });
+  function paint(){
+    document.querySelectorAll('[data-prog]').forEach(function(el){
+      var scope=el.dataset.prog==='all'?document:document.getElementById(el.dataset.prog);
+      if(!scope) return;
+      var all=scope.querySelectorAll('.ck li'), done=scope.querySelectorAll('.ck li.on');
+      el.textContent=done.length+' / '+all.length;
+    });
+  }
+  paint();
+  var rst=document.getElementById('ckReset');
+  if(rst) rst.onclick=function(){ if(!confirm('清除本頁所有勾選狀態？'))return;
+    try{localStorage.removeItem(KEY);}catch(e){} items.forEach(function(li){li.classList.remove('on');}); paint(); };
+})();
+
+/* hotspot -> highlight target row (Part 2 interactive prototype) */
+(function(){
+  document.querySelectorAll('.hotspot[data-goto]').forEach(function(h){
+    h.addEventListener('click', function(){
+      var id=h.dataset.goto, el=document.getElementById(id);
+      if(!el) return;
+      document.querySelectorAll('.flash').forEach(function(x){x.classList.remove('flash');});
+      el.classList.add('flash');
+      el.scrollIntoView({behavior:'smooth', block:'center'});
+      setTimeout(function(){el.classList.remove('flash');}, 2600);
+    });
+  });
+})();
+
+/* tab panels: .tabs span[data-tab] -> #tab-{id} */
+(function(){
+  document.querySelectorAll('.tabs').forEach(function(bar){
+    bar.querySelectorAll('span[data-tab]').forEach(function(t){
+      t.onclick=function(){
+        bar.querySelectorAll('span[data-tab]').forEach(function(x){
+          x.classList.remove('on');
+          var p=document.getElementById('tab-'+x.dataset.tab); if(p)p.style.display='none';
+        });
+        t.classList.add('on');
+        var p=document.getElementById('tab-'+t.dataset.tab); if(p)p.style.display='block';
+      };
+    });
+    var first=bar.querySelector('span[data-tab]'); if(first) first.click();
+  });
+})();
+</script>
+</body>
+</html>

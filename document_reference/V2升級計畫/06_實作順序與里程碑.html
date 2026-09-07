@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>06 實作順序與里程碑 — CheerPsy V2</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+ --bg:#f6f7f9; --panel:#fff; --ink:#111827; --ink2:#374151; --mut:#6b7280; --mut2:#9ca3af;
+ --line:#e5e7eb; --line2:#d1d5db;
+ --p50:#f5f3ff; --p100:#ede9fe; --p200:#ddd6fe; --p500:#8b5cf6; --p600:#7c3aed; --p700:#6d28d9;
+ --blue:#2563eb; --blue-bg:#eff6ff; --green:#16a34a; --green-bg:#f0fdf4;
+ --amber:#d97706; --amber-bg:#fffbeb; --red:#dc2626; --red-bg:#fef2f2;
+ --sky:#0891b2; --sky-bg:#ecfeff; --rose:#e11d48; --rose-bg:#fff1f2;
+ --code:#f3f4f6;
+}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);
+ font:14px/1.75 "Noto Sans TC","PingFang TC","Microsoft JhengHei",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+ -webkit-font-smoothing:antialiased}
+.wrap{max-width:1220px;margin:0 auto;padding:0 20px 90px}
+
+/* ---- header ---- */
+.hd{background:linear-gradient(135deg,#4c1d95,#6d28d9 55%,#7c3aed);color:#fff;padding:30px 0 26px;margin-bottom:26px}
+.hd .wrap{padding-bottom:0}
+.hd .kick{font-size:12px;letter-spacing:.16em;text-transform:uppercase;opacity:.72;font-weight:700}
+.hd h1{font-size:27px;font-weight:800;margin:7px 0 8px;letter-spacing:-.01em}
+.hd p{opacity:.9;font-size:13.5px;max-width:860px}
+.hd .meta{margin-top:14px;display:flex;flex-wrap:wrap;gap:8px}
+.hd .meta span{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.22);
+ border-radius:999px;padding:3px 11px;font-size:11.5px;font-weight:600}
+
+/* ---- layout ---- */
+.cols{display:grid;grid-template-columns:220px 1fr;gap:28px;align-items:start}
+@media(max-width:1000px){.cols{grid-template-columns:1fr}.toc{position:static!important;max-height:none!important}}
+.toc{position:sticky;top:18px;background:var(--panel);border:1px solid var(--line);border-radius:12px;
+ padding:14px 12px;max-height:calc(100vh - 40px);overflow:auto;font-size:12.5px}
+.toc b{display:block;font-size:11px;letter-spacing:.1em;color:var(--mut2);margin:0 0 8px 6px;text-transform:uppercase}
+.toc a{display:block;color:var(--ink2);text-decoration:none;padding:5px 8px;border-radius:7px;line-height:1.45}
+.toc a:hover{background:var(--p50);color:var(--p700)}
+.toc a.sub{padding-left:20px;font-size:12px;color:var(--mut)}
+
+/* ---- sections ---- */
+section{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px 26px;margin-bottom:20px;
+ scroll-margin-top:16px}
+h2{font-size:19px;font-weight:800;letter-spacing:-.01em;padding-bottom:11px;margin-bottom:16px;
+ border-bottom:2px solid var(--p100);display:flex;align-items:center;gap:9px}
+h2 .num{background:var(--p600);color:#fff;font-size:12px;width:26px;height:26px;border-radius:8px;
+ display:inline-flex;align-items:center;justify-content:center;font-weight:800;flex:none}
+h3{font-size:15px;font-weight:700;margin:24px 0 10px;color:var(--p700);
+ padding-left:10px;border-left:3px solid var(--p500)}
+h4{font-size:13.5px;font-weight:700;margin:16px 0 7px;color:var(--ink2)}
+p{margin:9px 0;color:var(--ink2)}
+ul,ol{margin:9px 0 9px 22px;color:var(--ink2)}
+li{margin:4px 0}
+a{color:var(--p700)}
+
+/* ---- tables ---- */
+.tw{overflow-x:auto;margin:13px 0;border:1px solid var(--line);border-radius:10px}
+table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:560px;background:#fff}
+th{background:#fafafa;text-align:left;font-weight:700;color:var(--mut);font-size:11px;
+ letter-spacing:.05em;padding:9px 11px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 11px;border-bottom:1px solid #f1f2f4;vertical-align:top;line-height:1.65}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:#fcfcfd}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+td.c,th.c{text-align:center}
+td.w{white-space:nowrap}
+
+/* ---- code / mono ---- */
+code,.mono{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:11.8px}
+code{background:var(--code);padding:1.5px 5px;border-radius:4px;color:#9333ea;word-break:break-word}
+pre{background:#1e1b2e;color:#e8e5f5;padding:14px 16px;border-radius:10px;overflow-x:auto;
+ font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:11.8px;line-height:1.7;margin:12px 0}
+pre .c{color:#8b83a8}
+pre .k{color:#c4b5fd}
+pre .s{color:#86efac}
+
+/* ---- callouts ---- */
+.note{border-radius:9px;padding:11px 14px;margin:12px 0;font-size:12.8px;line-height:1.7;
+ border:1px solid var(--line);background:#fafafa;color:var(--ink2)}
+.note b{color:var(--ink)}
+.note.blue{background:var(--blue-bg);border-color:#bfdbfe;color:#1e40af}
+.note.green{background:var(--green-bg);border-color:#bbf7d0;color:#15803d}
+.note.amber{background:var(--amber-bg);border-color:#fde68a;color:#92400e}
+.note.red{background:var(--red-bg);border-color:#fecaca;color:#991b1b}
+.note.purple{background:var(--p50);border-color:var(--p200);color:var(--p700)}
+.note .t{font-weight:800;display:block;margin-bottom:3px}
+
+/* ---- tags ---- */
+.tag{display:inline-block;font-size:10.5px;font-weight:700;padding:1.5px 7px;border-radius:5px;
+ border:1px solid transparent;white-space:nowrap;line-height:1.6}
+.t-p{background:var(--p100);color:var(--p700);border-color:var(--p200)}
+.t-b{background:var(--blue-bg);color:var(--blue);border-color:#bfdbfe}
+.t-g{background:var(--green-bg);color:var(--green);border-color:#bbf7d0}
+.t-a{background:var(--amber-bg);color:var(--amber);border-color:#fde68a}
+.t-r{background:var(--red-bg);color:var(--red);border-color:#fecaca}
+.t-s{background:var(--sky-bg);color:var(--sky);border-color:#a5f3fc}
+.t-x{background:#f3f4f6;color:var(--mut);border-color:var(--line2)}
+
+/* ---- checklist ---- */
+.ck{list-style:none;margin:10px 0;padding:0}
+.ck li{display:flex;gap:10px;align-items:flex-start;padding:8px 11px;border:1px solid var(--line);
+ border-radius:8px;margin-bottom:6px;background:#fff;cursor:pointer;transition:.12s;font-size:12.8px}
+.ck li:hover{border-color:var(--p200);background:var(--p50)}
+.ck li .box{width:16px;height:16px;border:2px solid var(--line2);border-radius:4px;flex:none;margin-top:3px;
+ display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;transition:.12s}
+.ck li.on{background:#fafafa;border-color:var(--line)}
+.ck li.on .box{background:var(--green);border-color:var(--green)}
+.ck li.on .box:after{content:"✓"}
+.ck li.on .txt{color:var(--mut2);text-decoration:line-through}
+.ck .txt{flex:1;color:var(--ink2);line-height:1.65}
+.ck .src{font-size:10.5px;color:var(--mut2);white-space:nowrap;margin-left:auto;padding-left:8px}
+
+/* ---- misc ---- */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media(max-width:820px){.grid2,.grid3{grid-template-columns:1fr}}
+.card{border:1px solid var(--line);border-radius:11px;padding:14px 16px;background:#fff}
+.card .h{font-weight:800;font-size:13px;margin-bottom:6px;display:flex;align-items:center;gap:7px}
+.kpi{border:1px solid var(--line);border-radius:11px;padding:13px 15px;background:#fff}
+.kpi .l{font-size:11px;color:var(--mut);font-weight:700;letter-spacing:.04em}
+.kpi .v{font-size:24px;font-weight:800;margin:2px 0;letter-spacing:-.02em}
+.kpi .s{font-size:11.5px;color:var(--mut2)}
+hr{border:none;border-top:1px solid var(--line);margin:22px 0}
+.foot{text-align:center;color:var(--mut2);font-size:11.5px;padding:26px 0 0}
+.arrow{color:var(--p600);font-weight:800}
+.del{color:var(--mut2);text-decoration:line-through}
+.new{color:var(--green);font-weight:700}
+@media print{
+ body{background:#fff}.toc{display:none}.cols{grid-template-columns:1fr}
+ section{break-inside:avoid;border:none;padding:0 0 18px}
+ .hd{background:#4c1d95!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+
+/* ---- interactive prototype (04/05 Part 2) ---- */
+@keyframes flashHi{0%{box-shadow:0 0 0 3px var(--p500)}100%{box-shadow:0 0 0 3px transparent}}
+tr.flash td:first-child{position:relative}
+tr.flash{background:var(--p50)!important;animation:flashHi 2.4s ease-out}
+.proto{background:#fbfbfc;border:1px solid var(--line);border-radius:12px;padding:16px;margin:14px 0}
+.proto .pt{font-size:11px;font-weight:800;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin-bottom:10px}
+.pgrid{display:grid;border:1px solid var(--line2);border-radius:8px;overflow:hidden;font-size:10.5px;background:#fff}
+.pgrid .prow{display:grid;grid-template-columns:52px repeat(var(--cols,5),1fr);border-top:1px solid #eee}
+.pgrid .prow:first-child{border-top:none}
+.pgrid .ph{background:#fafafa;font-weight:700;color:var(--mut);padding:6px 4px;text-align:center;border-right:1px solid #eee}
+.pgrid .pt0{padding:5px 4px;color:var(--mut2);text-align:center;border-right:1px solid #eee;font-variant-numeric:tabular-nums}
+.pgrid .pc{border-right:1px solid #f2f2f2;min-height:34px;padding:2px}
+.pgrid .pc:last-child{border-right:none}
+.hotspot{display:block;height:100%;border-radius:5px;padding:3px 5px;cursor:pointer;transition:.12s;font-size:9.5px;line-height:1.3;border:1px solid transparent}
+.hotspot:hover{outline:2px solid var(--p500);outline-offset:-1px;filter:brightness(.97)}
+.hotspot b{display:block;font-size:10px}
+.hs-self{background:var(--blue-bg);border-color:#bfdbfe;color:#1e3a8a}
+.hs-inst{background:var(--amber-bg);border-color:#fde68a;color:#78350f}
+.hs-no{background:var(--red-bg);border-color:#fecaca;color:#7f1d1d}
+.hs-first{background:#fef9c3;border-color:#fde047;color:#713f12}
+.hs-couple{background:var(--p50);border-color:var(--p200);color:var(--p700)}
+.hs-done{background:#f3f4f6;border-color:#e5e7eb;color:var(--mut2)}
+.hs-empty{border:1px dashed #e5e7eb;color:var(--mut2);display:flex;align-items:center;justify-content:center;font-size:14px}
+.hs-empty:hover{background:var(--p50);border-color:var(--p300,var(--p500))}
+.phint{font-size:11px;color:var(--mut);margin-top:9px;padding-top:9px;border-top:1px dashed var(--line)}
+.mockform{display:grid;gap:8px;font-size:11.5px}
+.mockform label{display:block}
+.mockform .lb{font-size:10.5px;color:var(--mut);font-weight:700;margin-bottom:2px;display:block}
+.mockform .fake{border:1px solid var(--line2);border-radius:6px;padding:6px 9px;background:#fff;cursor:pointer;color:var(--ink2)}
+.mockform .fake:hover{border-color:var(--p500);background:var(--p50)}
+.pbadge{display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;margin-bottom:2px}
+
+
+</style>
+</head>
+<body data-doc="06_實作順序與里程碑">
+<header class="hd"><div class="wrap">
+  <div class="kick">CheerPsy V2 · 慈恩心理治療所</div>
+  <h1>實作順序與里程碑</h1>
+  <p>P0–P6 分期、相依關係、每期完成定義，以及第②組銜接待辦清單（回應 C9 裁示：寫入端做完整、讀取端不動）。</p>
+  <div class="meta"><span>7 個分期</span><span>每期附完成定義</span><span>②組銜接待辦 8 項</span></div>
+</div></header>
+<div class="wrap">
+<div class="cols">
+<nav class="toc" id="toc"></nav>
+<main>
+<section id="how06">
+<h2><span class="num">0</span>如何使用本文件</h2>
+<p>本文件把 01 §E 的分期表展開為含相依關係、完成定義、驗證方式的完整版，並附上「②組銜接待辦清單」——這是回應 C9 裁示「寫入端做完整、讀取端不動，留文件紀錄作為後續修改依據」的具體交付。</p>
+</section>
+
+<section id="phases">
+<h2><span class="num">1</span>P0–P6 分期總表</h2>
+
+<h3>P0 · 地基（阻塞後續一切）</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:230px">工作項</th><th>內容</th><th style="width:160px">對應</th></tr></thead>
+<tbody>
+<tr><td>修 C6 audit_log 欄寬</td><td><code>operation</code> VARCHAR(10)→VARCHAR(32)，+ actor_name</td><td>02 §1.1, §2</td></tr>
+<tr><td>修 C7 Notification 註冊</td><td>補 <code>app/models/__init__.py</code> import，確認下次 autogenerate 乾淨</td><td>02 §1.1</td></tr>
+<tr><td>修 C8 NULL 額度 bug</td><td><code>_resolve_quota</code> 的 Python 日期比較改用 <code>or_(is_(None), ...)</code>，與 <code>case_quotas.py</code> 讀取路徑一致</td><td>01 §C</td></tr>
+<tr><td>全面 Asia/Taipei</td><td>新增 <code>app/utils/tz.py</code>，改寫 settlement/dashboard/notifications/reports/churn 的日界計算</td><td>02 §9</td></tr>
+<tr><td>診間主檔重建</td><td><code>rooms</code> + use_type/size；清空 13 間測試診間，seed 定稿 12 間</td><td>02 §1.1, §2</td></tr>
+<tr><td>房間衝突 GIST 約束</td><td>先清理殘留重疊資料，再建 <code>EXCLUDE USING GIST</code></td><td>02 §2</td></tr>
+<tr><td>編號產生器防併發</td><td><code>services/numbering.py</code>：所有 <code>*_number</code> 改用序列或 INSERT 重試</td><td>01 §C+ R10</td></tr>
+<tr><td>共用帳號欄位</td><td><code>users</code> + is_shared_account, supervisor_id；魏啓倫該筆設 true</td><td>02 §1.1, §8</td></tr>
+</tbody></table></div>
+<div class="note green"><span class="t">完成定義</span>① 上述 8 支 migration 全部跑過 staging 且 <code>alembic upgrade head</code> 無誤；② 診間清單查詢回傳恰好 12 間、代碼與屬性符合定稿；③ 併發建立同一房間同時段的兩個請求，其中一個必然收到 409（用簡單腳本打兩個同時的 POST 驗證）；④ 手動測試共用帳號登入填姓名的完整迴圈。</div>
+
+<h3>P1 · 出席驅動（全案樞紐，單獨成期）</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:230px">工作項</th><th>內容</th><th style="width:160px">對應</th></tr></thead>
+<tbody>
+<tr><td>appointments 出席欄位</td><td>check_in_status, checked_in_at/_by, no_show_reason/_note/_followup</td><td>02 §1.1</td></tr>
+<tr><td>額度三態</td><td><code>case_institution_quotas</code> + reserved_count；既有資料回填</td><td>02 §1.1, §4.2</td></tr>
+<tr><td>報到三步驟 API</td><td>check-in / payment-step / receipt 三端點，狀態機見 02 §4.1/4.3</td><td>02 §5.1</td></tr>
+<tr><td>fee_items + receipts 表</td><td>新建兩表，seed 8 個收費項目</td><td>02 §1.2</td></tr>
+<tr><td>停用時間驅動 materialize</td><td><code>materialize_due_appointments</code> 改為行政手動觸發的補登工具，不再背景執行</td><td>01 §A1</td></tr>
+</tbody></table></div>
+<div class="note green"><span class="t">完成定義</span>用 04 操作樣本 §2.2–2.5（報到收款收據、機構額度轉換、加時、未到）四段腳本手動走一遍，DB 實際變化與 04 表格描述一致。額度恆等式 <code>used+reserved+booked=total</code> 用稽核 SQL 驗證不破。</div>
+
+<h3>P2 · 主檔（方案、提醒、收費項目、心理師擴充）</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:230px">工作項</th><th>內容</th><th style="width:160px">對應</th></tr></thead>
+<tbody>
+<tr><td>plans / plan_admin_tasks</td><td>新建兩表；seed 依定稿原型示範資料（衛生局15-45青壯等）</td><td>02 §1.2</td></tr>
+<tr><td>appointment_admin_tasks</td><td>新建；建立預約時依 plan_id 複製範本</td><td>02 §1.2</td></tr>
+<tr><td>appointments.plan_id</td><td>取代目前用 institution_id 拼湊方案的作法</td><td>02 §1.1</td></tr>
+<tr><td>users 督導欄位</td><td>supervision_fee_mode/_split_rate/_amount（等甲3回覆後填值）</td><td>02 §1.1</td></tr>
+<tr><td>方案／收費項目維護 UI</td><td>管理介面：新增/停用/排序</td><td>03 §5</td></tr>
+</tbody></table></div>
+<div class="note amber"><span class="t">完成定義</span>方案主檔結構完整可用，即使診療所尚未提供真實方案資料，也能用 seed 資料跑通「選機構方案 → 帶出額度/自付額/請款額/行政流程提醒」全流程。</div>
+
+<h3>P3 · 行政端第①組（診間日曆／預約作業／預約總表）</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:230px">工作項</th><th>內容</th><th style="width:160px">對應</th></tr></thead>
+<tbody>
+<tr><td>雙角色 App Shell 骨架</td><td>建立最小設計系統（Modal/Table/Form/Tag/時段矩陣 6 個 primitive）+ 行政端 13 項分群導覽</td><td>01 §R9</td></tr>
+<tr><td>診間日曆 3 分頁</td><td>所內診間/外部空間/雲燈教室；<code>/room-calendar</code> 聚合端點</td><td>02 §5.1, §6.1-6.2</td></tr>
+<tr><td>預約作業 4 分頁</td><td>新增(時間優先)/批次/週檢視/場地租借</td><td>02 §5.2, §6.3-6.4</td></tr>
+<tr><td>預約總表</td><td>11 欄純查詢頁</td><td>02 §5.3, §6.5</td></tr>
+</tbody></table></div>
+<div class="note green"><span class="t">完成定義</span><a href="04_操作樣本_行政櫃檯.html">04 操作樣本</a> 35 個步驟全數可在真實畫面上操作並打勾；<a href="03_操作體驗細節清單.html">03 清單</a>「診間日曆/報到/提醒/預約作業/場地租借/預約總表」共約 100 項可勾選。</div>
+
+<h3>P4 · 心理師端第①組（我的今日／我的班表／預約作業）</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:230px">工作項</th><th>內容</th><th style="width:160px">對應</th></tr></thead>
+<tbody>
+<tr><td>心理師端 App Shell</td><td>8 項分群導覽，複用 P3 的 primitive</td><td>01 §A7</td></tr>
+<tr><td>appointments 視訊/外展/請假欄位</td><td>video_*, outreach_*, leave_*, is_intake</td><td>02 §1.1</td></tr>
+<tr><td>我的今日／我的班表</td><td><code>/me/today</code>、<code>/me/schedule</code> 聚合端點</td><td>02 §5.4, §6.6-6.7</td></tr>
+<tr><td>時間優先表單（心理師版）+ 匿名衝突提示</td><td>共用 <code>/appointments/available-rooms</code>，但個案來源限定自己</td><td>02 §5.5, §6.8</td></tr>
+<tr><td>診間空間查詢隱私規則</td><td><code>/rooms/{id}/week-view</code> 後端強制匿名</td><td>02 §6.8</td></tr>
+</tbody></table></div>
+<div class="note green"><span class="t">完成定義</span><a href="05_操作樣本_心理師.html">05 操作樣本</a> 31 個步驟全數可操作；隱私規則驗證方式：<b>直接呼叫 API</b>（非只測 UI）確認非本人時段絕不回傳 case_name。</div>
+
+<h3>P5 · 媒合模組</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:230px">工作項</th><th>內容</th><th style="width:160px">對應</th></tr></thead>
+<tbody>
+<tr><td>referrals / referral_invites / intake_forms</td><td>三張新表 + appointments.referral_id FK</td><td>02 §1.2, §2</td></tr>
+<tr><td>媒合列表 / 媒合結案表 UI</td><td>行政端「個案流程 › 媒合管理」頁</td><td>—</td></tr>
+<tr><td>派案邀請 UI</td><td>心理師端「派案 › 派案邀請」頁</td><td>—</td></tr>
+<tr><td>初診單 + 後續處理三選一</td><td>對接診間日曆的「⭐ 初診報到」入口</td><td>02 §5+, 04 §2.6-2.7</td></tr>
+</tbody></table></div>
+<div class="note blue"><span class="t">與 P3 的關係</span>P3 可以先用「行政手動建立 <code>is_intake=true</code> 的預約」跑通初診報到最小路徑（不經過媒合列表），P5 完成後再把媒合列表接上這個入口 —— <b>不阻塞 P3 驗收</b>。</div>
+
+<h3>P6 · 第②組銜接（最小可用）</h3>
+<p>依 C9 裁示收斂範圍：<b>只做寫入端</b>，讀取端（日報表/月報表/應收帳冊的呈現）留給第②組定稿後再做。</p>
+<div class="tw"><table>
+<thead><tr><th style="width:230px">工作項</th><th>內容</th><th style="width:160px">對應</th></tr></thead>
+<tbody>
+<tr><td>venue_rental_details</td><td>場地租借詳情表 + 相關 API</td><td>02 §1.2, §5.2</td></tr>
+<tr><td>hall_bookings</td><td>雲燈教室表 + GIST + 相關 API</td><td>02 §1.2, §5.2</td></tr>
+<tr><td>seed 三家廠商</td><td><code>institutions</code> 補 蛹之生/鉅微/EAPC</td><td>—</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="bridge">
+<h2><span class="num">2</span>②組銜接待辦清單</h2>
+<p>以下每一項目前只做到「資料正確寫入」，<b>尚未接上任何報表或帳冊的讀取邏輯</b>。第②組定稿後，逐項核對此表決定怎麼接。</p>
+<div class="tw"><table>
+<thead><tr><th style="width:230px">已寫入的資料</th><th>目前狀態</th><th>等②組定稿後要接上</th></tr></thead>
+<tbody>
+<tr><td><code>venue_rental_details</code> · category=institution</td><td>寫入正確，可在畫面上查看單筆</td><td>機構核銷案要能撈取這批資料建立核銷案（目前只有 session_records 會被撈取）</td></tr>
+<tr><td><code>venue_rental_details</code> · category=private</td><td>寫入正確</td><td>心理師當月收入要扣掉這筆（月報表「我的酬勞」的扣項）</td></tr>
+<tr><td><code>venue_rental_details</code> · billed_to=borrower（未到）</td><td>寫入正確</td><td>應收帳冊要能追蹤這筆「個人自付的場地費」</td></tr>
+<tr><td><code>hall_bookings.fee_to_clinic_account=true</code></td><td>寫入正確</td><td>該講師（若為所內心理師）的月報表當月收入要加上這筆</td></tr>
+<tr><td>加時後的 <code>session_records.amount</code></td><td>正確重算並寫入</td><td>日報表要能顯示「原金額 → 修正後金額」的異動軌跡，而非只顯示最終值</td></tr>
+<tr><td>督導模式 A（櫃台代收）</td><td>收據正常開立，金流進當日日報表</td><td>心理師應得的督導拆帳要在月報表自動算出（目前只存了 supervision_split_rate/amount，沒有計算邏輯）</td></tr>
+<tr><td>督導模式 B（心理師自收）</td><td>不開收據，資料只存在 venue_rental_details</td><td>要在月報表「我的酬勞」列為扣項（等同借場地）</td></tr>
+<tr><td>收據 <code>receipts</code> 新表</td><td>P1 起獨立於 session_records 儲存</td><td>與現行 <code>receipts.py</code> router（渲染 PDF 但不落地）整合，避免兩套收據邏輯並存</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="risk06">
+<h2><span class="num">3</span>跨期風險提醒</h2>
+<ul>
+<li><b>不要把 P0 拆開執行。</b>房間重建與 GIST 約束必須同一部署視窗完成，否則會有短暫的「12間新診間+舊約束」或「13間舊診間+新約束」的不一致狀態。</li>
+<li><b>P1 上線當天建議關閉櫃檯半天做資料校對。</b>因為報到成立時機改變，前一天晚上還在跑的「時間到自動結算」與隔天的「按已到才結算」交界處容易有認知落差，需要當面向行政說明新流程。</li>
+<li><b>P3/P4 不要同時開放兩端給使用者測試。</b>建議先讓行政端在內部驗收過 04 全部步驟，心理師端再上，避免兩邊同時發現問題時難以定位是哪一層的 bug。</li>
+<li><b>P5 若delay，P3 的初診入口要有明確的「手動模式」開關</b>，讓行政知道現在是走最小可用路徑還是完整媒合流程。</li>
+</ul>
+</section>
+
+<div class="foot">CheerPsy V2 升級計畫 · 依《判定定稿 v4 · 第①組 每日作業 · 2026/08/20》編寫 · 本檔為單檔自足文件</div>
+</main>
+</div>
+</div>
+<script>
+
+/* TOC auto-build from h2/h3 */
+(function(){
+  var toc=document.getElementById('toc'); if(!toc) return;
+  var out='<b>目錄</b>';
+  document.querySelectorAll('main section').forEach(function(s){
+    var h2=s.querySelector('h2'); if(!h2) return;
+    if(!s.id) s.id='s'+Math.random().toString(36).slice(2,7);
+    var t=h2.textContent.replace(/^\s*\d+\s*/,'').trim();
+    out+='<a href="#'+s.id+'">'+t+'</a>';
+    s.querySelectorAll('h3').forEach(function(h3,i){
+      if(!h3.id) h3.id=s.id+'-h'+i;
+      out+='<a class="sub" href="#'+h3.id+'">'+h3.textContent.trim()+'</a>';
+    });
+  });
+  toc.innerHTML=out;
+})();
+/* checklist toggle + persistence + progress */
+(function(){
+  var KEY='cheerpsy-v2-'+(document.body.dataset.doc||'doc');
+  var saved={}; try{saved=JSON.parse(localStorage.getItem(KEY)||'{}');}catch(e){}
+  var items=[].slice.call(document.querySelectorAll('.ck li'));
+  items.forEach(function(li,i){
+    var k=li.dataset.k||('i'+i); li.dataset.k=k;
+    if(!li.querySelector('.box')){var b=document.createElement('span');b.className='box';li.insertBefore(b,li.firstChild);}
+    if(saved[k]) li.classList.add('on');
+    li.addEventListener('click',function(){
+      li.classList.toggle('on');
+      saved[k]=li.classList.contains('on');
+      try{localStorage.setItem(KEY,JSON.stringify(saved));}catch(e){}
+      paint();
+    });
+  });
+  function paint(){
+    document.querySelectorAll('[data-prog]').forEach(function(el){
+      var scope=el.dataset.prog==='all'?document:document.getElementById(el.dataset.prog);
+      if(!scope) return;
+      var all=scope.querySelectorAll('.ck li'), done=scope.querySelectorAll('.ck li.on');
+      el.textContent=done.length+' / '+all.length;
+    });
+  }
+  paint();
+  var rst=document.getElementById('ckReset');
+  if(rst) rst.onclick=function(){ if(!confirm('清除本頁所有勾選狀態？'))return;
+    try{localStorage.removeItem(KEY);}catch(e){} items.forEach(function(li){li.classList.remove('on');}); paint(); };
+})();
+
+/* hotspot -> highlight target row (Part 2 interactive prototype) */
+(function(){
+  document.querySelectorAll('.hotspot[data-goto]').forEach(function(h){
+    h.addEventListener('click', function(){
+      var id=h.dataset.goto, el=document.getElementById(id);
+      if(!el) return;
+      document.querySelectorAll('.flash').forEach(function(x){x.classList.remove('flash');});
+      el.classList.add('flash');
+      el.scrollIntoView({behavior:'smooth', block:'center'});
+      setTimeout(function(){el.classList.remove('flash');}, 2600);
+    });
+  });
+})();
+
+/* tab panels: .tabs span[data-tab] -> #tab-{id} */
+(function(){
+  document.querySelectorAll('.tabs').forEach(function(bar){
+    bar.querySelectorAll('span[data-tab]').forEach(function(t){
+      t.onclick=function(){
+        bar.querySelectorAll('span[data-tab]').forEach(function(x){
+          x.classList.remove('on');
+          var p=document.getElementById('tab-'+x.dataset.tab); if(p)p.style.display='none';
+        });
+        t.classList.add('on');
+        var p=document.getElementById('tab-'+t.dataset.tab); if(p)p.style.display='block';
+      };
+    });
+    var first=bar.querySelector('span[data-tab]'); if(first) first.click();
+  });
+})();
+
+
+</script>
+</body>
+</html>

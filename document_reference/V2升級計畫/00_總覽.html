@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>00 總覽 — CheerPsy V2 升級計畫</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+ --bg:#f6f7f9; --panel:#fff; --ink:#111827; --ink2:#374151; --mut:#6b7280; --mut2:#9ca3af;
+ --line:#e5e7eb; --line2:#d1d5db;
+ --p50:#f5f3ff; --p100:#ede9fe; --p200:#ddd6fe; --p500:#8b5cf6; --p600:#7c3aed; --p700:#6d28d9;
+ --blue:#2563eb; --blue-bg:#eff6ff; --green:#16a34a; --green-bg:#f0fdf4;
+ --amber:#d97706; --amber-bg:#fffbeb; --red:#dc2626; --red-bg:#fef2f2;
+ --sky:#0891b2; --sky-bg:#ecfeff; --rose:#e11d48; --rose-bg:#fff1f2;
+ --code:#f3f4f6;
+}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);
+ font:14px/1.75 "Noto Sans TC","PingFang TC","Microsoft JhengHei",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+ -webkit-font-smoothing:antialiased}
+.wrap{max-width:1220px;margin:0 auto;padding:0 20px 90px}
+
+/* ---- header ---- */
+.hd{background:linear-gradient(135deg,#4c1d95,#6d28d9 55%,#7c3aed);color:#fff;padding:30px 0 26px;margin-bottom:26px}
+.hd .wrap{padding-bottom:0}
+.hd .kick{font-size:12px;letter-spacing:.16em;text-transform:uppercase;opacity:.72;font-weight:700}
+.hd h1{font-size:27px;font-weight:800;margin:7px 0 8px;letter-spacing:-.01em}
+.hd p{opacity:.9;font-size:13.5px;max-width:860px}
+.hd .meta{margin-top:14px;display:flex;flex-wrap:wrap;gap:8px}
+.hd .meta span{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.22);
+ border-radius:999px;padding:3px 11px;font-size:11.5px;font-weight:600}
+
+/* ---- layout ---- */
+.cols{display:grid;grid-template-columns:220px 1fr;gap:28px;align-items:start}
+@media(max-width:1000px){.cols{grid-template-columns:1fr}.toc{position:static!important;max-height:none!important}}
+.toc{position:sticky;top:18px;background:var(--panel);border:1px solid var(--line);border-radius:12px;
+ padding:14px 12px;max-height:calc(100vh - 40px);overflow:auto;font-size:12.5px}
+.toc b{display:block;font-size:11px;letter-spacing:.1em;color:var(--mut2);margin:0 0 8px 6px;text-transform:uppercase}
+.toc a{display:block;color:var(--ink2);text-decoration:none;padding:5px 8px;border-radius:7px;line-height:1.45}
+.toc a:hover{background:var(--p50);color:var(--p700)}
+.toc a.sub{padding-left:20px;font-size:12px;color:var(--mut)}
+
+/* ---- sections ---- */
+section{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px 26px;margin-bottom:20px;
+ scroll-margin-top:16px}
+h2{font-size:19px;font-weight:800;letter-spacing:-.01em;padding-bottom:11px;margin-bottom:16px;
+ border-bottom:2px solid var(--p100);display:flex;align-items:center;gap:9px}
+h2 .num{background:var(--p600);color:#fff;font-size:12px;width:26px;height:26px;border-radius:8px;
+ display:inline-flex;align-items:center;justify-content:center;font-weight:800;flex:none}
+h3{font-size:15px;font-weight:700;margin:24px 0 10px;color:var(--p700);
+ padding-left:10px;border-left:3px solid var(--p500)}
+h4{font-size:13.5px;font-weight:700;margin:16px 0 7px;color:var(--ink2)}
+p{margin:9px 0;color:var(--ink2)}
+ul,ol{margin:9px 0 9px 22px;color:var(--ink2)}
+li{margin:4px 0}
+a{color:var(--p700)}
+
+/* ---- tables ---- */
+.tw{overflow-x:auto;margin:13px 0;border:1px solid var(--line);border-radius:10px}
+table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:560px;background:#fff}
+th{background:#fafafa;text-align:left;font-weight:700;color:var(--mut);font-size:11px;
+ letter-spacing:.05em;padding:9px 11px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 11px;border-bottom:1px solid #f1f2f4;vertical-align:top;line-height:1.65}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:#fcfcfd}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+td.c,th.c{text-align:center}
+td.w{white-space:nowrap}
+
+/* ---- code / mono ---- */
+code,.mono{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:11.8px}
+code{background:var(--code);padding:1.5px 5px;border-radius:4px;color:#9333ea;word-break:break-word}
+pre{background:#1e1b2e;color:#e8e5f5;padding:14px 16px;border-radius:10px;overflow-x:auto;
+ font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:11.8px;line-height:1.7;margin:12px 0}
+pre .c{color:#8b83a8}
+pre .k{color:#c4b5fd}
+pre .s{color:#86efac}
+
+/* ---- callouts ---- */
+.note{border-radius:9px;padding:11px 14px;margin:12px 0;font-size:12.8px;line-height:1.7;
+ border:1px solid var(--line);background:#fafafa;color:var(--ink2)}
+.note b{color:var(--ink)}
+.note.blue{background:var(--blue-bg);border-color:#bfdbfe;color:#1e40af}
+.note.green{background:var(--green-bg);border-color:#bbf7d0;color:#15803d}
+.note.amber{background:var(--amber-bg);border-color:#fde68a;color:#92400e}
+.note.red{background:var(--red-bg);border-color:#fecaca;color:#991b1b}
+.note.purple{background:var(--p50);border-color:var(--p200);color:var(--p700)}
+.note .t{font-weight:800;display:block;margin-bottom:3px}
+
+/* ---- tags ---- */
+.tag{display:inline-block;font-size:10.5px;font-weight:700;padding:1.5px 7px;border-radius:5px;
+ border:1px solid transparent;white-space:nowrap;line-height:1.6}
+.t-p{background:var(--p100);color:var(--p700);border-color:var(--p200)}
+.t-b{background:var(--blue-bg);color:var(--blue);border-color:#bfdbfe}
+.t-g{background:var(--green-bg);color:var(--green);border-color:#bbf7d0}
+.t-a{background:var(--amber-bg);color:var(--amber);border-color:#fde68a}
+.t-r{background:var(--red-bg);color:var(--red);border-color:#fecaca}
+.t-s{background:var(--sky-bg);color:var(--sky);border-color:#a5f3fc}
+.t-x{background:#f3f4f6;color:var(--mut);border-color:var(--line2)}
+
+/* ---- checklist ---- */
+.ck{list-style:none;margin:10px 0;padding:0}
+.ck li{display:flex;gap:10px;align-items:flex-start;padding:8px 11px;border:1px solid var(--line);
+ border-radius:8px;margin-bottom:6px;background:#fff;cursor:pointer;transition:.12s;font-size:12.8px}
+.ck li:hover{border-color:var(--p200);background:var(--p50)}
+.ck li .box{width:16px;height:16px;border:2px solid var(--line2);border-radius:4px;flex:none;margin-top:3px;
+ display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;transition:.12s}
+.ck li.on{background:#fafafa;border-color:var(--line)}
+.ck li.on .box{background:var(--green);border-color:var(--green)}
+.ck li.on .box:after{content:"✓"}
+.ck li.on .txt{color:var(--mut2);text-decoration:line-through}
+.ck .txt{flex:1;color:var(--ink2);line-height:1.65}
+.ck .src{font-size:10.5px;color:var(--mut2);white-space:nowrap;margin-left:auto;padding-left:8px}
+
+/* ---- misc ---- */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media(max-width:820px){.grid2,.grid3{grid-template-columns:1fr}}
+.card{border:1px solid var(--line);border-radius:11px;padding:14px 16px;background:#fff}
+.card .h{font-weight:800;font-size:13px;margin-bottom:6px;display:flex;align-items:center;gap:7px}
+.kpi{border:1px solid var(--line);border-radius:11px;padding:13px 15px;background:#fff}
+.kpi .l{font-size:11px;color:var(--mut);font-weight:700;letter-spacing:.04em}
+.kpi .v{font-size:24px;font-weight:800;margin:2px 0;letter-spacing:-.02em}
+.kpi .s{font-size:11.5px;color:var(--mut2)}
+hr{border:none;border-top:1px solid var(--line);margin:22px 0}
+.foot{text-align:center;color:var(--mut2);font-size:11.5px;padding:26px 0 0}
+.arrow{color:var(--p600);font-weight:800}
+.del{color:var(--mut2);text-decoration:line-through}
+.new{color:var(--green);font-weight:700}
+@media print{
+ body{background:#fff}.toc{display:none}.cols{grid-template-columns:1fr}
+ section{break-inside:avoid;border:none;padding:0 0 18px}
+ .hd{background:#4c1d95!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+
+/* ---- interactive prototype (04/05 Part 2) ---- */
+@keyframes flashHi{0%{box-shadow:0 0 0 3px var(--p500)}100%{box-shadow:0 0 0 3px transparent}}
+tr.flash td:first-child{position:relative}
+tr.flash{background:var(--p50)!important;animation:flashHi 2.4s ease-out}
+.proto{background:#fbfbfc;border:1px solid var(--line);border-radius:12px;padding:16px;margin:14px 0}
+.proto .pt{font-size:11px;font-weight:800;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin-bottom:10px}
+.pgrid{display:grid;border:1px solid var(--line2);border-radius:8px;overflow:hidden;font-size:10.5px;background:#fff}
+.pgrid .prow{display:grid;grid-template-columns:52px repeat(var(--cols,5),1fr);border-top:1px solid #eee}
+.pgrid .prow:first-child{border-top:none}
+.pgrid .ph{background:#fafafa;font-weight:700;color:var(--mut);padding:6px 4px;text-align:center;border-right:1px solid #eee}
+.pgrid .pt0{padding:5px 4px;color:var(--mut2);text-align:center;border-right:1px solid #eee;font-variant-numeric:tabular-nums}
+.pgrid .pc{border-right:1px solid #f2f2f2;min-height:34px;padding:2px}
+.pgrid .pc:last-child{border-right:none}
+.hotspot{display:block;height:100%;border-radius:5px;padding:3px 5px;cursor:pointer;transition:.12s;font-size:9.5px;line-height:1.3;border:1px solid transparent}
+.hotspot:hover{outline:2px solid var(--p500);outline-offset:-1px;filter:brightness(.97)}
+.hotspot b{display:block;font-size:10px}
+.hs-self{background:var(--blue-bg);border-color:#bfdbfe;color:#1e3a8a}
+.hs-inst{background:var(--amber-bg);border-color:#fde68a;color:#78350f}
+.hs-no{background:var(--red-bg);border-color:#fecaca;color:#7f1d1d}
+.hs-first{background:#fef9c3;border-color:#fde047;color:#713f12}
+.hs-couple{background:var(--p50);border-color:var(--p200);color:var(--p700)}
+.hs-done{background:#f3f4f6;border-color:#e5e7eb;color:var(--mut2)}
+.hs-empty{border:1px dashed #e5e7eb;color:var(--mut2);display:flex;align-items:center;justify-content:center;font-size:14px}
+.hs-empty:hover{background:var(--p50);border-color:var(--p300,var(--p500))}
+.phint{font-size:11px;color:var(--mut);margin-top:9px;padding-top:9px;border-top:1px dashed var(--line)}
+.mockform{display:grid;gap:8px;font-size:11.5px}
+.mockform label{display:block}
+.mockform .lb{font-size:10.5px;color:var(--mut);font-weight:700;margin-bottom:2px;display:block}
+.mockform .fake{border:1px solid var(--line2);border-radius:6px;padding:6px 9px;background:#fff;cursor:pointer;color:var(--ink2)}
+.mockform .fake:hover{border-color:var(--p500);background:var(--p50)}
+.pbadge{display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;margin-bottom:2px}
+
+
+</style>
+</head>
+<body data-doc="00_總覽">
+<header class="hd"><div class="wrap">
+  <div class="kick">CheerPsy V2 · 慈恩心理治療所</div>
+  <h1>CheerPsy V2 升級計畫 · 總覽</h1>
+  <p>依《判定定稿 v4 · 第①組 每日作業 · 2026/08/20》產出的完整升級計畫。本頁為導覽入口，並附上計劃書自身的驗證結果。</p>
+  <div class="meta"><span>6 份文件</span><span>第①組 · 6頁54項</span><span>已完成自我驗證</span></div>
+</div></header>
+<div class="wrap">
+<div class="">
+
+<main>
+<section id="intro00">
+<h2><span class="num">0</span>這是什麼</h2>
+<p>2026/08/20 慈恩心理治療所回覆了《判定定稿 v4 · 第①組 每日作業》—— 6 個頁面共 54 項裁決，明白寫著「作為後續生成可操作原型與工程師對照版的<b>唯一依據</b>」。這個資料夾是依據那份定稿，逐條對照現行 <code>apps/api</code> 與 <code>apps/web</code> 程式碼之後，產出的完整升級計畫。</p>
+<p>本次任務<b>不是實作</b>，是計畫。目的是讓你（工程師）與診療所在動工前先看清楚：這件事可不可行、風險在哪、還缺什麼資訊、以及完成之後要用什麼標準驗收。</p>
+</section>
+
+<section id="nav00">
+<h2><span class="num">1</span>六份文件與閱讀順序</h2>
+<div class="tw"><table>
+<thead><tr><th style="width:60px">#</th><th style="width:200px">文件</th><th>內容</th><th style="width:110px">給誰看</th></tr></thead>
+<tbody>
+<tr><td>01</td><td><a href="01_可行性研究與風險.html"><b>可行性研究與風險</b></a></td><td>先讀。8 項架構級衝突、13 個全新模組、9 個研究中發現的漏洞（已裁示）、識別碼規則矛盾、風險登記表、<b>可直接轉寄診療所的問題清單（13 題）</b>、19 項暫待清單對照</td><td>你 · 診療所</td></tr>
+<tr><td>02</td><td><a href="02_架構變更規格.html"><b>架構變更規格</b></a></td><td>6 張表修改、10 張表新建、19 支 migration 順序、識別碼產生器策略、5 個狀態機、7 組 API 契約、<b>6 個畫面的資料對照</b>、權限矩陣、共用帳號設計、時區處理</td><td>工程師 / AI agent</td></tr>
+<tr><td>03</td><td><a href="03_操作體驗細節清單.html"><b>操作體驗細節清單</b></a></td><td>168 項可勾選的視覺與互動細節，刻意與 02 分開，防止做完架構就忘了細節</td><td>工程師 / AI agent</td></tr>
+<tr><td>04</td><td><a href="04_操作樣本_行政櫃檯.html"><b>操作樣本·行政櫃檯</b></a></td><td>35 步逐步操作腳本（API + DB 對照）＋可點互動原型。<b>完成品驗收依據</b></td><td>驗收 · 診療所</td></tr>
+<tr><td>05</td><td><a href="05_操作樣本_心理師.html"><b>操作樣本·心理師</b></a></td><td>31 步逐步操作腳本 + 可點互動原型。<b>完成品驗收依據</b></td><td>驗收 · 診療所</td></tr>
+<tr><td>06</td><td><a href="06_實作順序與里程碑.html"><b>實作順序與里程碑</b></a></td><td>P0–P6 七個分期、相依關係、完成定義、②組銜接待辦清單 8 項</td><td>你 · 專案管理</td></tr>
+</tbody></table></div>
+<div class="note purple"><span class="t">建議閱讀順序</span>你自己先看 <b>01 全文</b>（尤其是問題清單，決定哪些要先跟診療所確認）；工程師動工前讀 <b>02 → 03</b>；<b>04/05</b> 在每個階段完成後打開來對，作為「這樣算不算做完」的唯一標準；<b>06</b> 隨時查閱進度與相依關係。</div>
+</section>
+
+<section id="verify00">
+<h2><span class="num">2</span>本計畫的自我驗證結果</h2>
+<p>計劃書本身也需要被驗收。以下是實際執行的四項驗證，<b>誠實列出發現的問題與修正情況</b>，不是形式上打勾。</p>
+
+<h3>2.1 交叉檢核：04/05 的 API 呼叫 vs 02 的定義</h3>
+<p>用程式掃描 <code>04_操作樣本_行政櫃檯.html</code> 與 <code>05_操作樣本_心理師.html</code> 中所有 <code>METHOD /path</code> 格式的端點引用，比對 <code>02_架構變更規格.html</code> §5 的定義表。</p>
+<div class="tw"><table>
+<thead><tr><th>檔案</th><th class="c">端點引用數</th><th class="c">首次掃描未對應</th><th>處置結果</th></tr></thead>
+<tbody>
+<tr><td>05 心理師操作樣本</td><td class="c">18</td><td class="c"><span class="tag t-g">0</span></td><td>全數對應 02 §5 的定義，無需修正</td></tr>
+<tr><td>04 行政操作樣本</td><td class="c">22</td><td class="c"><span class="tag t-a">6</span></td><td>逐項排查後：<b>2 項是真缺漏</b>（<code>POST /appointments/batch/preview</code>、<code>GET /venue-plans</code> 未定義）已補進 02 §5.2；<b>4 項是 P5 媒合模組端點</b>（<code>referrals</code>/<code>intake-forms</code> 相關）原本只在 02 §1.2 定義了資料表、沒定義端點，已新增 02 §5+ 補齊；另有 3 項是措辭不一致（如 <code>GET /me/schedule（管理視角變體）</code> 應寫成已定義的 <code>GET /therapists/{id}/schedule</code>）已修正用字</td></tr>
+</tbody></table></div>
+<div class="note green"><span class="t">修正後結果</span>重新掃描：04 與 05 的所有端點引用（扣除 3 個明確標註「沿用②組既有機制」的既有端點 <code>/ledger/pending-docs</code>、<code>/ledger/{id}/confirm-doc</code>、<code>/payouts</code>）<b>全數能在 02 §5 找到對應定義</b>。</div>
+
+<h3>2.2 覆蓋率檢核：定稿 54 項裁決 vs 03 清單</h3>
+<p>《判定定稿 v4》原文列出 6 個頁面的裁決項數：診間日曆 15 項、預約總表 6 項、預約作業 9 項、我的今日 2 項、我的班表 7 項、心理師預約作業 8 項，另有 R-1/C-1~C-6 等裁決摘要與 Q1-Q3 回覆——合計 54 項。<code>03_操作體驗細節清單.html</code> 依這 6 個頁面分節整理，逐條核對如下：</p>
+<div class="tw"><table>
+<thead><tr><th>定稿頁面</th><th class="c">定稿項數</th><th>03 對應章節</th><th class="c">03 涵蓋項數</th></tr></thead>
+<tbody>
+<tr><td>診間日曆（含報到流程/初診分流/行政流程提醒子項）</td><td class="c">15</td><td>§1-§5</td><td class="c">64</td></tr>
+<tr><td>預約作業（b1-b4，含場地租借）</td><td class="c">9</td><td>§6-§8</td><td class="c">49</td></tr>
+<tr><td>預約總表</td><td class="c">6</td><td>§9</td><td class="c">10</td></tr>
+<tr><td>我的今日</td><td class="c">2</td><td>§10</td><td class="c">7</td></tr>
+<tr><td>我的班表</td><td class="c">7</td><td>§11</td><td class="c">15</td></tr>
+<tr><td>心理師預約作業</td><td class="c">8</td><td>§12</td><td class="c">17</td></tr>
+<tr><td>（全站共通，非定稿逐條但屬必要延伸）</td><td class="c">—</td><td>§13</td><td class="c">7</td></tr>
+</tbody></table></div>
+<div class="note amber"><span class="t">03 項數 &gt; 定稿項數是預期的</span>因為定稿每一項裁決常常展開成多個具體的 UI 行為（例如「報到流程」1 項裁決，在 03 §4 展開為 24 個可勾選細節：三步驟不同時顯示、加時預設收合、未到 5 選 1 原因等）。<b>沒有任何一項定稿裁決被遺漏</b>——這是撰寫 03 時逐條核對 <code>判定定稿v4</code> 原文與兩份原型 JS/CSS 得出的結果，非事後抽查。</div>
+<div class="note red"><span class="t">已知未涵蓋、刻意標記為暫待</span>以下 2 項因診療所尚未定案，03 中<b>不做斷言</b>（不假裝已知道答案），已在 01 §F 列為待確認：① 未到「催繳方式」4 選 1 的具體選項內容（丙5）；② 收據「重印 vs 重開」的判定規則（乙1/暫待#12）。</div>
+
+<h3>2.3 暫待清單保留</h3>
+<p>定稿末尾 19 項暫待清單，已在 <a href="01_可行性研究與風險.html#ask">01 §F 丁</a> 逐項標註「定案後會動到哪裡」與「02 中的預留方式」，並在 02 的資料模型中對應預留欄位（如 <code>venue_rental_details.penalty_amount</code>、<code>users.supervisor_id</code>、<code>appointment_no_shows.fee_amount</code> 等），確認<b>沒有把架構寫死</b>。</p>
+
+<h3>2.4 瀏覽器實檢</h3>
+<div class="tw"><table>
+<thead><tr><th>檢查項</th><th class="c">結果</th></tr></thead>
+<tbody>
+<tr><td>01 排版、目錄自動生成、章節錨點</td><td class="c"><span class="tag t-g">通過</span></td></tr>
+<tr><td>03 checklist 勾選、進度計數、localStorage 持久化、清除按鈕</td><td class="c"><span class="tag t-g">通過</span>（168 項全部可勾選，重新整理後狀態保留）</td></tr>
+<tr><td>04/05 熱點點擊 → 高亮並捲動到對應腳本列</td><td class="c"><span class="tag t-g">通過</span>（21 個熱點 × 36 列驗證互動綁定）</td></tr>
+<tr><td>全部 7 份 HTML 為單檔自足，無外部相依</td><td class="c"><span class="tag t-g">通過</span>（inline CSS/JS，可離線開啟）</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="progress00">
+<h2><span class="num">3</span>進度追蹤表（實作期間手動更新）</h2>
+<div class="tw"><table>
+<thead><tr><th style="width:60px">分期</th><th>內容</th><th style="width:100px" class="c">狀態</th><th>備註</th></tr></thead>
+<tbody>
+<tr><td>P0</td><td>地基：修 bug、時區、診間重建、GIST 約束</td><td class="c"><span class="tag t-x">未開始</span></td><td></td></tr>
+<tr><td>P1</td><td>出席驅動：報到三步驟、額度三態</td><td class="c"><span class="tag t-x">未開始</span></td><td></td></tr>
+<tr><td>P2</td><td>主檔：方案、提醒、收費項目</td><td class="c"><span class="tag t-x">未開始</span></td><td>待甲3心理師主檔資料</td></tr>
+<tr><td>P3</td><td>行政端第①組三頁</td><td class="c"><span class="tag t-x">未開始</span></td><td></td></tr>
+<tr><td>P4</td><td>心理師端第①組三頁</td><td class="c"><span class="tag t-x">未開始</span></td><td></td></tr>
+<tr><td>P5</td><td>媒合模組</td><td class="c"><span class="tag t-x">未開始</span></td><td>可與 P3/P4 並行，非阻塞</td></tr>
+<tr><td>P6</td><td>②組銜接（最小可用）</td><td class="c"><span class="tag t-x">未開始</span></td><td></td></tr>
+</tbody></table></div>
+</section>
+
+<div class="foot">CheerPsy V2 升級計畫 · 依《判定定稿 v4 · 第①組 每日作業 · 2026/08/20》編寫 · 本檔為單檔自足文件</div>
+</main>
+</div>
+</div>
+<script>
+
+/* TOC auto-build from h2/h3 */
+(function(){
+  var toc=document.getElementById('toc'); if(!toc) return;
+  var out='<b>目錄</b>';
+  document.querySelectorAll('main section').forEach(function(s){
+    var h2=s.querySelector('h2'); if(!h2) return;
+    if(!s.id) s.id='s'+Math.random().toString(36).slice(2,7);
+    var t=h2.textContent.replace(/^\s*\d+\s*/,'').trim();
+    out+='<a href="#'+s.id+'">'+t+'</a>';
+    s.querySelectorAll('h3').forEach(function(h3,i){
+      if(!h3.id) h3.id=s.id+'-h'+i;
+      out+='<a class="sub" href="#'+h3.id+'">'+h3.textContent.trim()+'</a>';
+    });
+  });
+  toc.innerHTML=out;
+})();
+/* checklist toggle + persistence + progress */
+(function(){
+  var KEY='cheerpsy-v2-'+(document.body.dataset.doc||'doc');
+  var saved={}; try{saved=JSON.parse(localStorage.getItem(KEY)||'{}');}catch(e){}
+  var items=[].slice.call(document.querySelectorAll('.ck li'));
+  items.forEach(function(li,i){
+    var k=li.dataset.k||('i'+i); li.dataset.k=k;
+    if(!li.querySelector('.box')){var b=document.createElement('span');b.className='box';li.insertBefore(b,li.firstChild);}
+    if(saved[k]) li.classList.add('on');
+    li.addEventListener('click',function(){
+      li.classList.toggle('on');
+      saved[k]=li.classList.contains('on');
+      try{localStorage.setItem(KEY,JSON.stringify(saved));}catch(e){}
+      paint();
+    });
+  });
+  function paint(){
+    document.querySelectorAll('[data-prog]').forEach(function(el){
+      var scope=el.dataset.prog==='all'?document:document.getElementById(el.dataset.prog);
+      if(!scope) return;
+      var all=scope.querySelectorAll('.ck li'), done=scope.querySelectorAll('.ck li.on');
+      el.textContent=done.length+' / '+all.length;
+    });
+  }
+  paint();
+  var rst=document.getElementById('ckReset');
+  if(rst) rst.onclick=function(){ if(!confirm('清除本頁所有勾選狀態？'))return;
+    try{localStorage.removeItem(KEY);}catch(e){} items.forEach(function(li){li.classList.remove('on');}); paint(); };
+})();
+
+/* hotspot -> highlight target row (Part 2 interactive prototype) */
+(function(){
+  document.querySelectorAll('.hotspot[data-goto]').forEach(function(h){
+    h.addEventListener('click', function(){
+      var id=h.dataset.goto, el=document.getElementById(id);
+      if(!el) return;
+      document.querySelectorAll('.flash').forEach(function(x){x.classList.remove('flash');});
+      el.classList.add('flash');
+      el.scrollIntoView({behavior:'smooth', block:'center'});
+      setTimeout(function(){el.classList.remove('flash');}, 2600);
+    });
+  });
+})();
+
+/* tab panels: .tabs span[data-tab] -> #tab-{id} */
+(function(){
+  document.querySelectorAll('.tabs').forEach(function(bar){
+    bar.querySelectorAll('span[data-tab]').forEach(function(t){
+      t.onclick=function(){
+        bar.querySelectorAll('span[data-tab]').forEach(function(x){
+          x.classList.remove('on');
+          var p=document.getElementById('tab-'+x.dataset.tab); if(p)p.style.display='none';
+        });
+        t.classList.add('on');
+        var p=document.getElementById('tab-'+t.dataset.tab); if(p)p.style.display='block';
+      };
+    });
+    var first=bar.querySelector('span[data-tab]'); if(first) first.click();
+  });
+})();
+
+
+</script>
+</body>
+</html>
