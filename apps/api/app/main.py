@@ -11,6 +11,9 @@ from app.routers import quota_templates
 from app.institution.routers import admin as institution_admin
 from app.institution.adapter import InstitutionFundingProvider
 from app.funding import registry as funding_registry
+# 媒合管理子系統：小的獨立子系統，媒合出第一次（初診）預約後即交棒給
+# 上面既有的個案／預約系統（app.routers.cases / app.routers.appointments）。
+from app.referral.routers import admin as referral_admin
 
 app = FastAPI(title="CheerPsy API", version="2.0.0")
 
@@ -51,3 +54,4 @@ app.include_router(receipts.router)
 app.include_router(case_quotas.router)
 app.include_router(quota_templates.router)
 app.include_router(institution_admin.router)
+app.include_router(referral_admin.router)

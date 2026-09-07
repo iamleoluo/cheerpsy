@@ -33,6 +33,12 @@ from app.institution.models import (  # noqa: F401
     InstClaimCase,
     InstClaimLine,
 )
+# 媒合管理子系統（app/referral/models/），同樣集中在此註冊。
+from app.referral.models import (  # noqa: F401
+    Referral,
+    ReferralBatch,
+    ReferralBatchMember,
+)
 
 __all__ = [
     "User",
@@ -63,4 +69,7 @@ __all__ = [
     "InstEnrollment",
     "InstClaimCase",
     "InstClaimLine",
+    "Referral",
+    "ReferralBatch",
+    "ReferralBatchMember",
 ]
