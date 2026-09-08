@@ -174,6 +174,7 @@ class InstitutionFundingProvider:
         ]
         ctx = RateRuleContext(
             session_type=request.session_type,
+            consult_type=request.consult_type,
             visit_seq=request.visit_seq,
             duration_min=request.duration_min,
             location_kind=request.location_kind,

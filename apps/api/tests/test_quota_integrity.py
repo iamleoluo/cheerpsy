@@ -236,3 +236,46 @@ class TestVoidReturnsQuotaAndPool:
         assert e.reserved_count == QUOTA_LIMIT, "退回的那格回到 reserved"
         db.refresh(pool)
         assert float(pool.consumed_total) == 0.0, "額度池也要退，否則年度池只減不加"
+
+
+class TestBatchWithPlan:
+    def test_batch_booking_supports_institution_plan(self, db, http_db):
+        """機構案批次預約。原本 AppointmentBatchCreate 沒有 plan_id 欄位，
+        六週的連續機構預約只能一筆一筆打，額度也不會被 reserve。"""
+        ctx = _seed(db)
+        base = datetime.now(timezone.utc) + timedelta(days=7)
+        slots = [
+            {"start_time": (base + timedelta(days=7 * i)).isoformat(),
+             "end_time": (base + timedelta(days=7 * i, hours=1)).isoformat()}
+            for i in range(4)
+        ]
+        r = client.post("/appointments/batch", headers=_headers(ctx), json={
+            "case_id": ctx["case"].id, "room_id": ctx["room"].id, "session_type": "in_person",
+            "plan_id": ctx["plan"].id, "slots": slots,
+        })
+        assert r.status_code == 201, r.text
+        rows = r.json()
+        assert len(rows) == 4
+        assert all(a["plan_id"] == ctx["plan"].id for a in rows)
+        assert all(a["funding_source"] == "institution" for a in rows)
+        assert all(a["amount"] == 1600.0 for a in rows), "每筆都要拿到報價，不能是 0"
+        assert [a["visit_seq"] for a in rows] == [1, 2, 3, 4]
+
+        e = _assert_identity(db, ctx)
+        assert e.reserved_count == QUOTA_LIMIT - 4, "四筆都要各自 reserve 一格額度"
+
+    def test_batch_blocks_when_quota_runs_out(self, db, http_db):
+        """額度只剩 6 格卻想排 8 次 → 要在超出的那一筆擋下並說是第幾筆。"""
+        ctx = _seed(db)
+        base = datetime.now(timezone.utc) + timedelta(days=7)
+        slots = [
+            {"start_time": (base + timedelta(days=7 * i)).isoformat(),
+             "end_time": (base + timedelta(days=7 * i, hours=1)).isoformat()}
+            for i in range(8)
+        ]
+        r = client.post("/appointments/batch", headers=_headers(ctx), json={
+            "case_id": ctx["case"].id, "room_id": ctx["room"].id, "session_type": "in_person",
+            "plan_id": ctx["plan"].id, "slots": slots,
+        })
+        assert r.status_code == 400, r.text
+        assert "第 7 筆" in r.json()["detail"], r.json()["detail"]

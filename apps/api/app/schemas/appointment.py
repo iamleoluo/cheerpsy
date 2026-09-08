@@ -6,7 +6,11 @@ from pydantic import BaseModel
 class AppointmentCreate(BaseModel):
     case_id: int
     room_id: int | None = None
-    session_type: str = "in_person"
+    session_type: str = "in_person"  # 型式：in_person / online / outdoor
+    # 諮商型態（機構費率規則的計價維度，07 §6.2）與服務地點。與 session_type
+    # 不同軸：家防中心的 個別/親職/家族 三種價都是「現場」。
+    consult_type: str = "individual"  # individual/couple/family/parenting/group/lecture/meeting
+    location_kind: str = "clinic"  # clinic / home / onsite / offsite
     start_time: datetime
     end_time: datetime
     # amount 在指定 plan_id 時可省略（金額由機構子系統報價決定）；未指定 plan_id
@@ -32,9 +36,14 @@ class AppointmentBatchCreate(BaseModel):
     case_id: int
     room_id: int | None = None
     session_type: str = "in_person"
-    amount: float
+    consult_type: str = "individual"
+    location_kind: str = "clinic"
+    # amount 在指定 plan_id 時可省略（同 AppointmentCreate）
+    amount: float | None = None
     funding_source: str = "self_pay"
     quota_id: int | None = None
+    # 機構方案批次預約（原本批次完全不支援 plan_id，機構案沒辦法一次建六週）
+    plan_id: int | None = None
     couple_case_id: int | None = None
     slots: list[BatchSlot]
 
@@ -42,6 +51,8 @@ class AppointmentBatchCreate(BaseModel):
 class AppointmentUpdate(BaseModel):
     room_id: int | None = None
     session_type: str | None = None
+    consult_type: str | None = None
+    location_kind: str | None = None
     start_time: datetime | None = None
     end_time: datetime | None = None
     amount: float | None = None
@@ -114,6 +125,8 @@ class AppointmentResponse(BaseModel):
     room_id: int | None = None
     room_name: str | None = None
     session_type: str
+    consult_type: str = "individual"
+    location_kind: str = "clinic"
     start_time: datetime | None = None
     end_time: datetime | None = None
     amount: float

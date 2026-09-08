@@ -121,6 +121,8 @@ def _to_response(
         room_id=a.room_id,
         room_name=a.room.name if a.room else None,
         session_type=a.session_type,
+        consult_type=a.consult_type or "individual",
+        location_kind=a.location_kind or "clinic",
         start_time=start,
         end_time=end,
         amount=float(a.amount),
@@ -335,11 +337,10 @@ def create_appointment(
                 plan_id=body.plan_id,
                 therapist_id=therapist.id,
                 session_type=body.session_type,
+                consult_type=body.consult_type,
+                location_kind=body.location_kind,
                 visit_seq=visit_seq,
                 duration_min=int((body.end_time - body.start_time).total_seconds() // 60),
-                # location_kind 目前固定為 clinic（所內）——到宅/入廠等地點細分
-                # 是 P4/P6 才會在畫面上出現的欄位，AppointmentCreate 還沒有
-                # 對應輸入，先用預設值讓報價跑得通，之後有畫面再傳真實值。
                 appt_date=body.start_time.date(),
             ),
         )
@@ -362,6 +363,8 @@ def create_appointment(
         therapist_id=therapist.id,
         room_id=body.room_id,
         session_type=body.session_type,
+        consult_type=body.consult_type,
+        location_kind=body.location_kind,
         time_range=time_range,
         amount=amount,
         funding_source=funding_source,
@@ -664,7 +667,7 @@ def create_batch(
     results = []
 
     for i, slot in enumerate(body.slots):
-        amount = slot.amount if slot.amount is not None else body.amount
+        visit_seq = next_vs + i
         slot_funding = slot.funding_source or body.funding_source
         slot_quota = slot.quota_id if slot.quota_id is not None else (
             body.quota_id if slot.funding_source is None else None
@@ -673,9 +676,40 @@ def create_batch(
         if body.room_id:
             _check_room_conflict(db, body.room_id, slot.start_time, slot.end_time)
 
-        quota_id = _resolve_quota(
-            db, body.case_id, slot_funding, slot_quota, slot.start_time.date()
-        )
+        # 機構方案批次（原本完全沒有這條路，機構案只能一筆一筆打 POST /appointments）。
+        # 逐筆報價而不是報一次沿用：分級計價（visit_seq）與週期子上限都跟「第幾次」
+        # 有關，整批共用同一份報價會把第 2 次之後的價錢全部算成第 1 次的。
+        quote = None
+        quota_id = None
+        if body.plan_id:
+            quote = get_funding_provider().quote(
+                db,
+                QuoteRequest(
+                    case_id=body.case_id,
+                    plan_id=body.plan_id,
+                    therapist_id=therapist.id,
+                    session_type=body.session_type,
+                    consult_type=body.consult_type,
+                    location_kind=body.location_kind,
+                    visit_seq=visit_seq,
+                    duration_min=int((slot.end_time - slot.start_time).total_seconds() // 60),
+                    appt_date=slot.start_time.date(),
+                ),
+            )
+            if quote.quota.blocking:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"第 {i + 1} 筆（{slot.start_time.date()}）：{quote.quota.blocking}",
+                )
+            amount = slot.amount if slot.amount is not None else float(quote.pricing.unit_price)
+            slot_funding = "institution"
+        else:
+            amount = slot.amount if slot.amount is not None else body.amount
+            if amount is None:
+                raise HTTPException(status_code=400, detail="amount 為必填（未指定 plan_id 時）")
+            quota_id = _resolve_quota(
+                db, body.case_id, slot_funding, slot_quota, slot.start_time.date()
+            )
 
         number = _next_appointment_number(db, therapist.user_code, slot.start_time)
         time_range = DateTimeTZRange(slot.start_time, slot.end_time)
@@ -686,18 +720,29 @@ def create_batch(
             therapist_id=therapist.id,
             room_id=body.room_id,
             session_type=body.session_type,
+            consult_type=body.consult_type,
+            location_kind=body.location_kind,
             time_range=time_range,
             amount=amount,
             funding_source=slot_funding,
             quota_id=quota_id,
-            visit_seq=next_vs + i,
+            visit_seq=visit_seq,
             couple_case_id=body.couple_case_id,
             status="booked",
             batch_id=batch_id,
             created_by=user.id,
         )
+        if quote is not None:
+            appt.plan_id = quote.plan_id
+            appt.case_payable = quote.pricing.case_payable
+            appt.institution_payable = quote.pricing.institution_payable
+            appt.compensation_mode = quote.compensation.mode
+            appt.commissionable_base = quote.compensation.commissionable_base
+            appt.plan_quote = json.loads(quote.model_dump_json())
         db.add(appt)
         _flush_with_conflict_guard(db)
+        if quote is not None:
+            get_funding_provider().reserve(db, appt.id, quote)
         results.append(appt)
 
     db.commit()

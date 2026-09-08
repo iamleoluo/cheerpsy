@@ -13,7 +13,13 @@ class Appointment(Base):
     case_id = Column(Integer, ForeignKey("cases.id"), nullable=False)
     therapist_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     room_id = Column(Integer, ForeignKey("rooms.id"), nullable=True)
-    session_type = Column(String(20), nullable=False)  # in_person, online, outdoor
+    session_type = Column(String(20), nullable=False)  # in_person, online, outdoor（型式）
+    # 諮商型態（07 §6.2 的計價維度，與 session_type 不同軸）：individual / couple /
+    # family / parenting / group / lecture / meeting。機構方案的費率規則會用它比對
+    # ——家防中心的 個別$2000 / 親職$1000 / 家族$2400 三種價都是「現場」。
+    consult_type = Column(String(20), nullable=False, default="individual", server_default="individual")
+    # 服務地點（07 §6.2）：clinic 所內 / home 到宅 / onsite 入廠 / offsite 其他外展
+    location_kind = Column(String(20), nullable=False, default="clinic", server_default="clinic")
     time_range = Column(TSTZRANGE, nullable=False)
     amount = Column(Numeric(10, 2), nullable=False)
     status = Column(String(20), nullable=False, default="booked")  # booked, executed, cancelled

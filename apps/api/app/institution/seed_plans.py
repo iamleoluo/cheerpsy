@@ -52,15 +52,42 @@ def _get_or_create_institution(db, name: str, code: str | None = None) -> Instit
     return inst
 
 
-def seed_plans():
-    db = SessionLocal()
+def reset_plans(db) -> None:
+    """清空機構合約子系統的所有資料表，依外鍵相依順序由下而上刪。
+
+    給「重跑 seed」與假資料生成器用。刻意不碰 appointments/session_records
+    ——那些是主系統的資料，若還有列引用 inst_plans，這裡會直接被外鍵擋下來，
+    這是刻意的：寧可噴錯，也不要靜默刪掉別人的帳。
+    """
+    from sqlalchemy import text as _text
+    for table in (
+        "inst_claim_lines", "inst_claim_cases", "inst_enrollments",
+        "inst_rate_rules", "inst_plans", "inst_quota_pools", "inst_contracts",
+    ):
+        db.execute(_text(f"DELETE FROM {table}"))
+    db.flush()
+
+
+def seed_plans(db=None, force: bool = False):
+    """建立 11 個代表方案。
+
+    `db` 可以傳入既有的 Session（測試、假資料生成器會這樣用），此時本函式
+    不 commit 也不 close，交由呼叫端決定交易邊界；不傳則自己開一個、跑完
+    commit + close（CLI 用法）。
+    """
+    owns_session = db is None
+    if owns_session:
+        db = SessionLocal()
     admin = db.query(User).filter(User.role == "admin").first()
     created_by = admin.id if admin else None
 
     if db.query(InstPlan).first():
-        print("已有方案資料，略過（如要重跑請先清空 inst_plans 等表）。")
-        db.close()
-        return
+        if not force:
+            print("已有方案資料，略過（要重跑請帶 force=True 或 --force）。")
+            if owns_session:
+                db.close()
+            return
+        reset_plans(db)
 
     # ── 1. 衛生局市民：visit_seq 分級 ───────────────────────────────────
     inst_health = _get_or_create_institution(db, "臺南市政府衛生局")
@@ -119,7 +146,11 @@ def seed_plans():
     )
     db.add(p3)
     db.flush()
-    db.add(InstRateRule(plan_id=p3.id, sort_order=1, when_json='{"session_type": "in_person"}', unit_price=1600, case_payable=400, label="個別諮商"))
+    db.add_all([
+        InstRateRule(plan_id=p3.id, sort_order=1, when_json='{"consult_type": "individual"}', unit_price=1600, case_payable=400, label="個別諮商"),
+        # 兜底：沒對到諮商型態時仍以個別價計，避免 resolve_rate 回 None → 報價 $0
+        InstRateRule(plan_id=p3.id, sort_order=99, when_json="{}", unit_price=1600, case_payable=400, label="其餘情況（同個別價）"),
+    ])
     # 國軍-講座/本島團輔/外島團輔：與國軍-個別共用 quota_pool_id 與 claim_group_key="國軍"，
     # 但額度各自獨立設定（依 07 §6.1「拆方案但共用池與核銷群組」的設計）。示範只建一個，
     # 其餘三個照此格式加即可。
@@ -138,14 +169,15 @@ def seed_plans():
     db.add(p4)
     db.flush()
     db.add_all([
-        InstRateRule(plan_id=p4.id, sort_order=1, when_json='{"session_type": "individual"}', unit_price=2000, case_payable=0, label="個別諮商"),
-        InstRateRule(plan_id=p4.id, sort_order=2, when_json='{"session_type": "parenting"}', unit_price=1000, case_payable=0, label="親職諮詢"),
-        InstRateRule(plan_id=p4.id, sort_order=3, when_json='{"session_type": "family"}', unit_price=2400, case_payable=0, label="家族諮商"),
+        InstRateRule(plan_id=p4.id, sort_order=1, when_json='{"consult_type": "individual"}', unit_price=2000, case_payable=0, label="個別諮商"),
+        InstRateRule(plan_id=p4.id, sort_order=2, when_json='{"consult_type": "parenting"}', unit_price=1000, case_payable=0, label="親職諮詢"),
+        InstRateRule(plan_id=p4.id, sort_order=3, when_json='{"consult_type": "family"}', unit_price=2400, case_payable=0, label="家族諮商"),
+        InstRateRule(plan_id=p4.id, sort_order=99, when_json="{}", unit_price=2000, case_payable=0, label="其餘情況（同個別價）"),
         # 「無事先請假爽約費 $200」是未到事件產生的費用，不是預約當下的報價，
         # 見 07 §6.3 附註：不做失約費（第①組定案），此規則暫不建立。
     ])
 
-    # ── 5. 家防中心：session_type 分級 + 需要個案代號 ────────────────────
+    # ── 5. 家防中心：consult_type（諮商型態）分級 + 需要個案代號 ──────────
     inst_dv = _get_or_create_institution(db, "臺南市政府家庭暴力暨性侵害防治中心")
     c5 = InstContract(institution_id=inst_dv.id, name="家防中心", created_by=created_by)
     db.add(c5)
@@ -159,8 +191,9 @@ def seed_plans():
     db.add(p5)
     db.flush()
     db.add_all([
-        InstRateRule(plan_id=p5.id, sort_order=1, when_json='{"session_type": "individual"}', unit_price=1400, case_payable=0, label="個別/hr"),
-        InstRateRule(plan_id=p5.id, sort_order=2, when_json='{"session_type": "family"}', unit_price=2000, case_payable=0, label="家族/hr"),
+        InstRateRule(plan_id=p5.id, sort_order=1, when_json='{"consult_type": "individual"}', unit_price=1400, case_payable=0, label="個別/hr"),
+        InstRateRule(plan_id=p5.id, sort_order=2, when_json='{"consult_type": "family"}', unit_price=2000, case_payable=0, label="家族/hr"),
+        InstRateRule(plan_id=p5.id, sort_order=99, when_json="{}", unit_price=1400, case_payable=0, label="其餘情況（同個別價）"),
     ])
 
     # ── 6. 市政府人事處：核銷容器 per_case_count=4（人事處系列代表）──────
@@ -257,12 +290,17 @@ def seed_plans():
     db.flush()
     db.add(InstRateRule(plan_id=p11.id, sort_order=1, when_json="{}", unit_price=500, case_payable=0, label="每小時$500，可手動改，允許$0"))
 
-    db.commit()
+    if owns_session:
+        db.commit()
+    else:
+        db.flush()
     print("已建立 11 個代表方案（衛生局市民/15-45青壯/國軍/南家扶/家防中心/市政府人事處/")
     print("脆弱家庭/教支中心/台南地院/聊心茶室/鉅微借場地）。")
     print("剩餘方案資料見 07_機構合約子系統架構.html §1，照本檔案格式續補。")
-    db.close()
+    if owns_session:
+        db.close()
 
 
 if __name__ == "__main__":
-    seed_plans()
+    import sys
+    seed_plans(force="--force" in sys.argv)

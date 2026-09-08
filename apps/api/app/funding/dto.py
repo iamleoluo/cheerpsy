@@ -158,7 +158,11 @@ class QuoteRequest(BaseModel):
     case_id: int
     plan_id: int
     therapist_id: int
-    session_type: str  # in_person / online / outdoor（沿用主系統既有枚舉）
+    session_type: str  # in_person / online / outdoor（型式，沿用主系統既有枚舉）
+    # 諮商型態（07 §6.2 的計價維度）：individual / couple / family / parenting /
+    # group / lecture / meeting。與 session_type 是不同軸——家防中心的
+    # 個別/親職/家族 三種價都是現場進行。
+    consult_type: str = "individual"
     visit_seq: int | None = None
     duration_min: int = 60
     location_kind: str = "clinic"  # clinic / home / onsite / offsite

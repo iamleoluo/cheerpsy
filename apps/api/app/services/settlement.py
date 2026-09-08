@@ -89,6 +89,8 @@ def build_session_record(db: Session, appt: Appointment, case: Case | None, ther
         case_id=appt.case_id,
         therapist_id=appt.therapist_id,
         session_type=appt.session_type,
+        consult_type=appt.consult_type,
+        location_kind=appt.location_kind,
         room_id=appt.room_id,
         fee_category="counseling",
         amount=appt.amount,

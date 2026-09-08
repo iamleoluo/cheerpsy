@@ -1,6 +1,6 @@
 """費率規則比對引擎。有序、先匹配先贏。見 07 §6.2、§6.3（54 個方案逐一驗算）。
 
-`when` 支援六個變數，每個可以是「精確值」或 {"gte": n} / {"lte": n} 這種簡單
+`when` 支援七個變數，每個可以是「精確值」或 {"gte": n} / {"lte": n} 這種簡單
 比較。空字典 {} 代表「其餘情況」，通常放在 sort_order 最大的位置當預設值。
 
 這支只負責「哪一條規則命中」，不負責讀資料庫——呼叫端（adapter.py）組好
@@ -17,7 +17,12 @@ from typing import Any
 
 @dataclass
 class RateRuleContext:
+    # session_type = 型式（現場/線上/外展），沿用主系統既有枚舉
     session_type: str | None = None
+    # consult_type = 諮商型態（個別/伴侶/家族/親職/團體/講座/會議），07 §6.2 的計價維度。
+    # 這兩件事名字很像但是不同軸：家防中心的 個別$2000 / 親職$1000 / 家族$2400
+    # 三者都是「現場」，塞不進 session_type。
+    consult_type: str | None = None
     visit_seq: int | None = None
     duration_min: int | None = None
     location_kind: str | None = None
@@ -57,6 +62,7 @@ def rule_matches(when: dict, ctx: RateRuleContext) -> bool:
         return True
     field_map = {
         "session_type": ctx.session_type,
+        "consult_type": ctx.consult_type,
         "visit_seq": ctx.visit_seq,
         "duration_min": ctx.duration_min,
         "location_kind": ctx.location_kind,

@@ -15,6 +15,9 @@ class SessionRecord(Base):
     case_id = Column(Integer, ForeignKey("cases.id"), nullable=True)
     therapist_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     session_type = Column(String(20), nullable=False)
+    # 諮商型態與地點的快照，跟著 appointment 複製過來（與 session_type 同一層級）
+    consult_type = Column(String(20), nullable=True)
+    location_kind = Column(String(20), nullable=True)
     room_id = Column(Integer, ForeignKey("rooms.id"), nullable=True)
     fee_category = Column(String(20), nullable=False, default="counseling")
     amount = Column(Numeric(10, 2), nullable=False)
