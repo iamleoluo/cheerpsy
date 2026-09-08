@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.auth.dependencies import RequireRole, get_current_user
 from app.database import get_db
 from app.models.appointment import Appointment
+from app.models.appointment_admin_task import AppointmentAdminTask
 from app.models.case import Case
 from app.models.case_institution_quota import CaseInstitutionQuota
 from app.models.fee_item import FeeItem
@@ -20,7 +21,7 @@ from app.models.receipt import Receipt
 from app.models.room import Room
 from app.models.session_record import SessionRecord
 from app.models.user import User
-from app.services import numbering
+from app.services import numbering, room_occupancy
 from app.services.audit import write_audit
 from app.services.settlement import SETTLEMENT_LEAD_MINUTES, build_session_record
 from app.utils.tz import to_local_date
@@ -393,6 +394,8 @@ def create_appointment(
     _flush_with_conflict_guard(db)  # 先拿到 appt.id，reserve() 要用；仍在同一交易內，尚未 commit
     if quote is not None:
         get_funding_provider().reserve(db, appt.id, quote)
+        # 方案的行政流程提醒落成這一筆預約的可勾選項目（02 §1.2、07 §5.3 ⑥）
+        materialize_admin_tasks(db, appt, quote)
     db.commit()
     db.refresh(appt)
     return _to_response(appt, therapist, db)
@@ -751,6 +754,7 @@ def create_batch(
         _flush_with_conflict_guard(db)
         if quote is not None:
             get_funding_provider().reserve(db, appt.id, quote)
+            materialize_admin_tasks(db, appt, quote)
         results.append(appt)
 
     db.commit()
@@ -1012,21 +1016,12 @@ def _check_room_conflict(db: Session, room_id: int, start: datetime, end: dateti
     競態窗口（SELECT 之後、INSERT 之前，另一個請求可能插隊），真正保證不會
     撞號的是 DB 層的 EXCLUDE 約束（見 aa5a2b3c4d5f5 migration + 下面的
     _flush_with_conflict_guard()）。兩層並存：這層給人看的訊息、那層給
-    正確性的保證。"""
-    sql = """
-        SELECT id FROM appointments
-        WHERE room_id = :room_id
-          AND status != 'cancelled'
-          AND time_range && tstzrange(:start, :end)
+    正確性的保證。
+
+    P4 起診間還會被「場地租借」佔用，所以改走 services/room_occupancy 一起
+    查兩張表——跨表沒辦法用單一 EXCLUDE 約束表達，只能在這一層擋。
     """
-    params: dict = {"room_id": room_id, "start": start.isoformat(), "end": end.isoformat()}
-    if exclude_id is not None:
-        sql += " AND id != :exclude_id"
-        params["exclude_id"] = exclude_id
-    sql += " LIMIT 1"
-    conflict = db.execute(text(sql), params).first()
-    if conflict:
-        raise HTTPException(status_code=409, detail="Room time slot conflict")
+    room_occupancy.assert_free(db, room_id, start, end, exclude_appointment_id=exclude_id)
 
 
 def _flush_with_conflict_guard(db: Session):
@@ -1048,3 +1043,299 @@ def _flush_with_conflict_guard(db: Session):
                 detail="Room time slot conflict（資料庫層攔截：兩個請求同時搶到同一診間時段，請重新整理後再試一次）",
             )
         raise
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# P4：加時 / 視訊連結 / 個案請假 / 行政流程提醒
+# ─────────────────────────────────────────────────────────────────────────
+
+class AdjustDurationRequest(BaseModel):
+    """調整實際執行時數（01 §C1、04 §2.4）。收款前使用。"""
+    actual_start: datetime
+    actual_end: datetime
+    note: str | None = None
+    recalculate_amount: bool = True
+
+
+@router.put("/{appointment_id}/adjust-duration", response_model=AppointmentResponse)
+def adjust_duration(
+    appointment_id: int,
+    body: AdjustDurationRequest,
+    user: User = Depends(RequireRole(["admin", "staff", "therapist"])),
+    db: Session = Depends(get_db),
+):
+    """加時／縮短：改寫實際起訖、依單價重算金額，並**同步回寫預約時間**。
+
+    01 §C1 裁示：回寫後若與相鄰預約（或場地租借）重疊，直接擋下，畫面提示
+    請心理師聯絡行政處理——系統不會自動把下一位擠掉。這是刻意的：把衝突
+    交給人去喬，比系統偷偷改別人的預約安全。
+    """
+    appt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    if user.role == "therapist" and appt.therapist_id != user.id:
+        raise HTTPException(status_code=403, detail="只能調整自己的預約")
+    if appt.status == "cancelled":
+        raise HTTPException(status_code=400, detail="已取消的預約不能調整時數")
+
+    sr = db.query(SessionRecord).filter(SessionRecord.appointment_id == appt.id).first()
+    if sr and sr.copay_collected_at is not None:
+        raise HTTPException(status_code=400, detail="已收款，不能再調整時數（請先作廢該筆帳款）")
+    if body.actual_end <= body.actual_start:
+        raise HTTPException(status_code=400, detail="結束時間必須晚於開始時間")
+
+    minutes = int((body.actual_end - body.actual_start).total_seconds() // 60)
+    if minutes < 15 or minutes > 480:
+        raise HTTPException(status_code=400, detail="實際時數需介於 15 分鐘至 8 小時之間")
+
+    # 回寫前先確認新的時段沒撞到別人（含場地租借）
+    if appt.room_id:
+        room_occupancy.assert_free(
+            db, appt.room_id, body.actual_start, body.actual_end,
+            exclude_appointment_id=appt.id,
+        )
+
+    before = {
+        "time_range": str(appt.time_range), "amount": float(appt.amount),
+        "actual_start": appt.actual_start, "actual_end": appt.actual_end,
+    }
+    old_minutes = 60
+    if appt.time_range and appt.time_range.upper and appt.time_range.lower:
+        old_minutes = max(1, int((appt.time_range.upper - appt.time_range.lower).total_seconds() // 60))
+
+    appt.actual_start = body.actual_start
+    appt.actual_end = body.actual_end
+    appt.duration_adjusted_at = datetime.now(timezone.utc)
+    appt.duration_adjusted_by = user.id
+    appt.duration_note = body.note
+    appt.time_range = DateTimeTZRange(body.actual_start, body.actual_end)
+
+    if body.recalculate_amount:
+        # 依原本的「每分鐘單價」等比換算。用單價而不是重新報價，是因為機構
+        # 報價含分級/額度判斷，重跑會把 visit_seq 之類的情境再算一次；這裡
+        # 要的只是「同一個價目、時間變了」。
+        unit_per_min = Decimal(str(appt.amount)) / Decimal(old_minutes)
+        appt.amount = (unit_per_min * Decimal(minutes)).quantize(Decimal("1"))
+        # 機構案還要重新切分兩份金額，否則 case_payable + institution_payable
+        # 就不等於 amount 了——收款會收錯、核銷也會請錯。
+        # 切法：**個案自付額固定不動**（那是每次固定的部分負擔），時間變動
+        # 的部分由機構吸收，institution_payable 補到差額。
+        if appt.institution_payable is not None:
+            case_part = Decimal(str(appt.case_payable or 0))
+            appt.institution_payable = max(Decimal("0"), Decimal(str(appt.amount)) - case_part)
+        if appt.commissionable_base is not None:
+            base_per_min = Decimal(str(appt.commissionable_base)) / Decimal(old_minutes)
+            appt.commissionable_base = (base_per_min * Decimal(minutes)).quantize(Decimal("0.01"))
+
+    _flush_with_conflict_guard(db)
+
+    # 帳冊已存在（已報到）就同步金額與日期，否則日報表會跟預約對不起來
+    if sr:
+        sr.amount = appt.amount
+        sr.institution_payable = appt.institution_payable
+        sr.commissionable_base = appt.commissionable_base
+        sr.session_date = to_local_date(body.actual_start)
+
+    write_audit(db, "appointments", appt.id, "UPDATE", user.id, before, {
+        "time_range": str(appt.time_range), "amount": float(appt.amount),
+        "actual_minutes": minutes, "note": body.note,
+    }, reason="調整實際執行時數")
+    db.commit()
+    db.refresh(appt)
+    return _to_response(appt, db.query(User).filter(User.id == appt.therapist_id).first(), db, viewer=user)
+
+
+class VideoLinkRequest(BaseModel):
+    video_link: str
+
+
+@router.put("/{appointment_id}/video-link", response_model=AppointmentResponse)
+def set_video_link(
+    appointment_id: int,
+    body: VideoLinkRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """心理師自行貼上視訊連結（定稿明確排除「系統自動產生」）。貼上之後
+    行政端會看到「待轉發」，轉發完再按下面那支端點記時間。"""
+    appt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    if user.role == "therapist" and appt.therapist_id != user.id:
+        raise HTTPException(status_code=403, detail="只能設定自己的預約")
+    elif user.role not in ("admin", "staff", "therapist"):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    if appt.session_type != "online":
+        raise HTTPException(status_code=400, detail="只有視訊預約需要連結")
+
+    appt.video_link = body.video_link.strip() or None
+    appt.video_forwarded_at = None  # 換了連結就要重新轉發
+    appt.video_forwarded_by = None
+    write_audit(db, "appointments", appt.id, "UPDATE", user.id, None, {"video_link": appt.video_link})
+    db.commit()
+    db.refresh(appt)
+    return _to_response(appt, db.query(User).filter(User.id == appt.therapist_id).first(), db, viewer=user)
+
+
+@router.put("/{appointment_id}/video-forwarded", response_model=AppointmentResponse)
+def mark_video_forwarded(
+    appointment_id: int,
+    user: User = Depends(RequireRole(["admin", "staff"])),
+    db: Session = Depends(get_db),
+):
+    """行政把連結轉發給個案之後按這裡。心理師端才看得出來「行政已經寄出去了」。"""
+    appt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    if not appt.video_link:
+        raise HTTPException(status_code=400, detail="尚未有視訊連結可轉發")
+    appt.video_forwarded_at = datetime.now(timezone.utc)
+    appt.video_forwarded_by = user.id
+    db.commit()
+    db.refresh(appt)
+    return _to_response(appt, db.query(User).filter(User.id == appt.therapist_id).first(), db, viewer=user)
+
+
+class LeaveRequest(BaseModel):
+    reason: str | None = None
+
+
+@router.put("/{appointment_id}/leave", response_model=AppointmentResponse)
+def case_leave(
+    appointment_id: int,
+    body: LeaveRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """個案請假（心理師端「為此次預約請假」，原因選填）。
+
+    與「未到」是兩件事：請假是事前知道的，時段要釋出、不產生應收、也**不**
+    收機構未到補助——補助補的是個案沒出現，不是這場沒發生。所以走
+    release(bill_no_show_fee=False)，跟取消同一條路。
+    """
+    appt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    if user.role == "therapist" and appt.therapist_id != user.id:
+        raise HTTPException(status_code=403, detail="只能為自己的預約請假")
+    elif user.role not in ("admin", "staff", "therapist"):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    if appt.status != "booked":
+        raise HTTPException(status_code=400, detail=f"此預約狀態為 {appt.status}，無法請假")
+    if appt.check_in_status != "pending":
+        raise HTTPException(status_code=400, detail="已報到過的預約不能改成請假")
+
+    appt.status = "cancelled"
+    appt.leave_reason = (body.reason or "").strip() or None
+    appt.leave_at = datetime.now(timezone.utc)
+    appt.leave_by = user.id
+    if appt.plan_id:
+        get_funding_provider().release(db, appt.id, reason="case_leave", bill_no_show_fee=False)
+    write_audit(db, "appointments", appt.id, "UPDATE", user.id,
+                {"status": "booked"}, {"status": "cancelled", "leave_reason": appt.leave_reason},
+                reason="個案請假")
+    db.commit()
+    db.refresh(appt)
+    return _to_response(appt, db.query(User).filter(User.id == appt.therapist_id).first(), db, viewer=user)
+
+
+class AdminTaskResponse(BaseModel):
+    id: int
+    title: str
+    side: str
+    sort_order: int
+    is_done: bool
+    done_at: datetime | None = None
+    done_by_name: str | None = None
+
+
+def _task_to_response(t: AppointmentAdminTask) -> AdminTaskResponse:
+    name = t.done_by_name or (t.done_user.name if t.done_user else None)
+    return AdminTaskResponse(
+        id=t.id, title=t.title, side=t.side, sort_order=t.sort_order,
+        is_done=t.is_done, done_at=t.done_at, done_by_name=name,
+    )
+
+
+def materialize_admin_tasks(db: Session, appt: Appointment, quote) -> None:
+    """建立預約時，把方案的行政流程提醒清單落成這一筆預約的可勾選項目。
+
+    inst_plans 上的 admin_checklist / therapist_checklist 是「這個方案每次
+    要辦哪些事」的範本（JSON 字串陣列），報價時會跟著 Quote 帶出來。範本
+    本身沒辦法記「誰在什麼時候辦好了」，所以每次預約要複製一份實例。
+
+    診間日曆的方塊要「整格轉灰」有三個條件，其中一個就是這些事項全部勾完
+    ——沒有這張表，那個條件永遠不會成立。
+    """
+    if quote is None:
+        return
+    checklists = getattr(quote, "checklists", None)
+    if checklists is None:
+        return
+    order = 0
+    for side, items in (("admin", checklists.admin or []),
+                        ("therapist", checklists.therapist or [])):
+        for title in items:
+            order += 1
+            db.add(AppointmentAdminTask(
+                appointment_id=appt.id, title=str(title), side=side, sort_order=order,
+            ))
+
+
+@router.get("/{appointment_id}/admin-tasks", response_model=list[AdminTaskResponse])
+def list_admin_tasks(
+    appointment_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    appt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    if user.role == "therapist" and appt.therapist_id != user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+    return [_task_to_response(t) for t in appt.admin_tasks]
+
+
+class ToggleTaskRequest(BaseModel):
+    is_done: bool
+    actor_name: str | None = None  # 共用帳號（實習心理師）自填姓名
+
+
+@router.put("/admin-tasks/{task_id}", response_model=AdminTaskResponse)
+def toggle_admin_task(
+    task_id: int,
+    body: ToggleTaskRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """就地勾選，記錄執行人與時間（畫面顯示成「✓ 林怡君 08/19 09:12」）。
+
+    權限依 side 切開：admin 側的項目櫃台勾、therapist 側的心理師勾；
+    管理員兩邊都能勾（覆蓋用）。
+    """
+    task = db.query(AppointmentAdminTask).filter(AppointmentAdminTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="找不到此提醒項目")
+
+    if user.role == "therapist":
+        if task.appointment.therapist_id != user.id:
+            raise HTTPException(status_code=403, detail="只能勾選自己預約的項目")
+        if task.side != "therapist":
+            raise HTTPException(status_code=403, detail="這是行政端的事項，請由櫃台勾選")
+    elif user.role == "staff" and task.side != "admin":
+        raise HTTPException(status_code=403, detail="這是心理師端的事項，請由心理師勾選")
+    elif user.role not in ("admin", "staff", "therapist"):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+
+    task.is_done = body.is_done
+    if body.is_done:
+        task.done_at = datetime.now(timezone.utc)
+        task.done_by = user.id
+        task.done_by_name = (body.actor_name or "").strip() or None
+    else:
+        task.done_at = None
+        task.done_by = None
+        task.done_by_name = None
+    db.commit()
+    db.refresh(task)
+    return _task_to_response(task)

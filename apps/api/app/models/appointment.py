@@ -65,6 +65,31 @@ class Appointment(Base):
     no_show_note = Column(String(200), nullable=True)
     no_show_followup = Column(String(20), nullable=True)  # 催繳方式，具體選項待丙5確認（01 §F 丙5）
 
+    # ── 加時 / 調整實際執行時數（01 §C1、04 §2.4）──────────────────────
+    # 收款前按「調整實際時數」會寫這兩欄，並依單價重算 amount、同步回寫
+    # time_range。C1 裁示：回寫若撞到相鄰預約就擋下，畫面提示請洽行政——
+    # 不自動幫忙擠掉下一位。保留原始起訖在這裡，是為了讓「原訂 vs 實際」
+    # 的差異在日報表與稽核上看得出來。
+    actual_start = Column(DateTime(timezone=True), nullable=True)
+    actual_end = Column(DateTime(timezone=True), nullable=True)
+    duration_adjusted_at = Column(DateTime(timezone=True), nullable=True)
+    duration_adjusted_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    duration_note = Column(String(200), nullable=True)
+
+    # ── 視訊連結（06 P4）────────────────────────────────────────────────
+    # 心理師自行貼上，系統不自動產生（定稿明確排除自動產生）。貼上後行政端
+    # 會出現「請通知行政轉發給個案」待辦，轉發完按一下記時間。
+    video_link = Column(String(500), nullable=True)
+    video_forwarded_at = Column(DateTime(timezone=True), nullable=True)
+    video_forwarded_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    # ── 個案請假（心理師端「為此次預約請假」，原因選填）──────────────────
+    # 與「未到」不同：請假是事前知道的，時段要釋出、不產生應收、也不收
+    # 機構未到補助（補助補的是個案沒出現，不是這場沒發生）。
+    leave_reason = Column(String(200), nullable=True)
+    leave_at = Column(DateTime(timezone=True), nullable=True)
+    leave_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+
     case = relationship("Case", back_populates="appointments", foreign_keys=[case_id])
     couple_case = relationship("Case", foreign_keys=[couple_case_id])
     therapist = relationship("User", back_populates="appointments", foreign_keys=[therapist_id])
@@ -72,3 +97,7 @@ class Appointment(Base):
     session_record = relationship("SessionRecord", back_populates="appointment", uselist=False)
     invoice = relationship("Invoice", back_populates="appointment", uselist=False)
     reminders = relationship("ReminderLog", back_populates="appointment")
+    admin_tasks = relationship(
+        "AppointmentAdminTask", back_populates="appointment",
+        order_by="AppointmentAdminTask.sort_order", cascade="all, delete-orphan",
+    )

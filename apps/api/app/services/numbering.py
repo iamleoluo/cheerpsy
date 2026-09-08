@@ -212,6 +212,19 @@ def next_product_receipt_no(db: Session, *, on_date: date) -> str:
     return f"P{d}{seq:04d}"
 
 
+def next_venue_rental_no(db: Session, *, on_date: date) -> str:
+    """場地租借單號：V{YYYYMMDD}{流水3碼}。與預約編號分開流水——場地租借
+    沒有心理師也沒有個案，混在一起編號只會讓兩邊都難查。"""
+    d = on_date.strftime("%Y%m%d")
+    seq = _allocate(
+        db,
+        f"venue:{d}",
+        "SELECT MAX(CAST(RIGHT(rental_no, 3) AS INTEGER)) FROM venue_rentals WHERE rental_no LIKE :p",
+        {"p": f"V{d}%"},
+    )
+    return f"V{d}{seq:03d}"
+
+
 # ─────────────────────────────────────────────────────────────────────────
 # 核銷編號
 # ─────────────────────────────────────────────────────────────────────────

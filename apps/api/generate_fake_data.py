@@ -128,6 +128,7 @@ class Generator:
         self.room_busy: dict[int, list[tuple[datetime, datetime]]] = defaultdict(list)
         self.therapist_busy: dict[int, list[tuple[datetime, datetime]]] = defaultdict(list)
         self.stats: dict[str, int] = defaultdict(int)
+        self.start_tz = TAIPEI
 
     # ── 工具 ──────────────────────────────────────────────────────────
 
@@ -730,6 +731,9 @@ def main() -> int:
 def gen_finish(gen: "Generator", db, args) -> int:
     from scripts import fake_data_finance as fin
 
+    # 順序有意義：加時會改場次金額，核銷申請金額與心理師酬勞都是從場次
+    # 金額算出來的，所以 P4 那批一定要先跑完，否則兩邊會對不起來。
+    fin.build_scheduling_extras(gen)
     fin.build_claims(gen)
     fin.build_payouts(gen)
     fin.build_referrals(gen)

@@ -136,15 +136,68 @@ CHECKS: list[Check] = [
     ),
     Check(
         "room_overlap",
-        "同一診間不得時段重疊",
-        "excl_room_time_overlap 這條 GIST 約束會擋，但只擋 status<>'cancelled'。"
-        "這裡再驗一次，順便涵蓋資料是用 SQL 直灌進去的情況。",
+        "同一診間不得時段重疊（含場地租借）",
+        "兩張表各有自己的 EXCLUDE 約束，但**跨表沒辦法用單一約束表達**"
+        "（Postgres 的 EXCLUDE 只作用在一張表上）。跨表那一層由 "
+        "services/room_occupancy.py 在應用層擋，這條就是它的守門員。",
         """
-        SELECT a.id AS a_id, b.id AS b_id, a.room_id, a.time_range::text AS a_range, b.time_range::text AS b_range
-          FROM appointments a JOIN appointments b
-            ON a.room_id = b.room_id AND a.id < b.id AND a.time_range && b.time_range
-         WHERE a.room_id IS NOT NULL
-           AND a.status <> 'cancelled' AND b.status <> 'cancelled'
+        WITH occ AS (
+            SELECT 'appointment' AS kind, id, room_id, time_range
+              FROM appointments WHERE room_id IS NOT NULL AND status <> 'cancelled'
+            UNION ALL
+            SELECT 'venue_rental', id, room_id, time_range
+              FROM venue_rentals WHERE status <> 'cancelled'
+        )
+        SELECT a.kind AS a_kind, a.id AS a_id, b.kind AS b_kind, b.id AS b_id,
+               a.room_id, a.time_range::text AS a_range, b.time_range::text AS b_range
+          FROM occ a JOIN occ b
+            ON a.room_id = b.room_id AND a.time_range && b.time_range
+           AND (a.kind, a.id) < (b.kind, b.id)
+        """,
+    ),
+    Check(
+        "hall_overlap",
+        "雲燈教室活動時段不得重疊",
+        "只有一間，同時只能辦一場活動。",
+        """
+        SELECT a.id AS a_id, b.id AS b_id, a.title, a.event_range::text AS a_range
+          FROM hall_bookings a JOIN hall_bookings b
+            ON a.id < b.id AND a.event_range && b.event_range
+         WHERE a.status <> 'cancelled' AND b.status <> 'cancelled'
+        """,
+    ),
+    Check(
+        "actual_duration_sane",
+        "加時後的實際起訖要與預約時間一致",
+        "調整實際時數會**同步回寫** time_range（01 §C1）。兩者對不上代表回寫"
+        "漏了，日曆上看到的長度會跟實際收費的長度不一樣。",
+        """
+        SELECT id AS appointment_id, appointment_number,
+               actual_start, actual_end, time_range::text AS tr
+          FROM appointments
+         WHERE actual_start IS NOT NULL
+           AND (lower(time_range) <> actual_start OR upper(time_range) <> actual_end)
+        """,
+    ),
+    Check(
+        "venue_supervision_mode",
+        "督導模式 A 的場地費必須為 0",
+        "模式 A 是櫃台代收督導費並開收據，場地費不再另收，否則等於跟心理師"
+        "收兩次錢（v7 預約作業 b4）。",
+        """
+        SELECT id AS rental_id, rental_no, supervision_fee_mode, amount, payer
+          FROM venue_rentals
+         WHERE supervision_fee_mode = 'A' AND amount <> 0
+        """,
+    ),
+    Check(
+        "admin_task_done_has_actor",
+        "已勾選的行政提醒必須有執行人與時間",
+        "畫面要顯示成「✓ 林怡君 08/19 09:12」，缺一個就顯示不出來，也無從稽核。",
+        """
+        SELECT id AS task_id, appointment_id, title, is_done, done_at, done_by
+          FROM appointment_admin_tasks
+         WHERE is_done = true AND (done_at IS NULL OR done_by IS NULL)
         """,
     ),
     Check(

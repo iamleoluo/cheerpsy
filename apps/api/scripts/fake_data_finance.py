@@ -16,6 +16,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
+from psycopg2.extras import DateTimeTZRange
 from sqlalchemy import text
 
 from app.institution.models.claim_case import InstClaimCase
@@ -24,6 +25,7 @@ from app.institution.models.plan import InstPlan
 from app.models.appointment import Appointment
 from app.models.case import Case
 from app.models.claim_batch import ClaimBatch
+from app.models.institution import Institution
 from app.models.petty_cash import PettyCash
 from app.models.product_sales import ProductSale
 from app.models.session_record import SessionRecord
@@ -459,3 +461,256 @@ def build_misc(gen) -> None:
     db.commit()
     gen.stats["product_sales"] = 60
     gen.stats["petty_cash"] = len(rows)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# P4 新排程實體：場地租借、5F 雲燈教室、加時、視訊連結、請假、行政提醒
+# ─────────────────────────────────────────────────────────────────────────
+
+VENDORS = [
+    ("蛹之生心理諮商所", "institution"),
+    ("鉅微管理顧問股份有限公司", "institution"),
+    ("EAPC 員工協助中心", "institution"),
+]
+HALL_EVENTS = [
+    "親職教養講座", "正念減壓工作坊", "職場心理健康講座", "青少年情緒管理團體",
+    "照顧者支持團體", "心理師繼續教育課程", "家長成長團體",
+]
+
+
+def build_scheduling_extras(gen) -> None:
+    """P4 那批實體的假資料。跑在預約之後——場地租借要跟一般預約搶診間，
+    衝突表得先被填滿才測得出真實的排擠。"""
+    print("\n[8/9] 場地租借、雲燈教室、加時、視訊、請假、行政提醒")
+    _venue_rentals(gen)
+    _hall_bookings(gen)
+    _duration_adjustments(gen)
+    _video_links(gen)
+    _leaves(gen)
+    _tick_admin_tasks(gen)
+    gen.db.commit()
+    gen.log(
+        f"場地租借 {gen.stats['venue_rentals']} 筆、雲燈教室 {gen.stats['hall_bookings']} 場、"
+        f"加時 {gen.stats['duration_adjusted']} 筆、視訊連結 {gen.stats['video_links']} 筆、"
+        f"請假 {gen.stats['leaves']} 筆、行政提醒已勾 {gen.stats['tasks_done']}/{gen.stats['tasks_total']}"
+    )
+
+
+def _venue_rentals(gen) -> None:
+    from app.models.venue_rental import VenueRental
+    from app.services import room_occupancy
+
+    db, rng = gen.db, gen.rng
+    span = (gen.today - gen.start).days
+    made = 0
+    for _ in range(140):                      # 試 140 次，撞到已佔用就跳過
+        if made >= 60:
+            break
+        d = gen.start + timedelta(days=rng.randint(0, span + 20))
+        if d.weekday() == 6:
+            continue
+        slot = gen.find_slot(d, therapist_id=-1, minutes=rng.choice([120, 180]), need_room=True)
+        if slot is None:
+            continue
+        start, end, room = slot
+        if room_occupancy.find_conflicts(db, room.id, start, end):
+            continue
+
+        is_supervision = rng.random() < 0.45
+        if is_supervision:
+            mode = rng.choice(["A", "B"])
+            therapist = rng.choice(gen.active_therapists)
+            kind, renter_name, inst_id = "private", therapist.name, None
+            therapist_id = therapist.id
+            amount = Decimal("0") if mode == "A" else Decimal(rng.choice([800, 1200]))
+            payer = "renter" if mode == "A" else "therapist"
+            purpose = "個別督導" if rng.random() < 0.6 else "團體督導"
+        else:
+            mode, therapist_id = None, None
+            renter_name, kind = rng.choice(VENDORS)
+            inst = db.query(Institution).filter(Institution.name == renter_name).first()
+            inst_id = inst.id if inst else None
+            amount = Decimal(rng.choice([1000, 1200, 1500, 2000]))
+            payer = "institution"
+            purpose = rng.choice(["團體諮商", "工作坊", "會議", "教育訓練"])
+
+        rental = VenueRental(
+            rental_no=numbering.next_venue_rental_no(db, on_date=start.date()),
+            room_id=room.id, time_range=DateTimeTZRange(start, end),
+            purpose=purpose, renter_kind=kind, renter_name=renter_name,
+            institution_id=inst_id, renter_therapist_id=therapist_id,
+            supervision_fee_mode=mode, amount=amount, payer=payer,
+            created_by=gen.staff.id,
+        )
+        # 過去的要有出席結果；未到時付款方改為借用人自付
+        if start.date() <= gen.today:
+            if rng.random() < 0.1:
+                rental.attendance = "no_show"
+                rental.payer = "renter"
+            else:
+                rental.attendance = "arrived"
+            rental.attended_at = start + timedelta(minutes=5)
+            rental.attended_by = gen.staff.id
+        db.add(rental)
+        db.flush()
+        gen.occupy(-1, room.id, start, end)
+        made += 1
+    gen.stats["venue_rentals"] = made
+
+
+def _hall_bookings(gen) -> None:
+    from app.models.hall_booking import HallBooking
+
+    db, rng = gen.db, gen.rng
+    span = (gen.today - gen.start).days
+    used_days: set[date] = set()
+    made = 0
+    for _ in range(90):
+        if made >= 36:
+            break
+        d = gen.start + timedelta(days=rng.randint(0, span + 25))
+        if d in used_days or d.weekday() == 6:
+            continue
+        used_days.add(d)
+        ev_start = datetime.combine(d, datetime.min.time(),
+                                    tzinfo=gen.start_tz).replace(hour=rng.choice([9, 13, 18]))
+        ev_end = ev_start + timedelta(hours=rng.choice([2, 3]))
+
+        internal = rng.random() < 0.56
+        lecturer = rng.choice(gen.active_therapists) if internal else None
+        h = HallBooking(
+            title=rng.choice(HALL_EVENTS),
+            setup_range=DateTimeTZRange(ev_start - timedelta(hours=1), ev_start),
+            event_range=DateTimeTZRange(ev_start, ev_end),
+            lecturer_kind="internal" if internal else "external",
+            lecturer_therapist_id=lecturer.id if lecturer else None,
+            lecturer_name=None if internal else rng.choice(
+                ["王志明 講師", "李美華 講師", "張建良 教授", "陳怡君 心理師"]),
+            lecturer_fee=Decimal(rng.choice([3000, 4500, 6000, 8000])),
+            # 外聘講師常由主辦單位直接付款，不進診所帳
+            fee_to_clinic_account=internal or rng.random() < 0.35,
+            borrower=rng.choice(["臺南市政府社會局", "臺南市政府衛生局", "所內活動",
+                                 "教育部_教師諮商輔導支持中心", "自辦推廣"]),
+            attendee_count=rng.randint(12, 60),
+            created_by=gen.staff.id,
+        )
+        if ev_start.date() <= gen.today:
+            h.status = "cancelled" if rng.random() < 0.17 else "executed"
+        db.add(h)
+        db.flush()
+        made += 1
+    gen.stats["hall_bookings"] = made
+
+
+def _duration_adjustments(gen) -> None:
+    """加時／縮短：改寫實際起訖與金額。這裡直接寫 ORM 而不是打端點，因為
+    端點會擋「已收款」，而歷史資料絕大多數都已經收過款了。"""
+    db, rng = gen.db, gen.rng
+    rows = (
+        db.query(SessionRecord, Appointment)
+        .join(Appointment, Appointment.id == SessionRecord.appointment_id)
+        .filter(SessionRecord.is_void.is_(False))
+        .all()
+    )
+    rng.shuffle(rows)
+    for sr, appt in rows[:60]:
+        if not appt.time_range or not appt.time_range.lower:
+            continue
+        lower, upper = appt.time_range.lower, appt.time_range.upper
+        old_min = max(1, int((upper - lower).total_seconds() // 60))
+        delta = rng.choice([-15, 15, 30, 30])          # 多數是延長
+        new_min = old_min + delta
+        if new_min < 30:
+            continue
+        # 只縮短或在自己的時段內延長會撞到鄰場，所以加時一律往後延，
+        # 且先確認沒撞到——撞到就跳過，跟真實流程一樣（01 §C1 不擠掉別人）
+        new_end = lower + timedelta(minutes=new_min)
+        if delta > 0 and appt.room_id:
+            from app.services import room_occupancy
+            if room_occupancy.find_conflicts(db, appt.room_id, lower, new_end,
+                                             exclude_appointment_id=appt.id):
+                continue
+        unit_per_min = Decimal(str(appt.amount)) / Decimal(old_min)
+        appt.actual_start, appt.actual_end = lower, new_end
+        appt.duration_adjusted_at = upper
+        appt.duration_adjusted_by = gen.staff.id
+        appt.duration_note = rng.choice([
+            "個案情緒未穩，延長會談", "個案提前結束", "危機處理，延長 30 分鐘",
+            "家長臨時加入，延長"])
+        appt.time_range = DateTimeTZRange(lower, new_end)
+        appt.amount = (unit_per_min * Decimal(new_min)).quantize(Decimal("1"))
+        # 與 adjust_duration 端點同一套切分規則：自付額固定，差額歸機構
+        if appt.institution_payable is not None:
+            case_part = Decimal(str(appt.case_payable or 0))
+            appt.institution_payable = max(Decimal("0"), Decimal(str(appt.amount)) - case_part)
+            sr.institution_payable = appt.institution_payable
+        if appt.commissionable_base is not None:
+            base_per_min = Decimal(str(appt.commissionable_base)) / Decimal(old_min)
+            appt.commissionable_base = (base_per_min * Decimal(new_min)).quantize(Decimal("0.01"))
+            sr.commissionable_base = appt.commissionable_base
+        sr.amount = appt.amount
+        gen.stats["duration_adjusted"] += 1
+    db.flush()
+
+
+
+def _video_links(gen) -> None:
+    db, rng = gen.db, gen.rng
+    rows = db.query(Appointment).filter(Appointment.session_type == "online").all()
+    for appt in rows:
+        if rng.random() < 0.15:
+            continue                                  # 有些心理師還沒貼
+        appt.video_link = f"https://meet.cheerpsy.tw/{rng.randint(100000, 999999)}"
+        # 未來的預約有一部分還沒轉發 → 行政端的「待轉發」待辦才有東西
+        if appt.time_range and appt.time_range.lower.date() <= gen.today or rng.random() < 0.7:
+            appt.video_forwarded_at = appt.time_range.lower - timedelta(days=1)
+            appt.video_forwarded_by = gen.staff.id
+        gen.stats["video_links"] += 1
+    db.flush()
+
+
+def _leaves(gen) -> None:
+    """把一部分已取消的預約標記成「個案請假」——請假在資料上就是帶原因的取消。"""
+    db, rng = gen.db, gen.rng
+    rows = (
+        db.query(Appointment)
+        .filter(Appointment.status == "cancelled", Appointment.leave_reason.is_(None))
+        .all()
+    )
+    rng.shuffle(rows)
+    for appt in rows[: max(1, len(rows) // 3)]:
+        appt.leave_reason = rng.choice([
+            "個案臨時出差", "個案生病", "家中臨時有事", "工作無法排開", ""]) or None
+        appt.leave_at = appt.time_range.lower - timedelta(days=rng.randint(1, 3))
+        appt.leave_by = appt.therapist_id
+        gen.stats["leaves"] += 1
+    db.flush()
+
+
+def _tick_admin_tasks(gen) -> None:
+    """行政流程提醒：多數已勾（含執行人與時間），少數留著沒勾——
+    診間日曆的「整格轉灰」判斷才有東西可判。"""
+    from app.models.appointment_admin_task import AppointmentAdminTask
+
+    db, rng = gen.db, gen.rng
+    tasks = (
+        db.query(AppointmentAdminTask, Appointment)
+        .join(Appointment, Appointment.id == AppointmentAdminTask.appointment_id)
+        .all()
+    )
+    names = {t.id: t.name for t in gen.therapists}
+    for task, appt in tasks:
+        gen.stats["tasks_total"] += 1
+        past = appt.time_range and appt.time_range.lower.date() <= gen.today
+        if not past or rng.random() > 0.85:
+            continue
+        task.is_done = True
+        task.done_at = appt.time_range.lower + timedelta(minutes=rng.randint(-30, 90))
+        if task.side == "therapist":
+            task.done_by = appt.therapist_id
+            task.done_by_name = names.get(appt.therapist_id)
+        else:
+            task.done_by = gen.staff.id
+            task.done_by_name = gen.staff.name
+        gen.stats["tasks_done"] += 1
+    db.flush()

@@ -24,6 +24,10 @@ from app.models.fee_item import FeeItem
 from app.models.receipt import Receipt
 # 全系統配號計數器（06 P0）。見 app/services/numbering.py。
 from app.models.number_sequence import NumberSequence
+# P4 新排程實體：場地租借、5F 雲燈教室、行政流程提醒 checklist。
+from app.models.venue_rental import VenueRental
+from app.models.hall_booking import HallBooking
+from app.models.appointment_admin_task import AppointmentAdminTask
 # 機構合約子系統的資料表也集中在這裡註冊（models 位於 app/institution/models/，
 # 但註冊點統一放此處，避免有人漏掉、重蹈 Notification 的覆轍）。
 from app.institution.models import (  # noqa: F401
@@ -65,6 +69,9 @@ __all__ = [
     "FeeItem",
     "Receipt",
     "NumberSequence",
+    "VenueRental",
+    "HallBooking",
+    "AppointmentAdminTask",
     "InstContract",
     "InstPlan",
     "InstRateRule",
