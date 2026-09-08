@@ -166,6 +166,18 @@ else
 fi
 
 log ""
+log "── SSH 遠端維護通道 (ssh.cheerpsies.com) ──"
+# 這裡只檢查「本機看得到的部分」：sshd 有沒有活著、tunnel 設定檔裡的
+# SSH ingress 規則還在不在、DNS 還有沒有指過來。至於「Cloudflare Access
+# 驗證真的擋得住陌生人」這種端對端測試，需要瀏覽器登入，不適合放進
+# 每次開機自動跑的檢查，靠人工偶爾測一次即可（2026-09-08 已手動驗證過）。
+check "sshd 服務存活" "systemctl is-active --quiet ssh"
+check "sshd 監聽 port 22" "ss -tln | grep -q ':22 '"
+check "cloudflared config 含 SSH ingress 規則" \
+  "grep -q 'ssh.cheerpsies.com' ~/.cloudflared/config.yml && grep -q 'ssh://localhost:22' ~/.cloudflared/config.yml"
+check "ssh.cheerpsies.com DNS 解析正常" "dig +short ssh.cheerpsies.com | grep -qE '^[0-9]+\.'"
+
+log ""
 log "── 前端 build 新鮮度 ──"
 # frontend 是 compile 好的 production build（.next/standalone），不是即時編譯的 dev server。
 # 如果之後 git pull 了新程式碼卻忘記重新 build，網站會繼續穩定運作，
