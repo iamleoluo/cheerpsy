@@ -47,6 +47,12 @@ google calendar_test/
 # Docker
 pgdata/
 
+# 本機 review 環境（conda 版 Postgres 資料、DB dump、開機健康檢查 log）
+# 這些都是機器專屬的執行期資料，不是程式碼，也可能含測試/假資料的 DB dump
+.pgdata/
+exports/
+health-reports/
+
 # Misc
 coverage/
 *.log
