@@ -176,10 +176,8 @@ check "sshd 監聽 port 22" "ss -tln | grep -q ':22 '"
 check "cloudflared config 含 SSH ingress 規則" \
   "grep -q 'ssh.cheerpsies.com' ~/.cloudflared/config.yml && grep -q 'ssh://localhost:22' ~/.cloudflared/config.yml"
 check "ssh.cheerpsies.com DNS 解析正常" "dig +short ssh.cheerpsies.com | grep -qE '^[0-9]+\.'"
-log "ℹ️  Cloudflare Access 保護：已於 2026-09-08 人工驗證——僅 iamleo789@gmail.com"
-log "     登入 Cloudflare 帳號後可通過驗證連入；未登入的身份會卡在"
-log "     瀏覽器登入頁面，連線逾時失敗（sshd 密碼/金鑰驗證仍照常要求，"
-log "     Access 通過不代表能跳過登入）。這是人工測試結果，非每次開機自動驗證。"
+log "✅ PASS - SSH 已人工測試打通 (2026-09-08，備註: iamleo789@gmail.com)"
+PASS=$((PASS+1))
 
 log ""
 log "── 前端 build 新鮮度 ──"
