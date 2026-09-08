@@ -5,15 +5,18 @@ import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
 
 /**
- * 我的酬勞（v1）。GET /ledger?month= 與 GET /payouts 在 role=therapist 時
- * 後端已自動限定為本人資料。
+ * 我的酬勞。GET /ledger?month= 與 GET /payouts 在 role=therapist 時後端已
+ * 自動限定為本人資料。
  *
- * V2升級計畫 09 §4.3 已裁示這頁最終要依 compensation_mode（抽成/回饋/
- * 心理師定價）分區呈現，但 SessionRecordResponse 目前還沒把這幾個欄位
- * 攤平出來（models 上有，schema 沒露），且此頁本來就排在 09 §6 順序
- * 最後一項（要等優待與 compensation_mode 都定案）。這裡先做「大概版」：
- * 用既有欄位（therapist_share／commission_rate_used／outcall_bonus）
- * 呈現抽成制（目前絕大多數場次走這條），分區呈現留待欄位補齊後再做。
+ * 依 09 §4.3 依 compensation_mode 分三區呈現：
+ *   抽成（commission）  金額 × 抽成率 ＋ 外出保底
+ *   回饋（kickback）    鐘點費由心理師自己向機構請領，診所抽的那份要**回繳**
+ *                       ——所以這一區的金額是**負的**，是從當月酬勞扣掉的
+ *   無勞務（none）      借場地那類，不計酬
+ *
+ * therapist_share 由後端的 payout_line_amount() 算好（帳冊、月結算、這頁
+ * 共用同一支函式），所以這裡直接加總即可，不會出現「畫面算的跟實際發的
+ * 不一樣」。
  */
 
 interface LedgerRecord {
@@ -27,7 +30,15 @@ interface LedgerRecord {
   outcall_bonus: number;
   payment_status: string;
   institution_name: string | null;
+  compensation_mode: string | null;
+  plan_name: string | null;
 }
+
+const MODE_META: Record<string, { label: string; hint: string; tone: string }> = {
+  commission: { label: "抽成", hint: "場次金額 × 抽成率 ＋ 外出保底", tone: "text-primary-600" },
+  kickback: { label: "回饋制", hint: "鐘點費由你直接向機構請領，此為應回繳診所的金額", tone: "text-rose-600" },
+  none: { label: "無心理師勞務", hint: "借場地等，不計酬", tone: "text-gray-400" },
+};
 
 interface Payout {
   id: number;
@@ -65,8 +76,17 @@ export default function PayPage() {
   }, [token, month]);
 
   const totalSessions = records.length;
-  const totalEarned = records.reduce((s, r) => s + r.therapist_share + r.outcall_bonus, 0);
+  // therapist_share 已由後端算好（含回饋制的負數與作廢排除），直接加總
+  const totalEarned = records.reduce((s, r) => s + r.therapist_share, 0);
   const currentPayout = payouts[0];
+
+  const byMode = records.reduce<Record<string, { count: number; sum: number }>>((acc, r) => {
+    const key = r.compensation_mode ?? "commission";
+    (acc[key] ??= { count: 0, sum: 0 });
+    acc[key].count += 1;
+    acc[key].sum += r.therapist_share;
+    return acc;
+  }, {});
 
   if (!token) return <p>Loading...</p>;
 
@@ -91,6 +111,26 @@ export default function PayPage() {
         </div>
       </div>
 
+      {Object.keys(byMode).length > 1 && (
+        <div className="mb-6 space-y-2">
+          <p className="text-xs text-gray-400">依薪酬模式分區（09 §4.3）</p>
+          {Object.entries(byMode).map(([mode, v]) => {
+            const meta = MODE_META[mode] ?? MODE_META.commission;
+            return (
+              <div key={mode} className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-2.5">
+                <div>
+                  <span className="text-sm font-medium">{meta.label}</span>
+                  <span className="ml-2 text-xs text-gray-400">{v.count} 場 · {meta.hint}</span>
+                </div>
+                <div className={`text-sm font-bold ${v.sum < 0 ? "text-rose-600" : meta.tone}`}>
+                  {v.sum < 0 ? "−" : ""}${Math.abs(v.sum).toLocaleString()}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <div className="mb-4 flex items-center gap-2">
         <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm" />
         {loading && <span className="text-xs text-gray-400">載入中...</span>}
@@ -103,6 +143,7 @@ export default function PayPage() {
               <th className="border-b border-gray-200 px-3 py-2 text-left">日期</th>
               <th className="border-b border-gray-200 px-3 py-2 text-left">個案</th>
               <th className="border-b border-gray-200 px-3 py-2 text-left">類型</th>
+              <th className="border-b border-gray-200 px-3 py-2 text-left">薪酬模式</th>
               <th className="border-b border-gray-200 px-3 py-2 text-right">場次金額</th>
               <th className="border-b border-gray-200 px-3 py-2 text-right">抽成率</th>
               <th className="border-b border-gray-200 px-3 py-2 text-right">外出加給</th>
@@ -112,17 +153,23 @@ export default function PayPage() {
           </thead>
           <tbody>
             {records.length === 0 && (
-              <tr><td colSpan={8} className="px-3 py-10 text-center text-sm text-gray-400">本月尚無紀錄</td></tr>
+              <tr><td colSpan={9} className="px-3 py-10 text-center text-sm text-gray-400">本月尚無紀錄</td></tr>
             )}
             {records.map((r) => (
               <tr key={r.id} className="hover:bg-gray-50">
                 <td className="border-b border-gray-100 px-3 py-2">{r.session_date}</td>
                 <td className="border-b border-gray-100 px-3 py-2">{r.case_name ?? "—"}</td>
                 <td className="border-b border-gray-100 px-3 py-2">{sessionTypeLabel[r.session_type] ?? r.session_type}{r.institution_name ? ` · ${r.institution_name}` : ""}</td>
+                <td className="border-b border-gray-100 px-3 py-2 text-xs text-gray-500">
+                  {(MODE_META[r.compensation_mode ?? "commission"] ?? MODE_META.commission).label}
+                  {r.plan_name ? <span className="ml-1 text-gray-400">{r.plan_name}</span> : null}
+                </td>
                 <td className="border-b border-gray-100 px-3 py-2 text-right">${r.amount.toLocaleString()}</td>
                 <td className="border-b border-gray-100 px-3 py-2 text-right">{r.commission_rate_used != null ? `${Math.round(r.commission_rate_used * 100)}%` : "—"}</td>
                 <td className="border-b border-gray-100 px-3 py-2 text-right">{r.outcall_bonus > 0 ? `+$${r.outcall_bonus.toLocaleString()}` : "—"}</td>
-                <td className="border-b border-gray-100 px-3 py-2 text-right font-medium">${(r.therapist_share + r.outcall_bonus).toLocaleString()}</td>
+                <td className={`border-b border-gray-100 px-3 py-2 text-right font-medium ${r.therapist_share < 0 ? "text-rose-600" : ""}`}>
+                  {r.therapist_share < 0 ? "−" : ""}${Math.abs(r.therapist_share).toLocaleString()}
+                </td>
                 <td className="border-b border-gray-100 px-3 py-2">
                   <span className={`rounded px-1.5 py-0.5 text-xs ${currentPayout?.status === "paid" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
                     {currentPayout?.status === "paid" ? "已發放" : "待結算"}

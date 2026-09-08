@@ -20,6 +20,10 @@ class SessionRecordResponse(BaseModel):
     discount_note: str | None = None
     effective_amount: float
     therapist_share: float
+    # 薪酬模式（07 §8.2）：commission 抽成 / kickback 回饋（扣項）/ none 無勞務。
+    # 09 §4.3 要求「我的酬勞」依這三種分區呈現——欄位在 models 上一直都有，
+    # 只是沒攤平到 schema，前端拿不到就分不了區。
+    compensation_mode: str | None = None
     clinic_share: float
     payment_status: str
     funding_source: str | None = None

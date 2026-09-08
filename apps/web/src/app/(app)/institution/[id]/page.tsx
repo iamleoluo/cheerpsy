@@ -107,6 +107,8 @@ export default function ContractPanelPage() {
   const [panel, setPanel] = useState<Panel | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 核銷期間的缺口／重疊提醒（v7：警告不阻擋）
+  const [claimWarnings, setClaimWarnings] = useState<string[]>([]);
   const [tab, setTab] = useState<"quota" | "claims" | "docs" | "settings">("quota");
   const [busy, setBusy] = useState(false);
   const [showCreatePlan, setShowCreatePlan] = useState(false);
@@ -136,11 +138,17 @@ export default function ContractPanelPage() {
     if (sessionRecordIds.length === 0) return;
     setBusy(true);
     setError(null);
+    setClaimWarnings([]);
     try {
       const cc = await clientFetch("/institution/claim-cases", token, {
         method: "POST",
         body: JSON.stringify({ claim_group_key: claimGroupKey, grouping_mode: groupingMode }),
       });
+      // 缺口／重疊／前期遺留一律是警告不阻擋（v7 定案），所以照常往下做，
+      // 只把提醒留在畫面上讓行政自己判斷要不要處理
+      if (Array.isArray(cc.warnings) && cc.warnings.length > 0) {
+        setClaimWarnings(cc.warnings.map((w: any) => w.message));
+      }
       await clientFetch(`/institution/claim-cases/${cc.id}/records`, token, {
         method: "POST",
         body: JSON.stringify({ session_record_ids: sessionRecordIds }),
@@ -235,6 +243,24 @@ export default function ContractPanelPage() {
       </p>
 
       {error && <div className="mb-4 rounded-lg bg-rose-50 px-4 py-2 text-sm text-rose-600">{error}</div>}
+
+      {claimWarnings.length > 0 && (
+
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+
+          <p className="mb-1 font-medium">核銷期間提醒（不影響已建立的核銷案）</p>
+
+          <ul className="list-disc space-y-0.5 pl-4">
+
+            {claimWarnings.map((w, i) => <li key={i}>{w}</li>)}
+
+          </ul>
+
+          <button onClick={() => setClaimWarnings([])} className="mt-1.5 text-amber-600 underline">知道了</button>
+
+        </div>
+
+      )}
 
       {panel.guidance && <GuidanceBanner guidance={panel.guidance} />}
 
@@ -620,12 +646,36 @@ function DocGateSection({
 
   useEffect(() => { fetchDocs(); }, [fetchDocs]);
 
+  const [returnTarget, setReturnTarget] = useState<DocRow | null>(null);
+  const [returnReason, setReturnReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
   async function verify(recordId: number) {
     setBusy(true);
     try {
       await clientFetch(`/ledger/${recordId}/admin-verify`, token, { method: "PUT" });
       fetchDocs();
       onChanged();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function returnForCorrection() {
+    if (!returnTarget || !returnReason.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await clientFetch(`/institution/records/${returnTarget.id}/return-for-correction`, token, {
+        method: "PUT",
+        body: JSON.stringify({ reason: returnReason.trim() }),
+      });
+      setReturnTarget(null);
+      setReturnReason("");
+      fetchDocs();
+      onChanged();
+    } catch (e: any) {
+      setError(e.message ?? "退回失敗");
     } finally {
       setBusy(false);
     }
@@ -648,13 +698,55 @@ function DocGateSection({
             {confirmed.map((r) => (
               <li key={r.id} className="flex items-center justify-between border-b border-gray-50 py-1">
                 <span>{r.session_date} · {r.case_name} · {r.therapist_name}</span>
-                <button disabled={busy} onClick={() => verify(r.id)} className="text-primary-600 hover:underline disabled:opacity-40">核對</button>
+                <span className="flex gap-2">
+                  <button disabled={busy} onClick={() => verify(r.id)} className="text-primary-600 hover:underline disabled:opacity-40">核對</button>
+                  <button disabled={busy} onClick={() => setReturnTarget(r)} className="text-rose-500 hover:underline disabled:opacity-40">退回補件</button>
+                </span>
               </li>
             ))}
             {confirmed.length === 0 && <li className="text-gray-300">無</li>}
           </ul>
         </div>
       </div>
+
+      {error && <div className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">{error}</div>}
+
+      {returnTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setReturnTarget(null)}>
+          <div className="w-[420px] rounded-xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="mb-1 font-semibold">退回補件</h3>
+            <p className="mb-3 text-xs text-gray-400">
+              {returnTarget.session_date} · {returnTarget.case_name} · {returnTarget.therapist_name}
+            </p>
+            <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              退回會<strong>同時清除心理師確認與行政核對</strong>，該筆回到「待提交」並通知心理師。
+              只影響這一筆，但只要有一筆未齊備，整案就無法送出。
+            </p>
+            <label className="block">
+              <span className="mb-1 block text-xs text-gray-500">退回原因 <span className="text-rose-500">*</span></span>
+              <textarea
+                value={returnReason}
+                onChange={(e) => setReturnReason(e.target.value)}
+                rows={3}
+                placeholder="例：出席單缺個案簽名"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              />
+            </label>
+            <div className="flex gap-2 pt-3">
+              <button
+                disabled={busy || !returnReason.trim()}
+                onClick={returnForCorrection}
+                className="flex-1 rounded-lg bg-rose-600 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-40"
+              >
+                {busy ? "處理中…" : "確認退回"}
+              </button>
+              <button onClick={() => setReturnTarget(null)} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-500 hover:bg-gray-50">
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

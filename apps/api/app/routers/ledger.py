@@ -32,6 +32,7 @@ from app.schemas.session_record import (
     SplitRequest,
     VoidRequest,
 )
+from app.routers.payouts import payout_line_amount
 from app.services.claim_batch import generate_batch_number
 from app.services.pdf_generator import generate_self_pay_receipt
 from app.services.settlement import materialize_due_appointments, run_daily_settlement
@@ -108,8 +109,12 @@ def _to_response(r: SessionRecord, db: Session) -> SessionRecordResponse:
         discount_amount=discount,
         discount_note=r.discount_note,
         effective_amount=effective,
-        therapist_share=round(effective * float(rate) + bonus, 2),
-        clinic_share=round(effective * float(1 - rate) - bonus, 2),
+        # 與月酬勞共用同一支計算（routers/payouts.payout_line_amount）：
+        # 回饋制是扣項、無勞務為 0、作廢不計。原本這裡只有「金額×抽成率＋保底」
+        # 一條公式，帳冊上看到的心理師分潤跟月結算出來的數字會對不起來。
+        therapist_share=float(payout_line_amount(r)),
+        clinic_share=round(effective - float(payout_line_amount(r)), 2),
+        compensation_mode=r.compensation_mode,
         payment_status=r.payment_status,
         funding_source=funding,
         institution_name=case.institution.name if case and case.institution else None,
