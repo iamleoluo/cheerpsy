@@ -22,6 +22,8 @@ from app.models.notification import Notification
 # P1 出席驅動·報到三步驟（01 §A2、02 §1.2）：收費項目主檔、收據。
 from app.models.fee_item import FeeItem
 from app.models.receipt import Receipt
+# 全系統配號計數器（06 P0）。見 app/services/numbering.py。
+from app.models.number_sequence import NumberSequence
 # 機構合約子系統的資料表也集中在這裡註冊（models 位於 app/institution/models/，
 # 但註冊點統一放此處，避免有人漏掉、重蹈 Notification 的覆轍）。
 from app.institution.models import (  # noqa: F401
@@ -62,6 +64,7 @@ __all__ = [
     "Notification",
     "FeeItem",
     "Receipt",
+    "NumberSequence",
     "InstContract",
     "InstPlan",
     "InstRateRule",

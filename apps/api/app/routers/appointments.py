@@ -20,6 +20,7 @@ from app.models.receipt import Receipt
 from app.models.room import Room
 from app.models.session_record import SessionRecord
 from app.models.user import User
+from app.services import numbering
 from app.services.audit import write_audit
 from app.services.settlement import SETTLEMENT_LEAD_MINUTES, build_session_record
 # 機構合約子系統整合（07 §3.2 依賴反轉）：只能 import funding/，不可 import
@@ -44,19 +45,10 @@ router = APIRouter(prefix="/appointments", tags=["appointments"])
 DEFAULT_COMMISSION_RATE = Decimal("0.70")
 
 
-def _make_number(therapist_code: str, dt: datetime, seq: int) -> str:
-    date_str = dt.strftime("%Y%m%d")
-    return f"R-{date_str}-{therapist_code}-{seq:03d}"
-
-
-def _next_seq(db: Session, therapist_code: str, dt: datetime) -> int:
-    date_str = dt.strftime("%Y%m%d")
-    prefix = f"R-{date_str}-{therapist_code}-"
-    result = db.execute(
-        text("SELECT COUNT(*) FROM appointments WHERE appointment_number LIKE :p"),
-        {"p": f"{prefix}%"},
-    ).scalar()
-    return (result or 0) + 1
+def _next_appointment_number(db: Session, therapist_code: str, dt: datetime) -> str:
+    """預約編號 R-{YYYYMMDD}-{代碼}-{流水3碼}。配號改走 services/numbering.py
+    的序列表（06 P0），日期取自預約起始時間，所以補歷史預約會拿到當時的日期。"""
+    return numbering.next_appointment_number(db, on_date=dt.date(), therapist_code=therapist_code)
 
 
 def _next_visit_seq(db: Session, case_id: int) -> int:
@@ -325,8 +317,7 @@ def create_appointment(
     if body.room_id:
         _check_room_conflict(db, body.room_id, body.start_time, body.end_time)
 
-    seq = _next_seq(db, therapist.user_code, body.start_time)
-    number = _make_number(therapist.user_code, body.start_time, seq)
+    number = _next_appointment_number(db, therapist.user_code, body.start_time)
     visit_seq = _next_visit_seq(db, body.case_id)
 
     # ── 機構合約子系統整合點（07 §5.2、§7.1）───────────────────────────
@@ -413,6 +404,24 @@ def check_in(
     權限（02 §7 權限矩陣）：現場個案的已到/未到由櫃檯（admin/staff）登錄；
     視訊/外展由心理師自己按。管理員兩種都能按（覆蓋用）。
     """
+    return perform_check_in(db, appointment_id, body, user)
+
+
+def perform_check_in(
+    db: Session,
+    appointment_id: int,
+    body: CheckInRequest,
+    user: User,
+    now: datetime | None = None,
+):
+    """check-in 的實作本體。抽出來是為了讓 in-process 呼叫端（媒合子系統的
+    referral/service.py、以及灌歷史資料的 generate_fake_data.py）能傳入
+    `now`——報到時間戳要跟著那場諮商當時的時間，不是灌資料當下的時間。
+
+    `now` 刻意不放在端點簽名上：FastAPI 會把多出來的參數當成 query string，
+    等於開一個「從 HTTP 就能偽造報到時間」的洞。留在這一層，HTTP 永遠拿不到。
+    """
+    now = now or datetime.now(timezone.utc)
     if body.status not in ("arrived", "no_show"):
         raise HTTPException(status_code=400, detail="status 必須是 arrived 或 no_show")
 
@@ -439,7 +448,7 @@ def check_in(
 
     if body.status == "no_show":
         appt.check_in_status = "no_show"
-        appt.checked_in_at = datetime.now(timezone.utc)
+        appt.checked_in_at = now
         appt.checked_in_by = user.id
         appt.no_show_reason = body.no_show_reason
         appt.no_show_note = body.no_show_note
@@ -482,7 +491,7 @@ def check_in(
 
     appt.status = "executed"
     appt.check_in_status = "arrived"
-    appt.checked_in_at = datetime.now(timezone.utc)
+    appt.checked_in_at = now
     appt.checked_in_by = user.id
 
     db.commit()
@@ -498,11 +507,11 @@ def _payable_amount(sr: SessionRecord) -> Decimal:
 
 
 def _next_appointment_receipt_no(db: Session, d: date) -> str:
-    """收據編號：01 §C4／07 §乙1 標記待與診療所談定，格式未定案前沿用
-    R{YYYYMMDD}{seq:04d}（與 SessionRecord.receipt_no 同一套慣例），
-    計數對象是 receipts 表自己的序號，格式定案後只改這一處。"""
-    count = db.query(Receipt).filter(Receipt.receipt_no.like(f"R{d.strftime('%Y%m%d')}%")).count()
-    return f"R{d.strftime('%Y%m%d')}{count + 1:04d}"
+    """收據編號。格式在 services/numbering.py，預設 v7（A…C021-1），可切回 legacy。
+
+    舊寫法是 receipts 表自己數自己的，跟 session_records 那套各數各的，同一天
+    會產出兩個一模一樣的字串。現在兩張表共用同一個配號 scope，不會再重複。"""
+    return numbering.next_receipt_no(db, on_date=d)
 
 
 @router.post("/{appointment_id}/payment-step", response_model=PaymentStepResponse)
@@ -668,8 +677,7 @@ def create_batch(
             db, body.case_id, slot_funding, slot_quota, slot.start_time.date()
         )
 
-        seq = _next_seq(db, therapist.user_code, slot.start_time)
-        number = _make_number(therapist.user_code, slot.start_time, seq)
+        number = _next_appointment_number(db, therapist.user_code, slot.start_time)
         time_range = DateTimeTZRange(slot.start_time, slot.end_time)
 
         appt = Appointment(
@@ -758,6 +766,13 @@ def cancel_appointment(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    return perform_cancel(db, appointment_id, user)
+
+
+def perform_cancel(db: Session, appointment_id: int, user: User, now: datetime | None = None):
+    """取消預約的實作本體。`now` 同 perform_check_in()：留給 in-process 呼叫端
+    （灌歷史資料）用，不放在端點簽名上以免變成可從 HTTP 偽造的 query 參數。"""
+    now = now or datetime.now(timezone.utc)
     a = db.query(Appointment).filter(Appointment.id == appointment_id).first()
     if not a:
         raise HTTPException(status_code=404, detail="Appointment not found")
@@ -766,14 +781,12 @@ def cancel_appointment(
     if a.status != "booked":
         raise HTTPException(status_code=400, detail=f"Cannot cancel appointment with status '{a.status}'")
 
-    today = date.today()
     appt_date = a.time_range.lower.date() if a.time_range else None
-    if appt_date and appt_date < today:
+    if appt_date and appt_date < now.date():
         raise HTTPException(status_code=400, detail="Cannot cancel past appointments")
 
     if a.time_range and a.time_range.upper is not None:
         cutoff = a.time_range.upper - timedelta(minutes=SETTLEMENT_LEAD_MINUTES)
-        now = datetime.now(timezone.utc)
         if now >= cutoff:
             cutoff_local = cutoff.astimezone().strftime("%Y-%m-%d %H:%M")
             raise HTTPException(
@@ -782,6 +795,11 @@ def cancel_appointment(
             )
 
     a.status = "cancelled"
+    # 機構額度歸還：reserve() 在建立預約時扣掉了 reserved_count，取消時要還回去，
+    # 否則三態恆等式（quota_limit + extended = used + reserved + booked）每取消
+    # 一次就少 1，合約面板的三色長條會愈算愈短。見 models/enrollment.py 的恆等式。
+    if a.plan_id:
+        get_funding_provider().release(db, a.id, reason="cancelled", bill_no_show_fee=False)
     write_audit(db, "appointments", a.id, "UPDATE", user.id,
                 {"status": "booked"}, {"status": "cancelled"})
     db.commit()
@@ -859,6 +877,10 @@ def batch_delete_appointments(
             raise HTTPException(status_code=400, detail=f"預約 {a.appointment_number}: {err}")
     deleted = []
     for a in appts:
+        # 刪除等同取消：機構額度要還回 reserved，否則三態恆等式每刪一筆少 1。
+        # 不收未到補助（見 funding/ports.py release 的 bill_no_show_fee 說明）。
+        if a.plan_id:
+            get_funding_provider().release(db, a.id, reason="deleted", bill_no_show_fee=False)
         write_audit(db, "appointments", a.id, "DELETE", user.id,
                     {"appointment_number": a.appointment_number, "status": a.status}, None)
         deleted.append(a.id)
@@ -882,6 +904,8 @@ def delete_by_batch_id(
             raise HTTPException(status_code=400, detail=f"預約 {a.appointment_number}: {err}")
     deleted = []
     for a in appts:
+        if a.plan_id:
+            get_funding_provider().release(db, a.id, reason="deleted", bill_no_show_fee=False)
         write_audit(db, "appointments", a.id, "DELETE", user.id,
                     {"appointment_number": a.appointment_number, "batch_id": batch_id}, None)
         deleted.append(a.id)

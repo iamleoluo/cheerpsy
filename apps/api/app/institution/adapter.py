@@ -49,6 +49,28 @@ from app.models.appointment import Appointment
 from app.models.case import Case
 from app.models.session_record import SessionRecord
 from app.models.user import User
+from app.utils.tz import to_local_date
+
+
+def _count_booked(db: Session, plan_id: int, case_id: int) -> int:
+    """額度三態裡的「已預約」——不落地成欄位，每次即時數（見 07 §4.1）。
+
+    必須排除 check_in_status='no_show'：未到的預約依 01 §C3 定案「狀態維持
+    booked、不轉 cancelled」，同時 release() 又已經把那一格還進 reserved。
+    若這裡照數，同一格會同時被算成 booked 和 reserved，恆等式憑空多 1，
+    畫面上會顯示「已用 1/3」但其實一次都沒用掉。
+    """
+    return (
+        db.query(func.count(Appointment.id))
+        .filter(
+            Appointment.plan_id == plan_id,
+            Appointment.case_id == case_id,
+            Appointment.status == "booked",
+            or_(Appointment.check_in_status.is_(None), Appointment.check_in_status != "no_show"),
+        )
+        .scalar()
+        or 0
+    )
 
 DEFAULT_COMMISSION_RATE = Decimal("0.70")
 
@@ -100,12 +122,7 @@ class InstitutionFundingProvider:
             plan: InstPlan = e.plan
             if plan is None or not plan.is_active:
                 continue
-            booked = (
-                db.query(func.count(Appointment.id))
-                .filter(Appointment.plan_id == plan.id, Appointment.case_id == case_id, Appointment.status == "booked")
-                .scalar()
-                or 0
-            )
+            booked = _count_booked(db, plan.id, case_id)
             limit = e.quota_limit
             used = float(e.used_count or 0)
             reserved = float(e.reserved_count or 0)
@@ -249,12 +266,7 @@ class InstitutionFundingProvider:
                 enrollment_id=enrollment.id,
                 blocking="此方案需先經評估通過才能預約（assessment_status=pending）",
             )
-        booked = (
-            db.query(func.count(Appointment.id))
-            .filter(Appointment.plan_id == plan.id, Appointment.case_id == enrollment.case_id, Appointment.status == "booked")
-            .scalar()
-            or 0
-        )
+        booked = _count_booked(db, plan.id, enrollment.case_id)
         limit = enrollment.quota_limit
         used = float(enrollment.used_count or 0)
         reserved = float(enrollment.reserved_count or 0)
@@ -335,14 +347,7 @@ class InstitutionFundingProvider:
             quota_unit=e.quota_unit,
             quota_limit=e.quota_limit,
             used=e.used_count,
-            booked=Decimal(
-                str(
-                    db.query(func.count(Appointment.id))
-                    .filter(Appointment.plan_id == e.plan_id, Appointment.case_id == e.case_id, Appointment.status == "booked")
-                    .scalar()
-                    or 0
-                )
-            ),
+            booked=Decimal(str(_count_booked(db, e.plan_id, e.case_id))),
             reserved=e.reserved_count,
             extended_count=int(e.extended_count or 0),
             valid_from=e.valid_from,
@@ -455,6 +460,38 @@ class InstitutionFundingProvider:
                     pool.consumed_total = (pool.consumed_total or 0) + 1
         db.flush()
 
+    def unconsume(self, db: Session, appointment_id: int) -> None:
+        """consume() 的反向操作：帳冊紀錄作廢時呼叫。已使用 → 已預留。
+
+        原本沒有這條路：紀錄作廢後 used_count 不會退、額度池的 consumed_total
+        更是只加不減。結果是「作廢一筆就永久吃掉個案一格額度、也永久吃掉方案
+        年度池的一格」，國軍那種 $149,000 的池子只會單向遞減、永遠回不來。
+
+        注意跟核銷作廢（void_claim_case）不是同一件事：核銷作廢只是「這筆不跟
+        機構請款了」，場次仍然發生過，額度照扣（07 §8 決策）。這裡處理的是
+        「這場根本不算數」。
+        """
+        appt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+        if appt is None:
+            return
+        e = self._get_enrollment_for_appointment(db, appt)
+        if e is None:
+            return
+        if (e.used_count or 0) <= 0:
+            return
+        e.used_count = e.used_count - 1
+        e.reserved_count = (e.reserved_count or 0) + 1
+        if e.status == "exhausted":
+            e.status = "active"
+
+        plan = e.plan
+        if plan is not None and plan.quota_pool_id is not None:
+            pool = db.query(InstQuotaPool).filter(InstQuotaPool.id == plan.quota_pool_id).first()
+            if pool is not None:
+                back = (appt.institution_payable or 0) if pool.unit == "amount" else 1
+                pool.consumed_total = max(Decimal("0"), Decimal(str(pool.consumed_total or 0)) - Decimal(str(back)))
+        db.flush()
+
     def extend_enrollment(
         self, db: Session, enrollment_id: int, additional_count: int, note: str | None, approved_by: int | None
     ) -> EnrollmentState:
@@ -488,7 +525,9 @@ class InstitutionFundingProvider:
             status=e.status,
         )
 
-    def release(self, db: Session, appointment_id: int, reason: str) -> None:
+    def release(
+        self, db: Session, appointment_id: int, reason: str, *, bill_no_show_fee: bool = True
+    ) -> None:
         appt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
         if appt is None:
             return
@@ -497,7 +536,12 @@ class InstitutionFundingProvider:
             return
         # 已預約 → 已預留（不是釋回！個案仍保有額度，見 08 決策 C3）
         e.reserved_count = (e.reserved_count or 0) + 1
-        self._maybe_create_no_show_fee_record(db, appt, e)
+        # 額度池也要還：consume() 加過的，未到/取消就得減回去，否則池餘額
+        # 單向遞減，國軍那種 $149,000 的年度池會愈算愈少而且永遠回不來。
+        # 注意只有「已消耗過」的預約才需要退池——release 處理的是尚未 consume
+        # 的預約（still booked），所以這裡不動池，池的回退在 void 路徑處理。
+        if bill_no_show_fee:
+            self._maybe_create_no_show_fee_record(db, appt, e)
         db.flush()
 
     def _maybe_create_no_show_fee_record(self, db: Session, appt: Appointment, enrollment: InstEnrollment) -> None:
@@ -514,7 +558,10 @@ class InstitutionFundingProvider:
         fee = Decimal(str(plan.no_show_fee_numeric))
         record = SessionRecord(
             appointment_id=appt.id,
-            session_date=appt.time_range.lower.date() if appt.time_range else None,
+            # 用台北日期，跟 settlement.build_session_record() 一致。原本這裡是
+            # 直接 .date()（UTC 日期），同一場諮商在兩條路徑上會被記成不同天，
+            # 日報表對帳時會憑空多/少一天。
+            session_date=to_local_date(appt.time_range.lower) if appt.time_range else None,
             case_id=appt.case_id,
             therapist_id=appt.therapist_id,
             session_type=appt.session_type,

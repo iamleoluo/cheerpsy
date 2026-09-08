@@ -14,6 +14,7 @@ from app.schemas.product_sales import (
     ProductSaleUpdate,
     ProductSaleVoid,
 )
+from app.services import numbering
 from app.services.audit import write_audit
 
 router = APIRouter(prefix="/product-sales", tags=["product-sales"])
@@ -22,8 +23,7 @@ ROLES = ["admin", "accountant", "staff"]
 
 
 def _next_receipt_no(db: Session, d: date) -> str:
-    count = db.query(ProductSale).filter(ProductSale.sale_date == d).count()
-    return f"P{d.strftime('%Y%m%d')}{count + 1:04d}"
+    return numbering.next_product_receipt_no(db, on_date=d)
 
 
 def _to_response(p: ProductSale) -> ProductSaleResponse:

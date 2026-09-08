@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.auth.dependencies import RequireRole, get_current_user
 from app.database import get_db
+from app.funding.registry import get_provider as get_funding_provider
 from app.models.appointment import Appointment
 from app.models.audit_log import AuditLog
 from app.models.case import Case
@@ -772,6 +773,10 @@ def void_record(
     r.void_reason = body.reason.strip() if body.reason else None
     r.voided_at = datetime.now(timezone.utc)
     r.voided_by = user.id
+    # 作廢＝這場不算數，機構額度與合約額度池都要退回去。原本兩邊都沒退：
+    # 個案的 used_count 永遠停在那裡，池的 consumed_total 更是只加不減。
+    if r.plan_id and r.appointment_id:
+        get_funding_provider().unconsume(db, r.appointment_id)
     after = {"is_void": r.is_void, "void_reason": r.void_reason}
     _write_audit(db, "session_records", r.id, "VOID", user.id, before, after, reason=r.void_reason)
     db.commit()

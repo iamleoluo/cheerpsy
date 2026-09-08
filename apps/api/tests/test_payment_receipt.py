@@ -14,6 +14,7 @@ from psycopg2.extras import DateTimeTZRange
 
 from app.auth.jwt import create_access_token
 from app.auth.password import hash_password
+from app.config import settings
 from app.institution.adapter import InstitutionFundingProvider
 from app.institution.models.contract import InstContract
 from app.institution.models.plan import InstPlan
@@ -27,6 +28,7 @@ from app.models.receipt import Receipt
 from app.models.room import Room
 from app.models.session_record import SessionRecord
 from app.models.user import User
+from app.services.numbering import parse_receipt_no
 
 client = TestClient(app)
 
@@ -202,7 +204,12 @@ class TestReceipt:
         body = r.json()
         assert body["amount"] == 2000.0
         assert body["fee_item_name"] == "心理治療"
-        assert body["receipt_no"].startswith("R")
+        # 收據號格式可切換（01 §C4 未定案，預設 v7），所以不寫死前綴字母，
+        # 改為斷言「能被目前啟用的格式解析」——換格式時這個測試不用改。
+        parsed = parse_receipt_no(body["receipt_no"])
+        assert parsed is not None, body["receipt_no"]
+        assert parsed["format"] == settings.RECEIPT_NUMBER_FORMAT
+        assert parsed["state"] == 1  # 開立
 
         receipt = db.query(Receipt).filter(Receipt.id == body["id"]).first()
         assert receipt is not None

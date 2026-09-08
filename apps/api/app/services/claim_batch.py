@@ -6,6 +6,7 @@ from app.models.case import Case
 from app.models.claim_batch import ClaimBatch
 from app.models.institution import Institution
 from app.models.session_record import SessionRecord
+from app.services import numbering
 
 
 def generate_batch_number(db: Session, batch_type: str, case: Case | None, institution: Institution | None, period_start) -> str:
@@ -26,10 +27,7 @@ def generate_batch_number(db: Session, batch_type: str, case: Case | None, insti
     else:
         base = f"S-UNKNOWN-{yyyymm}"
 
-    existing = db.query(ClaimBatch).filter(ClaimBatch.batch_number.like(f"{base}%")).count()
-    if existing > 0:
-        return f"{base}-{existing + 1}"
-    return base
+    return numbering.next_batch_suffix(db, base=base)
 
 
 def recalculate_total(db: Session, batch_id: int) -> float:

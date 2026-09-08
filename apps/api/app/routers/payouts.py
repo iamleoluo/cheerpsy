@@ -24,6 +24,43 @@ def _get_rate(sr: SessionRecord) -> Decimal:
     return DEFAULT_COMMISSION_RATE
 
 
+def payout_line_amount(sr: SessionRecord) -> Decimal:
+    """單筆場次對心理師酬勞的貢獻。三種薪酬模式走三條路（07 §8.2）。
+
+    commission（抽成，絕大多數）
+        有效金額 × 抽成率 ＋ 外出保底。有效金額優先用 commissionable_base
+        ——那是報價當下就算好的「可抽成基數」，會排除不該抽成的部分（例如
+        交通費）；沒有快照時退回 amount − 優待減免。
+
+    kickback（回扣制，如教支中心）
+        鐘點費由心理師自己向機構請領，診所抽的那份要**由心理師回繳**。
+        所以這筆對「診所要發給心理師的錢」是**負的**：−(有效金額 × (1−抽成率))。
+        原本的程式碼把它跟抽成制走同一條公式，等於診所倒過來付錢給心理師，
+        金額還是最大的那種錯——回扣制的方案愈多、月結算就錯愈多。
+
+    none（無心理師勞務，如借場地）
+        不計酬，回 0。
+
+    作廢紀錄一律 0：原本沒有濾掉 is_void，作廢的場次照樣計酬。
+    """
+    if sr.is_void:
+        return Decimal("0")
+
+    mode = sr.compensation_mode or "commission"
+    if mode == "none":
+        return Decimal("0")
+
+    if sr.commissionable_base is not None:
+        base = Decimal(str(sr.commissionable_base))
+    else:
+        base = Decimal(str(sr.amount)) - Decimal(str(sr.discount_amount or 0))
+
+    rate = _get_rate(sr)
+    if mode == "kickback":
+        return (-(base * (Decimal("1") - rate))).quantize(Decimal("0.01"))
+    return (base * rate + Decimal(str(sr.outcall_bonus or 0))).quantize(Decimal("0.01"))
+
+
 class PayoutResponse(BaseModel):
     id: int
     therapist_id: int
@@ -93,7 +130,9 @@ def payout_details(
                 "session_id": sr.id,
                 "session_date": sr.session_date.isoformat(),
                 "amount": float(sr.amount),
-                "therapist_share": round(float(sr.amount) * float(rate) + bonus, 2),
+                # 明細與總額共用 payout_line_amount()，避免兩邊各算各的而對不起來
+                "therapist_share": float(payout_line_amount(sr)),
+                "compensation_mode": sr.compensation_mode or "commission",
                 "outcall_bonus": bonus,
                 "fee_category": sr.fee_category,
                 "session_type": sr.session_type,
@@ -121,6 +160,7 @@ def generate_payouts(
         .filter(
             extract("year", SessionRecord.session_date) == year,
             extract("month", SessionRecord.session_date) == month,
+            SessionRecord.is_void.is_(False),  # 作廢的場次不計酬
         )
         .all()
     )
@@ -131,10 +171,7 @@ def generate_payouts(
 
     created = updated = 0
     for tid, recs in by_therapist.items():
-        total = sum(
-            round(float(r.amount) * float(_get_rate(r)) + float(r.outcall_bonus or 0), 2)
-            for r in recs
-        )
+        total = float(sum(payout_line_amount(r) for r in recs))
 
         existing = db.query(TherapistPayout).filter(
             TherapistPayout.therapist_id == tid,

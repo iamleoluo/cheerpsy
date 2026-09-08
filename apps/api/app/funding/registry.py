@@ -42,7 +42,12 @@ class NullProvider:
     def consume(self, db: Session, appointment_id: int) -> None:
         raise LookupError("No FundingPlanProvider registered.")
 
-    def release(self, db: Session, appointment_id: int, reason: str) -> None:
+    def release(
+        self, db: Session, appointment_id: int, reason: str, *, bill_no_show_fee: bool = True
+    ) -> None:
+        raise LookupError("No FundingPlanProvider registered.")
+
+    def unconsume(self, db: Session, appointment_id: int) -> None:
         raise LookupError("No FundingPlanProvider registered.")
 
     def close_case_enrollments(self, db: Session, case_id: int) -> None:

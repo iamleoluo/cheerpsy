@@ -1,15 +1,15 @@
-from datetime import datetime
+"""派案碼：YYMMDD + 3 位流水號，例 260801001。建立需求表時產生一次，
+見 cheerpsy_v7_spec_extracted.md「媒合管理」編號規則。
 
-from sqlalchemy import func
+實際配號在 app/services/numbering.py（06 P0 的序列表）。
+"""
+
+from datetime import date
+
 from sqlalchemy.orm import Session
 
-from app.referral.models.referral import Referral
+from app.services import numbering
 
 
-def generate_referral_code(db: Session) -> str:
-    """派案碼：YYMMDD + 3 位流水號，例 260801001。建立需求表時產生一次，
-    見 cheerpsy_v7_spec_extracted.md「媒合管理」編號規則。"""
-    prefix = datetime.now().strftime("%y%m%d")
-    count = db.query(func.count(Referral.id)).filter(Referral.referral_code.like(f"{prefix}%")).scalar() or 0
-    seq = str(count + 1).zfill(3)
-    return f"{prefix}{seq}"
+def generate_referral_code(db: Session, on_date: date | None = None) -> str:
+    return numbering.next_referral_code(db, on_date=on_date or date.today())

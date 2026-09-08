@@ -196,9 +196,13 @@ def _validate_cases(rows: list[dict], db: Session) -> tuple[list[dict], list[dic
         status = _str(row.get("status") or row.get("狀態"))
         if status and status not in ("initial", "ongoing", "closed", "hold"):
             errors.append({"row": rnum, "field": "status/狀態", "value": status, "message": "status 須為 initial/ongoing/closed/hold"})
+        # billing_cycle 全系統統一為 once/monthly/multiple（次結/月結/多次結）。
+        # 這裡原本驗的是 once/monthly/biweekly/weekly——擋掉合法的 multiple，
+        # 又放行兩個 services/claim_batch.py 的 cycle_map 根本不認得的值
+        # （會靜默 fallback 成 "O"，核銷批次編號就會標錯結帳週期）。
         bc = _str(row.get("billing_cycle") or row.get("計費週期"))
-        if bc and bc not in ("once", "monthly", "biweekly", "weekly"):
-            errors.append({"row": rnum, "field": "billing_cycle/計費週期", "value": bc, "message": "billing_cycle 須為 once/monthly/biweekly/weekly"})
+        if bc and bc not in ("once", "monthly", "multiple"):
+            errors.append({"row": rnum, "field": "billing_cycle/計費週期", "value": bc, "message": "billing_cycle 須為 once/monthly/multiple"})
         gender = _str(row.get("gender") or row.get("性別"))
         if gender and gender not in ("male", "female", "other"):
             errors.append({"row": rnum, "field": "gender/性別", "value": gender, "message": "gender 須為 male/female/other 或空"})

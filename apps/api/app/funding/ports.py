@@ -74,12 +74,26 @@ class FundingPlanProvider(Protocol):
         """
         ...
 
-    def release(self, db: Session, appointment_id: int, reason: str) -> None:
+    def unconsume(self, db: Session, appointment_id: int) -> None:
+        """帳冊紀錄作廢時呼叫。已使用 → 已預留，並退回合約層級額度池。
+
+        與核銷作廢無關：核銷作廢代表「不跟機構請款」，場次仍成立、額度照扣。
+        """
+        ...
+
+    def release(
+        self, db: Session, appointment_id: int, reason: str, *, bill_no_show_fee: bool = True
+    ) -> None:
         """未到／取消／個案請假時呼叫。已預約 → 已預留（不是釋回，個案仍保有額度）。
 
         機構未到補助（09 §7.1 已裁示）：若該預約掛的方案有設定
         no_show_fee_numeric，這裡也會順便產生一筆機構請款紀錄（不消耗個
         人額度）——呼叫端不需要另外處理，這是子系統內部決定要不要做的事。
+
+        `bill_no_show_fee=False` 用在「額度要還、但不該收未到補助」的情境：
+        取消預約與個案請假都算這一類（機構補助的是「個案沒出現」，不是
+        「這場沒發生」）。用明確參數而不是去解析 reason 字串，是因為 reason
+        是自由文字，打錯字會靜默地變成多收一筆機構的錢。
         """
         ...
 

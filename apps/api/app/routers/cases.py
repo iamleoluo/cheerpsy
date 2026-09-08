@@ -21,6 +21,7 @@ from app.schemas.case import (
     CoupleCreate,
     CoupleMemberInfo,
 )
+from app.funding.registry import get_provider as get_funding_provider
 from app.services.audit import write_audit
 from app.services.case_numbering import generate_case_number, generate_couple_number
 from app.utils.encryption import encrypt_national_id, hmac_national_id
@@ -331,6 +332,12 @@ def close_case(
         if q.total_count > q.used_count:
             q.total_count = q.used_count
             quotas_zeroed += 1
+
+    # 4-3) 機構合約子系統的個案方案也要一起關（09 §3、07 §4.1）。
+    # 這段原本漏了：舊的 case_institution_quotas 有歸零，但新路徑的
+    # inst_enrollments 完全沒動，結案個案在合約面板上仍然是「進行中、還有
+    # N 次可用」，額度被永久佔住、機構方案的總量看起來也永遠回不來。
+    get_funding_provider().close_case_enrollments(db, case_id)
 
     c.status = "closed"
     c.closed_at = now

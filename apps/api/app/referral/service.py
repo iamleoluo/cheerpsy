@@ -22,7 +22,7 @@ from app.models.user import User
 from app.referral.models.batch import ReferralBatch, ReferralBatchMember
 from app.referral.models.referral import Referral
 from app.referral.rules.numbering import generate_referral_code
-from app.routers.appointments import check_in as _check_in
+from app.routers.appointments import perform_check_in as _check_in
 from app.routers.appointments import create_appointment as _create_appointment
 from app.routers.cases import activate_case as _activate_case
 from app.routers.cases import create_case as _create_case
@@ -316,7 +316,7 @@ def mark_arrived(db: Session, user: User, referral: Referral, national_id: str |
     if case.status == "initial":
         _activate_case(case.id, user, db)
 
-    _check_in(referral.appointment_id, CheckInRequest(status="arrived"), user, db)
+    _check_in(db, referral.appointment_id, CheckInRequest(status="arrived"), user)
 
     referral.status = "converted"
     referral.closed_at = datetime.now(timezone.utc)
@@ -334,7 +334,7 @@ def mark_no_show(db: Session, user: User, referral: Referral, reason: str, next_
     if next_action not in ("rebook", "reassign", "close"):
         raise HTTPException(status_code=400, detail="next_action 必須是 rebook / reassign / close")
 
-    _check_in(referral.appointment_id, CheckInRequest(status="no_show", no_show_reason=reason), user, db)
+    _check_in(db, referral.appointment_id, CheckInRequest(status="no_show", no_show_reason=reason), user)
 
     if next_action == "rebook":
         referral.status = "accepted"

@@ -19,6 +19,7 @@ from app.models.appointment import Appointment
 from app.models.case import Case
 from app.models.session_record import SessionRecord
 from app.models.user import User
+from app.services import numbering
 from app.utils.tz import day_range_utc, today_local, to_local_date
 
 DEFAULT_COMMISSION_RATE = Decimal("0.70")
@@ -49,13 +50,14 @@ def _calc_outdoor_bonus(amount: Decimal, rate: Decimal) -> tuple[Decimal, str | 
 
 
 def next_receipt_no(db: Session, d: date) -> str:
-    """Clinic-wide receipt number: R{YYYYMMDD}{seq:04d} (seq per session_date)."""
-    count = (
-        db.query(SessionRecord)
-        .filter(SessionRecord.session_date == d)
-        .count()
-    )
-    return f"R{d.strftime('%Y%m%d')}{count + 1:04d}"
+    """全所收據號，格式見 app/services/numbering.py（可切換 v7 / legacy）。
+
+    改用序列表不只是為了併發：這支是在 build_session_record() 裡、db.add()
+    之前被呼叫的，舊的 COUNT(*) 寫法在「同一天連續建多筆」時會連續數到同一個
+    數字，配出重複號碼撞 session_records.receipt_no 的 unique。灌歷史資料一定
+    會踩到，因為一天本來就有十幾場。
+    """
+    return numbering.next_receipt_no(db, on_date=d)
 
 
 def resolve_commission_rate(therapist: User | None) -> Decimal:
