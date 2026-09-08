@@ -23,6 +23,7 @@ from app.models.user import User
 from app.services import numbering
 from app.services.audit import write_audit
 from app.services.settlement import SETTLEMENT_LEAD_MINUTES, build_session_record
+from app.utils.tz import to_local_date
 # 機構合約子系統整合（07 §3.2 依賴反轉）：只能 import funding/，不可 import
 # app.institution.* ——這條規則本身由這兩行 import 示範遵守。
 from app.funding.dto import QuoteRequest
@@ -46,9 +47,16 @@ DEFAULT_COMMISSION_RATE = Decimal("0.70")
 
 
 def _next_appointment_number(db: Session, therapist_code: str, dt: datetime) -> str:
-    """預約編號 R-{YYYYMMDD}-{代碼}-{流水3碼}。配號改走 services/numbering.py
-    的序列表（06 P0），日期取自預約起始時間，所以補歷史預約會拿到當時的日期。"""
-    return numbering.next_appointment_number(db, on_date=dt.date(), therapist_code=therapist_code)
+    """預約編號 R-{YYYYMMDD}-{代碼}-{流水3碼}。配號走 services/numbering.py
+    的序列表（06 P0），日期取自預約起始時間，所以補歷史預約會拿到當時的日期。
+
+    日期用**台北日期**，跟 session_records.session_date 一致。原本是直接
+    dt.date()（UTC 日期），晚上 8 點以後的預約會被編成前一天的號——行政用
+    編號找「今天的預約」就會找不到。
+    """
+    return numbering.next_appointment_number(
+        db, on_date=to_local_date(dt), therapist_code=therapist_code
+    )
 
 
 def _next_visit_seq(db: Session, case_id: int) -> int:

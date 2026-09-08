@@ -107,7 +107,9 @@ def seed_plans(db=None, force: bool = False):
     db.flush()
     db.add_all([
         InstRateRule(plan_id=p1.id, sort_order=1, when_json='{"visit_seq": 1}', unit_price=1600, case_payable=0, label="第一次（機構核銷$1600，個案免付）"),
-        InstRateRule(plan_id=p1.id, sort_order=2, when_json='{"visit_seq": 2}', unit_price=1400, case_payable=200, label="第二次（機構核銷$1400，個案自付$200）"),
+        # 用 gte 而不是等於 2：額度延長過、或個案在自費與機構之間來回之後，
+        # visit_seq 會超過 2，寫死等於 2 就沒有規則命中、報價 fallback 成 $0。
+        InstRateRule(plan_id=p1.id, sort_order=2, when_json='{"visit_seq": {"gte": 2}}', unit_price=1400, case_payable=200, label="第二次起（機構核銷$1400，個案自付$200）"),
     ])
 
     # ── 2. 15-45青壯：單一固定價 + 方案層級額度池（次數）─────────────────
