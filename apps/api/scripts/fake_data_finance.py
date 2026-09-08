@@ -19,6 +19,7 @@ from decimal import Decimal
 from psycopg2.extras import DateTimeTZRange
 from sqlalchemy import text
 
+from app.institution.claims import service as claims_service
 from app.institution.models.claim_case import InstClaimCase
 from app.institution.models.claim_line import InstClaimLine
 from app.institution.models.plan import InstPlan
@@ -126,11 +127,15 @@ def _one_claim_case(gen, group_key, recs, p_start, p_end, y, m) -> None:
     db.add(cc)
     db.flush()
 
-    total = Decimal("0")
+    # 走真正的 attach_records()，這樣登記時數轉換（台南地院 1hr→2hr@$800）
+    # 與個案代號檢查都會照規則跑一遍——生成器自己塞 InstClaimLine 的話，
+    # 那兩條規則在資料上就永遠看不到效果。
+    lines = claims_service.attach_records(
+        db, cc.id, [sr.id for sr in recs], enforce_external_code=False,
+    )
+    total = sum((ln.claimed_amount or Decimal("0")) for ln in lines)
+
     for sr in recs:
-        amt = sr.institution_payable if sr.institution_payable is not None else Decimal(str(sr.amount))
-        db.add(InstClaimLine(claim_case_id=cc.id, session_record_id=sr.id, claimed_amount=amt))
-        total += Decimal(str(amt))
         # 文件雙閘門：心理師提交 + 行政核對
         if rng.random() < 0.9:
             sr.therapist_doc_submitted_at = datetime.combine(p_end, datetime.min.time())
@@ -138,6 +143,15 @@ def _one_claim_case(gen, group_key, recs, p_start, p_end, y, m) -> None:
             if rng.random() < 0.95:
                 sr.admin_verified_at = sr.therapist_doc_submitted_at + timedelta(days=1)
                 sr.admin_verified_by = gen.admin.id
+        # 少數被行政退回補件：兩個閘門都清掉，並留下通知
+        elif rng.random() < 0.35:
+            claims_service.return_for_correction(
+                db, sr.id,
+                rng.choice(["出席單缺個案簽名", "服務紀錄表日期填錯", "缺個案同意書影本",
+                            "時數與出席單對不上"]),
+                gen.admin.id,
+            )
+            gen.stats["returned_for_correction"] += 1
     db.flush()
     gen.stats["claim_cases"] += 1
 

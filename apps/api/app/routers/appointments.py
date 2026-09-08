@@ -1339,3 +1339,129 @@ def toggle_admin_task(
     db.commit()
     db.refresh(task)
     return _task_to_response(task)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# P5：收據作廢 / 重印
+#
+# receipts 的 status/void_reason/voided_at/voided_by 四個欄位從建表以來
+# 沒有任何程式碼寫過——開得出收據，但作廢與重印一直只能靠人工。
+# 編號規則見 services/numbering.py：作廢與重印沿用同一個 base，尾碼
+# -1 開立 / -2 重印 / -3 作廢，所以同一張收據的三種版本天生串得起來。
+# ─────────────────────────────────────────────────────────────────────────
+
+class VoidReceiptRequest(BaseModel):
+    reason: str
+    reissue: bool = True  # 作廢後是否立刻重開一張（多數情境是開錯要重來）
+
+
+class ReceiptDetail(BaseModel):
+    id: int
+    receipt_no: str
+    session_record_id: int | None = None
+    amount: float
+    fee_item_name: str | None = None
+    note: str | None = None
+    status: str
+    void_reason: str | None = None
+    created_at: datetime | None = None
+
+
+def _receipt_detail(db: Session, r: Receipt) -> ReceiptDetail:
+    name = r.fee_item_custom_name
+    if r.fee_item_id:
+        item = db.query(FeeItem).filter(FeeItem.id == r.fee_item_id).first()
+        name = item.name if item else name
+    return ReceiptDetail(
+        id=r.id, receipt_no=r.receipt_no, session_record_id=r.session_record_id,
+        amount=float(r.amount), fee_item_name=name, note=r.note, status=r.status,
+        void_reason=r.void_reason, created_at=r.created_at,
+    )
+
+
+@router.get("/{appointment_id}/receipts", response_model=list[ReceiptDetail])
+def list_appointment_receipts(
+    appointment_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """這筆預約開過的所有收據（含已作廢與重印版本）——收據面板要看得到完整軌跡。"""
+    sr = db.query(SessionRecord).filter(SessionRecord.appointment_id == appointment_id).first()
+    if sr is None:
+        return []
+    rows = db.query(Receipt).filter(Receipt.session_record_id == sr.id).order_by(Receipt.id).all()
+    return [_receipt_detail(db, r) for r in rows]
+
+
+@router.put("/receipts/{receipt_id}/void", response_model=list[ReceiptDetail])
+def void_receipt(
+    receipt_id: int,
+    body: VoidReceiptRequest,
+    user: User = Depends(RequireRole(["admin", "staff"])),
+    db: Session = Depends(get_db),
+):
+    """作廢收據，可選擇同時重開一張。回傳這筆場次的完整收據軌跡。"""
+    r = db.query(Receipt).filter(Receipt.id == receipt_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="找不到此收據")
+    if r.status == "voided":
+        raise HTTPException(status_code=400, detail="此收據已作廢")
+    if not (body.reason or "").strip():
+        raise HTTPException(status_code=400, detail="作廢收據必須填寫原因")
+
+    sr = db.query(SessionRecord).filter(SessionRecord.id == r.session_record_id).first()
+    r.status = "voided"
+    r.void_reason = body.reason.strip()
+    r.voided_at = datetime.now(timezone.utc)
+    r.voided_by = user.id
+    r.receipt_no = numbering.receipt_variant(r.receipt_no, numbering.RECEIPT_STATE_VOID)
+
+    if body.reissue and sr is not None:
+        db.add(Receipt(
+            receipt_no=numbering.next_receipt_no(db, on_date=sr.session_date),
+            session_record_id=sr.id, amount=r.amount,
+            fee_item_id=r.fee_item_id, fee_item_custom_name=r.fee_item_custom_name,
+            note=f"原 {r.receipt_no} 作廢後重開", status="issued", created_by=user.id,
+        ))
+    write_audit(db, "receipts", r.id, "VOID", user.id, {"status": "issued"},
+                {"status": "voided", "reissued": body.reissue}, reason=r.void_reason)
+    db.commit()
+    if sr is None:
+        return [_receipt_detail(db, r)]
+    rows = db.query(Receipt).filter(Receipt.session_record_id == sr.id).order_by(Receipt.id).all()
+    return [_receipt_detail(db, x) for x in rows]
+
+
+@router.post("/receipts/{receipt_id}/reprint", response_model=ReceiptDetail, status_code=201)
+def reprint_receipt(
+    receipt_id: int,
+    user: User = Depends(RequireRole(["admin", "staff"])),
+    db: Session = Depends(get_db),
+):
+    """重印：原件仍然有效，另開一張尾碼 -2 的重印版本。
+
+    與作廢的差別就在這裡——作廢是「這張不算數」，重印是「同一張再給一份」。
+    共用 base 讓兩者天生串得起來，不必另外建一張重印紀錄表。
+    """
+    r = db.query(Receipt).filter(Receipt.id == receipt_id).first()
+    if not r:
+        raise HTTPException(status_code=404, detail="找不到此收據")
+    if r.status == "voided":
+        raise HTTPException(status_code=400, detail="已作廢的收據不能重印，請重新開立")
+
+    copy = Receipt(
+        receipt_no=numbering.receipt_variant(r.receipt_no, numbering.RECEIPT_STATE_REPRINT),
+        session_record_id=r.session_record_id, amount=r.amount,
+        fee_item_id=r.fee_item_id, fee_item_custom_name=r.fee_item_custom_name,
+        note="補印", status="issued", created_by=user.id,
+    )
+    db.add(copy)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="此收據已經補印過了")
+    write_audit(db, "receipts", r.id, "REPRINT", user.id, None, {"reprint_no": copy.receipt_no})
+    db.commit()
+    db.refresh(copy)
+    return _receipt_detail(db, copy)

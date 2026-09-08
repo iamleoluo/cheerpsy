@@ -256,12 +256,16 @@ def seed_plans(db=None, force: bool = False):
         requires_assessment=True, compensation_mode="commission",
         case_receipt_required=False, institution_receipt_required=True, institution_receipt_item_name="諮商鐘點費",
         claim_group_key="台南地院", claim_timing="monthly", claim_deadline_day=20,
-        registered_hours_rule="實際1小時$1600 -> 核銷登記2小時，每小時$800（機構預算科目單價固定，用時數湊出實收金額）",
+        # 宣告式規則，收納時由 claims/service.attach_records() 自動套用。
+        # 語意：實際 1 小時 $1600 → 核銷登記 2 小時、每小時 $800（機構預算
+        # 科目的單價是固定的，只能用時數湊出實收金額）。
+        # 原本這欄是自由文字備忘，行政得自己心算再手動填申請金額。
+        registered_hours_rule='{"multiplier": 2, "registered_unit_price": 800, "note": "實際1小時$1600 → 登記2小時@$800"}',
         created_by=created_by,
     )
     db.add(p9)
     db.flush()
-    db.add(InstRateRule(plan_id=p9.id, sort_order=1, when_json="{}", unit_price=1600, case_payable=0, label="實際收費（登記時數轉換見 registered_hours_rule 備忘，核銷時人工套用）"))
+    db.add(InstRateRule(plan_id=p9.id, sort_order=1, when_json="{}", unit_price=1600, case_payable=0, label="實際收費（核銷時自動換算為登記時數）"))
 
     # ── 10. 聊心茶室：依心理師鐘點費 ─────────────────────────────────────
     inst_tea = _get_or_create_institution(db, "HealYou_聊心茶室")

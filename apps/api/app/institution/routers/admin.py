@@ -419,6 +419,8 @@ class OpenClaimCaseRequest(BaseModel):
 
 class AttachRecordsRequest(BaseModel):
     session_record_ids: list[int]
+    # 個案代號缺漏預設擋下（07 §8.3）；行政確認要照送時可關掉
+    enforce_external_code: bool = True
 
 
 class RecordPaymentRequest(BaseModel):
@@ -455,6 +457,22 @@ def list_per_case_count_candidates(
     return claims_service.list_per_case_count_candidates(db, claim_group_key, capacity, period_start, period_end)
 
 
+@router.get("/claim-groups/{claim_group_key}/period-check")
+def check_period_coverage(
+    claim_group_key: str,
+    period_start: date = Query(...),
+    period_end: date = Query(...),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """建立核銷案前的期間檢查：缺口、重疊、之前遺留未收納。
+
+    v7 定案是**警告不阻擋**，所以這支只回警告清單，不會擋任何操作——
+    行政比系統更清楚為什麼某段要跳過。
+    """
+    return claims_service.check_period_coverage(db, claim_group_key, period_start, period_end)
+
+
 @router.post("/claim-cases", status_code=status.HTTP_201_CREATED)
 def open_claim_case(
     body: OpenClaimCaseRequest,
@@ -462,8 +480,13 @@ def open_claim_case(
     db: Session = Depends(get_db),
 ):
     cc = claims_service.open_claim_case(db, **body.model_dump(), created_by=user.id)
+    warnings = []
+    if cc.period_start and cc.period_end:
+        warnings = claims_service.check_period_coverage(
+            db, cc.claim_group_key, cc.period_start, cc.period_end, exclude_claim_case_id=cc.id
+        )["warnings"]
     db.commit()
-    return {"id": cc.id, "claim_no": cc.claim_no, "status": cc.status}
+    return {"id": cc.id, "claim_no": cc.claim_no, "status": cc.status, "warnings": warnings}
 
 
 @router.post("/claim-cases/{claim_case_id}/records")
@@ -473,9 +496,40 @@ def attach_records(
     user: User = Depends(RequireRole(WRITE_ROLES)),
     db: Session = Depends(get_db),
 ):
-    lines = claims_service.attach_records(db, claim_case_id, body.session_record_ids)
+    try:
+        lines = claims_service.attach_records(
+            db, claim_case_id, body.session_record_ids,
+            enforce_external_code=body.enforce_external_code,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     db.commit()
     return {"attached": len(lines)}
+
+
+class ReturnForCorrectionRequest(BaseModel):
+    reason: str
+
+
+@router.put("/records/{session_record_id}/return-for-correction")
+def return_for_correction(
+    session_record_id: int,
+    body: ReturnForCorrectionRequest,
+    user: User = Depends(RequireRole(WRITE_ROLES)),
+    db: Session = Depends(get_db),
+):
+    """退回補件：清掉心理師確認與行政核對兩個閘門，並通知心理師（v7 核銷案）。
+
+    單筆操作，不影響同案其他紀錄；但只要有一筆沒齊備，整案就無法轉待送出。
+    """
+    if not (body.reason or "").strip():
+        raise HTTPException(status_code=400, detail="退回補件必須填寫原因")
+    try:
+        sr = claims_service.return_for_correction(db, session_record_id, body.reason.strip(), user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    db.commit()
+    return {"session_record_id": sr.id, "status": "returned", "reason": body.reason.strip()}
 
 
 @router.put("/claim-cases/{claim_case_id}/submit")
