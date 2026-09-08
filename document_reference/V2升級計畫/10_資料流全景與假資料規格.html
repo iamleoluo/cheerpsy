@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>10 資料流全景與假資料規格 — CheerPsy V2</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+ --bg:#f6f7f9; --panel:#fff; --ink:#111827; --ink2:#374151; --mut:#6b7280; --mut2:#9ca3af;
+ --line:#e5e7eb; --line2:#d1d5db;
+ --p50:#f5f3ff; --p100:#ede9fe; --p200:#ddd6fe; --p500:#8b5cf6; --p600:#7c3aed; --p700:#6d28d9;
+ --blue:#2563eb; --blue-bg:#eff6ff; --green:#16a34a; --green-bg:#f0fdf4;
+ --amber:#d97706; --amber-bg:#fffbeb; --red:#dc2626; --red-bg:#fef2f2;
+ --sky:#0891b2; --sky-bg:#ecfeff; --rose:#e11d48; --rose-bg:#fff1f2;
+ --code:#f3f4f6;
+}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);
+ font:14px/1.75 "Noto Sans TC","PingFang TC","Microsoft JhengHei",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+ -webkit-font-smoothing:antialiased}
+.wrap{max-width:1220px;margin:0 auto;padding:0 20px 90px}
+
+/* ---- header ---- */
+.hd{background:linear-gradient(135deg,#4c1d95,#6d28d9 55%,#7c3aed);color:#fff;padding:30px 0 26px;margin-bottom:26px}
+.hd .wrap{padding-bottom:0}
+.hd .kick{font-size:12px;letter-spacing:.16em;text-transform:uppercase;opacity:.72;font-weight:700}
+.hd h1{font-size:27px;font-weight:800;margin:7px 0 8px;letter-spacing:-.01em}
+.hd p{opacity:.9;font-size:13.5px;max-width:860px}
+.hd .meta{margin-top:14px;display:flex;flex-wrap:wrap;gap:8px}
+.hd .meta span{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.22);
+ border-radius:999px;padding:3px 11px;font-size:11.5px;font-weight:600}
+
+/* ---- layout ---- */
+.cols{display:grid;grid-template-columns:220px 1fr;gap:28px;align-items:start}
+@media(max-width:1000px){.cols{grid-template-columns:1fr}.toc{position:static!important;max-height:none!important}}
+.toc{position:sticky;top:18px;background:var(--panel);border:1px solid var(--line);border-radius:12px;
+ padding:14px 12px;max-height:calc(100vh - 40px);overflow:auto;font-size:12.5px}
+.toc b{display:block;font-size:11px;letter-spacing:.1em;color:var(--mut2);margin:0 0 8px 6px;text-transform:uppercase}
+.toc a{display:block;color:var(--ink2);text-decoration:none;padding:5px 8px;border-radius:7px;line-height:1.45}
+.toc a:hover{background:var(--p50);color:var(--p700)}
+.toc a.sub{padding-left:20px;font-size:12px;color:var(--mut)}
+
+/* ---- sections ---- */
+section{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px 26px;margin-bottom:20px;
+ scroll-margin-top:16px}
+h2{font-size:19px;font-weight:800;letter-spacing:-.01em;padding-bottom:11px;margin-bottom:16px;
+ border-bottom:2px solid var(--p100);display:flex;align-items:center;gap:9px}
+h2 .num{background:var(--p600);color:#fff;font-size:12px;width:26px;height:26px;border-radius:8px;
+ display:inline-flex;align-items:center;justify-content:center;font-weight:800;flex:none}
+h3{font-size:15px;font-weight:700;margin:24px 0 10px;color:var(--p700);
+ padding-left:10px;border-left:3px solid var(--p500)}
+h4{font-size:13.5px;font-weight:700;margin:16px 0 7px;color:var(--ink2)}
+p{margin:9px 0;color:var(--ink2)}
+ul,ol{margin:9px 0 9px 22px;color:var(--ink2)}
+li{margin:4px 0}
+a{color:var(--p700)}
+
+/* ---- tables ---- */
+.tw{overflow-x:auto;margin:13px 0;border:1px solid var(--line);border-radius:10px}
+table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:560px;background:#fff}
+th{background:#fafafa;text-align:left;font-weight:700;color:var(--mut);font-size:11px;
+ letter-spacing:.05em;padding:9px 11px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 11px;border-bottom:1px solid #f1f2f4;vertical-align:top;line-height:1.65}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:#fcfcfd}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+td.c,th.c{text-align:center}
+td.w{white-space:nowrap}
+
+/* ---- code / mono ---- */
+code,.mono{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:11.8px}
+code{background:var(--code);padding:1.5px 5px;border-radius:4px;color:#9333ea;word-break:break-word}
+pre{background:#1e1b2e;color:#e8e5f5;padding:14px 16px;border-radius:10px;overflow-x:auto;
+ font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:11.8px;line-height:1.7;margin:12px 0}
+pre .c{color:#8b83a8}
+pre .k{color:#c4b5fd}
+pre .s{color:#86efac}
+
+/* ---- callouts ---- */
+.note{border-radius:9px;padding:11px 14px;margin:12px 0;font-size:12.8px;line-height:1.7;
+ border:1px solid var(--line);background:#fafafa;color:var(--ink2)}
+.note b{color:var(--ink)}
+.note.blue{background:var(--blue-bg);border-color:#bfdbfe;color:#1e40af}
+.note.green{background:var(--green-bg);border-color:#bbf7d0;color:#15803d}
+.note.amber{background:var(--amber-bg);border-color:#fde68a;color:#92400e}
+.note.red{background:var(--red-bg);border-color:#fecaca;color:#991b1b}
+.note.purple{background:var(--p50);border-color:var(--p200);color:var(--p700)}
+.note .t{font-weight:800;display:block;margin-bottom:3px}
+
+/* ---- tags ---- */
+.tag{display:inline-block;font-size:10.5px;font-weight:700;padding:1.5px 7px;border-radius:5px;
+ border:1px solid transparent;white-space:nowrap;line-height:1.6}
+.t-p{background:var(--p100);color:var(--p700);border-color:var(--p200)}
+.t-b{background:var(--blue-bg);color:var(--blue);border-color:#bfdbfe}
+.t-g{background:var(--green-bg);color:var(--green);border-color:#bbf7d0}
+.t-a{background:var(--amber-bg);color:var(--amber);border-color:#fde68a}
+.t-r{background:var(--red-bg);color:var(--red);border-color:#fecaca}
+.t-s{background:var(--sky-bg);color:var(--sky);border-color:#a5f3fc}
+.t-x{background:#f3f4f6;color:var(--mut);border-color:var(--line2)}
+
+/* ---- checklist ---- */
+.ck{list-style:none;margin:10px 0;padding:0}
+.ck li{display:flex;gap:10px;align-items:flex-start;padding:8px 11px;border:1px solid var(--line);
+ border-radius:8px;margin-bottom:6px;background:#fff;cursor:pointer;transition:.12s;font-size:12.8px}
+.ck li:hover{border-color:var(--p200);background:var(--p50)}
+.ck li .box{width:16px;height:16px;border:2px solid var(--line2);border-radius:4px;flex:none;margin-top:3px;
+ display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;transition:.12s}
+.ck li.on{background:#fafafa;border-color:var(--line)}
+.ck li.on .box{background:var(--green);border-color:var(--green)}
+.ck li.on .box:after{content:"✓"}
+.ck li.on .txt{color:var(--mut2);text-decoration:line-through}
+.ck .txt{flex:1;color:var(--ink2);line-height:1.65}
+.ck .src{font-size:10.5px;color:var(--mut2);white-space:nowrap;margin-left:auto;padding-left:8px}
+
+/* ---- misc ---- */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media(max-width:820px){.grid2,.grid3{grid-template-columns:1fr}}
+.card{border:1px solid var(--line);border-radius:11px;padding:14px 16px;background:#fff}
+.card .h{font-weight:800;font-size:13px;margin-bottom:6px;display:flex;align-items:center;gap:7px}
+.kpi{border:1px solid var(--line);border-radius:11px;padding:13px 15px;background:#fff}
+.kpi .l{font-size:11px;color:var(--mut);font-weight:700;letter-spacing:.04em}
+.kpi .v{font-size:24px;font-weight:800;margin:2px 0;letter-spacing:-.02em}
+.kpi .s{font-size:11.5px;color:var(--mut2)}
+hr{border:none;border-top:1px solid var(--line);margin:22px 0}
+.foot{text-align:center;color:var(--mut2);font-size:11.5px;padding:26px 0 0}
+.arrow{color:var(--p600);font-weight:800}
+.del{color:var(--mut2);text-decoration:line-through}
+.new{color:var(--green);font-weight:700}
+@media print{
+ body{background:#fff}.toc{display:none}.cols{grid-template-columns:1fr}
+ section{break-inside:avoid;border:none;padding:0 0 18px}
+ .hd{background:#4c1d95!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+
+/* ---- interactive prototype (04/05 Part 2) ---- */
+@keyframes flashHi{0%{box-shadow:0 0 0 3px var(--p500)}100%{box-shadow:0 0 0 3px transparent}}
+tr.flash td:first-child{position:relative}
+tr.flash{background:var(--p50)!important;animation:flashHi 2.4s ease-out}
+.proto{background:#fbfbfc;border:1px solid var(--line);border-radius:12px;padding:16px;margin:14px 0}
+.proto .pt{font-size:11px;font-weight:800;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin-bottom:10px}
+.pgrid{display:grid;border:1px solid var(--line2);border-radius:8px;overflow:hidden;font-size:10.5px;background:#fff}
+.pgrid .prow{display:grid;grid-template-columns:52px repeat(var(--cols,5),1fr);border-top:1px solid #eee}
+.pgrid .prow:first-child{border-top:none}
+.pgrid .ph{background:#fafafa;font-weight:700;color:var(--mut);padding:6px 4px;text-align:center;border-right:1px solid #eee}
+.pgrid .pt0{padding:5px 4px;color:var(--mut2);text-align:center;border-right:1px solid #eee;font-variant-numeric:tabular-nums}
+.pgrid .pc{border-right:1px solid #f2f2f2;min-height:34px;padding:2px}
+.pgrid .pc:last-child{border-right:none}
+.hotspot{display:block;height:100%;border-radius:5px;padding:3px 5px;cursor:pointer;transition:.12s;font-size:9.5px;line-height:1.3;border:1px solid transparent}
+.hotspot:hover{outline:2px solid var(--p500);outline-offset:-1px;filter:brightness(.97)}
+.hotspot b{display:block;font-size:10px}
+.hs-self{background:var(--blue-bg);border-color:#bfdbfe;color:#1e3a8a}
+.hs-inst{background:var(--amber-bg);border-color:#fde68a;color:#78350f}
+.hs-no{background:var(--red-bg);border-color:#fecaca;color:#7f1d1d}
+.hs-first{background:#fef9c3;border-color:#fde047;color:#713f12}
+.hs-couple{background:var(--p50);border-color:var(--p200);color:var(--p700)}
+.hs-done{background:#f3f4f6;border-color:#e5e7eb;color:var(--mut2)}
+.hs-empty{border:1px dashed #e5e7eb;color:var(--mut2);display:flex;align-items:center;justify-content:center;font-size:14px}
+.hs-empty:hover{background:var(--p50);border-color:var(--p300,var(--p500))}
+.phint{font-size:11px;color:var(--mut);margin-top:9px;padding-top:9px;border-top:1px dashed var(--line)}
+.mockform{display:grid;gap:8px;font-size:11.5px}
+.mockform label{display:block}
+.mockform .lb{font-size:10.5px;color:var(--mut);font-weight:700;margin-bottom:2px;display:block}
+.mockform .fake{border:1px solid var(--line2);border-radius:6px;padding:6px 9px;background:#fff;cursor:pointer;color:var(--ink2)}
+.mockform .fake:hover{border-color:var(--p500);background:var(--p50)}
+.pbadge{display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;margin-bottom:2px}
+</style>
+</head>
+<body data-doc="10_資料流全景與假資料規格">
+<header class="hd"><div class="wrap">
+  <div class="kick">CheerPsy V2 · 慈恩心理治療所</div>
+  <h1>資料流全景與假資料規格</h1>
+  <p>把整個系統的資料架構、流程與規則一次梳理清楚，並依此產生一整年、規則自洽的假資料。這份文件是<b>對齊的結果</b>，不是計畫——每一條規則都已經在程式碼裡實作、有測試守著、也在 22 條跨表不變量裡被持續檢查。</p>
+  <div class="meta"><span>資料流全景</span><span>22 條不變量</span><span>假資料組成矩陣</span><span>7 個已修的算錯錢 bug</span><span>P4/P5 新功能已補齊</span></div>
+</div></header>
+<div class="wrap">
+<div class="cols">
+<nav class="toc" id="toc"></nav>
+<main>
+
+<section id="why">
+<h2><span class="num">0</span>這份文件解決什麼問題</h2>
+<p>需求是「生成很多假資料」。但盤點之後的結論是：<b>直接灌資料，灌出來的數字會是錯的</b>——而且錯得不明顯。畫面上的額度長條還是有長度、應收帳冊還是有金額、心理師酬勞還是有數字，只是每一個都偏掉一點，而且會愈用愈偏。所以順序必須是：先對齊 → 再梳理 → 最後才生成。</p>
+
+<div class="note amber"><span class="t">最能說明問題的一個例子</span>心理師酬勞對三種薪酬模式套同一條「金額 × 抽成率 ＋ 保底」。回饋制（教支中心那種）的意思是<b>鐘點費由心理師自己向機構請領、診所抽的那份要由心理師回繳</b>，所以它對酬勞是<b>扣項</b>。舊寫法把它當成正的抽成，等於診所倒過來付一筆錢出去，金額還是最大的那種錯。這在畫面上完全看不出來——數字是正的、格式是對的、只是方向反了。</div>
+
+<h3>0.1 三個步驟與各自的產出</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:130px">步驟</th><th style="width:180px">產出</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td><b>① 對齊資料流</b></td><td>7 個修好的 bug、3 支新 service</td><td>見 §3。全部是「會讓帳目對不起來」的類型，不是效能或風格問題</td></tr>
+<tr><td><b>② 梳理架構</b></td><td>本文件 §1 §2 §4</td><td>資料流全景、狀態機、22 條不變量。不變量是可執行的，不只是文字</td></tr>
+<tr><td><b>③ 生成假資料</b></td><td><code>generate_fake_data.py</code></td><td>見 §5。一年份、84 個案、1250+ 場次，22 條不變量全綠</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="flow">
+<h2><span class="num">1</span>資料流全景：一次諮商從頭到尾會動到什麼</h2>
+<p>這是整個系統的主幹。理解這條路徑，其餘的表都只是掛在它旁邊的分支。</p>
+
+<pre><span class="c">// 一筆機構個案，從媒合到領錢的完整路徑</span>
+
+<span class="k">媒合</span>   referrals ──派案──▶ referral_batches / _members ──承接──▶ 轉預約
+                                                                   │
+<span class="k">建檔</span>   cases（temp_seq 階段，status='initial'，還沒有病歷號）◀─────────┘
+           │ 掛方案：inst_enrollments（reserved_count = 上限，全數進「已預留」）
+           ▼
+<span class="k">預約</span>   POST /appointments
+           ├─ provider.quote()      報價：費率規則 → 單價 / 個案自付 / 機構應付
+           │                        額度檢查：個人上限、方案池、週期子上限
+           ├─ _check_room_conflict  診間衝突（跨 appointments + venue_rentals）
+           ├─ appointments INSERT   report 快照 6 欄 + plan_quote(JSONB) 整包
+           ├─ provider.reserve()    <b>已預留 −1 → 已預約</b>（已預約不落地，即時數）
+           └─ materialize_admin_tasks()  方案的行政提醒清單 → 這筆預約的可勾選項目
+           ▼
+<span class="k">報到</span>   PUT /appointments/{id}/check-in
+           ├─ activate_case()       <span class="c">// 必須先做！沒有病歷號 consume() 會拒絕</span>
+           ├─ provider.consume()    <b>已預約 → 已使用</b>，方案池 consumed_total += 金額/次數
+           ├─ build_session_record()  session_records INSERT ← <b>這張才是事實表</b>
+           │                        快照：抽成率、報價 6 欄、外出保底、收據號
+           └─ appointments.status = 'executed'
+           ▼
+<span class="k">收款</span>   POST /payment-step   只收 case_payable（機構那份不動）
+<span class="k">開據</span>   POST /receipt        receipts INSERT，A{日期}{分類}{流水}-1
+           ▼
+<span class="k">核銷</span>   open_claim_case → attach_records → submit → record_payment
+           │  收納時才做得了的兩件事：個案代號檢查、登記時數轉換
+           └─ payment_status: unpaid → claiming → claimed
+           ▼
+<span class="k">酬勞</span>   POST /payouts/generate
+              payout_line_amount() 逐筆：抽成正的 / 回饋負的 / 無勞務 0 / 作廢不計</pre>
+
+<div class="note blue"><span class="t">兩條會咬人的順序規則</span>
+<b>①</b> <code>activate_case()</code> 必須早於任何 <code>consume()</code>——沒有正式病歷號不能真的消耗機構額度（07 §8.3），這是機構要求的身分確認。<br>
+<b>②</b> <code>reserve()</code> 需要 <code>appt.id</code>，所以預約要先 flush 再扣額度，而且兩者必須在<b>同一個交易</b>裡，否則額度三態會在中間斷掉。</div>
+
+<h3>1.1 哪張表是「事實」</h3>
+<p><code>session_records</code>。不是 <code>appointments</code>。這個區別是整套設計的關鍵：</p>
+<div class="tw"><table>
+<thead><tr><th style="width:170px">表</th><th style="width:110px" class="c">角色</th><th>為什麼</th></tr></thead>
+<tbody>
+<tr><td><code>appointments</code></td><td class="c"><span class="tag t-b">意圖</span></td><td>「打算在這個時間、這個診間、跟這位心理師見面」。可以改時間、改診間、取消——它是<b>計畫</b>，會變</td></tr>
+<tr><td><code>session_records</code></td><td class="c"><span class="tag t-g">事實</span></td><td>「這場真的發生了，金額是這樣，抽成率是這樣」。日報表、月報表、應收帳冊、核銷、酬勞<b>全部只讀這張</b>。報價快照跟著它走，所以事後改預約不會改到已經發生的帳</td></tr>
+<tr><td><code>inst_enrollments</code></td><td class="c"><span class="tag t-p">額度</span></td><td>個案在某個方案的剩餘量。三態中只有「已預留」「已使用」落地，「已預約」永遠即時數</td></tr>
+</tbody></table></div>
+
+<h3>1.2 額度三態：為什麼「已預約」不落地</h3>
+<p>恆等式：<code>quota_limit + extended_count = used_count + reserved_count + COUNT(booked 預約)</code></p>
+<p>「已預約」不存成欄位，而是每次查 <code>status='booked'</code> 的預約數量。這樣做的好處是<b>不可能對不起來</b>——預約被建立、取消、刪除時，計數自動跟著變，不需要記得同步一個計數器。代價是每次要多一個 COUNT 查詢，值得。</p>
+<div class="note red"><span class="t">這裡有一個非直覺的坑</span>依 01 §C3 定案，<b>未到的預約 status 維持 booked、不轉 cancelled</b>（要留著對帳）。同時 <code>release()</code> 又已經把那一格還進 reserved。所以 booked 的計數<b>必須排除 <code>check_in_status='no_show'</code></b>，否則同一格會同時被算成 booked 和 reserved，恆等式憑空多 1，畫面顯示「已用 1/3」但其實一次都沒用掉。這正是本輪修掉的 bug 之一。</div>
+</section>
+
+<section id="dims">
+<h2><span class="num">2</span>維度模型：兩個很像但完全不同的東西</h2>
+<div class="note amber"><span class="t">本輪最重要的一個結構修正</span>系統裡有兩個都叫 <code>session_type</code> 的東西，意思完全不同。這不是命名潔癖問題——它造成兩個方案<b>永遠報價 $0</b>。</div>
+
+<div class="tw"><table>
+<thead><tr><th style="width:140px">維度</th><th style="width:200px">值</th><th>誰在用</th></tr></thead>
+<tbody>
+<tr><td><code>session_type</code><br><span class="tag t-b">型式</span></td><td>in_person 現場 / online 視訊 / outdoor 外展</td><td>決定<b>要不要診間</b>（現場才要）、<b>要不要外出保底</b>（外展才有）、報到由誰按（現場櫃台、視訊外展心理師）</td></tr>
+<tr><td><code>consult_type</code><br><span class="tag t-p">諮商型態</span></td><td>individual 個別 / couple 伴侶 / family 家族 / parenting 親職 / group 團體 / lecture 講座 / meeting 會議</td><td>只用於<b>計價</b>。家防中心 個別$1400 / 家族$2000；南家扶 個別$2000 / 親職$1000 / 家族$2400</td></tr>
+<tr><td><code>location_kind</code><br><span class="tag t-s">地點</span></td><td>clinic 所內 / home 到宅 / onsite 入廠 / offsite 其他</td><td>計價維度。原本被硬寫成 clinic，所以 <code>{"location_kind":"home"}</code> 這類規則一直是死的</td></tr>
+</tbody></table></div>
+
+<p>家防中心的三種價<b>都是「現場」進行</b>，塞不進 <code>in_person|online|outdoor</code> 這個枚舉。所以這是真的少一個維度，不是打字錯誤——修法是新增，不是改寫。</p>
+
+<h3>2.1 費率規則引擎</h3>
+<p><code>inst_rate_rules</code> 依 <code>sort_order</code> 排序，<b>先匹配先贏</b>，空條件 <code>{}</code> 永遠命中（當預設）。條件支援 7 個 key，值可以是純值或 <code>{"gte":n}</code> 這類比較。</p>
+<div class="note red"><span class="t">一個必須用測試釘住的設計</span><code>rule_matches()</code> 對<b>不認得的條件 key 是寬容跳過</b>，不是判定失敗——立意是避免一個打字錯誤癱瘓整個報價。代價是：規則寫錯 key 不會噴錯，而是<b>靜默變成命中全部</b>，價錢就錯了。所以有一支測試斷言「所有 <code>when_json</code> 的 key 都在 field_map 裡」，把靜默錯價變成紅燈；不變量檢查器也有同一條。</div>
+</section>
+
+<section id="fixed">
+<h2><span class="num">3</span>對齊：修掉的 7 個「會算錯錢」的問題</h2>
+<p>全部都是<b>畫面上看不出來</b>的類型。共同特徵：數字還在、格式還對，只是值錯了。</p>
+
+<div class="tw"><table>
+<thead><tr><th style="width:36px" class="c">#</th><th style="width:200px">問題</th><th>後果</th><th style="width:120px" class="c">狀態</th></tr></thead>
+<tbody>
+<tr><td class="c">1</td><td>取消／刪除預約從不呼叫 <code>release()</code></td><td>三態恆等式每取消一次少 1，合約面板的三色長條愈算愈短</td><td class="c"><span class="tag t-g">已修</span></td></tr>
+<tr><td class="c">2</td><td>未到的預約被<b>重複計算</b>：既在 reserved 又在 booked</td><td>恆等式憑空多 1。畫面顯示「已用 1/3」但實際一次都沒用</td><td class="c"><span class="tag t-g">已修</span></td></tr>
+<tr><td class="c">3</td><td><code>close_case()</code> 從不呼叫 <code>close_case_enrollments()</code>（該函式<b>零呼叫端</b>）</td><td>結案個案的機構方案永遠 active，額度被永久佔住、方案總量回不來</td><td class="c"><span class="tag t-g">已修</span></td></tr>
+<tr><td class="c">4</td><td>方案額度池 <code>consumed_total</code> 只加不減</td><td>國軍那種 $149,000 的年度池只會單向遞減，作廢也退不回來</td><td class="c"><span class="tag t-g">已修</span></td></tr>
+<tr><td class="c">5</td><td>酬勞：回饋制當成正的抽成、沒排除作廢、沒讀 <code>commissionable_base</code>、沒扣優待</td><td>四種錯疊在一起。回饋制那項會讓診所倒過來付錢</td><td class="c"><span class="tag t-g">已修</span></td></tr>
+<tr><td class="c">6</td><td>兩個方案<b>永遠報價 $0</b>（維度撞名，見 §2）</td><td>掛這些方案的預約金額全是 0，核銷也請不到錢</td><td class="c"><span class="tag t-g">已修</span></td></tr>
+<tr><td class="c">7</td><td>所有編號 <code>COUNT(*)+1</code> 且綁死 <code>now()</code></td><td>併發撞號、刪列重發、歷史資料全部拿到今年的號碼</td><td class="c"><span class="tag t-g">已修</span></td></tr>
+</tbody></table></div>
+
+<div class="note green"><span class="t">另外兩個是不變量檢查器自己抓到的</span>
+<b>①</b> 預約編號用 UTC 日期、其他地方用台北日期——晚上 8 點以後的預約會被編成前一天的號，行政用編號找「今天的預約」就會找不到。<br>
+<b>②</b> 衛生局市民的費率規則寫死 <code>{"visit_seq": 2}</code>，額度延長過的個案第 3 次以後沒有規則命中、報價 $0。改成 <code>{"gte": 2}</code>。<br>
+這兩個都是在跑完整資料集時才浮出來的——這就是為什麼要先有檢查器再有資料。</div>
+
+<h3>3.1 配號系統</h3>
+<p>新增 <code>number_sequences(scope, last_seq)</code> 表，配號是單一原子語句：</p>
+<pre><span class="k">UPDATE</span> number_sequences <span class="k">SET</span> last_seq = last_seq + 1
+ <span class="k">WHERE</span> scope = :scope <span class="k">RETURNING</span> last_seq</pre>
+<p>Postgres 把該列鎖到交易結束，第二個交易排隊等待，所以不會發重複號碼；交易 rollback 時號碼跟著還回去，不留空號。scope 字串本身帶日期（<code>receipt:20260908:C</code>），所以「配哪一天的號」純粹由呼叫端傳入的 <code>on_date</code> 決定——這正是灌歷史資料需要的能力。</p>
+
+<div class="note blue"><span class="t">順手修掉的一個現成地雷</span><code>next_receipt_no()</code> 是在 <code>build_session_record()</code> 的 <code>db.add()</code> <b>之前</b>被呼叫的。舊的 COUNT 寫法在「同一天連續建多筆」時會連續數到同一個數字，配出重複號碼撞 unique。一天本來就有十幾場，灌歷史資料必踩。</div>
+
+<h3>3.2 識別碼一覽</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:150px">識別碼</th><th style="width:270px">格式</th><th>說明</th></tr></thead>
+<tbody>
+<tr><td>病歷號</td><td><code>{YY}{流水4}{身分證末2}</code> 例 26000145</td><td>兩段式的第二段，初診有到才產生</td></tr>
+<tr><td>伴侶案病歷號</td><td><code>C{YY}{流水4}</code> 例 C260003</td><td>伴侶案沒有身分證</td></tr>
+<tr><td>預約編號</td><td><code>R-{YYYYMMDD}-{代碼}-{流水3}</code></td><td>日期用<b>台北日期</b></td></tr>
+<tr><td><b>收據編號</b></td><td><code>A{YYYYMMDD}{C|O}{流水3}-{1|2|3}</code> 例 A20260801C021-1</td><td>館別A ＋ 日期 ＋ 分類 ＋ 流水 ＋ 狀態（1開立/2重印/3作廢）</td></tr>
+<tr><td>核銷案編號</td><td><code>{YYYYMM}-{流水2}</code> 例 202607-01</td><td>機構容器</td></tr>
+<tr><td>核銷批次編號</td><td><code>S{O|M|X}-{病歷號}-{YYYYMM}</code></td><td>自費月結批次</td></tr>
+<tr><td>派案碼</td><td><code>{YYMMDD}{流水3}</code> 例 260801001</td><td>建立需求表時產生</td></tr>
+<tr><td>場地租借單號</td><td><code>V{YYYYMMDD}{流水3}</code></td><td>與預約編號分開流水</td></tr>
+</tbody></table></div>
+
+<div class="note amber"><span class="t">收據編號是唯一還沒被診療所正式拍板的規則</span>01 §C4 / 09 §7 都把它列為未定案。所以做成<b>可切換</b>：<code>settings.RECEIPT_NUMBER_FORMAT</code> 預設 <code>v7</code>（診療所在原型上看過的格式），可切回 <code>legacy</code>（<code>R{YYYYMMDD}{流水4}</code>）。重印與作廢<b>沿用同一個 base</b>另開一列，所以同一張收據的三個版本天生串得起來，不必另建重印紀錄表。</div>
+</section>
+
+<section id="invariants">
+<h2><span class="num">4</span>22 條不變量：資料是否「照規則長出來」的唯一判準</h2>
+<p><code>apps/api/scripts/check_invariants.py</code>。用 SQL 不用 Python——這些都是對整個資料集的集合斷言，SQL 寫出來可以原封不動貼進 psql 追問題。每條回傳「違規的列」，一列都沒有才算過；任一條命中就非零離開，所以可以直接接在生成器最後一步或放進 CI。</p>
+
+<div class="tw"><table>
+<thead><tr><th style="width:210px">檢查</th><th>違反時代表什麼</th></tr></thead>
+<tbody>
+<tr><td colspan="2" style="background:#fafafa;font-weight:700">額度</td></tr>
+<tr><td><code>quota_identity</code></td><td>某條路徑扣了額度卻沒還（取消／刪除／未到）</td></tr>
+<tr><td><code>pool_consumed</code></td><td>consume/unconsume 有一邊漏了，年度池餘額失真</td></tr>
+<tr><td><code>closed_case_enrollment</code></td><td>結案沒連帶關閉方案，額度被永久佔住</td></tr>
+<tr><td><code>institution_case_has_number</code></td><td>沒有病歷號卻消耗了機構額度（違反 07 §8.3）</td></tr>
+<tr><td colspan="2" style="background:#fafafa;font-weight:700">場次與時間</td></tr>
+<tr><td><code>session_date_taipei</code></td><td>某條路徑改用 UTC 日期，深夜場次被歸到前一天</td></tr>
+<tr><td><code>arrived_has_record</code></td><td>報到了卻沒有帳冊紀錄——這場不會進日報表、不計酬、不核銷</td></tr>
+<tr><td><code>no_show_has_no_session</code></td><td>未到／取消卻產生了諮商場次</td></tr>
+<tr><td><code>room_overlap</code></td><td>診間被重複佔用（<b>跨 appointments 與 venue_rentals</b>）</td></tr>
+<tr><td><code>hall_overlap</code></td><td>雲燈教室同時段辦了兩場</td></tr>
+<tr><td><code>actual_duration_sane</code></td><td>加時沒有同步回寫預約時間，日曆長度與收費長度不一致</td></tr>
+<tr><td><code>appointment_number_date</code></td><td>配號時傳錯日期，行政用編號找不到當天的預約</td></tr>
+<tr><td colspan="2" style="background:#fafafa;font-weight:700">金額</td></tr>
+<tr><td><code>payable_split</code></td><td>自付＋機構請款 ≠ 總額，收款收錯、核銷請錯</td></tr>
+<tr><td><code>zero_priced_plan_session</code></td><td>沒有費率規則命中，fallback 成 $0</td></tr>
+<tr><td><code>payout_total</code></td><td>酬勞計算與 <code>payout_line_amount()</code> 又各走各的了</td></tr>
+<tr><td><code>venue_supervision_mode</code></td><td>督導模式 A 還在收場地費，等於跟心理師收兩次</td></tr>
+<tr><td colspan="2" style="background:#fafafa;font-weight:700">核銷與其他</td></tr>
+<tr><td><code>claim_line_uniqueness</code></td><td>作廢的紀錄還掛在核銷案裡</td></tr>
+<tr><td><code>submitted_claim_status</code></td><td>有人繞過 service 直接改付款狀態</td></tr>
+<tr><td><code>receipt_no_unique</code></td><td>兩張表各數各的序號，產出一模一樣的收據號</td></tr>
+<tr><td><code>case_number_requires_ongoing</code></td><td>兩段式編號被破壞（有號卻還是 initial，或反之）</td></tr>
+<tr><td><code>couple_membership</code></td><td>伴侶案不是恰好兩位成員</td></tr>
+<tr><td><code>orphan_rate_rule_keys</code></td><td>費率規則用了引擎不認得的 key（會靜默命中全部）</td></tr>
+<tr><td><code>admin_task_done_has_actor</code></td><td>已勾選的行政提醒缺執行人或時間，無從稽核</td></tr>
+</tbody></table></div>
+<pre><span class="c"># 用法</span>
+DATABASE_URL=... .venv/bin/python -m scripts.check_invariants --verbose</pre>
+</section>
+
+<section id="dataset">
+<h2><span class="num">5</span>假資料組成矩陣</h2>
+<p><code>apps/api/generate_fake_data.py</code>。期間 2025-09 ~ 2026-09（12 個月），可重現（同一個 <code>--seed</code> 產出同一份資料）。</p>
+<pre>DATABASE_URL=postgresql://cheerpsy:cheerpsy@localhost:5432/cheerpsy \
+    .venv/bin/python generate_fake_data.py --reset</pre>
+
+<h3>5.1 寫入通道：依「有沒有跨表不變量」決定</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:230px">資料類</th><th style="width:170px" class="c">通道</th><th>理由</th></tr></thead>
+<tbody>
+<tr><td>使用者／診間／機構／合約／方案／費率</td><td class="c"><span class="tag t-x">ORM 直寫</span></td><td>沒有不變量，純參考資料</td></tr>
+<tr><td><b>預約、報到、未到、取消、額度轉移、核銷收納</b></td><td class="c"><span class="tag t-g">呼叫既有 service</span></td><td><b>三態恆等式只活在 adapter.py 裡</b>。生成器自己重寫一份保證會跟本尊漂移</td></tr>
+<tr><td>歷史帳冊、收據、酬勞</td><td class="c"><span class="tag t-x">ORM 直寫</span></td><td>service 的時間戳綁 <code>now()</code>，而這裡要產生的是去年十月的紀錄</td></tr>
+<tr><td>HTTP API</td><td class="c"><span class="tag t-r">完全不用</span></td><td>被過去日期防呆與 auth 擋住</td></tr>
+</tbody></table></div>
+<div class="note blue"><span class="t">回填時間怎麼做到的</span><code>perform_check_in()</code> 與 <code>perform_cancel()</code> 有一個 keyword-only 的 <code>now</code> 參數，<b>刻意不放在端點簽名上</b>——FastAPI 會把多出來的參數當成 query string，等於開一個「從 HTTP 就能偽造報到時間」的洞。留在函式那一層，HTTP 永遠拿不到，生成器卻用得到。</div>
+
+<h3>5.2 個案組成（84 筆）</h3>
+<p>每一種<b>方案原型</b>都要有個案掛在上面，否則對應的畫面邏輯永遠沒有資料可看。</p>
+<div class="tw"><table>
+<thead><tr><th style="width:150px">分類</th><th style="width:60px" class="c">案數</th><th>驗證什麼</th></tr></thead>
+<tbody>
+<tr><td>自費 次結／月結／多次結</td><td class="c">16/9/5</td><td>三種結帳週期、月結批次</td></tr>
+<tr><td>衛生局市民</td><td class="c">5</td><td><code>visit_seq</code> 分級：第1次全額補助、第2次起自付$200</td></tr>
+<tr><td>15-45青壯</td><td class="c">6</td><td>合約層級<b>次數池</b>（378 次/年）</td></tr>
+<tr><td>國軍-個別</td><td class="c">5</td><td>合約層級<b>金額池</b>（$149,000/年）＋ 需個案代號</td></tr>
+<tr><td>市政府人事處 / 脆弱家庭</td><td class="c">4/2</td><td>核銷容器 <code>per_case_count</code>（每滿 N 次收一次）</td></tr>
+<tr><td>教支中心</td><td class="c">3</td><td><b>回饋制</b>——酬勞是扣項</td></tr>
+<tr><td>聊心茶室</td><td class="c">3</td><td><code>price_source=therapist_rate</code>，依心理師鐘點費</td></tr>
+<tr><td>家防中心 / 南家扶</td><td class="c">3/2</td><td><b>諮商型態計價</b>（§2 修的那個維度）；南家扶另有需評估</td></tr>
+<tr><td>台南地院</td><td class="c">3</td><td><b>登記時數轉換</b>：實際 1 小時 → 登記 2 小時 @$800</td></tr>
+<tr><td>伴侶案</td><td class="c">6</td><td>一列 cases 當收費單位 + 兩位成員各自獨立個案</td></tr>
+</tbody></table></div>
+
+<h3>5.3 生命週期與資料量</h3>
+<div class="grid3">
+  <div class="kpi"><div class="l">預約</div><div class="v">1,253</div><div class="s">已到 1,019 · 未到 · 取消 · 未來待報到</div></div>
+  <div class="kpi"><div class="l">帳冊場次</div><div class="v">1,019</div><div class="s">含優待、作廢、加時調整</div></div>
+  <div class="kpi"><div class="l">收據</div><div class="v">713</div><div class="s">含作廢(-3) 26 張、重印(-2) 13 張</div></div>
+  <div class="kpi"><div class="l">機構核銷案</div><div class="v">67</div><div class="s">收集中/已送出/已結案/已作廢</div></div>
+  <div class="kpi"><div class="l">心理師月酬勞</div><div class="v">143</div><div class="s">已發放 / 待發，含回饋制扣項</div></div>
+  <div class="kpi"><div class="l">媒合案</div><div class="v">40</div><div class="s">八種狀態各 4–8 筆</div></div>
+</div>
+<p style="margin-top:12px">生命週期分佈刻意讓每種畫面狀態都有資料：<b>仍在進行</b> 46 案、<b>流失預警</b>（≥45 天無預約）13 案、<b>療程告一段落</b> 25 案（多數會被結案）、已結案 18、已復案 3、額度延長過 4、額度用罄後<b>回落自費</b>約 300 場次。</p>
+
+<div class="note purple"><span class="t">刻意種進去的「壞資料」</span>為了讓對應的警告 UI 有東西可顯示：一段<b>核銷期間缺口</b>、一次<b>期間重疊</b>、跨月未收納紀錄、8 筆<b>退回補件</b>、作廢的核銷案、以及一批未勾完的行政提醒（診間日曆的「整格轉灰」判斷才有東西可判）。</div>
+
+<h3>5.4 假個資</h3>
+<p>姓名／地址／電話自己組，<b>不引入 Faker</b>——這支腳本要能在診所那台 Windows 機器直接跑，少一個套件少一個坑。身分證用<b>檢查碼正確</b>的假號，因為病歷號會取末兩碼、<code>activate_case()</code> 會擋沒有身分證的個案。號碼隨機，不對應任何真人。</p>
+</section>
+
+<section id="p4p5">
+<h2><span class="num">6</span>補齊的功能：文件寫了但一直沒建的那些</h2>
+<div class="tw"><table>
+<thead><tr><th style="width:170px">功能</th><th>重點規則</th><th style="width:90px" class="c">出處</th></tr></thead>
+<tbody>
+<tr><td><b>加時／調整實際時數</b></td><td>依單價重算、<b>同步回寫預約時間</b>；撞到鄰場<b>擋下</b>並提示聯絡行政（不自動擠掉下一位）。機構案會重新切分兩份金額：自付額固定，時間變動的部分由機構吸收</td><td class="c">01 §C1</td></tr>
+<tr><td><b>場地租借</b></td><td>督導模式 A（櫃台代收、開收據、場地費$0）/ B（心理師自收、場地費回扣）；未到 → 付款方改借用人自付。<b>佔用實體診間</b>，衝突跟一般預約一起看</td><td class="c">06 P6</td></tr>
+<tr><td><b>5F 雲燈教室</b></td><td>場佈與活動兩段時間分開記；所內/外聘講師、講師費是否入慈恩帳戶。<b>刻意不掛在 rooms 底下</b>——它不是那 12 間診間之一，掛進去會污染日曆、預約下拉與空間利用率報表</td><td class="c">06 P6</td></tr>
+<tr><td><b>行政流程提醒</b></td><td>方案的 checklist 是範本，建立預約時複製成<b>可勾選的實例</b>才記得住「誰在什麼時候辦好了」。這是診間日曆「整格轉灰」三個條件之一</td><td class="c">02 §1.2</td></tr>
+<tr><td><b>視訊連結轉發</b></td><td>心理師自行貼上（定稿明確排除自動產生）；換連結會清掉已轉發標記，否則個案收到舊連結</td><td class="c">06 P4</td></tr>
+<tr><td><b>個案請假</b></td><td>與未到<b>是兩件事</b>：請假是事前知道的，時段釋出、不產生應收、也<b>不收</b>機構未到補助（補助補的是個案沒出現，不是這場沒發生）</td><td class="c">06 P4</td></tr>
+<tr><td><b>收據作廢／重印</b></td><td><code>receipts</code> 的 status/void_reason/voided_at/voided_by 四欄從建表以來<b>沒有任何程式碼寫過</b>。作廢＝這張不算數（可同時重開），重印＝同一張再給一份、原件仍有效</td><td class="c">v7</td></tr>
+<tr><td><b>核銷退回補件</b></td><td><b>同時清除</b>心理師確認與行政核對兩個閘門並通知心理師。原本只有 admin-unverify：清一側、沒原因、不通知，心理師根本不知道自己被退件</td><td class="c">v7</td></tr>
+<tr><td><b>期間缺口／重疊警告</b></td><td>缺口說「X 天未被納入，可能漏請款」、重疊說「恐重複請款」，另附前期未收納提醒。<b>一律警告不阻擋</b>——行政比系統清楚為什麼某段要跳過</td><td class="c">v7</td></tr>
+<tr><td><b>個案代號擋下</b></td><td>方案要求代號的，收納時檢查；缺代號送出去機構會退件，在這一步擋比較便宜</td><td class="c">07 §8.3</td></tr>
+<tr><td><b>登記時數轉換</b></td><td>從自由文字改成宣告式 JSON <code>{"multiplier":2,"registered_unit_price":800}</code>，收納時自動換算。<b>刻意不做中文字串剖析</b>——那是把資料建檔的問題丟給程式碼扛</td><td class="c">07 §4.3</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="verify">
+<h2><span class="num">7</span>怎麼驗證這一切還是對的</h2>
+<pre><span class="c"># 1. 測試（176 支，只能增不能減）</span>
+cd apps/api &amp;&amp; DATABASE_URL=...cheerpsy_test .venv/bin/python -m pytest -q
+
+<span class="c"># 2. 重建整份假資料（最後會自動跑不變量檢查）</span>
+DATABASE_URL=...cheerpsy .venv/bin/python generate_fake_data.py --reset
+
+<span class="c"># 3. 單獨跑不變量檢查</span>
+DATABASE_URL=...cheerpsy .venv/bin/python -m scripts.check_invariants --verbose
+
+<span class="c"># 4. 前端型別</span>
+cd apps/web &amp;&amp; npx tsc --noEmit</pre>
+
+<div class="note green"><span class="t">為什麼不變量檢查器比測試更重要</span>測試驗的是「這個函式在這個情境下行為正確」。不變量驗的是「<b>整份資料現在是否自洽</b>」——它抓得到那種「每個函式各自都對，但兜起來就是不對」的問題。本輪兩個 bug（預約編號時區、衛生局第 3 次報價 $0）都是測試沒抓到、跑完整資料集才浮出來的。</div>
+
+<h3>7.1 仍未做的事（誠實標記）</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:210px">項目</th><th>狀態</th></tr></thead>
+<tbody>
+<tr><td>收據編號格式</td><td><span class="tag t-a">待診療所拍板</span>已做成可切換，預設 v7。這是 01 §C4 / 09 §7 列的唯一未決事項</td></tr>
+<tr><td>剩餘 43 個機構方案</td><td><span class="tag t-a">建議由診療所自建</span>手抄 43 份合約是資料輸入工作，抄錯要等到開錯發票才發現。欄位形狀已被 11 個代表方案驗證過</td></tr>
+<tr><td>督導 A/B 的酬勞扣回明細</td><td><span class="tag t-a">部分</span>計算與場地租借的連結已建，酬勞單上的扣回明細列尚未呈現</td></tr>
+<tr><td>日結物件、日報表優待、帳款作廢 UI</td><td><span class="tag t-x">依 09 裁示維持不做</span></td></tr>
+<tr><td><code>requires_external_code</code> 之外的收納前檢查</td><td><span class="tag t-x">未擴充</span>目前只擋個案代號</td></tr>
+</tbody></table></div>
+</section>
+
+<div class="foot">CheerPsy V2 · 10 資料流全景與假資料規格 · 2026-09-08</div>
+</main>
+</div>
+</div>
+
+<script>
+/* TOC auto-build from h2/h3 */
+(function(){
+  var toc=document.getElementById('toc'); if(!toc) return;
+  var out='<b>目錄</b>';
+  document.querySelectorAll('main section').forEach(function(s){
+    var h2=s.querySelector('h2'); if(!h2) return;
+    if(!s.id) s.id='s'+Math.random().toString(36).slice(2,7);
+    var t=h2.textContent.replace(/^\s*\d+\s*/,'').trim();
+    out+='<a href="#'+s.id+'">'+t+'</a>';
+    s.querySelectorAll('h3').forEach(function(h3,i){
+      if(!h3.id) h3.id=s.id+'-h'+i;
+      out+='<a class="sub" href="#'+h3.id+'">'+h3.textContent.trim()+'</a>';
+    });
+  });
+  toc.innerHTML=out;
+})();
+/* checklist toggle + persistence + progress */
+(function(){
+  var KEY='cheerpsy-v2-'+(document.body.dataset.doc||'doc');
+  var saved={}; try{saved=JSON.parse(localStorage.getItem(KEY)||'{}');}catch(e){}
+  var items=[].slice.call(document.querySelectorAll('.ck li'));
+  items.forEach(function(li,i){
+    var k=li.dataset.k||('i'+i); li.dataset.k=k;
+    if(!li.querySelector('.box')){var b=document.createElement('span');b.className='box';li.insertBefore(b,li.firstChild);}
+    if(saved[k]) li.classList.add('on');
+    li.addEventListener('click',function(){
+      li.classList.toggle('on');
+      saved[k]=li.classList.contains('on');
+      try{localStorage.setItem(KEY,JSON.stringify(saved));}catch(e){}
+      paint();
+    });
+  });
+  function paint(){
+    document.querySelectorAll('[data-prog]').forEach(function(el){
+      var scope=el.dataset.prog==='all'?document:document.getElementById(el.dataset.prog);
+      if(!scope) return;
+      var all=scope.querySelectorAll('.ck li'), done=scope.querySelectorAll('.ck li.on');
+      el.textContent=done.length+' / '+all.length;
+    });
+  }
+  paint();
+  var rst=document.getElementById('ckReset');
+  if(rst) rst.onclick=function(){ if(!confirm('清除本頁所有勾選狀態？'))return;
+    try{localStorage.removeItem(KEY);}catch(e){} items.forEach(function(li){li.classList.remove('on');}); paint(); };
+})();
+
+/* hotspot -> highlight target row (Part 2 interactive prototype) */
+(function(){
+  document.querySelectorAll('.hotspot[data-goto]').forEach(function(h){
+    h.addEventListener('click', function(){
+      var id=h.dataset.goto, el=document.getElementById(id);
+      if(!el) return;
+      document.querySelectorAll('.flash').forEach(function(x){x.classList.remove('flash');});
+      el.classList.add('flash');
+      el.scrollIntoView({behavior:'smooth', block:'center'});
+      setTimeout(function(){el.classList.remove('flash');}, 2600);
+    });
+  });
+})();
+
+/* tab panels: .tabs span[data-tab] -> #tab-{id} */
+(function(){
+  document.querySelectorAll('.tabs').forEach(function(bar){
+    bar.querySelectorAll('span[data-tab]').forEach(function(t){
+      t.onclick=function(){
+        bar.querySelectorAll('span[data-tab]').forEach(function(x){
+          x.classList.remove('on');
+          var p=document.getElementById('tab-'+x.dataset.tab); if(p)p.style.display='none';
+        });
+        t.classList.add('on');
+        var p=document.getElementById('tab-'+t.dataset.tab); if(p)p.style.display='block';
+      };
+    });
+    var first=bar.querySelector('span[data-tab]'); if(first) first.click();
+  });
+})();
+</script>
+</body>
+</html>
