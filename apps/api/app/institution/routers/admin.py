@@ -488,6 +488,43 @@ class ExtendEnrollmentRequest(BaseModel):
     note: str | None = None
 
 
+class ExternalCodeRequest(BaseModel):
+    external_case_code: str | None = None
+
+
+@router.put("/enrollments/{enrollment_id}/external-code")
+def set_external_case_code(
+    enrollment_id: int,
+    body: ExternalCodeRequest,
+    user: User = Depends(RequireRole(WRITE_ROLES)),
+    db: Session = Depends(get_db),
+):
+    """登錄機構端配發的個案代號（07 §1.6 · 09 §3.5 的 external_code 區塊）。
+
+    為什麼一定要能**事後**補：代號是機構那邊配發的，通常在個案已經開始接受
+    服務之後才拿到（08 決策 §8.3 也允許流水號階段先預留額度）。原本只有
+    POST /enrollments 建立當下能填，之後就再也沒有入口——而
+    claims/service.py:196 會用這個欄位**擋住核銷收納**（缺代號送出去機構會
+    退件，在這一步擋比較便宜，見 10 §6）。
+
+    也就是說：掛上方案時沒填代號的個案，先前是**永遠無法核銷**的死路。
+    """
+    e = db.query(InstEnrollment).filter(InstEnrollment.id == enrollment_id).first()
+    if not e:
+        raise HTTPException(status_code=404, detail="找不到這筆個案機構狀態")
+
+    code = (body.external_case_code or "").strip() or None
+    before = e.external_case_code
+    e.external_case_code = code
+    db.commit()
+    db.refresh(e)
+    return {
+        "enrollment_id": e.id,
+        "external_case_code": e.external_case_code,
+        "previous": before,
+    }
+
+
 @router.post("/enrollments/{enrollment_id}/extend")
 def extend_enrollment(
     enrollment_id: int,

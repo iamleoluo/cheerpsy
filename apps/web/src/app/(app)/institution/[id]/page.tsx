@@ -338,7 +338,15 @@ export default function ContractPanelPage() {
                         return (
                           <tr key={e.enrollment_id} className="border-t border-gray-100">
                             <td className="px-2 py-1.5 font-medium">{e.case_name ?? "—"}</td>
-                            <td className="px-2 py-1.5 font-mono">{e.external_case_code ?? "—"}</td>
+                            <td className="px-2 py-1.5">
+                              <ExternalCodeCell
+                                enrollmentId={e.enrollment_id}
+                                value={e.external_case_code}
+                                required={p.plan.requires_external_code}
+                                token={token}
+                                onSaved={fetchPanel}
+                              />
+                            </td>
                             {p.blocks.includes("quota_per_case") && (
                               <td className="px-2 py-1.5">
                                 <div className="flex h-2 w-24 overflow-hidden rounded-full bg-gray-100">
@@ -1227,5 +1235,91 @@ function ClaimExportModal({
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * 個案代號的就地編輯 —— 09 §3.5 的 external_code 區塊。
+ *
+ * 代號由機構端配發，通常在個案已經開始接受服務之後才拿到。原本這一欄是唯讀的，
+ * 而建立 enrollment 之後就沒有任何入口能補填——但核銷收納會用它擋下
+ * （claims/service.py：缺代號送出去機構會退件，在這一步擋比較便宜，10 §6）。
+ * 也就是說掛方案時沒填的個案，先前是永遠無法核銷的死路。
+ *
+ * 方案標記 requires_external_code 時，缺代號要看得出來——那是會擋住核銷的事，
+ * 不是可有可無的備註。
+ */
+function ExternalCodeCell({
+  enrollmentId,
+  value,
+  required,
+  token,
+  onSaved,
+}: {
+  enrollmentId: number;
+  value: string | null;
+  required?: boolean;
+  token: string;
+  onSaved: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value ?? "");
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    try {
+      await clientFetch(`/institution/enrollments/${enrollmentId}/external-code`, token, {
+        method: "PUT",
+        body: JSON.stringify({ external_case_code: draft }),
+      });
+      setEditing(false);
+      onSaved();
+    } catch {
+      /* 失敗時保持編輯狀態，讓使用者看得到自己輸入的值 */
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <span className="inline-flex items-center gap-1">
+        <input
+          autoFocus
+          value={draft}
+          onChange={(ev) => setDraft(ev.target.value)}
+          onKeyDown={(ev) => {
+            if (ev.key === "Enter") save();
+            if (ev.key === "Escape") { setDraft(value ?? ""); setEditing(false); }
+          }}
+          placeholder="機構配發的代號"
+          className="w-32 rounded-control border border-line-2 px-1.5 py-0.5 font-mono text-[11px] focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25"
+        />
+        <button onClick={save} disabled={saving}
+          className="rounded-badge border border-ink bg-ink px-1.5 py-0.5 text-[10px] font-semibold text-surface disabled:opacity-50">
+          {saving ? "…" : "存"}
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => { setDraft(value ?? ""); setEditing(true); }}
+      title="點擊登錄機構配發的個案代號"
+      className="group inline-flex items-center gap-1 font-mono text-[11px]"
+    >
+      {value ? (
+        <span className="text-ink-2 group-hover:text-accent">{value}</span>
+      ) : required ? (
+        // 這個方案的核銷需要代號，缺了會被擋下——用警示色說出來
+        <span className="rounded-badge bg-st-warn-bg px-1.5 py-0.5 text-[10px] font-semibold text-st-warn">
+          待補代號
+        </span>
+      ) : (
+        <span className="text-st-muted group-hover:text-accent">—</span>
+      )}
+    </button>
   );
 }

@@ -164,3 +164,42 @@ class TestContractListAggregates:
         assert row["quota_unit"] == "amount"
         assert row["quota_limit"] == 50000.0
         assert row["quota_used"] == 12000.0
+
+
+class TestExternalCaseCode:
+    """個案代號事後登錄 —— 07 §1.6 / 09 §3.5 的 external_code 區塊。
+
+    代號是機構端配發的，通常在個案已經開始接受服務之後才拿到。原本只有
+    POST /enrollments 建立當下能填，之後沒有任何入口——而核銷收納會用這個
+    欄位擋下（claims/service.py），所以掛方案時沒填的個案等於**永遠無法核銷**。
+    """
+
+    def _enrollment_id(self, db, ctx):
+        from app.institution.models.enrollment import InstEnrollment
+
+        return db.query(InstEnrollment).filter(
+            InstEnrollment.plan_id == ctx["plan_count_id"]
+        ).first().id
+
+    def test_can_set_and_clear(self, db, http_db):
+        ctx = _seed_contract_with_two_plans(db)
+        eid = self._enrollment_id(db, ctx)
+        headers = {"Authorization": f"Bearer {ctx['admin_token']}"}
+
+        r = client.put(f"/institution/enrollments/{eid}/external-code",
+                       json={"external_case_code": "HB-2026-0031"}, headers=headers)
+        assert r.status_code == 200, r.text
+        assert r.json()["external_case_code"] == "HB-2026-0031"
+
+        # 清空：留白等於沒有代號，不是留下空字串（收納那邊用 strip() 判斷）
+        r = client.put(f"/institution/enrollments/{eid}/external-code",
+                       json={"external_case_code": "   "}, headers=headers)
+        assert r.status_code == 200
+        assert r.json()["external_case_code"] is None
+
+    def test_unknown_enrollment_404(self, db, http_db):
+        ctx = _seed_contract_with_two_plans(db)
+        r = client.put("/institution/enrollments/99999999/external-code",
+                       json={"external_case_code": "X"},
+                       headers={"Authorization": f"Bearer {ctx['admin_token']}"})
+        assert r.status_code == 404
