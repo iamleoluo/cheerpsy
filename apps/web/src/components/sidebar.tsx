@@ -65,6 +65,18 @@ const adminGroups: readonly NavGroup[] = [
       { href: "/guide", label: "操作指南", icon: "📖" },
     ],
   },
+  // V2升級計畫 11 §4.3：v1 舊頁原本只有舊儀表板連得到，重寫儀表板等於讓它們
+  // 完全無法到達。/calendar、/ledger、/products 已被 /rooms、/ar 取代並刪除；
+  // 剩下這兩頁還有「還沒搬走的功能」——/claims 的文件雙閘門與出席單／請款單
+  // 兩張 PDF 要依 09 §1.4 移植到新核銷案，/finance 的零用金還沒有新落點。
+  // 與其藏在別的頁面底下，不如誠實列出來，P4 移植完再整組移除。
+  {
+    section: "舊版（P4 移植後移除）",
+    items: [
+      { href: "/claims", label: "核銷案（舊）", icon: "🗄️", roles: ["admin", "staff", "accountant"] },
+      { href: "/finance", label: "財務管理（舊）", icon: "🗄️", roles: ["admin", "accountant"] },
+    ],
+  },
 ];
 
 const therapistGroups: readonly NavGroup[] = [

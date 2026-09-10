@@ -13,8 +13,11 @@ import {
   Money,
   MoneySplit,
   QuotaBar,
+  RoomCell,
   StatBar,
+  TimeGrid,
   type Column,
+  type RoomCellAppointment,
 } from "@/components/ui";
 
 /**
@@ -122,6 +125,45 @@ export default function UiPreviewPage() {
           </div>
         </Section>
 
+        <Section
+          title="RoomCell"
+          note="整個系統最重要的元件 — 操作鍵一律中性，顏色只在左緣、底色與右上角徽章"
+        >
+          <div className="grid items-start gap-x-2 gap-y-4 sm:grid-cols-3 lg:grid-cols-5">
+            {demoCells.map((c) => (
+              <div key={c.appt.id} className="flex flex-col">
+                <RoomCell
+                  appt={c.appt}
+                  onOpen={() => {}}
+                  onCheckIn={() => {}}
+                  onNoShow={() => {}}
+                  onCollect={() => {}}
+                  onReceipt={() => {}}
+                />
+                <p className="mt-1 text-[9.5px] text-ink-3">{c.note}</p>
+              </div>
+            ))}
+          </div>
+        </Section>
+
+        <Section
+          title="TimeGrid"
+          note="08:00–22:00 半格；90 分伴侶案自動跨格（rowSpan），空白格可點新增"
+        >
+          <TimeGrid
+            columns={[
+              { id: 1, label: "2A", sub: "2F · 晤談" },
+              { id: 2, label: "2C", sub: "2F · 👶 遊戲室" },
+              { id: 3, label: "3A", sub: "3F · 晤談" },
+            ]}
+            items={demoGridItems}
+            startHour={9}
+            endHour={12}
+            onEmptyClick={() => {}}
+            renderItem={(it) => <RoomCell appt={it.appt} onOpen={() => {}} onCollect={() => {}} />}
+          />
+        </Section>
+
         <Section title="StatBar" note="每一格可點，帶著已套用的篩選跳頁">
           <StatBar
             stats={[
@@ -209,6 +251,93 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
     </div>
   );
 }
+
+/* ---- RoomCell / TimeGrid 的示範資料 ------------------------------------ */
+
+function cell(over: Partial<RoomCellAppointment> & { id: number }): RoomCellAppointment {
+  return {
+    case_name: "林凱文",
+    therapist_name: "陳慧苓",
+    room_name: "2B",
+    session_type: "in_person",
+    start_time: "2026-09-10T10:00:00",
+    end_time: "2026-09-10T11:00:00",
+    amount: 2000,
+    plan_name: null,
+    case_payable: null,
+    institution_payable: null,
+    check_in_status: "pending",
+    copay_collected_at: null,
+    receipt_no: null,
+    ...over,
+  };
+}
+
+const demoCells: { appt: RoomCellAppointment; note: string }[] = [
+  { appt: cell({ id: 1, plan_name: "衛生局 15-45青壯" }), note: "待報到 — 預設狀態" },
+  {
+    appt: cell({ id: 2, case_name: "黃詠晨", therapist_name: "鄭幼毅", room_name: "3A", check_in_status: "arrived" }),
+    note: "已到 — 就地長出收款鍵",
+  },
+  {
+    appt: cell({
+      id: 3,
+      case_name: "李新源",
+      therapist_name: "劉柏宏",
+      room_name: "2A",
+      plan_name: "衛生局 15-45青壯",
+      case_payable: 400,
+      institution_payable: 1600,
+      is_last_quota: true,
+    }),
+    note: "額度最後一次 — 整格標黃，避免收錯金額",
+  },
+  {
+    appt: cell({
+      id: 4,
+      case_name: "陳冠新",
+      room_name: "2E",
+      check_in_status: "no_show",
+      no_show_reason: "無故未到",
+    }),
+    note: "未到 — 額度已釋回",
+  },
+  {
+    appt: cell({
+      id: 5,
+      case_name: "林小潔",
+      therapist_name: "鄭幼毅",
+      room_name: "3C",
+      check_in_status: "arrived",
+      copay_collected_at: "2026-09-10T11:05:00",
+      receipt_no: "A20260910C021-1",
+    }),
+    note: "已完成 — 整格轉灰，今天不用再碰",
+  },
+];
+
+const demoGridItems = [
+  { id: 1, columnId: 1, startMin: 9 * 60, endMin: 10 * 60, appt: demoCells[0].appt },
+  // 90 分鐘伴侶案：跨三格，用 rowSpan 畫成一個方塊而不是重複三次
+  {
+    id: 2,
+    columnId: 3,
+    startMin: 9 * 60 + 30,
+    endMin: 11 * 60,
+    appt: cell({
+      id: 6,
+      case_name: "李新源＆王品瑄（伴侶）",
+      is_couple: true,
+      couple_name: "李新源＆王品瑄（伴侶）",
+      therapist_name: "劉柏宏",
+      room_name: "3A",
+      start_time: "2026-09-10T09:30:00",
+      end_time: "2026-09-10T11:00:00",
+      amount: 3000,
+    }),
+  },
+  { id: 3, columnId: 2, startMin: 10 * 60 + 30, endMin: 11 * 60 + 30, appt: demoCells[4].appt },
+];
 
 interface DemoRow {
   id: number;
