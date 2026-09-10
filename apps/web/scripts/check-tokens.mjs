@@ -48,11 +48,24 @@ function walk(dir, out = []) {
   return out;
 }
 
+/**
+ * 把註解換成等長的空白再掃。
+ *
+ * 不這樣做會誤報：元件的說明註解裡經常要**引用**被取代掉的舊寫法
+ * （例如「取代既有 30 種手寫的 rounded-lg border border-gray-200」），
+ * 那是文件，不是程式碼。長度保持一致，行號與欄位才不會跑掉。
+ */
+function stripComments(src) {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
+    .replace(/(^|[^:])\/\/[^\n]*/g, (m, p1) => p1 + " ".repeat(m.length - p1.length));
+}
+
 function scan(dirs) {
   const hits = [];
   for (const d of dirs) {
     for (const file of walk(join(ROOT, d))) {
-      const lines = readFileSync(file, "utf8").split("\n");
+      const lines = stripComments(readFileSync(file, "utf8")).split("\n");
       lines.forEach((line, i) => {
         for (const m of line.matchAll(BANNED)) {
           hits.push({ file: relative(ROOT, file), line: i + 1, cls: m[0] });

@@ -1,16 +1,37 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
-import { clientFetch } from "@/lib/client-api";
+import { useMemo, useState } from "react";
+import { useApi } from "@/lib/useApi";
+import {
+  AsyncBoundary,
+  Badge,
+  CaseRef,
+  Card,
+  DataTable,
+  EmptyState,
+  Money,
+  StatBar,
+  Tabs,
+  type Column,
+} from "@/components/ui";
 
 /**
- * 應收帳冊（v1）。「未收」分頁接的是 GET /ledger/self-pay-unpaid——這支
- * 09 §1.4a 裁示後已改成統一查詢（不分 funding_source，只認自付額收了
- * 沒），機構案的個案自付額會跟自費案一起出現在這裡。
+ * 應收帳冊 — V2升級計畫 11 P1 的示範頁。
  *
- * 「機構應收」分頁依 09 §3.7 的裁示應該改成核銷案的唯讀檢視，但核銷案
- * 前端（合約面板）還沒建，這裡先留提示，等 09 §6 的機構那條線做完再補。
+ * 選這頁當第一個轉換對象是因為它最小（129 行）、風險最低，但涵蓋了元件庫
+ * 的主要面：分頁、統計列、表格、三態、語意色、金額。
+ *
+ * 這次轉換修掉的三件事：
+ *   ① 失敗不再偽裝成沒資料。舊版 `.catch(() => setRows([]))`，token 過期時
+ *      畫面顯示「沒有符合條件的紀錄」——行政會以為今天都收完了（11 §5）。
+ *   ② 逾期天數的顏色從三個寫死的色階（rose-100/amber-100/gray-100）
+ *      改成語意 token。
+ *   ③ 合計從一行小字改成頂部統計列，並且可以點——「未收」是行政每天要
+ *      追的數字，不該藏在表格底下。
+ *
+ * 資料來源沿用 GET /ledger/self-pay-unpaid。09 §1.4a 已裁示這支要改成不分
+ * funding_source 的統一查詢（機構案的個案自付額也要出現在這裡），後端補完
+ * 之前先照舊接。
  */
 
 interface Row {
@@ -18,6 +39,7 @@ interface Row {
   appointment_id: number | null;
   session_date: string;
   case_name: string | null;
+  case_number?: string | null;
   therapist_name: string | null;
   amount: number;
   case_payable: number | null;
@@ -27,103 +49,164 @@ interface Row {
   billing_cycle: string | null;
 }
 
+type Tab = "unpaid" | "monthly" | "institution";
+
 function daysAgo(dateStr: string): number {
   const d = new Date(dateStr);
-  const now = new Date();
-  return Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
+  return Math.floor((Date.now() - d.getTime()) / 86_400_000);
+}
+
+/** 個案實際要付的錢。機構案是自付額，純自費案是全額。 */
+const payable = (r: Row) => r.case_payable ?? r.amount;
+
+function planLabel(r: Row) {
+  if (r.plan_name) return r.plan_name;
+  if (r.funding_source === "institution") return r.institution_name ?? "機構";
+  return "自費";
 }
 
 export default function ARPage() {
-  const { data: session } = useSession();
-  const token = (session?.user as any)?.accessToken;
-  const [tab, setTab] = useState<"unpaid" | "monthly" | "institution">("unpaid");
-  const [rows, setRows] = useState<Row[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [tab, setTab] = useState<Tab>("unpaid");
+  const { data, error, loading, refetch } = useApi<Row[]>("/ledger/self-pay-unpaid");
 
-  useEffect(() => {
-    if (!token) return;
-    setLoading(true);
-    clientFetch("/ledger/self-pay-unpaid", token)
-      .then(setRows)
-      .catch(() => setRows([]))
-      .finally(() => setLoading(false));
-  }, [token]);
+  const { general, monthly, total } = useMemo(() => {
+    const rows = data ?? [];
+    const general = rows.filter((r) => r.billing_cycle !== "monthly");
+    const monthly = rows.filter((r) => r.billing_cycle === "monthly");
+    return {
+      general,
+      monthly,
+      total: rows.reduce((s, r) => s + payable(r), 0),
+    };
+  }, [data]);
 
-  const payable = (r: Row) => r.case_payable ?? r.amount;
-  const unpaidGeneral = rows.filter((r) => r.billing_cycle !== "monthly");
-  const unpaidMonthly = rows.filter((r) => r.billing_cycle === "monthly");
-  const shown = tab === "unpaid" ? unpaidGeneral : unpaidMonthly;
-  const total = shown.reduce((s, r) => s + payable(r), 0);
+  const shown = tab === "monthly" ? monthly : general;
+  // 逾期超過 7 天的才是真的要追的——其餘只是還沒到收款時機。
+  const overdue = shown.filter((r) => daysAgo(r.session_date) > 7);
 
-  if (!token) return <p>Loading...</p>;
+  const columns: readonly Column<Row>[] = [
+    {
+      key: "date",
+      header: "場次日期",
+      nowrap: true,
+      width: "w-28",
+      cell: (r) => <span className="ident text-ink-2">{r.session_date}</span>,
+    },
+    {
+      key: "case",
+      header: "個案",
+      cell: (r) => <CaseRef name={r.case_name} caseNumber={r.case_number} />,
+    },
+    { key: "therapist", header: "心理師", nowrap: true, cell: (r) => r.therapist_name ?? "—" },
+    { key: "plan", header: "方案", cell: (r) => planLabel(r) },
+    {
+      key: "amount",
+      header: "應收金額",
+      align: "right",
+      nowrap: true,
+      cell: (r) => <Money amount={payable(r)} zero="zero" />,
+    },
+    {
+      key: "aging",
+      header: "帳齡",
+      nowrap: true,
+      width: "w-20",
+      cell: (r) => {
+        const d = daysAgo(r.session_date);
+        // 逾期愈久語意愈嚴重：當日只是還沒收，超過 7 天就是真的漏了。
+        return (
+          <Badge tone={d > 7 ? "danger" : d >= 1 ? "warn" : "pending"} size="sm">
+            {d > 0 ? `${d} 天` : "當日"}
+          </Badge>
+        );
+      },
+    },
+  ];
 
   return (
-    <div>
-      <h1 className="mb-4 text-2xl font-bold">應收帳冊</h1>
-
-      <div className="mb-4 flex gap-1 border-b border-gray-200">
-        {([
-          ["unpaid", "未收"],
-          ["monthly", "月結"],
-          ["institution", "機構應收"],
-        ] as const).map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            className={`px-4 py-2 text-sm font-medium ${tab === key ? "border-b-2 border-primary-600 text-primary-600" : "text-gray-500 hover:text-gray-700"}`}
-          >
-            {label}
-          </button>
-        ))}
+    <div className="flex flex-col gap-4">
+      <div>
+        <h1 className="text-xl font-bold text-ink">應收帳冊</h1>
+        <p className="mt-0.5 text-xs text-ink-3">
+          個案自己要付的錢，不分自費案或機構案的自付額（09 §1.4a）
+        </p>
       </div>
 
-      {loading && <p className="text-sm text-gray-400">載入中...</p>}
+      <StatBar
+        stats={[
+          { label: "未收合計", value: total, money: true, tone: total > 0 ? "danger" : "done", sub: `${(data ?? []).length} 筆` },
+          { label: "次結／多次結", value: general.length, sub: "當日應結未結" },
+          { label: "月結", value: monthly.length, sub: "月底一併收款" },
+          {
+            label: "逾期逾 7 天",
+            value: overdue.length,
+            tone: overdue.length > 0 ? "warn" : "default",
+            sub: "需主動追收",
+          },
+        ]}
+      />
 
-      {tab === "institution" ? (
-        <div className="rounded-xl border border-dashed border-gray-200 py-12 text-center text-sm text-gray-400">
-          機構應收將改為核銷案的唯讀檢視，待「機構合約」合約面板建置完成後接上（V2升級計畫 09 §3.7）。
-        </div>
-      ) : (
-        <>
-          <div className="overflow-x-auto rounded-lg border border-gray-200">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-xs text-gray-500">
-                <tr>
-                  <th className="border-b border-gray-200 px-3 py-2 text-left">預約日期</th>
-                  <th className="border-b border-gray-200 px-3 py-2 text-left">姓名</th>
-                  <th className="border-b border-gray-200 px-3 py-2 text-left">心理師</th>
-                  <th className="border-b border-gray-200 px-3 py-2 text-left">方案</th>
-                  <th className="border-b border-gray-200 px-3 py-2 text-right">應收金額</th>
-                  <th className="border-b border-gray-200 px-3 py-2 text-left">逾期天數</th>
-                </tr>
-              </thead>
-              <tbody>
-                {shown.length === 0 && (
-                  <tr><td colSpan={6} className="px-3 py-10 text-center text-sm text-gray-400">沒有符合條件的紀錄</td></tr>
-                )}
-                {shown.map((r) => {
-                  const days = daysAgo(r.session_date);
-                  return (
-                    <tr key={r.id} className="hover:bg-gray-50">
-                      <td className="border-b border-gray-100 px-3 py-2">{r.session_date}</td>
-                      <td className="border-b border-gray-100 px-3 py-2 font-medium">{r.case_name ?? "—"}</td>
-                      <td className="border-b border-gray-100 px-3 py-2">{r.therapist_name}</td>
-                      <td className="border-b border-gray-100 px-3 py-2">{r.plan_name ?? (r.funding_source === "institution" ? r.institution_name ?? "機構" : "自費")}</td>
-                      <td className="border-b border-gray-100 px-3 py-2 text-right font-medium">${payable(r).toLocaleString()}</td>
-                      <td className="border-b border-gray-100 px-3 py-2">
-                        <span className={`rounded px-1.5 py-0.5 text-xs ${days > 7 ? "bg-rose-100 text-rose-600" : days >= 1 ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-500"}`}>
-                          {days > 0 ? `${days} 天` : "當日"}
-                        </span>
+      <Card>
+        <Tabs
+          value={tab}
+          onChange={setTab}
+          tabs={[
+            { key: "unpaid", label: "未收", count: general.length },
+            { key: "monthly", label: "月結", count: monthly.length },
+            { key: "institution", label: "機構應收" },
+          ]}
+          className="px-2"
+        />
+
+        <div className="p-3">
+          {tab === "institution" ? (
+            <EmptyState
+              title="機構應收改到合約專頁處理"
+              hint="機構要補的那一段錢（institution_payable）不是行政每天的例行工作，改由「機構合約」的核銷分頁主動點開處理。合約面板建置完成後這裡會改成唯讀檢視（09 §3.7）。"
+            />
+          ) : (
+            <AsyncBoundary
+              loading={loading}
+              error={error}
+              data={shown}
+              onRetry={refetch}
+              empty={
+                <EmptyState
+                  title={tab === "monthly" ? "沒有月結待收" : "沒有未收款項"}
+                  hint={
+                    tab === "monthly"
+                      ? "月結個案報到即列入本頁，月底一併收款。目前沒有累積中的月結帳。"
+                      : "所有已執行的場次都已收款。已到但當日未收的會自動轉入這裡，不會擋住結帳。"
+                  }
+                />
+              }
+            >
+              {(rows) => (
+                <DataTable
+                  columns={columns}
+                  rows={rows}
+                  rowKey={(r) => r.id}
+                  footer={
+                    <>
+                      <td className="px-3 py-2 text-xs" colSpan={4}>
+                        合計
                       </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <div className="mt-3 text-sm text-gray-500">合計未收 <b className="text-rose-600">${total.toLocaleString()}</b> ｜ {shown.length} 筆</div>
-        </>
-      )}
+                      <td className="px-3 py-2 text-right text-xs">
+                        <Money
+                          amount={rows.reduce((s, r) => s + payable(r), 0)}
+                          zero="zero"
+                          tone="danger"
+                        />
+                      </td>
+                      <td className="px-3 py-2 text-xs tabular-nums">{rows.length} 筆</td>
+                    </>
+                  }
+                />
+              )}
+            </AsyncBoundary>
+          )}
+        </div>
+      </Card>
     </div>
   );
 }
