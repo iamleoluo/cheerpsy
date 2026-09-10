@@ -133,3 +133,34 @@ class TestGenericPanel:
         headers = {"Authorization": f"Bearer {create_access_token({'sub': '1', 'role': 'admin', 'name': 'x'})}"}
         r = client.get("/institution/contracts/999999/panel", headers=headers)
         assert r.status_code == 404
+
+
+class TestContractListAggregates:
+    """清單頁每列的兩個數字 —— 09 §3.7。
+
+    行政原本必須一份一份點進合約專頁才知道裡面什麼狀況，因為清單只有合約名
+    與面板標記。這幾個欄位讓一張表就看得完，且刻意由後端**一次聚合**算出：
+    11 份合約逐份查就是 33 次查詢，而這頁是機構作業的入口（11 §4.1）。
+    """
+
+    def _row(self, db, http_db):
+        ctx = _seed_contract_with_two_plans(db)
+        r = client.get(
+            "/institution/contracts?include_inactive=true",
+            headers={"Authorization": f"Bearer {ctx['admin_token']}"},
+        )
+        assert r.status_code == 200, r.text
+        return next(x for x in r.json() if x["id"] == ctx["contract_id"])
+
+    def test_plan_and_case_counts(self, db, http_db):
+        row = self._row(db, http_db)
+        assert row["plan_count"] == 2
+        assert row["active_case_count"] == 1
+
+    def test_pool_wins_over_per_case(self, db, http_db):
+        """合約同時有池子時以池子為準——那才是行政要盯的天花板。"""
+        row = self._row(db, http_db)
+        assert row["quota_scope"] == "pool"
+        assert row["quota_unit"] == "amount"
+        assert row["quota_limit"] == 50000.0
+        assert row["quota_used"] == 12000.0

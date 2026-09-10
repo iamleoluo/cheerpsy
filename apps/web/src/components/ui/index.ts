@@ -20,7 +20,7 @@ export { DataTable, type Column } from "./data-table";
 export { Field, Input, Select, Textarea } from "./field";
 export { Modal, Drawer, type ModalProps } from "./modal";
 export { StatBar, FilterBar, type Stat } from "./stat-bar";
-export { Money, MoneySplit, CaseRef, QuotaBar } from "./domain";
+export { Money, MoneySplit, CaseRef, QuotaBar, QuotaMeter } from "./domain";
 export {
   TimeGrid,
   minutesOfDay,

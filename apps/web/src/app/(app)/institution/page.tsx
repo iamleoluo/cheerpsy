@@ -1,15 +1,37 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { clientFetch } from "@/lib/client-api";
+import { useApi, useApiMutation } from "@/lib/useApi";
+import {
+  AsyncBoundary,
+  Badge,
+  Button,
+  Card,
+  DataTable,
+  EmptyState,
+  Field,
+  FilterBar,
+  Input,
+  Modal,
+  QuotaMeter,
+  Select,
+  StatBar,
+  type Column,
+} from "@/components/ui";
 
 /**
- * 機構合約清單（09 §3.7）：所有合約，依機構分組，點入每份合約各自的
- * 專頁（四分頁骨架，見 [id]/page.tsx）。一頁的單位是「合約」，方案包在
- * 裡面——這是 09 §3 已定案的分層架構。
+ * 機構合約清單（09 §3.7）。一頁的單位是**合約**，方案包在裡面。
+ *
+ * 改寫的理由是你的回饋：「不同機構的部分，每個機構都要點點點」。
+ *
+ * 舊版每列只有「合約名 ＋ 面板標記 ＋ 查看 →」，而 09 §3.7 規定每列要顯示
+ * **機構 · 合約名 · 期間 · 使用中個案數 · 額度概況 · 專屬／通用面板標記**——
+ * 少的正是「使用中個案數」與「額度概況」這兩個真正有資訊量的，所以行政只能
+ * 一份一份點進去才知道裡面什麼狀況。
+ *
+ * 現在一張表看完 11 份合約：誰快用完額度、誰還沒有個案、哪幾份有專屬面板。
+ * 那兩個數字由後端一次聚合算好（11 §4.1 的通則：跨表判斷不放前端）。
  */
 
 interface ContractRow {
@@ -23,89 +45,220 @@ interface ContractRow {
   valid_until: string | null;
   is_active: boolean;
   has_dedicated_module: boolean;
+  plan_count: number;
+  active_case_count: number;
+  quota_used: number | null;
+  quota_limit: number | null;
+  quota_unit: string | null;
+  quota_scope: string | null;
 }
-interface InstitutionOption {
-  id: number;
-  name: string;
-}
+
+/** 額度用到幾成才算「該注意了」。90% 以上是 09 §3.3 國軍面板的「快見底預警」。 */
+const NEARLY_FULL = 0.9;
 
 export default function InstitutionContractListPage() {
-  const { data: session } = useSession();
-  const token = (session?.user as any)?.accessToken;
   const router = useRouter();
-  const [contracts, setContracts] = useState<ContractRow[]>([]);
-  const [loading, setLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [q, setQ] = useState("");
+  const [scope, setScope] = useState<"active" | "all">("active");
 
-  const fetchContracts = () => {
-    if (!token) return;
-    setLoading(true);
-    clientFetch("/institution/contracts?include_inactive=true", token)
-      .then(setContracts)
-      .catch(() => setContracts([]))
-      .finally(() => setLoading(false));
-  };
+  const { data, error, loading, refetch } = useApi<ContractRow[]>(
+    "/institution/contracts?include_inactive=true",
+  );
 
-  useEffect(fetchContracts, [token]);
+  const { rows, stats } = useMemo(() => {
+    const all = data ?? [];
+    const kw = q.trim().toLowerCase();
+    const rows = all
+      .filter((c) => (scope === "all" ? true : c.is_active))
+      .filter(
+        (c) =>
+          !kw ||
+          c.name.toLowerCase().includes(kw) ||
+          (c.institution_name ?? "").toLowerCase().includes(kw),
+      );
+    const active = all.filter((c) => c.is_active);
+    return {
+      rows,
+      stats: {
+        contracts: active.length,
+        dedicated: active.filter((c) => c.has_dedicated_module).length,
+        cases: active.reduce((s, c) => s + c.active_case_count, 0),
+        nearlyFull: active.filter(
+          (c) => c.quota_limit && c.quota_used != null && c.quota_used / c.quota_limit >= NEARLY_FULL,
+        ).length,
+      },
+    };
+  }, [data, q, scope]);
 
-  const byInstitution = contracts.reduce<Record<string, ContractRow[]>>((acc, c) => {
-    const key = c.institution_name ?? "（未分類）";
-    (acc[key] ??= []).push(c);
-    return acc;
-  }, {});
-
-  if (!token) return <p>Loading...</p>;
+  const columns: readonly Column<ContractRow>[] = [
+    {
+      key: "name",
+      header: "合約",
+      cell: (c) => (
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className="font-semibold text-ink">{c.name}</span>
+            {c.has_dedicated_module ? (
+              <Badge tone="active" size="mini">專屬</Badge>
+            ) : (
+              <Badge tone="muted" size="mini">通用</Badge>
+            )}
+            {!c.is_active && <Badge tone="muted" size="mini">已停用</Badge>}
+          </div>
+          <div className="truncate text-[10.5px] text-ink-3">{c.institution_name ?? "（未分類）"}</div>
+        </div>
+      ),
+    },
+    {
+      key: "plans",
+      header: "方案",
+      align: "right",
+      nowrap: true,
+      width: "w-16",
+      cell: (c) => <span className="text-ink-2">{c.plan_count}</span>,
+    },
+    {
+      key: "cases",
+      header: "使用中個案",
+      align: "right",
+      nowrap: true,
+      width: "w-24",
+      cell: (c) =>
+        c.active_case_count > 0 ? (
+          <span className="font-semibold text-ink">{c.active_case_count}</span>
+        ) : (
+          // 有合約卻沒個案，多半是還沒開始跑或已經跑完——值得一眼看出來
+          <span className="text-st-muted">—</span>
+        ),
+    },
+    {
+      key: "quota",
+      header: "額度概況",
+      width: "w-40",
+      cell: (c) =>
+        c.quota_limit && c.quota_used != null ? (
+          <QuotaMeter used={c.quota_used} limit={c.quota_limit} unit={c.quota_unit ?? "count"} />
+        ) : (
+          <span className="text-[10.5px] text-st-muted">不設上限</span>
+        ),
+    },
+    {
+      key: "period",
+      header: "期間",
+      nowrap: true,
+      width: "w-40",
+      cell: (c) =>
+        c.valid_from || c.valid_until ? (
+          <span className="ident text-[10.5px] text-ink-3">
+            {c.valid_from ?? "—"} ~ {c.valid_until ?? "—"}
+          </span>
+        ) : (
+          <span className="text-st-muted">—</span>
+        ),
+    },
+    {
+      key: "contact",
+      header: "承辦",
+      cell: (c) =>
+        c.contact_name ? (
+          <span className="text-[10.5px] text-ink-2">
+            {c.contact_name}
+            {c.contact_phone && <span className="ml-1 text-ink-3">{c.contact_phone}</span>}
+          </span>
+        ) : (
+          <span className="text-st-muted">—</span>
+        ),
+    },
+  ];
 
   return (
-    <div>
-      <div className="mb-1 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">機構合約</h1>
-        <button onClick={() => setShowCreate(true)} className="rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700">
-          ＋ 新增機構合約
-        </button>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h1 className="text-xl font-bold text-ink">機構合約</h1>
+        <span className="text-xs text-ink-3">
+          一份合約 ＝ 與某機構的一段合作；方案、額度、費率、核銷都在合約專頁裡管理
+        </span>
+        <div className="ml-auto">
+          <Button variant="accent" size="sm" onClick={() => setShowCreate(true)}>
+            ＋ 新增合約
+          </Button>
+        </div>
       </div>
-      <p className="mb-6 text-sm text-gray-400">一份合約 = 與某機構的一段合作，底下的方案（含額度、費率、核銷路由）都在合約專頁裡管理</p>
 
-      {loading && <p className="text-sm text-gray-400">載入中...</p>}
-      {!loading && contracts.length === 0 && (
-        <div className="rounded-xl border border-dashed border-gray-200 py-12 text-center text-sm text-gray-400">尚無合約資料</div>
-      )}
+      <AsyncBoundary
+        loading={loading}
+        error={error}
+        data={data}
+        onRetry={refetch}
+        skeleton={<div className="h-[4.5rem] animate-pulse rounded-card bg-surface-2" />}
+      >
+        {() => (
+          <StatBar
+            stats={[
+              { label: "生效中合約", value: stats.contracts },
+              { label: "專屬面板", value: stats.dedicated, sub: `其餘 ${stats.contracts - stats.dedicated} 份走通用版` },
+              { label: "使用中個案", value: stats.cases },
+              {
+                label: "額度將滿",
+                value: stats.nearlyFull,
+                tone: stats.nearlyFull > 0 ? "warn" : "default",
+                sub: "已用逾九成",
+              },
+            ]}
+          />
+        )}
+      </AsyncBoundary>
 
-      <div className="space-y-6">
-        {Object.entries(byInstitution).map(([institutionName, rows]) => (
-          <div key={institutionName}>
-            <h2 className="mb-2 text-sm font-semibold text-gray-500">{institutionName}</h2>
-            <div className="overflow-hidden rounded-lg border border-gray-200">
-              {rows.map((c) => (
-                <Link
-                  key={c.id}
-                  href={`/institution/${c.id}`}
-                  className="flex items-center justify-between border-b border-gray-100 bg-white px-4 py-3 text-sm last:border-b-0 hover:bg-gray-50"
-                >
-                  <div>
-                    <span className="font-medium">{c.name}</span>
-                    {c.has_dedicated_module ? (
-                      <span className="ml-2 rounded bg-primary-100 px-1.5 py-0.5 text-xs text-primary-700">專屬面板</span>
-                    ) : (
-                      <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-400">通用面板</span>
-                    )}
-                    {!c.is_active && <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-400">已停用</span>}
-                    {c.contact_name && <span className="ml-2 text-xs text-gray-400">承辦 {c.contact_name}{c.contact_phone ? ` · ${c.contact_phone}` : ""}</span>}
-                  </div>
-                  <div className="flex items-center gap-3 text-xs text-gray-400">
-                    {c.valid_from && c.valid_until && <span>{c.valid_from} ~ {c.valid_until}</span>}
-                    <span className="text-primary-500">查看 →</span>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
+      <FilterBar>
+        <Input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="搜尋機構或合約名稱"
+          className="max-w-xs"
+        />
+        <Select value={scope} onChange={(e) => setScope(e.target.value as "active" | "all")} className="w-32">
+          <option value="active">僅生效中</option>
+          <option value="all">含已停用</option>
+        </Select>
+        <span className="text-[10.5px] text-ink-3">{rows.length} 份</span>
+      </FilterBar>
+
+      <Card>
+        <div className="p-3">
+          <AsyncBoundary
+            loading={loading}
+            error={error}
+            data={rows}
+            onRetry={refetch}
+            empty={
+              <EmptyState
+                title={q ? "沒有符合的合約" : "尚無機構合約"}
+                hint={
+                  q
+                    ? "換個關鍵字，或切換成「含已停用」。"
+                    : "一份合約代表與某機構的一段合作。建立之後，方案、費率規則與核銷路由都在合約專頁裡設定。"
+                }
+                action={!q ? <Button size="sm" onClick={() => setShowCreate(true)}>＋ 新增合約</Button> : undefined}
+              />
+            }
+          >
+            {(list) => (
+              <DataTable
+                columns={columns}
+                rows={list}
+                rowKey={(c) => c.id}
+                minWidth="56rem"
+                onRowClick={(c) => router.push(`/institution/${c.id}`)}
+                rowClassName={(c) => (!c.is_active ? "opacity-60" : undefined)}
+              />
+            )}
+          </AsyncBoundary>
+        </div>
+      </Card>
 
       {showCreate && (
         <CreateContractModal
-          token={token}
           onClose={() => setShowCreate(false)}
           onCreated={(id) => router.push(`/institution/${id}`)}
         />
@@ -115,116 +268,130 @@ export default function InstitutionContractListPage() {
 }
 
 function CreateContractModal({
-  token, onClose, onCreated,
-}: { token: string; onClose: () => void; onCreated: (id: number) => void }) {
-  const [institutions, setInstitutions] = useState<InstitutionOption[]>([]);
-  const [institutionId, setInstitutionId] = useState("");
-  const [newInstitutionName, setNewInstitutionName] = useState("");
-  const [name, setName] = useState("");
-  const [contactName, setContactName] = useState("");
-  const [contactPhone, setContactPhone] = useState("");
-  const [eligibilityNote, setEligibilityNote] = useState("");
-  const [validFrom, setValidFrom] = useState("");
-  const [validUntil, setValidUntil] = useState("");
-  const [saving, setSaving] = useState(false);
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: (id: number) => void;
+}) {
+  const { data: institutions } = useApi<{ id: number; name: string }[]>("/institutions");
+  const { mutate, pending } = useApiMutation();
+  const [form, setForm] = useState({
+    institutionId: "",
+    newInstitutionName: "",
+    name: "",
+    contactName: "",
+    contactPhone: "",
+    eligibilityNote: "",
+    validFrom: "",
+    validUntil: "",
+  });
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    clientFetch("/institutions", token).then(setInstitutions).catch(() => {});
-  }, [token]);
+  const set = (k: keyof typeof form, v: string) => setForm((p) => ({ ...p, [k]: v }));
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setSaving(true);
     setError("");
     try {
-      let instId = institutionId;
-      if (!instId && newInstitutionName.trim()) {
-        const inst = await clientFetch("/institutions", token, {
+      let instId = form.institutionId;
+      if (!instId && form.newInstitutionName.trim()) {
+        const inst = await mutate<{ id: number }>("/institutions", {
           method: "POST",
-          body: JSON.stringify({ name: newInstitutionName.trim() }),
+          body: JSON.stringify({ name: form.newInstitutionName.trim() }),
         });
         instId = String(inst.id);
       }
-      if (!instId) throw new Error("請選擇機構單位或填寫新機構名稱");
+      if (!instId) throw new Error("請選擇機構單位，或填寫新機構名稱");
 
-      const contract = await clientFetch("/institution/contracts", token, {
+      const contract = await mutate<{ id: number }>("/institution/contracts", {
         method: "POST",
         body: JSON.stringify({
           institution_id: Number(instId),
-          name,
-          contact_name: contactName || null,
-          contact_phone: contactPhone || null,
-          eligibility_note: eligibilityNote || null,
-          valid_from: validFrom || null,
-          valid_until: validUntil || null,
+          name: form.name,
+          contact_name: form.contactName || null,
+          contact_phone: form.contactPhone || null,
+          eligibility_note: form.eligibilityNote || null,
+          valid_from: form.validFrom || null,
+          valid_until: form.validUntil || null,
         }),
       });
       onCreated(contract.id);
-    } catch (e: any) {
-      setError(e.message ?? "建立失敗");
-    } finally {
-      setSaving(false);
+    } catch (e) {
+      setError((e as Error).message);
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
-      <div className="w-[420px] rounded-xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <h3 className="mb-4 font-semibold">新增機構合約</h3>
-        {error && <div className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">{error}</div>}
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <label className="block">
-            <span className="mb-1 block text-xs text-gray-500">機構單位</span>
-            <select value={institutionId} onChange={(e) => setInstitutionId(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+    <Modal
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title="新增機構合約"
+      hint="建立之後，方案、費率規則與核銷路由在合約專頁裡設定"
+      footer={
+        <>
+          <Button variant="ghost" size="sm" onClick={onClose}>取消</Button>
+          <Button variant="accent" size="sm" loading={pending} onClick={handleSubmit}>建立</Button>
+        </>
+      }
+    >
+      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+        {error && (
+          <p className="rounded-control bg-st-danger-bg px-3 py-2 text-xs text-st-danger">{error}</p>
+        )}
+
+        <Field label="機構單位" hint={!form.institutionId ? "選「新增機構」時，請在下方填名稱" : undefined}>
+          {(p) => (
+            <Select {...p} value={form.institutionId} onChange={(e) => set("institutionId", e.target.value)}>
               <option value="">— 新增機構 —</option>
-              {institutions.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
-            </select>
-            {!institutionId && (
-              <input
-                value={newInstitutionName}
-                onChange={(e) => setNewInstitutionName(e.target.value)}
-                placeholder="新機構名稱"
-                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-              />
+              {(institutions ?? []).map((i) => (
+                <option key={i.id} value={i.id}>{i.name}</option>
+              ))}
+            </Select>
+          )}
+        </Field>
+
+        {!form.institutionId && (
+          <Field label="新機構名稱">
+            {(p) => (
+              <Input {...p} value={form.newInstitutionName}
+                onChange={(e) => set("newInstitutionName", e.target.value)}
+                placeholder="如「臺南市政府衛生局」" />
             )}
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-xs text-gray-500">合約名稱 <span className="text-rose-500">*</span></span>
-            <input required value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="如「衛生局心理健康服務合約」" />
-          </label>
-          <div className="grid grid-cols-2 gap-2">
-            <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">承辦人</span>
-              <input value={contactName} onChange={(e) => setContactName(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">聯絡電話</span>
-              <input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-            </label>
-          </div>
-          <label className="block">
-            <span className="mb-1 block text-xs text-gray-500">方案身份條件</span>
-            <input value={eligibilityNote} onChange={(e) => setEligibilityNote(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="如「15-45 歲民眾」" />
-          </label>
-          <div className="grid grid-cols-2 gap-2">
-            <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">生效日</span>
-              <input type="date" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">到期日</span>
-              <input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-            </label>
-          </div>
-          <div className="flex gap-2 pt-2">
-            <button type="submit" disabled={saving} className="flex-1 rounded-lg bg-primary-600 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">
-              {saving ? "建立中…" : "建立"}
-            </button>
-            <button type="button" onClick={onClose} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-500 hover:bg-gray-50">取消</button>
-          </div>
-        </form>
-      </div>
-    </div>
+          </Field>
+        )}
+
+        <Field label="合約名稱" required>
+          {(p) => (
+            <Input {...p} required value={form.name} onChange={(e) => set("name", e.target.value)}
+              placeholder="如「衛生局心理健康服務合約」" />
+          )}
+        </Field>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="承辦人">
+            {(p) => <Input {...p} value={form.contactName} onChange={(e) => set("contactName", e.target.value)} />}
+          </Field>
+          <Field label="聯絡電話">
+            {(p) => <Input {...p} value={form.contactPhone} onChange={(e) => set("contactPhone", e.target.value)} />}
+          </Field>
+        </div>
+
+        <Field label="方案身份條件" hint="誰符合資格用這份合約，如「15-45 歲民眾」">
+          {(p) => (
+            <Input {...p} value={form.eligibilityNote}
+              onChange={(e) => set("eligibilityNote", e.target.value)} />
+          )}
+        </Field>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="生效日">
+            {(p) => <Input {...p} type="date" value={form.validFrom} onChange={(e) => set("validFrom", e.target.value)} />}
+          </Field>
+          <Field label="到期日">
+            {(p) => <Input {...p} type="date" value={form.validUntil} onChange={(e) => set("validUntil", e.target.value)} />}
+          </Field>
+        </div>
+      </form>
+    </Modal>
   );
 }

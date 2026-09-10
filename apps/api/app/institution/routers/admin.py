@@ -63,14 +63,120 @@ class ContractResponse(BaseModel):
     valid_until: date | None = None
     is_active: bool
     has_dedicated_module: bool = False  # 09 §3.7：清單頁的「專屬面板／通用面板」標記
+    # ── 09 §3.7 規定清單每列要顯示的兩個數字 ────────────────────────────
+    # 原本只有合約名與面板標記，行政必須一份一份點進去才知道裡面什麼狀況。
+    # 這幾個欄位由 list_contracts 用**一次聚合查詢**算出（不逐份查）。
+    plan_count: int = 0
+    active_case_count: int = 0
+    # 額度概況。次數型回 used/limit；金額池型回池子消耗。unit 讓前端決定怎麼畫。
+    quota_used: float | None = None
+    quota_limit: float | None = None
+    quota_unit: str | None = None   # count | amount
+    quota_scope: str | None = None  # per_case（個案次數加總）| pool（合約層級池）
 
     model_config = {"from_attributes": True}
 
 
-def _contract_to_response(c: InstContract) -> ContractResponse:
+def _contract_aggregates(db: Session, contracts: list[InstContract]) -> list[dict]:
+    """一次算完所有合約的方案數／使用中個案數／額度概況（09 §3.7）。
+
+    刻意做成批次：清單頁有 11 份合約，逐份查就是 3×11 次查詢，而這頁是行政
+    每次進機構作業的入口。同 11 §4.1 的通則——跨表的判斷放後端一次算完。
+
+    額度概況分兩種，因為它們扣的東西不同（07 §1.2）：
+      pool     合約層級的池子（國軍 $149,000／年，扣的是錢）
+      per_case 個案次數上限的加總（衛生局那種，扣的是次數）
+    合約同時有池子時以池子為準——那才是行政真正要盯的天花板。
+    """
+    from app.institution.models.plan import InstPlan
+    from app.institution.models.quota_pool import InstQuotaPool
+
+    ids = [c.id for c in contracts]
+    if not ids:
+        return []
+
+    plan_rows = (
+        db.query(InstPlan.contract_id, InstPlan.id, InstPlan.quota_unit)
+        .filter(InstPlan.contract_id.in_(ids))
+        .all()
+    )
+    plans_by_contract: dict[int, list[int]] = {}
+    unit_by_contract: dict[int, str] = {}
+    plan_to_contract: dict[int, int] = {}
+    for cid, pid, unit in plan_rows:
+        plans_by_contract.setdefault(cid, []).append(pid)
+        plan_to_contract[pid] = cid
+        unit_by_contract.setdefault(cid, unit or "count")
+
+    # 使用中個案數 ＋ 個案額度加總（只算 active 的 enrollment）
+    cases_by_contract: dict[int, set[int]] = {}
+    used_by_contract: dict[int, float] = {}
+    limit_by_contract: dict[int, float] = {}
+    if plan_to_contract:
+        for plan_id, case_id, used, limit, extended in (
+            db.query(
+                InstEnrollment.plan_id,
+                InstEnrollment.case_id,
+                InstEnrollment.used_count,
+                InstEnrollment.quota_limit,
+                InstEnrollment.extended_count,
+            )
+            .filter(
+                InstEnrollment.plan_id.in_(list(plan_to_contract)),
+                InstEnrollment.status == "active",
+            )
+            .all()
+        ):
+            cid = plan_to_contract[plan_id]
+            cases_by_contract.setdefault(cid, set()).add(case_id)
+            used_by_contract[cid] = used_by_contract.get(cid, 0.0) + float(used or 0)
+            if limit is not None:
+                limit_by_contract[cid] = (
+                    limit_by_contract.get(cid, 0.0) + float(limit) + float(extended or 0)
+                )
+
+    pools = {
+        cid: (float(total or 0), float(consumed or 0), unit)
+        for cid, total, consumed, unit in db.query(
+            InstQuotaPool.contract_id,
+            InstQuotaPool.total_limit,
+            InstQuotaPool.consumed_total,
+            InstQuotaPool.unit,
+        )
+        .filter(InstQuotaPool.contract_id.in_(ids), InstQuotaPool.total_limit.isnot(None))
+        .all()
+    }
+
+    out = []
+    for c in contracts:
+        agg = {
+            "plan_count": len(plans_by_contract.get(c.id, [])),
+            "active_case_count": len(cases_by_contract.get(c.id, set())),
+        }
+        if c.id in pools:
+            total, consumed, unit = pools[c.id]
+            agg |= {"quota_used": consumed, "quota_limit": total,
+                    "quota_unit": unit or "amount", "quota_scope": "pool"}
+        elif c.id in limit_by_contract:
+            agg |= {"quota_used": used_by_contract.get(c.id, 0.0),
+                    "quota_limit": limit_by_contract[c.id],
+                    "quota_unit": unit_by_contract.get(c.id, "count"),
+                    "quota_scope": "per_case"}
+        out.append(agg)
+    return out
+
+
+def _contract_to_response(c: InstContract, agg: dict | None = None) -> ContractResponse:
     from app.institution.contracts.registry import BY_CONTRACT_NAME, BY_ID
 
+    a = agg or {}
     return ContractResponse(
+        plan_count=a.get("plan_count", 0),
+        active_case_count=a.get("active_case_count", 0),
+        quota_used=a.get("quota_used"),
+        quota_limit=a.get("quota_limit"),
+        quota_unit=a.get("quota_unit"),
+        quota_scope=a.get("quota_scope"),
         id=c.id,
         institution_id=c.institution_id,
         institution_name=c.institution.name if c.institution else None,
@@ -94,7 +200,8 @@ def list_contracts(
     q = db.query(InstContract)
     if not include_inactive:
         q = q.filter(InstContract.is_active.is_(True))
-    return [_contract_to_response(c) for c in q.order_by(InstContract.name).all()]
+    contracts = q.order_by(InstContract.name).all()
+    return [_contract_to_response(c, agg) for c, agg in zip(contracts, _contract_aggregates(db, contracts))]
 
 
 @router.post("/contracts", response_model=ContractResponse, status_code=status.HTTP_201_CREATED)

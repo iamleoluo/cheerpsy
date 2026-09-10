@@ -218,3 +218,48 @@ function Legend({ swatch, label, n }: { swatch: string; label: string; n: number
     </span>
   );
 }
+
+/* -------------------------------------------------------------------------
+ * QuotaMeter — 單純的「已用 / 上限」計量條
+ *
+ * 跟 QuotaBar 不同：那個畫的是三態流轉（已預留→已預約→已使用），用在個案
+ * 層級；這個只回答「這份合約的天花板還剩多少」，用在合約清單那種一列一份
+ * 的密集畫面。
+ *
+ * 兩種尺度（07 §1.2）：次數池（15-45青壯 378 次／年）與金額池（國軍
+ * $149,000／年）——扣的東西不同，所以標籤要跟著換。
+ * ---------------------------------------------------------------------- */
+
+export function QuotaMeter({
+  used,
+  limit,
+  unit = "count",
+  className,
+}: {
+  used: number;
+  limit: number;
+  /** count 次數 / amount 金額 */
+  unit?: string;
+  className?: string;
+}) {
+  const pct = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
+  const fmt = (n: number) =>
+    unit === "amount" ? `$${n.toLocaleString("en-US")}` : `${n}`;
+  // 快見底要看得出來——這是行政真正要盯的訊號（09 §3.3 國軍面板「快見底預警」）
+  const tone = pct >= 90 ? "bg-st-danger" : pct >= 70 ? "bg-st-warn" : "bg-st-active";
+
+  return (
+    <div className={cn("min-w-[7rem]", className)}>
+      <div className="flex items-baseline gap-1 text-[10px] tabular-nums">
+        <span className="font-semibold text-ink">{fmt(used)}</span>
+        <span className="text-st-muted">/ {fmt(limit)}</span>
+        <span className={cn("ml-auto font-semibold", pct >= 90 ? "text-st-danger" : "text-ink-3")}>
+          {pct.toFixed(0)}%
+        </span>
+      </div>
+      <div className="mt-0.5 h-1.5 overflow-hidden rounded-badge bg-surface-3">
+        <span className={cn("block h-full", tone)} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
