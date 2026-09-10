@@ -61,11 +61,25 @@ function stripComments(src) {
     .replace(/(^|[^:])\/\/[^\n]*/g, (m, p1) => p1 + " ".repeat(m.length - p1.length));
 }
 
-function scan(dirs) {
+/**
+ * 檔案開頭寫 `@token-guard legacy` 就先放行。
+ *
+ * 給的是 P3 從舊路由**原樣搬過來**、還沒換成語意 token 的檔案。P3 的紀律是
+ * 只動結構、不混入視覺改動——一邊搬檔一邊改 600 多處顏色，出事了會分不清是
+ * 搬壞的還是改壞的。
+ *
+ * 這不是關掉規則：**新寫的檔案沒有這行就照樣擋**，而且下面會把還欠著的檔案
+ * 數與處數印出來，債務是可數的，不是消失的。
+ */
+const LEGACY_MARK = "@token-guard legacy";
+
+function scan(dirs, { includeLegacy = false } = {}) {
   const hits = [];
   for (const d of dirs) {
     for (const file of walk(join(ROOT, d))) {
-      const lines = stripComments(readFileSync(file, "utf8")).split("\n");
+      const raw = readFileSync(file, "utf8");
+      if (!includeLegacy && raw.slice(0, 800).includes(LEGACY_MARK)) continue;
+      const lines = stripComments(raw).split("\n");
       lines.forEach((line, i) => {
         for (const m of line.matchAll(BANNED)) {
           hits.push({ file: relative(ROOT, file), line: i + 1, cls: m[0] });
@@ -91,8 +105,30 @@ if (process.argv.includes("--stats")) {
   console.log("");
 }
 
+/** 已標記 legacy、還欠著沒換 token 的檔案。 */
+function legacyDebt() {
+  const files = [];
+  for (const d of GUARDED) {
+    for (const file of walk(join(ROOT, d))) {
+      const raw = readFileSync(file, "utf8");
+      if (raw.slice(0, 800).includes(LEGACY_MARK)) {
+        const n = [...stripComments(raw).matchAll(BANNED)].length;
+        if (n) files.push([relative(ROOT, file), n]);
+      }
+    }
+  }
+  return files.sort((a, b) => b[1] - a[1]);
+}
+
 if (violations.length === 0) {
   console.log(`✓ token 檢查通過（守備範圍：${GUARDED.join(", ")}）`);
+  const debt = legacyDebt();
+  if (debt.length) {
+    const total = debt.reduce((s, [, n]) => s + n, 0);
+    console.log(`\n待換 token 的 legacy 檔案：${debt.length} 個、${total} 處`);
+    for (const [f, n] of debt) console.log(`  ${String(n).padStart(4)}  ${f}`);
+    console.log("\n（P3 只搬結構不動視覺；這些會在各自的頁面被重寫時換掉）");
+  }
   process.exit(0);
 }
 
