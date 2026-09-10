@@ -963,6 +963,20 @@ def list_institution_confirmed_docs(
     return _query_institution_docs(db, user, submitted=True, plan_ids=plan_ids)
 
 
+@router.get("/receivable")
+def get_institution_receivable(
+    user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
+    db: Session = Depends(get_db),
+):
+    """機構應收的跨機構唯讀檢視 —— 應收帳冊第三分頁（09 §4.2）。
+
+    唯讀：收款動作一律回合約專頁，避免同一筆錢兩個地方可以按「已收到款項」。
+    """
+    from app.institution.receivable import institution_receivable
+
+    return institution_receivable(db)
+
+
 @router.get("/pending-docs")
 def list_all_institution_pending_docs(
     user: User = Depends(get_current_user),

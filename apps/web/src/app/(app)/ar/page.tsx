@@ -14,6 +14,7 @@ import {
   Tabs,
   type Column,
 } from "@/components/ui";
+import { InstitutionReceivable } from "@/features/institution/InstitutionReceivable";
 
 /**
  * 應收帳冊 — V2升級計畫 11 P1 的示範頁。
@@ -167,10 +168,7 @@ export default function ARPage() {
 
         <div className="p-3">
           {tab === "institution" ? (
-            <EmptyState
-              title="機構應收改到合約專頁處理"
-              hint="機構要補的那一段錢（institution_payable）不是行政每天的例行工作，改由「機構合約」的核銷分頁主動點開處理。合約面板建置完成後這裡會改成唯讀檢視（09 §3.7）。"
-            />
+            <InstitutionReceivable />
           ) : (
             <AsyncBoundary
               loading={loading}

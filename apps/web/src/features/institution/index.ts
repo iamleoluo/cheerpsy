@@ -4,3 +4,4 @@ export { QuotasTab } from "./QuotasTab";
 export { QuotaGroupedTable } from "./QuotaGroupedTable";
 export { QuotaFormModal } from "./QuotaFormModal";
 export { TemplatesSection, TemplateFormModal, ApplyTemplateModal } from "./Templates";
+export { InstitutionReceivable } from "./InstitutionReceivable";
