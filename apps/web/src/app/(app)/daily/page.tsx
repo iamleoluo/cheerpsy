@@ -1,10 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useApi } from "@/lib/useApi";
+import { useSession } from "next-auth/react";
+import { useApi, useApiMutation } from "@/lib/useApi";
 import {
   AsyncBoundary,
   Badge,
+  Button,
   Card,
   CaseRef,
   DataTable,
@@ -82,8 +84,12 @@ function isCollected(r: LedgerRow): boolean {
 const methodOf = (r: LedgerRow) => r.copay_payment_method ?? r.payment_method;
 
 export default function DailyPage() {
+  const { data: session } = useSession();
+  const isAdmin = (session?.user as { role?: string } | undefined)?.role === "admin";
   const [date, setDate] = useState(todayStr());
   const [view, setView] = useState<"unpaid" | "paid">("unpaid");
+  const [settleMsg, setSettleMsg] = useState<string | null>(null);
+  const { mutate, pending } = useApiMutation();
 
   // 既有端點沒有單日篩選參數，先抓當月再於前端篩今天（09 §5 已列為後端缺口）。
   const { data, error, loading, refetch } = useApi<LedgerRow[]>(
@@ -181,6 +187,40 @@ export default function DailyPage() {
           className="rounded-control border border-line-2 bg-surface px-2 py-1 text-xs tabular-nums text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25"
         />
         {loading && <span className="text-[10px] text-ink-3">載入中…</span>}
+
+        {/*
+         * 「執行日結」原本掛在已刪除的 /ledger 頁上，改放這裡——日報表就是
+         * 當日結束後的對帳工具，補登漏按的報到本來就是這個動作的一部分。
+         *
+         * 更重要的是：這動作以前是**讀取端點的副作用**（五個 GET 都會呼叫
+         * materialize_due_appointments），所以光是打開頁面就會把逾時未報到的
+         * 預約標成已到、產生場次紀錄、並扣掉個案的機構額度。已改成只有這裡
+         * 按下去才會發生。
+         */}
+        {isAdmin && (
+          <div className="ml-auto flex items-center gap-2">
+            {settleMsg && <span className="text-[10px] text-ink-3">{settleMsg}</span>}
+            <Button
+              size="sm"
+              loading={pending}
+              onClick={async () => {
+                setSettleMsg(null);
+                try {
+                  const r = await mutate<{ date: string; executed: number; skipped: number }>(
+                    "/ledger/settle",
+                    { method: "POST", body: JSON.stringify({ target_date: date }) },
+                  );
+                  setSettleMsg(`已補登 ${r.executed} 筆，略過 ${r.skipped} 筆`);
+                  refetch();
+                } catch (e) {
+                  setSettleMsg((e as Error).message);
+                }
+              }}
+            >
+              執行日結
+            </Button>
+          </div>
+        )}
       </div>
 
       <StatBar

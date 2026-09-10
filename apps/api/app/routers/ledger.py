@@ -35,7 +35,7 @@ from app.schemas.session_record import (
 from app.routers.payouts import payout_line_amount
 from app.services.claim_batch import generate_batch_number
 from app.services.pdf_generator import generate_self_pay_receipt
-from app.services.settlement import materialize_due_appointments, run_daily_settlement
+from app.services.settlement import run_daily_settlement
 
 DEFAULT_COMMISSION_RATE = Decimal("0.70")
 
@@ -155,7 +155,6 @@ def list_records(
     db: Session = Depends(get_db),
 ):
     import calendar
-    materialize_due_appointments(db)
     query = db.query(SessionRecord).options(
         joinedload(SessionRecord.appointment).joinedload(Appointment.case).joinedload(Case.institution),
         joinedload(SessionRecord.appointment).joinedload(Appointment.therapist),
@@ -207,7 +206,6 @@ def list_pending_docs(
     Scoped: therapist sees own; admin/staff/accountant see all.
     Not capped — pending docs may span multiple months.
     """
-    materialize_due_appointments(db)
     q = db.query(SessionRecord).options(
         joinedload(SessionRecord.appointment).joinedload(Appointment.case).joinedload(Case.institution),
         joinedload(SessionRecord.appointment).joinedload(Appointment.therapist),
@@ -253,7 +251,6 @@ def list_self_pay_unpaid(
     'self_pay_unpaid'，因為既有前端（/claims、/finance）還在呼叫這支，
     改名要動的地方太多；語意已經是「自付款待收」而不是「純自費待收」。
     """
-    materialize_due_appointments(db)
     records = (
         db.query(SessionRecord)
         .options(
@@ -290,7 +287,6 @@ def list_self_pay_all(
     db: Session = Depends(get_db),
 ):
     """All non-void self-pay session records (paid + unpaid), for finance tracking."""
-    materialize_due_appointments(db)
     records = (
         db.query(SessionRecord)
         .options(
@@ -314,7 +310,6 @@ def list_self_pay_cases(
 ):
     """Aggregate all non-void self-pay session records by case, returning paid/unpaid counts."""
     from collections import defaultdict
-    materialize_due_appointments(db)
     records = (
         db.query(SessionRecord)
         .filter(
