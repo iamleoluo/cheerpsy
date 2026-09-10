@@ -214,6 +214,26 @@ CHECKS: list[Check] = [
         """,
     ),
     Check(
+        "receipt_requires_collection",
+        "沒收到錢就不得開立收據",
+        "報到三步驟的第 3 步（POST /appointments/{id}/receipt）明文擋下"
+        "「尚未收款，無法開立收據」（appointments.py:605）。任何繞過那條路徑寫進來的"
+        "資料都不該違反同一條規則，否則帳面上會出現「開了收據但錢還欠著」。\n"
+        "注意查的是 receipts 表，不是 session_records.receipt_no——後者是"
+        "build_session_record() 建立場次時就預先配好的號碼，跟收款與否無關"
+        "（實測 1,022 筆非作廢場次每一筆都有值），拿它當「已開立」會全部誤判。",
+        """
+        SELECT sr.id AS session_record_id, sr.session_date, r.receipt_no,
+               COALESCE(sr.case_payable, sr.amount) - COALESCE(sr.discount_amount, 0) AS still_owed
+          FROM session_records sr
+          JOIN receipts r ON r.session_record_id = sr.id AND r.status = 'issued'
+         WHERE sr.is_void = false
+           AND sr.copay_collected_at IS NULL
+           AND sr.payment_status NOT IN ('paid', 'claimed')
+           AND COALESCE(sr.case_payable, sr.amount) - COALESCE(sr.discount_amount, 0) > 0
+        """,
+    ),
+    Check(
         "payable_split",
         "個案自付＋機構請款＝總額",
         "報價快照的兩份金額加起來必須等於場次總額，否則收款收錯、核銷也請錯。",

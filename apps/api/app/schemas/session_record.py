@@ -33,7 +33,17 @@ class SessionRecordResponse(BaseModel):
     paid_at: datetime | None = None
     claim_number: str | None = None
     receipt_number: str | None = None
+    # ⚠️ session_records.receipt_no 是**預先配發**的號碼：build_session_record()
+    # 在建立場次時就配好（settlement.py:99），而同一行下面 payment_status 還是
+    # 'unpaid'。它代表「這筆將來會用的收據號」，**不代表收據已經開立**。
+    #
+    # 真正「已開立」的憑證在 receipts 表（status='issued'），由報到三步驟的第 3 步
+    # POST /appointments/{id}/receipt 產生，而且那支端點會擋：尚未收款不准開立。
+    #
+    # 兩個欄位同名不同義，跟 10 §2 那個「兩個都叫 session_type」是同一類陷阱。
+    # 畫面要顯示「收據編號」時請用 issued_receipt_no，不要用 receipt_no。
     receipt_no: str | None = None
+    issued_receipt_no: str | None = None
     commission_rate_used: float | None = None
     claim_batch_id: int | None = None
     claim_batch_number: str | None = None

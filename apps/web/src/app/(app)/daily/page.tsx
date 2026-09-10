@@ -48,7 +48,14 @@ interface LedgerRow {
   payment_method: string | null;
   copay_collected_at: string | null;
   copay_payment_method: string | null;
+  /**
+   * ⚠️ 預先配發的號碼，**不代表收據已開立**。build_session_record() 在建立場次
+   * 當下就配好（settlement.py:99），同一行下面 payment_status 還是 'unpaid'。
+   * 實測 1,022 筆非作廢場次每一筆都有值，拿它當「已開立」會誤判 81 筆。
+   */
   receipt_no: string | null;
+  /** 真正開立出去的那張（receipts 表 status='issued'）。沒開就是 null。 */
+  issued_receipt_no: string | null;
 }
 
 const sessionTypeLabel: Record<string, string> = {
@@ -119,11 +126,14 @@ export default function DailyPage() {
       key: "receipt",
       header: "收據編號",
       nowrap: true,
+      // 用 issued_receipt_no（真的開出去的那張），不是 receipt_no（預先配號）。
+      // 之前這裡印 receipt_no，所以未收款的 81 筆照樣顯示收據編號——帳面上
+      // 看起來「開了收據但錢還欠著」，那是畫面在說謊，資料其實是對的。
       cell: (r) =>
-        r.receipt_no ? (
-          <span className="ident text-ink-2">{r.receipt_no}</span>
+        r.issued_receipt_no ? (
+          <span className="ident text-ink-2">{r.issued_receipt_no}</span>
         ) : (
-          <span className="text-st-muted">—</span>
+          <span className="text-st-muted">未開立</span>
         ),
     },
     {

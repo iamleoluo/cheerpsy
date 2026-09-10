@@ -83,6 +83,23 @@ def _resolve_paid_at(paid_date: date | None) -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _issued_receipt_no(r: SessionRecord, db: Session) -> str | None:
+    """這筆場次**實際開出去**的收據號，沒開就是 None。
+
+    不能用 r.receipt_no —— 那是 build_session_record() 在建立場次當下就預先配好的
+    號碼，跟收款與否無關。實測資料庫裡 1,022 筆非作廢場次**每一筆都有** receipt_no，
+    其中 85 筆個案根本還欠著錢（合計 $157,200），日報表卻照樣印出收據號。
+    """
+    from app.models.receipt import Receipt
+
+    receipt = (
+        db.query(Receipt)
+        .filter(Receipt.session_record_id == r.id, Receipt.status == "issued")
+        .first()
+    )
+    return receipt.receipt_no if receipt else None
+
+
 def _to_response(r: SessionRecord, db: Session) -> SessionRecordResponse:
     appt = r.appointment
     case = appt.case if appt else (db.query(Case).filter(Case.id == r.case_id).first() if r.case_id else None)
@@ -125,6 +142,9 @@ def _to_response(r: SessionRecord, db: Session) -> SessionRecordResponse:
         claim_number=r.claim_number,
         receipt_number=r.receipt_number,
         receipt_no=r.receipt_no,
+        # 真正開立出去的那張（receipts 表，status='issued'）。跟 receipt_no 的
+        # 差別見 schemas/session_record.py 的註解——後者是預先配號，不是憑證。
+        issued_receipt_no=_issued_receipt_no(r, db),
         commission_rate_used=float(rate),
         claim_batch_id=r.claim_batch_id,
         claim_batch_number=r.claim_batch.batch_number if r.claim_batch else None,
