@@ -29,9 +29,9 @@ import {
  *   ③ 合計從一行小字改成頂部統計列，並且可以點——「未收」是行政每天要
  *      追的數字，不該藏在表格底下。
  *
- * 資料來源沿用 GET /ledger/self-pay-unpaid。09 §1.4a 已裁示這支要改成不分
- * funding_source 的統一查詢（機構案的個案自付額也要出現在這裡），後端補完
- * 之前先照舊接。
+ * 資料來源 GET /ledger/self-pay-unpaid——名稱沿用舊的，但語意已是 09 §1.4a
+ * 裁示的「自付款待收」：**不分 funding_source**，機構案的個案自付額跟自費案
+ * 一起出現在這裡。判準集中在後端 services/copay.py，前端不重算（09 §5）。
  */
 
 interface Row {
@@ -43,6 +43,8 @@ interface Row {
   therapist_name: string | null;
   amount: number;
   case_payable: number | null;
+  /** 後端算好的「個案還要付多少」（09 §5：這條規則只有一個來源）。 */
+  due_amount: number;
   funding_source: string | null;
   plan_name: string | null;
   institution_name: string | null;
@@ -56,8 +58,13 @@ function daysAgo(dateStr: string): number {
   return Math.floor((Date.now() - d.getTime()) / 86_400_000);
 }
 
-/** 個案實際要付的錢。機構案是自付額，純自費案是全額。 */
-const payable = (r: Row) => r.case_payable ?? r.amount;
+/**
+ * 個案實際要付的錢 —— **讀後端算好的欄位，不在前端重算**。
+ *
+ * 原本這裡寫 `case_payable ?? amount`，漏掉了優待減免，於是統計列比後端多算
+ * $200。09 §5 要求這條規則「全部共用同一個來源」，前端也算在內。
+ */
+const payable = (r: Row) => r.due_amount;
 
 function planLabel(r: Row) {
   if (r.plan_name) return r.plan_name;

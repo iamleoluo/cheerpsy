@@ -260,14 +260,14 @@ tr.flash{background:var(--p50)!important;animation:flashHi 2.4s ease-out}
 <div class="tw"><table>
 <thead><tr><th style="width:210px">缺口</th><th style="width:70px" class="c">優先</th><th class="c" style="width:80px">現況</th><th>備註</th></tr></thead>
 <tbody>
-<tr><td>統一自付款查詢（不分 funding_source）</td><td class="c"><span class="tag t-r">高</span></td><td class="c"><span class="no">未做</span></td><td><b>唯一還開著的</b>。<code>/ledger</code> 未收查詢仍過濾 <code>self_pay</code>，機構案的 <code>case_payable</code> 不會被算成未收（09 §1.4a）</td></tr>
+<tr><td>統一自付款查詢（不分 funding_source）</td><td class="c"><span class="tag t-r">高</span></td><td class="c"><span class="ok">✓</span></td><td><b>端點本身早已改對</b>（我第一次盤點時誤判為未做）。真正的問題是<b>同一條規則寫在四個地方且彼此不一致</b>——見 §5.1</td></tr>
 <tr><td>Layer 3 合約模組層</td><td class="c"><span class="tag t-r">高</span></td><td class="c"><span class="ok">✓</span></td><td>9 個檔：base / generic / registry ＋ 衛生局 · 國軍 · 次數制 · 回饋制 · 借場地</td></tr>
 <tr><td>合約 read model 端點</td><td class="c"><span class="tag t-r">高</span></td><td class="c"><span class="ok">✓</span></td><td><code>GET /institution/contracts/{id}/panel</code></td></tr>
 <tr><td>額度池扣減 · 依方案反查個案 · 待核銷候選 · 退回補件 · 核銷案作廢</td><td class="c"><span class="tag t-r">高</span></td><td class="c"><span class="ok">✓</span></td><td>五項皆已實作</td></tr>
 <tr><td>機構未到補助 · 週期子上限 · 延長流程 · 出席單／請款單</td><td class="c"><span class="tag t-a">中</span></td><td class="c"><span class="ok">✓</span></td><td>四項皆已實作</td></tr>
 <tr><td>日結物件 · 優待減免 · 帳款作廢 · 拆帳 · 商品併入</td><td class="c"><span class="tag t-x">低</span></td><td class="c">—</td><td>依 09 §7.1 裁示<b>維持暫緩</b></td></tr>
 </tbody></table></div>
-<div class="note green"><span class="t">結論：機構後端幾乎全好</span>剩下的機構工作<b>絕大部分在前端</b>，加上那一支統一查詢。這跟 v1 寫這份文件時的假設差很多——當時我以為機構是一大塊未開發區。</div>
+<div class="note green"><span class="t">結論：機構後端全好</span>12 項缺口<b>全部補完</b>，剩下的機構工作<b>絕大部分在前端</b>。這跟 v1 寫這份文件時的假設差很多——當時我以為機構是一大塊未開發區。</div>
 
 <h3>1.2 前端：09 §6 九步驟的實際進度</h3>
 <div class="tw"><table>
@@ -398,9 +398,21 @@ tr.flash{background:var(--p50)!important;animation:flashHi 2.4s ease-out}
 <section id="rest">
 <h2><span class="num">5</span>剩餘工作（續接 09 §6 編號）</h2>
 
-<h3>5.1 ② 統一自付款查詢 — 唯一還開著的後端缺口</h3>
-<p>09 §1.4a 你的裁示逐字：「機構案有時候會需要自費款⋯⋯那 400 元自費款也要納入整個自費流程」「在櫃檯當下就要看到」。<br>
-現況 <code>/ledger</code> 未收查詢仍過濾 <code>funding_source=='self_pay'</code>，所以<b>沒有任何查詢會把機構案的自付額顯示成未收</b>。日報表、應收帳冊、報到收款三處共用同一個來源，這支不補，三頁的數字都不完整。</p>
+<h3>5.1 ② 統一自付款查詢 — 已完成（判準整併）</h3>
+<div class="note red"><span class="t">我第一次盤點時把這項判成「未做」，是錯的</span>
+<code>/ledger/self-pay-unpaid</code> 的 SQL <b>早就依 09 §1.4a 改對了</b>（機構案看
+<code>copay_collected_at</code>、純自費看 <code>payment_status</code>），實測與正確判準逐筆比對<b>完全一致</b>。
+我當時只 grep 到檔案裡有 <code>self_pay</code> 字樣就下結論。</div>
+<p>但 09 §5 的原話是<b>「全部共用同一個來源，別各自兜一套邏輯出來」</b>——而這條規則當時
+<b>同時寫在四個地方</b>：<code>/ledger</code> 端點、<code>dashboard</code> 待辦、
+<code>room_calendar</code>、前端 <code>daily/page.tsx</code>。<b>而且彼此不一致</b>：</p>
+<div class="note amber"><span class="t">實際抓到的錯</span>
+<code>dashboard</code> 待辦寫成 <code>copay_collected_at IS NULL <b>AND</b> payment_status='unpaid'</code>。
+機構案的 <code>payment_status</code> 語意是「機構請款進度」，所以
+<b>「機構請款已完成、但個案自付額還沒收」那種紀錄（實測 4 筆、各 $400）永遠不會進待辦</b>。</div>
+<p>已把判準抽成 <code>app/services/copay.py</code>，三個後端呼叫端共用；順帶修掉舊查詢
+<b>沒扣 <code>discount_amount</code></b> 的問題（全額優待的紀錄本來會被誤報成未收）。
+前端 <code>daily/page.tsx</code> 還有一份 TypeScript 版的同規則，待該頁下次改動時改讀後端欄位。</p>
 
 <h3>5.2 ⑤ 五份專屬合約面板的前端驗收</h3>
 <p>Layer 3 模組全在、<code>/panel</code> 端點在、通用面板在。但 09 §3.2 的設計是<b>「N 個 read model，1 組 write API」</b>——每份合約回傳的形狀<b>刻意不同</b>（衛生局回每人額度三態、國軍回池子消耗）。所以要逐份確認前端有沒有真的照各自的 read model 渲染，還是全部落到通用版。這是驗收工作，不是重寫。</p>
@@ -420,6 +432,20 @@ tr.flash{background:var(--p50)!important;animation:flashHi 2.4s ease-out}
 <li><b>合約面板共用區塊</b>：§3.1 缺的六個，其中<b>費率規則編輯器</b>是唯一沒有參考畫面的。</li>
 <li><b>後端補兩個欄位</b>：<code>AppointmentResponse</code> 的 <code>gender</code> 與 <code>case_number</code>，診間格第一行才印得完整。</li>
 <li><b><code>/admin</code> 1,392 行</b>：不在任何分期裡，唯一沒被規劃到的頁面。</li>
+</ul>
+
+<h3>5.7 機構合約清單頁重新設計（2026-09-11 反映）</h3>
+<div class="note amber"><span class="t">你的回饋：「不同機構的部分，每個機構都要點點點」</span>
+<code>/institution</code> 目前每列只有<b>合約名 ＋ 面板標記 ＋ 查看 →</b>，但 09 §3.7 規定每列要顯示
+<b>機構 · 合約名 · 期間 · 使用中個案數 · 額度概況 · 專屬／通用面板標記</b>——
+少的正是「使用中個案數」與「額度概況」這兩個最有用的，所以只能一份一份點進去才知道裡面什麼狀況。</div>
+<ul>
+<li><b>後端</b>：<code>GET /institution/contracts</code> 目前只回合約自身欄位，需補 <code>plan_count</code>、
+<code>active_case_count</code>、<code>quota_summary</code>（次數型回「已用/上限」、金額池型回消耗比例）。
+必須用<b>一次聚合查詢</b>，不可逐份查（同 §4.1 的通則）。</li>
+<li><b>前端</b>：改用元件庫的 <code>DataTable</code> ＋ <code>QuotaBar</code>／池子進度條重畫，
+一眼看完所有合約的狀況，不必逐份點入。</li>
+</ul>
 </ul>
 </section>
 

@@ -11,6 +11,7 @@ from app.models.case import Case
 from app.models.petty_cash import PettyCash
 from app.models.session_record import SessionRecord
 from app.models.user import User
+from app.services.copay import outstanding_query
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -300,26 +301,22 @@ def dashboard_todos(
     # 依 09 §1.4a：**不分 funding_source**。機構案的個案自付額走 copay_collected_at，
     # 純自費案走 payment_status——既有 /ledger 的未收查詢只認 self_pay，所以機構案
     # 的自付額從來不會被算成「未收」。這裡用統一條件，不複製那個 bug。
+    # 判準走 services/copay 的共用查詢，不在這裡自己兜一套（09 §5）。
+    # 原本這裡寫的是 copay_collected_at IS NULL **AND** payment_status='unpaid'，
+    # 而機構案的 payment_status 語意是「機構請款進度」——所以「機構請款已完成、
+    # 但個案自付額還沒收」那種紀錄（實測 4 筆、各 $400）永遠不會進待辦。
     overdue_before = today - timedelta(days=UNPAID_OVERDUE_DAYS)
     rows = (
-        db.query(SessionRecord, Case)
-        .outerjoin(Case, Case.id == SessionRecord.case_id)
-        .filter(
-            SessionRecord.is_void.is_(False),
-            SessionRecord.session_date < overdue_before,
-            SessionRecord.copay_collected_at.is_(None),
-            SessionRecord.payment_status == "unpaid",
-        )
-        .order_by(SessionRecord.session_date)
+        outstanding_query(db, with_relations=False)
+        .filter(SessionRecord.session_date < overdue_before)
         .limit(50)
         .all()
     )
+    rows = [(r, db.query(Case).filter(Case.id == r.case_id).first() if r.case_id else None) for r in rows]
     unpaid: list[tuple] = []
     for rec, case in rows:
         payable = float(rec.case_payable if rec.case_payable is not None else rec.amount)
         payable -= float(rec.discount_amount or 0)
-        if payable <= 0:
-            continue
         unpaid.append((rec, case, payable, (today - rec.session_date).days))
 
     for rec, case, payable, days in unpaid:

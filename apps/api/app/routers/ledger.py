@@ -35,6 +35,7 @@ from app.schemas.session_record import (
 from app.routers.payouts import payout_line_amount
 from app.services.claim_batch import generate_batch_number
 from app.services.pdf_generator import generate_self_pay_receipt
+from app.services.copay import outstanding_query
 from app.services.settlement import run_daily_settlement
 
 DEFAULT_COMMISSION_RATE = Decimal("0.70")
@@ -145,6 +146,11 @@ def _to_response(r: SessionRecord, db: Session) -> SessionRecordResponse:
         # 真正開立出去的那張（receipts 表，status='issued'）。跟 receipt_no 的
         # 差別見 schemas/session_record.py 的註解——後者是預先配號，不是憑證。
         issued_receipt_no=_issued_receipt_no(r, db),
+        due_amount=round(
+            float(r.case_payable if r.case_payable is not None else r.amount)
+            - float(r.discount_amount or 0),
+            2,
+        ),
         commission_rate_used=float(rate),
         claim_batch_id=r.claim_batch_id,
         claim_batch_number=r.claim_batch.batch_number if r.claim_batch else None,
@@ -265,36 +271,18 @@ def list_self_pay_unpaid(
     user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
     db: Session = Depends(get_db),
 ):
-    """自付款待收清單——09 §1.4a 已裁示：不分 funding_source，只認「有沒有
-    自付額待收」。純自費案看 payment_status；機構案看 copay_collected_at
-    （那條路徑本來就跟 payment_status 語意分開，見 08 §5.4）。案名沿用舊的
-    'self_pay_unpaid'，因為既有前端（/claims、/finance）還在呼叫這支，
-    改名要動的地方太多；語意已經是「自付款待收」而不是「純自費待收」。
+    """自付款待收清單 —— 09 §1.4a：不分 funding_source，只認「有沒有自付額待收」。
+
+    判準本身搬到 services/copay.py 了。09 §5 要求日報表／應收帳冊／報到收款
+    **共用同一個來源，別各自兜一套**——這條規則原本在四個地方各寫一次
+    （這裡、dashboard 待辦、room_calendar、前端 daily 頁），而且彼此不一致：
+    dashboard 的版本漏掉「機構請款已完成、但個案自付額還沒收」那種紀錄。
+
+    案名沿用舊的 self-pay-unpaid，因為既有前端還在呼叫；語意已經是
+    「自付款待收」而不是「純自費待收」。
     """
     records = (
-        db.query(SessionRecord)
-        .options(
-            joinedload(SessionRecord.appointment).joinedload(Appointment.case).joinedload(Case.institution),
-            joinedload(SessionRecord.appointment).joinedload(Appointment.therapist),
-        )
-        .filter(
-            SessionRecord.is_void.is_(False),
-            or_(
-                # 純自費（或舊路徑無 funding_source）：沿用 payment_status。
-                and_(
-                    or_(SessionRecord.funding_source == "self_pay", SessionRecord.funding_source.is_(None)),
-                    SessionRecord.payment_status == "unpaid",
-                ),
-                # 機構案：payment_status 語意是「機構請款進度」，跟這裡的
-                # 「個案自付額收了沒」無關，不能拿來判斷，只看 copay_collected_at
-                # 與 case_payable（見 models/session_record.py 同一段說明）。
-                and_(
-                    SessionRecord.funding_source == "institution",
-                    SessionRecord.case_payable > 0,
-                    SessionRecord.copay_collected_at.is_(None),
-                ),
-            ),
-        )
+        outstanding_query(db)
         .order_by(SessionRecord.case_id, SessionRecord.session_date)
         .all()
     )

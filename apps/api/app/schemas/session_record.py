@@ -44,6 +44,10 @@ class SessionRecordResponse(BaseModel):
     # 畫面要顯示「收據編號」時請用 issued_receipt_no，不要用 receipt_no。
     receipt_no: str | None = None
     issued_receipt_no: str | None = None
+    # 這筆「個案還要付多少」——由 services/copay.due_expr() 算好（case_payable
+    # 優先、扣掉優待減免）。前端不要自己再算一次：09 §5 要求這條規則只有一個
+    # 來源，而前端那份就是漏扣 discount_amount，畫面會比後端多算。
+    due_amount: float = 0.0
     commission_rate_used: float | None = None
     claim_batch_id: int | None = None
     claim_batch_number: str | None = None

@@ -43,6 +43,8 @@ interface LedgerRow {
   funding_source: string | null;
   plan_name: string | null;
   case_payable: number | null;
+  /** 後端算好的「個案還要付多少」（09 §5）。 */
+  due_amount: number;
   institution_payable: number | null;
   payment_status: string;
   payment_method: string | null;
@@ -69,8 +71,8 @@ function todayStr(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-/** 個案實際要付的錢。機構案是自付額，純自費案是全額。 */
-const payable = (r: LedgerRow) => r.case_payable ?? r.amount;
+/** 個案實際要付的錢 —— 讀後端算好的欄位，不在前端重算（09 §5）。 */
+const payable = (r: LedgerRow) => r.due_amount;
 
 /**
  * 這筆「個案自付款」收了沒。
