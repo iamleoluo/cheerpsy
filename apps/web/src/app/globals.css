@@ -1,3 +1,122 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ============================================================================
+ * CheerPsy 設計 token — V2升級計畫 11 §2
+ *
+ * 這一層是 11 §0 的結論：問題不是美感，是「少了一層」。在這個檔案出現之前
+ * 全站只有 @tailwind 三行，所以 33 個頁面各自從原子類別重新發明卡片、表格、
+ * 按鈕，同一個「未收」語意散成 5 個紅色階（11 §1.1）。
+ *
+ * P0 的紀律是「純新增、既有畫面零變化」：
+ *   - Tailwind 預設色階（gray/red/…）與既有的 primary 都原封不動，
+ *     所以現存頁面的 className 全部照舊生效。
+ *   - 新的語意 token 從 P1 的元件庫開始使用，不回頭改舊頁。
+ *
+ * 顏色一律存成 HSL 三通道（不含 hsl() 外殼），Tailwind 才能套用透明度修飾詞，
+ * 例如 bg-st-danger/10。取用方式見 tailwind.config.ts。
+ * ========================================================================= */
+
+@layer base {
+  :root {
+    /* ---- 字體 ------------------------------------------------------------
+     * 沿用 v7 原型的堆疊：Latin 交給系統 UI 字體，CJK 交給 PingFang TC /
+     * 微軟正黑。不用 next/font 下載 Noto Sans TC——CJK 字檔動輒數 MB，
+     * 且 Next.js 對 CJK 不做 preload，自架反而更慢。
+     */
+    --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+      "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+    /* 病歷號、收據號、預約編號一律走等寬——這些是「拿來用眼睛比對」的字串，
+     * 不是拿來讀的（11 §2.5）。 */
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+      "Liberation Mono", monospace;
+
+    /* ---- 中性 ------------------------------------------------------------
+     * 偏冷的藍灰，不是純灰——這是刻意選的，跟 accent 同一個色溫。
+     */
+    --paper: 204 29% 97%;        /* 應用底色 */
+    --surface: 0 0% 100%;        /* 卡片、表格、彈窗 */
+    --surface-2: 202 35% 94%;    /* 表頭、次級區塊 */
+    --surface-3: 202 33% 91%;    /* 進度條底、停用態 */
+
+    --ink: 205 48% 10%;          /* 主要文字 */
+    --ink-2: 205 24% 31%;        /* 次要文字、表格內容 */
+    --ink-3: 202 17% 51%;        /* 標籤、輔助說明 */
+
+    --line: 201 29% 88%;         /* 一般框線、分隔線 */
+    --line-2: 202 27% 80%;       /* 強調框線、中性按鈕邊 */
+
+    /* ---- 品牌 ------------------------------------------------------------
+     * 刻意等於既有的 primary-600（#0284c7），也等於 v7 原型的主色。
+     * P0 不動色，避免既有 73 個 bg-primary-600 按鈕變樣。
+     */
+    --accent: 200 98% 39%;
+    --accent-fg: 0 0% 100%;
+    --accent-soft: 204 94% 94%;
+
+    /* ---- 語意狀態（11 §2.2）----------------------------------------------
+     * 核心規則：顏色只表達狀態，不表達操作（v7 診間日曆定案 ③）。
+     * 一個語意一個顏色，元件不准直接寫 text-red-600——用 npm run check:tokens
+     * 守著。
+     */
+    --st-pending: 215 19% 35%;      /* 還沒發生：待報到、待送出、待回覆 */
+    --st-pending-bg: 210 40% 96%;
+    --st-active: 201 96% 32%;       /* 正在進行：已到未收、收集中、媒合中 */
+    --st-active-bg: 214 95% 93%;
+    --st-done: 142 72% 29%;         /* 成功結束：已收、已核銷、已入帳 */
+    --st-done-bg: 141 84% 93%;
+    --st-warn: 26 90% 37%;          /* 要注意但沒壞：額度將盡、逾期、缺件 */
+    --st-warn-bg: 48 96% 89%;
+    --st-danger: 345 83% 41%;       /* 壞掉了：未到、未收、退回、作廢 */
+    --st-danger-bg: 356 100% 95%;
+    --st-muted: 215 20% 65%;        /* 今天不用再碰：整格轉灰、已結案 */
+    --st-muted-bg: 210 40% 96%;
+
+    /* ---- 圓角與陰影 ------------------------------------------------------
+     * 「不是每個東西都是卡片」：邊框、填色、圓角、陰影各自表達「這是一個
+     * 獨立物件」，全部蓋在每個區塊上會把層級壓平。
+     */
+    --radius-sm: 5px;    /* 徽章、小按鈕 */
+    --radius: 8px;       /* 一般按鈕、輸入框、日曆格 */
+    --radius-lg: 12px;   /* 卡片、彈窗 */
+
+    --shadow-1: 0 1px 2px hsl(var(--ink) / 0.06);
+    --shadow-2: 0 4px 16px -6px hsl(var(--ink) / 0.18);
+    --shadow-modal: 0 24px 48px -12px hsl(var(--ink) / 0.32);
+  }
+
+  body {
+    font-family: var(--font-sans);
+  }
+
+  /* 數字必須對齊才掃得動。金額、次數、額度、編號全部適用。
+   * 目前全站 0 處使用 tabular-nums（11 §2.5）。 */
+  th,
+  td,
+  input[type="number"],
+  input[type="date"],
+  time {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  /* 識別碼專用：病歷號 26A7456126、收據號 A20260910C021-1、預約編號…… */
+  .ident {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  /* 三檔密度（11 §2.5）。目前全站實際只有 text-sm 與 text-2xl 兩檔，
+   * 所以日曆塞不下一整天、KPI 又不夠有力。 */
+  .density-compact {
+    font-size: 11.5px;
+    line-height: 1.5;
+  }
+  .density-default {
+    font-size: 13.5px;
+    line-height: 1.7;
+  }
+}
