@@ -44,6 +44,12 @@ export interface DataTableProps<T> {
   footer?: ReactNode;
   /** compact 給流水帳這種一屏要塞得下一整天的畫面。 */
   density?: "compact" | "default";
+  /**
+   * 表格最小寬度。窄畫面下寧可**在容器內橫向捲動**，也不要把欄位擠到換行——
+   * 「楊若瑄＆許建良（伴侶）」被擠成五行會讓整列變得非常高，密集的對帳表就
+   * 掃不動了。欄位多的表格請調大。
+   */
+  minWidth?: string;
   className?: string;
 }
 
@@ -61,6 +67,7 @@ export function DataTable<T>({
   rowClassName,
   footer,
   density = "default",
+  minWidth = "34rem",
   className,
 }: DataTableProps<T>) {
   const cellPad = density === "compact" ? "px-2.5 py-1.5" : "px-3 py-2.5";
@@ -69,7 +76,7 @@ export function DataTable<T>({
   return (
     // 寬表格在自己的容器裡橫向捲動，頁面本體永遠不左右捲。
     <div className={cn("overflow-x-auto rounded-card border border-line bg-surface", className)}>
-      <table className="w-full border-collapse">
+      <table className="w-full border-collapse" style={{ minWidth }}>
         <thead>
           <tr>
             {columns.map((c) => (
