@@ -15,6 +15,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import RequireRole, get_current_user
@@ -28,6 +29,7 @@ from app.institution.models.enrollment import InstEnrollment
 from app.institution.models.plan import InstPlan
 from app.institution.models.rate_rule import InstRateRule
 from app.models.institution import Institution
+from app.models.audit_log import AuditLog
 from app.models.session_record import SessionRecord
 from app.models.user import User
 
@@ -774,6 +776,68 @@ def get_claim_case_export_data(
         raise HTTPException(status_code=404, detail=str(e))
 
 
+def _claim_case_meta(db: Session, cases: list) -> dict[int, dict]:
+    """核銷案總表每列還需要的兩件事 —— 09 §3.7。
+
+    這頁要回答的是「**這個月所有待送出的有哪些**」。光有編號與狀態答不了，
+    因為「能不能送出」取決於文件齊備與否（文件雙閘門）——所以要算出每個容器
+    裡還有幾筆沒交文件。豁免過的（docs_waived_at）視同齊備。
+
+    另外補上機構／合約名：容器本身只存 claim_group_key（國軍-個別／講座／團輔
+    三個方案共用同一個 group），行政看 group_key 認不出是哪一家。
+
+    一樣是批次算，不逐案查（11 §4.1）。
+    """
+    from app.institution.models.claim_line import InstClaimLine
+    from app.institution.models.contract import InstContract
+    from app.institution.models.plan import InstPlan
+    from app.models.institution import Institution
+
+    if not cases:
+        return {}
+    ids = [c.id for c in cases]
+
+    # 每個容器裡「心理師還沒交文件」的筆數
+    pending_rows = (
+        db.query(InstClaimLine.claim_case_id, func.count(InstClaimLine.id))
+        .join(SessionRecord, SessionRecord.id == InstClaimLine.session_record_id)
+        .filter(
+            InstClaimLine.claim_case_id.in_(ids),
+            SessionRecord.therapist_doc_submitted_at.is_(None),
+        )
+        .group_by(InstClaimLine.claim_case_id)
+        .all()
+    )
+    docs_pending = dict(pending_rows)
+
+    # claim_group_key → 機構名（同 group 可能跨多個方案，取第一個對得上的）
+    keys = {c.claim_group_key for c in cases if c.claim_group_key}
+    name_by_key: dict[str, tuple[str | None, str | None]] = {}
+    if keys:
+        for key, inst_name, contract_name in (
+            db.query(InstPlan.claim_group_key, Institution.name, InstContract.name)
+            .join(InstContract, InstContract.id == InstPlan.contract_id)
+            .join(Institution, Institution.id == InstContract.institution_id)
+            .filter(InstPlan.claim_group_key.in_(keys))
+            .all()
+        ):
+            name_by_key.setdefault(key, (inst_name, contract_name))
+
+    out: dict[int, dict] = {}
+    for c in cases:
+        inst_name, contract_name = name_by_key.get(c.claim_group_key or "", (None, None))
+        pending = 0 if c.docs_waived_at else docs_pending.get(c.id, 0)
+        out[c.id] = {
+            "institution_name": inst_name,
+            "contract_name": contract_name,
+            "docs_pending": pending,
+            "docs_waived": c.docs_waived_at is not None,
+            # 「可以送出了」＝還在收集中、有紀錄、文件齊備。這就是這頁存在的目的。
+            "ready_to_submit": c.status == "collecting" and len(c.lines) > 0 and pending == 0,
+        }
+    return out
+
+
 @router.get("/claim-cases")
 def list_claim_cases(
     claim_group_key: str | None = None,
@@ -787,15 +851,22 @@ def list_claim_cases(
     if status_filter:
         q = q.filter(InstClaimCase.status == status_filter)
     rows = q.order_by(InstClaimCase.claim_no.desc()).all()
+    meta = _claim_case_meta(db, rows)
     return [
         {
             "id": c.id,
             "claim_no": c.claim_no,
             "claim_group_key": c.claim_group_key,
             "status": c.status,
+            "grouping_mode": c.grouping_mode,
+            "capacity": c.capacity,
+            "period_start": c.period_start,
+            "period_end": c.period_end,
             "record_count": len(c.lines),
             "applied_amount": c.applied_amount,
             "net_received": c.net_received,
+            "created_at": c.created_at,
+            **meta.get(c.id, {}),
         }
         for c in rows
     ]
@@ -825,7 +896,44 @@ def _query_institution_docs(db: Session, user: User, submitted: bool, plan_ids: 
     if user.role == "therapist":
         q = q.filter(SessionRecord.therapist_id == user.id)
     order = SessionRecord.therapist_doc_submitted_at.desc() if submitted else SessionRecord.session_date.desc()
-    return [_to_response(r, db) for r in q.order_by(order).all()]
+    records = q.order_by(order).all()
+    returns = _last_return_for_correction(db, [r.id for r in records]) if not submitted else {}
+    out = []
+    for r in records:
+        item = _to_response(r, db).model_dump()
+        ret = returns.get(r.id)
+        # 被退回補件的那幾筆，在心理師眼裡原本跟「從沒交過」長得一模一樣——
+        # 退回時只清掉兩個閘門、原因寫進稽核與通知，紀錄本身沒有痕跡。
+        # 這裡把最後一次退回的時間與原因帶出來（10 §6：不通知等於卡住）。
+        item["returned_at"] = ret[0] if ret else None
+        item["returned_reason"] = ret[1] if ret else None
+        out.append(item)
+    return out
+
+
+def _last_return_for_correction(db: Session, record_ids: list[int]) -> dict[int, tuple]:
+    """每筆紀錄最後一次「退回補件」的時間與原因。
+
+    原因沒有存在 session_records 上（退回只清兩個閘門），而是留在稽核紀錄裡。
+    這裡批次撈回來，讓心理師端看得出「這筆是被退回的、為什麼」，
+    而不是跟從沒提交過的混在一起。
+    """
+    if not record_ids:
+        return {}
+    rows = (
+        db.query(AuditLog.record_id, AuditLog.changed_at, AuditLog.reason)
+        .filter(
+            AuditLog.table_name == "session_records",
+            AuditLog.operation == "RETURN_FOR_CORRECTION",
+            AuditLog.record_id.in_(record_ids),
+        )
+        .order_by(AuditLog.changed_at.desc())
+        .all()
+    )
+    out: dict[int, tuple] = {}
+    for rid, at, reason in rows:
+        out.setdefault(rid, (at, reason))  # 只留最後一次
+    return out
 
 
 @router.get("/claim-groups/{claim_group_key}/pending-docs")

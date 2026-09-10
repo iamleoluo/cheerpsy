@@ -4,6 +4,7 @@
 test_institution_layer2_primitives.py 覆蓋）。
 """
 
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from fastapi.testclient import TestClient
@@ -203,3 +204,67 @@ class TestExternalCaseCode:
                        json={"external_case_code": "X"},
                        headers={"Authorization": f"Bearer {ctx['admin_token']}"})
         assert r.status_code == 404
+
+
+class TestReturnedDocsVisibility:
+    """退回補件要讓心理師看得見 —— 10 §6。
+
+    退回時只清掉兩個閘門，原因寫進稽核與通知、**沒有存在紀錄上**。所以被退回
+    的那筆在心理師的「文件確認」頁看起來跟「從沒交過」一模一樣：
+
+        「原本只有 admin-unverify：清一側、沒原因、不通知，
+          心理師根本不知道自己被退件」
+
+    pending-docs 現在把最後一次退回的時間與原因帶出來。
+    """
+
+    def test_returned_record_carries_reason(self, db, http_db):
+        from app.institution.claims import service as claims_service
+        from app.institution.models.enrollment import InstEnrollment  # noqa: F401
+        from app.institution.routers.admin import list_all_institution_pending_docs
+        from app.models.session_record import SessionRecord
+        from app.models.user import User as U
+
+        ctx = _seed_contract_with_two_plans(db)
+        admin = db.query(U).filter(U.role == "admin").first()
+
+        sr = SessionRecord(
+            session_date=date(2026, 5, 4), therapist_id=admin.id,
+            amount=Decimal("1000"), session_type="in_person",
+            funding_source="institution", payment_status="unpaid",
+            plan_id=ctx["plan_count_id"],
+            therapist_doc_submitted_at=datetime.now(timezone.utc),
+        )
+        db.add(sr)
+        db.flush()
+
+        claims_service.return_for_correction(db, sr.id, "簽到表缺個案簽名", admin.id)
+        db.flush()
+
+        row = next(
+            r for r in list_all_institution_pending_docs(user=admin, db=db) if r["id"] == sr.id
+        )
+        # 退回會把它打回「待提交」，所以它會出現在 pending 裡——重點是要看得出原因
+        assert row["returned_reason"] == "簽到表缺個案簽名"
+        assert row["returned_at"] is not None
+
+    def test_never_submitted_has_no_reason(self, db, http_db):
+        from app.institution.routers.admin import list_all_institution_pending_docs
+        from app.models.session_record import SessionRecord
+        from app.models.user import User as U
+
+        ctx = _seed_contract_with_two_plans(db)
+        admin = db.query(U).filter(U.role == "admin").first()
+        sr = SessionRecord(
+            session_date=date(2026, 5, 5), therapist_id=admin.id,
+            amount=Decimal("1000"), session_type="in_person",
+            funding_source="institution", payment_status="unpaid",
+            plan_id=ctx["plan_count_id"], therapist_doc_submitted_at=None,
+        )
+        db.add(sr)
+        db.flush()
+
+        row = next(
+            r for r in list_all_institution_pending_docs(user=admin, db=db) if r["id"] == sr.id
+        )
+        assert row["returned_reason"] is None
