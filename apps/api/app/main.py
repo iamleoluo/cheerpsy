@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import appointments, audit, auth, case_quotas, cases, churn, claim_batches, dashboard, data_import, export, fee_items, health, institutions, invoices, ledger, notifications, payouts, petty_cash, product_sales, receipts, reminders, reports, rooms
+from app.routers import appointments, audit, auth, case_quotas, cases, churn, claim_batches, dashboard, data_import, export, fee_items, health, institutions, invoices, ledger, notifications, payouts, petty_cash, product_sales, receipts, reminders, reports, rooms, room_calendar
 from app.routers import quota_templates, venues
 # 機構合約子系統：管理頁 API（合約/方案/費率/個案機構狀態/核銷案容器）。
 # 見 V2升級計畫 07_機構合約子系統架構.html。這是唯一允許主系統 import
@@ -35,6 +35,7 @@ app.include_router(dashboard.router)
 app.include_router(cases.router)
 app.include_router(appointments.router)
 app.include_router(rooms.router)
+app.include_router(room_calendar.router)
 app.include_router(fee_items.router)
 app.include_router(ledger.router)
 app.include_router(invoices.router)

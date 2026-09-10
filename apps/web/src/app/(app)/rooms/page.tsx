@@ -5,6 +5,26 @@ import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
 import { CheckInPanel, RentalsTab, HallTab } from "@/features/rooms";
 import type { Appointment, Room } from "@/features/rooms/types";
+
+/**
+ * GET /room-calendar 的一格 —— 在既有 Appointment 之上，多了幾個**後端算好**
+ * 的欄位（02 §5.1）。前端不重算這些，只管畫色。
+ */
+type Cell = Appointment & {
+  appointment_id: number;
+  case_number: string | null;
+  gender: string | null;
+  billing_cycle: string | null;
+  issued_receipt_no: string | null;
+  is_settled: boolean;
+  admin_tasks_pending: number;
+  quota_label: string | null;
+  is_last_quota: boolean;
+};
+type Summary = {
+  total: number; arrived: number; no_show: number;
+  pending: number; collected: number; due: number;
+};
 import { toLocalDateString } from "@/features/rooms/types";
 import {
   Button,
@@ -46,9 +66,10 @@ export default function RoomsPage() {
     return d;
   });
   const [rooms, setRooms] = useState<Room[]>([]);
-  const [appts, setAppts] = useState<Appointment[]>([]);
+  const [appts, setAppts] = useState<Cell[]>([]);
+  const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(false);
-  const [selected, setSelected] = useState<Appointment | null>(null);
+  const [selected, setSelected] = useState<Cell | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
   // 三個分頁對應三種空間佔用（v7 診間日曆定案）：診間、外借的診間、5F 雲燈教室
   const [tab, setTab] = useState<"rooms" | "rentals" | "hall">("rooms");
@@ -58,20 +79,26 @@ export default function RoomsPage() {
     clientFetch("/rooms", token).then(setRooms).catch(() => {});
   }, [token]);
 
+  /**
+   * 走聚合端點，不用通用的 /appointments（02 §5.1「禁止前端逐格再查」）。
+   *
+   * 每格的 is_settled（整格轉灰）、admin_tasks_pending、quota_label、
+   * is_last_quota 都由後端一次算好。轉灰要同時看四張表且有三條規則，前端自己
+   * 推會判錯——第一版就是這樣把「自費月結按完已到即轉灰」和「機構案要行政
+   * 提醒全勾」兩種情形都做錯的。
+   */
   const fetchAppts = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     try {
-      const start = new Date(selectedDate);
-      const end = new Date(selectedDate);
-      end.setDate(end.getDate() + 1);
       const data = await clientFetch(
-        `/appointments?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`,
+        `/room-calendar?q=${toLocalDateString(selectedDate)}`,
         token,
       );
-      setAppts(data);
-    } catch {
-      /* ignore */
+      setAppts(data.cells);
+      setSummary(data.summary);
+    } catch (e) {
+      setActionError((e as Error).message);
     } finally {
       setLoading(false);
     }
@@ -84,7 +111,7 @@ export default function RoomsPage() {
   // 選取的預約若剛被更新（例如報到後），從最新的 appts 清單同步內容
   useEffect(() => {
     if (!selected) return;
-    const fresh = appts.find((a) => a.id === selected.id);
+    const fresh = appts.find((a) => a.appointment_id === selected.appointment_id);
     if (fresh) setSelected(fresh);
   }, [appts]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -93,11 +120,11 @@ export default function RoomsPage() {
    *  避免把同一份 API 邏輯抄成兩份。 */
   const [busyId, setBusyId] = useState<number | null>(null);
   const quickCheckIn = useCallback(
-    async (a: Appointment) => {
+    async (a: Cell) => {
       if (!token) return;
-      setBusyId(a.id);
+      setBusyId(a.appointment_id);
       try {
-        await clientFetch(`/appointments/${a.id}/check-in`, token, {
+        await clientFetch(`/appointments/${a.appointment_id}/check-in`, token, {
           method: "PUT",
           body: JSON.stringify({ status: "arrived" }),
         });
@@ -112,22 +139,9 @@ export default function RoomsPage() {
   );
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const live = useMemo(() => appts.filter((a) => a.status !== "cancelled"), [appts]);
-
-  /** 頂部即時統計（v7 診間日曆）：應到 / 已報到 / 未到 / 待報到 / 已收 / 待收。 */
-  const stats = useMemo(() => {
-    let arrived = 0, noShow = 0, pending = 0, collected = 0, due = 0;
-    for (const a of live) {
-      const phase = cellPhase(a as any);
-      if (phase === "no_show") noShow++;
-      else if (phase === "pending") pending++;
-      else arrived++;
-      const payable = a.case_payable ?? a.amount;
-      if (a.copay_collected_at) collected += payable;
-      else if (phase === "arrived") due += payable;
-    }
-    return { total: live.length, arrived, noShow, pending, collected, due };
-  }, [live]);
+  // 聚合端點已排除 cancelled，也已附上統計列——兩者都不在前端重算。
+  const live = appts;
+  const stats = summary ?? { total: 0, arrived: 0, no_show: 0, pending: 0, collected: 0, due: 0 };
 
   /**
    * 視訊／外展不佔診間，放在最右側獨立欄位（v7 定案 ⑧，可容納每日 10 筆以上）。
@@ -139,7 +153,7 @@ export default function RoomsPage() {
     const remote = live
       .filter((a) => !a.room_id && a.start_time && a.end_time)
       .sort((x, y) => x.start_time!.localeCompare(y.start_time!));
-    const lanes: { end: number; items: Appointment[] }[] = [];
+    const lanes: { end: number; items: Cell[] }[] = [];
     for (const a of remote) {
       const s = minutesOfDay(a.start_time!);
       const e = minutesOfDay(a.end_time!);
@@ -174,7 +188,7 @@ export default function RoomsPage() {
     const inRoom = live
       .filter((a) => a.room_id && a.start_time && a.end_time)
       .map((a) => ({
-        id: a.id,
+        id: a.appointment_id,
         columnId: a.room_id!,
         startMin: minutesOfDay(a.start_time!),
         endMin: minutesOfDay(a.end_time!),
@@ -182,7 +196,7 @@ export default function RoomsPage() {
       }));
     const remote = remoteLanes.flatMap((items, lane) =>
       items.map((a) => ({
-        id: a.id,
+        id: a.appointment_id,
         columnId: `remote-${lane}`,
         startMin: minutesOfDay(a.start_time!),
         endMin: minutesOfDay(a.end_time!),
@@ -210,7 +224,7 @@ export default function RoomsPage() {
         stats={[
           { label: "今日應到", value: stats.total },
           { label: "已報到", value: stats.arrived, tone: "done" },
-          { label: "未到", value: stats.noShow, tone: stats.noShow > 0 ? "danger" : "default" },
+          { label: "未到", value: stats.no_show, tone: stats.no_show > 0 ? "danger" : "default" },
           { label: "待報到", value: stats.pending, tone: stats.pending > 0 ? "warn" : "default" },
           { label: "今日已收", value: stats.collected, money: true, tone: "done" },
           {
@@ -278,7 +292,7 @@ export default function RoomsPage() {
               <RoomCell
                 appt={it.appt as any}
                 onOpen={() => setSelected(it.appt)}
-                onCheckIn={busyId === it.appt.id ? undefined : () => quickCheckIn(it.appt)}
+                onCheckIn={busyId === it.appt.appointment_id ? undefined : () => quickCheckIn(it.appt)}
                 onNoShow={() => setSelected(it.appt)}
                 onCollect={() => setSelected(it.appt)}
                 onReceipt={() => setSelected(it.appt)}

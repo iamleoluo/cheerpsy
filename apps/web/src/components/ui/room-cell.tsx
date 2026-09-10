@@ -36,19 +36,41 @@ export interface RoomCellAppointment {
   institution_payable: number | null;
   check_in_status: "pending" | "arrived" | "no_show";
   copay_collected_at: string | null;
-  receipt_no: string | null;
+  /** 真正開立出去的收據（receipts 表），不是 session_records 的預配號碼。 */
+  issued_receipt_no: string | null;
   no_show_reason?: string | null;
-  /** 機構額度剩最後一次。目前需由呼叫端算出來（後端尚未直接提供）。 */
+  /** 機構額度剩最後一次 → 整格標黃，避免收錯金額（v7 定案 ⑤）。 */
   is_last_quota?: boolean;
+  /**
+   * 整格轉灰 —— 由後端 GET /room-calendar 算好（02 §5.1）。
+   *
+   * **不要在前端自己推**：轉灰不是一條規則而是三條（02 §4.3 / 03），要同時看
+   * appointments、session_records、receipts、appointment_admin_tasks 四張表。
+   * 第一版在前端只用「有沒有收據」判斷，於是自費月結案（按完已到就該轉灰）
+   * 與機構案（還要行政提醒全勾）兩種都判錯。
+   */
+  is_settled: boolean;
+  /** 尚未勾完的行政流程提醒數。>0 時機構案不會轉灰。 */
+  admin_tasks_pending?: number;
+  /** 額度標籤，例如「2/3」。 */
+  quota_label?: string | null;
+  /** once / monthly / multiple。決定轉灰後那一行要說什麼。 */
+  billing_cycle?: string | null;
 }
 
 type Phase = "pending" | "arrived" | "collected" | "done" | "no_show";
 
-/** 報到三步驟走到哪一步了。順序：待報到 → 已到 → 已收款 → 已開據。 */
+/**
+ * 報到三步驟走到哪一步了。順序：待報到 → 已到 → 已收款 → 已開據。
+ *
+ * 「已完成（轉灰）」**不由這裡判斷**——那是後端算好的 is_settled，因為它
+ * 有三條規則、要看四張表（見 RoomCellAppointment.is_settled）。這支只負責
+ * 「操作列現在該長出哪個按鈕」。
+ */
 export function cellPhase(a: RoomCellAppointment): Phase {
   if (a.check_in_status === "no_show") return "no_show";
   if (a.check_in_status !== "arrived") return "pending";
-  if (a.receipt_no) return "done";
+  if (a.is_settled) return "done";
   if (a.copay_collected_at) return "collected";
   return "arrived";
 }
@@ -146,7 +168,15 @@ export function RoomCell({
         {phase === "no_show" ? (
           <>未到{appt.no_show_reason ? ` · ${appt.no_show_reason}` : ""}</>
         ) : phase === "done" ? (
-          <span className="ident">{appt.receipt_no}</span>
+          // 轉灰的原因不只一種：自費開了收據就印收據號；月結是「今天本來就
+          // 不收」，要講清楚它去了哪裡（v7：方塊顯示「已記入月結」）。
+          appt.issued_receipt_no ? (
+            <span className="ident">{appt.issued_receipt_no}</span>
+          ) : appt.billing_cycle === "monthly" ? (
+            <>已記入月結</>
+          ) : (
+            <>已完成 · 免收</>
+          )
         ) : appt.institution_payable ? (
           <MoneySplit casePayable={appt.case_payable} institutionPayable={appt.institution_payable} />
         ) : (
@@ -189,7 +219,8 @@ export function RoomCell({
             開立收據
           </Button>
         )}
-        {phase === "done" && onReceipt && (
+        {/* 沒開過收據就不該有「查看收據」——月結案與機構全額補助都屬於這種。 */}
+        {phase === "done" && onReceipt && appt.issued_receipt_no && (
           <Button size="mini" onClick={() => onReceipt(appt)}>
             查看收據
           </Button>

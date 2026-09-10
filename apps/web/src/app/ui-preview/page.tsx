@@ -268,7 +268,8 @@ function cell(over: Partial<RoomCellAppointment> & { id: number }): RoomCellAppo
     institution_payable: null,
     check_in_status: "pending",
     copay_collected_at: null,
-    receipt_no: null,
+    issued_receipt_no: null,
+    is_settled: false,
     ...over,
   };
 }
@@ -310,7 +311,8 @@ const demoCells: { appt: RoomCellAppointment; note: string }[] = [
       room_name: "3C",
       check_in_status: "arrived",
       copay_collected_at: "2026-09-10T11:05:00",
-      receipt_no: "A20260910C021-1",
+      issued_receipt_no: "A20260910C021-1",
+      is_settled: true,
     }),
     note: "已完成 — 整格轉灰，今天不用再碰",
   },
