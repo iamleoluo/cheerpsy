@@ -70,8 +70,11 @@ export interface RoomCellAppointment {
   first_visit?: {
     referral_id: number;
     referral_code: string;
-    /** 改期後的初診可能上次就補過身分證了，那一次就不必再問。 */
-    needs_national_id: boolean;
+    /**
+     * 個案轉正式還缺哪幾個必填欄位（後端算的，與 activate_case 同一份規則）。
+     * 空陣列代表資料齊了，按「已到」就直接完成報到。
+     */
+    missing_fields: ("national_id" | "birth_date" | "phone")[];
   } | null;
 }
 
@@ -230,9 +233,9 @@ export function RoomCell({
           <>
             {onCheckIn && (
               <Button size="mini" variant="solid" onClick={() => onCheckIn(appt)}>
-                {/* 初診按下去會要身分證，先在鍵上講出來，櫃檯才不會按了才發現
+                {/* 初診按下去會要個資，先在鍵上講出來，櫃檯才不會按了才發現
                     要請對方翻皮夾（11 §5.9） */}
-                {appt.first_visit?.needs_national_id ? "已到 · 登記身分證" : "已到"}
+                {appt.first_visit?.missing_fields?.length ? "已到 · 補個資" : "已到"}
               </Button>
             )}
             {onNoShow && (

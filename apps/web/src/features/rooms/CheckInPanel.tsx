@@ -576,6 +576,12 @@ function StepDot({ done, active, label }: { done: boolean; active: boolean; labe
  * 未到這半邊不能省：初診未到帶著「轉預約／派案／結案」的分流，是普通 no_show
  * 不會做的事。少了它，媒合案一樣會斷在半路。
  */
+const FIELD_LABEL: Record<string, string> = {
+  national_id: "身分證字號",
+  birth_date: "出生日期",
+  phone: "電話",
+};
+
 function FirstVisitStep({
   firstVisit,
   token,
@@ -595,6 +601,12 @@ function FirstVisitStep({
 
   const [reason, setReason] = useState("case_leave");
   const [nextAction, setNextAction] = useState<"rebook" | "reassign" | "close">("rebook");
+
+  // 後端算好的「還缺哪幾個」。表單只問這幾個，也只擋這幾個——問的東西與
+  // activate_case 要的東西是同一份清單，不會再出現「填完才被打回」。
+  const need = firstVisit.missing_fields ?? [];
+  const value = { national_id: nationalId, birth_date: birthDate, phone };
+  const incomplete = need.filter((f) => !value[f].trim());
 
   async function submit(path: string, body: unknown) {
     setBusy(true);
@@ -617,9 +629,9 @@ function FirstVisitStep({
       <div className="rounded-lg bg-accent-soft px-3 py-2 text-xs text-accent">
         <b>初診</b> · 派案碼 <span className="ident">{firstVisit.referral_code}</span>
         <div className="mt-0.5">
-          {firstVisit.needs_national_id
-            ? "報到時一併登記身分證，系統會產生病歷號並轉為正式個案。"
-            : "個資已登記過，按「已到」即完成報到並轉為正式個案。"}
+          {need.length > 0
+            ? `報到時一併登記${need.map((f) => FIELD_LABEL[f]).join("、")}，系統會產生病歷號並轉為正式個案。`
+            : "個資已登記齊全，按「已到」即完成報到並轉為正式個案。"}
         </div>
       </div>
 
@@ -646,7 +658,7 @@ function FirstVisitStep({
         <div className="space-y-3">
           <div>
             <label className="mb-1 block text-xs text-ink-3">
-              身分證字號{firstVisit.needs_national_id && <span className="text-st-danger"> *</span>}
+              身分證字號{need.includes("national_id") && <span className="text-st-danger"> *</span>}
             </label>
             <input
               value={nationalId}
@@ -658,19 +670,23 @@ function FirstVisitStep({
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="mb-1 block text-xs text-ink-3">出生日期</label>
+              <label className="mb-1 block text-xs text-ink-3">
+                出生日期{need.includes("birth_date") && <span className="text-st-danger"> *</span>}
+              </label>
               <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)}
                 className="w-full rounded-lg border border-line-2 px-2 py-1.5 text-sm" />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-ink-3">電話</label>
+              <label className="mb-1 block text-xs text-ink-3">
+                電話{need.includes("phone") && <span className="text-st-danger"> *</span>}
+              </label>
               <input value={phone} onChange={(e) => setPhone(e.target.value)}
                 className="w-full rounded-lg border border-line-2 px-2 py-1.5 text-sm" />
             </div>
           </div>
           <div className="flex gap-2">
             <button
-              disabled={busy || (firstVisit.needs_national_id && !nationalId.trim())}
+              disabled={busy || incomplete.length > 0}
               onClick={() => submit("arrived", {
                 national_id: nationalId.trim() || null,
                 birth_date: birthDate || null,

@@ -421,7 +421,40 @@ class TestFirstVisitGate:
         cell = next(c for c in cells if c["appointment_id"] == appt_id)
         assert cell["first_visit"] is not None
         assert cell["first_visit"]["referral_id"] == rid
-        assert cell["first_visit"]["needs_national_id"] is True
+        # 需求表有填電話，會跟著帶進個案 → 只缺身分證與出生日期
+        assert cell["first_visit"]["missing_fields"] == ["national_id", "birth_date"]
+
+    def test_missing_fields_matches_what_activation_actually_demands(self, db, http_db):
+        """表單問的東西，必須**剛好**是 activate_case 會擋的東西。
+
+        第一版只回了 needs_national_id，於是表單把出生日期標成「選填」——
+        櫃檯填完按下去才被打回「轉正式前需填寫：出生日期」。兩份清單各自
+        演化就會這樣分岔，所以這裡拿真實回應去撞真實閘門。
+        """
+        admin = _admin(db, "A9A5")
+        therapist = _therapist(db, "T9A5")
+        rid, appt_id, case_id, _ = self._booked(db, admin, therapist, "GATE-1E")
+
+        day = to_local_date(datetime.now(timezone.utc) - timedelta(hours=1))
+        cells = client.get(f"/room-calendar?q={day}", headers=_headers(admin)).json()["cells"]
+        missing = next(c for c in cells if c["appointment_id"] == appt_id)["first_visit"]["missing_fields"]
+
+        # 只補「沒被列為缺」的欄位，報到應該還是會被閘門擋下來
+        partial = {f: v for f, v in
+                   {"national_id": "A123456781", "birth_date": "1990-02-02", "phone": "0933444555"}.items()
+                   if f not in missing}
+        r = client.put(f"/referrals/{rid}/arrived", headers=_headers(admin), json=partial)
+        assert r.status_code == 400, "缺的欄位沒補卻過了，代表 missing_fields 少報"
+        assert "轉正式前需填寫" in r.json()["detail"]
+
+        # 把 missing_fields 說缺的都補上，就該一次過——不能有「多要的」欄位
+        full = {f: v for f, v in
+                {"national_id": "A123456781", "birth_date": "1990-02-02", "phone": "0933444555"}.items()
+                if f in missing}
+        r2 = client.put(f"/referrals/{rid}/arrived", headers=_headers(admin), json=full)
+        assert r2.status_code == 200, f"補齊 missing_fields 仍被擋，代表少報：{r2.text}"
+        db.expire_all()
+        assert db.query(Case).filter(Case.id == case_id).first().case_number is not None
 
     def test_referral_flow_still_works_and_then_gate_lifts(self, db, http_db):
         """閘門只擋「還沒報到的初診」。走完初診流程後，同一個個案的下一次

@@ -48,7 +48,7 @@ export interface Appointment {
   first_visit?: {
     referral_id: number;
     referral_code: string;
-    needs_national_id: boolean;
+    missing_fields: ("national_id" | "birth_date" | "phone")[];
   } | null;
 }
 

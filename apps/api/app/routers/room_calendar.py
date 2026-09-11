@@ -67,19 +67,35 @@ def _settled(
     return bool(sr and sr.copay_collected_at) and has_receipt
 
 
+#: 個案轉正式（activate_case）**必填**的三個欄位。少一個就拿不到病歷號。
+#: 與 routers/cases.py:265-272 的檢查同一份規則——那邊是閘門，這邊是預告。
+FIRST_VISIT_REQUIRED = ("national_id", "birth_date", "phone")
+
+
 def _first_visit(referral: Referral | None, case) -> dict | None:
     """初診格子要帶的東西（11 §5.9）。不是初診就回 None，前端據此決定按「已到」
     時開哪一張表單。
 
-    `needs_national_id` 分開回，是因為「初診」與「還缺身分證」不是同一件事：
-    初診未到改期後個案已經存在、身分證可能上次就補過了，那一次就不必再問。
+    `missing_fields` 回的是**還缺哪幾個**，不是「初診就一律問三個」：
+
+      · 初診未到改期後個案已經存在，身分證可能上次就補過了
+      · 電話多半在建需求表時就填了，會跟著媒合案帶進個案
+
+    第一版只回了 needs_national_id，結果表單把出生日期與電話標成「選填」，
+    填完按下去才被 activate_case 打回「轉正式前需填寫：出生日期」——
+    表單問的東西和後端要的東西不是同一份清單。現在由後端算，兩邊不會再分岔。
     """
     if not referral:
         return None
+    have = {
+        "national_id": bool(case and case.national_id_encrypted),
+        "birth_date": bool(case and case.birth_date),
+        "phone": bool(case and case.phone),
+    }
     return {
         "referral_id": referral.id,
         "referral_code": referral.referral_code,
-        "needs_national_id": not (case and case.national_id_encrypted),
+        "missing_fields": [f for f in FIRST_VISIT_REQUIRED if not have[f]],
     }
 
 
