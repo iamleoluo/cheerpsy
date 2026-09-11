@@ -282,9 +282,15 @@ CHECKS: list[Check] = [
     ),
     Check(
         "payout_total",
-        "酬勞總額＝成員場次加總",
-        "回扣制要記成負的、作廢不計、優待要從基數扣（07 §8.2）。"
-        "對不上代表 payouts 的計算與 payout_line_amount() 又各走各的了。",
+        "酬勞總額＝成員場次加總 − 當月場地費扣回",
+        "回扣制要記成負的、作廢不計、優待要從基數扣（07 §8.2）；另外還要扣掉"
+        "心理師私人借用診間的場地費（督導模式 B，07 §8.2 / 06 P6）。"
+        "對不上代表 payouts 的計算與 payout_line_amount()／venue_deductions() "
+        "又各走各的了。\n"
+        "只檢查 status='pending'：**已發放的是歷史事實，不該回頭重推**——"
+        "同 07 §2.1 報價快照的原則「存的是當時的答案」。generate_payouts 也"
+        "刻意 skip 已發放的月份（冪等）。若規則改了而舊資料對不上，那是需要"
+        "走更正流程的業務決定，不是資料損壞。",
         """
         SELECT tp.id AS payout_id, tp.therapist_id, tp.payout_month, tp.total_amount, x.expected
           FROM therapist_payouts tp
@@ -301,7 +307,21 @@ CHECKS: list[Check] = [
                   FROM payout_details pd JOIN session_records sr ON sr.id = pd.session_id
                  WHERE pd.payout_id = tp.id
                ) x ON true
-         WHERE abs(tp.total_amount - x.expected) > 0.05
+          JOIN LATERAL (
+                -- 心理師私人借用診間、且由本人付費的場地費（模式 B），
+                -- 從當月酬勞扣回。模式 A 的場地費本來就是 $0；未到改「借用人
+                -- 自付」時 payer 會變成 renter，那種不從酬勞扣。
+                SELECT COALESCE(SUM(vr.amount), 0) AS venue_deduction
+                  FROM venue_rentals vr
+                 WHERE vr.renter_therapist_id = tp.therapist_id
+                   AND vr.renter_kind = 'private'
+                   AND vr.payer = 'therapist'
+                   AND vr.status <> 'cancelled'
+                   AND to_char(lower(vr.time_range) AT TIME ZONE 'Asia/Taipei', 'YYYY-MM')
+                       = tp.payout_month
+               ) v ON true
+         WHERE tp.status = 'pending'
+           AND abs(tp.total_amount - (x.expected - v.venue_deduction)) > 0.05
         """,
     ),
     Check(
