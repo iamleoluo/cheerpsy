@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>14 給診療所的階段成果 — CheerPsy V2</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+ --bg:#f6f7f9; --panel:#fff; --ink:#111827; --ink2:#374151; --mut:#6b7280; --mut2:#9ca3af;
+ --line:#e5e7eb; --line2:#d1d5db;
+ --p50:#f5f3ff; --p100:#ede9fe; --p200:#ddd6fe; --p500:#8b5cf6; --p600:#7c3aed; --p700:#6d28d9;
+ --blue:#2563eb; --blue-bg:#eff6ff; --green:#16a34a; --green-bg:#f0fdf4;
+ --amber:#d97706; --amber-bg:#fffbeb; --red:#dc2626; --red-bg:#fef2f2;
+ --sky:#0891b2; --sky-bg:#ecfeff; --rose:#e11d48; --rose-bg:#fff1f2;
+ --code:#f3f4f6;
+}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);
+ font:14px/1.75 "Noto Sans TC","PingFang TC","Microsoft JhengHei",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+ -webkit-font-smoothing:antialiased}
+.wrap{max-width:1220px;margin:0 auto;padding:0 20px 90px}
+
+/* ---- header ---- */
+.hd{background:linear-gradient(135deg,#4c1d95,#6d28d9 55%,#7c3aed);color:#fff;padding:30px 0 26px;margin-bottom:26px}
+.hd .wrap{padding-bottom:0}
+.hd .kick{font-size:12px;letter-spacing:.16em;text-transform:uppercase;opacity:.72;font-weight:700}
+.hd h1{font-size:27px;font-weight:800;margin:7px 0 8px;letter-spacing:-.01em}
+.hd p{opacity:.9;font-size:13.5px;max-width:860px}
+.hd .meta{margin-top:14px;display:flex;flex-wrap:wrap;gap:8px}
+.hd .meta span{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.22);
+ border-radius:999px;padding:3px 11px;font-size:11.5px;font-weight:600}
+
+/* ---- layout ---- */
+.cols{display:grid;grid-template-columns:220px 1fr;gap:28px;align-items:start}
+@media(max-width:1000px){.cols{grid-template-columns:1fr}.toc{position:static!important;max-height:none!important}}
+.toc{position:sticky;top:18px;background:var(--panel);border:1px solid var(--line);border-radius:12px;
+ padding:14px 12px;max-height:calc(100vh - 40px);overflow:auto;font-size:12.5px}
+.toc b{display:block;font-size:11px;letter-spacing:.1em;color:var(--mut2);margin:0 0 8px 6px;text-transform:uppercase}
+.toc a{display:block;color:var(--ink2);text-decoration:none;padding:5px 8px;border-radius:7px;line-height:1.45}
+.toc a:hover{background:var(--p50);color:var(--p700)}
+.toc a.sub{padding-left:20px;font-size:12px;color:var(--mut)}
+
+/* ---- sections ---- */
+section{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px 26px;margin-bottom:20px;
+ scroll-margin-top:16px}
+h2{font-size:19px;font-weight:800;letter-spacing:-.01em;padding-bottom:11px;margin-bottom:16px;
+ border-bottom:2px solid var(--p100);display:flex;align-items:center;gap:9px}
+h2 .num{background:var(--p600);color:#fff;font-size:12px;width:26px;height:26px;border-radius:8px;
+ display:inline-flex;align-items:center;justify-content:center;font-weight:800;flex:none}
+h3{font-size:15px;font-weight:700;margin:24px 0 10px;color:var(--p700);
+ padding-left:10px;border-left:3px solid var(--p500)}
+h4{font-size:13.5px;font-weight:700;margin:16px 0 7px;color:var(--ink2)}
+p{margin:9px 0;color:var(--ink2)}
+ul,ol{margin:9px 0 9px 22px;color:var(--ink2)}
+li{margin:4px 0}
+a{color:var(--p700)}
+
+/* ---- tables ---- */
+.tw{overflow-x:auto;margin:13px 0;border:1px solid var(--line);border-radius:10px}
+table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:560px;background:#fff}
+th{background:#fafafa;text-align:left;font-weight:700;color:var(--mut);font-size:11px;
+ letter-spacing:.05em;padding:9px 11px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 11px;border-bottom:1px solid #f1f2f4;vertical-align:top;line-height:1.65}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:#fcfcfd}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+td.c,th.c{text-align:center}
+td.w{white-space:nowrap}
+
+/* ---- code / mono ---- */
+code,.mono{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:11.8px}
+code{background:var(--code);padding:1.5px 5px;border-radius:4px;color:#9333ea;word-break:break-word}
+pre{background:#1e1b2e;color:#e8e5f5;padding:14px 16px;border-radius:10px;overflow-x:auto;
+ font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:11.8px;line-height:1.7;margin:12px 0}
+pre .c{color:#8b83a8}
+pre .k{color:#c4b5fd}
+pre .s{color:#86efac}
+
+/* ---- callouts ---- */
+.note{border-radius:9px;padding:11px 14px;margin:12px 0;font-size:12.8px;line-height:1.7;
+ border:1px solid var(--line);background:#fafafa;color:var(--ink2)}
+.note b{color:var(--ink)}
+.note.blue{background:var(--blue-bg);border-color:#bfdbfe;color:#1e40af}
+.note.green{background:var(--green-bg);border-color:#bbf7d0;color:#15803d}
+.note.amber{background:var(--amber-bg);border-color:#fde68a;color:#92400e}
+.note.red{background:var(--red-bg);border-color:#fecaca;color:#991b1b}
+.note.purple{background:var(--p50);border-color:var(--p200);color:var(--p700)}
+.note .t{font-weight:800;display:block;margin-bottom:3px}
+
+/* ---- tags ---- */
+.tag{display:inline-block;font-size:10.5px;font-weight:700;padding:1.5px 7px;border-radius:5px;
+ border:1px solid transparent;white-space:nowrap;line-height:1.6}
+.t-p{background:var(--p100);color:var(--p700);border-color:var(--p200)}
+.t-b{background:var(--blue-bg);color:var(--blue);border-color:#bfdbfe}
+.t-g{background:var(--green-bg);color:var(--green);border-color:#bbf7d0}
+.t-a{background:var(--amber-bg);color:var(--amber);border-color:#fde68a}
+.t-r{background:var(--red-bg);color:var(--red);border-color:#fecaca}
+.t-s{background:var(--sky-bg);color:var(--sky);border-color:#a5f3fc}
+.t-x{background:#f3f4f6;color:var(--mut);border-color:var(--line2)}
+
+/* ---- checklist ---- */
+.ck{list-style:none;margin:10px 0;padding:0}
+.ck li{display:flex;gap:10px;align-items:flex-start;padding:8px 11px;border:1px solid var(--line);
+ border-radius:8px;margin-bottom:6px;background:#fff;cursor:pointer;transition:.12s;font-size:12.8px}
+.ck li:hover{border-color:var(--p200);background:var(--p50)}
+.ck li .box{width:16px;height:16px;border:2px solid var(--line2);border-radius:4px;flex:none;margin-top:3px;
+ display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;transition:.12s}
+.ck li.on{background:#fafafa;border-color:var(--line)}
+.ck li.on .box{background:var(--green);border-color:var(--green)}
+.ck li.on .box:after{content:"✓"}
+.ck li.on .txt{color:var(--mut2);text-decoration:line-through}
+.ck .txt{flex:1;color:var(--ink2);line-height:1.65}
+.ck .src{font-size:10.5px;color:var(--mut2);white-space:nowrap;margin-left:auto;padding-left:8px}
+
+/* ---- misc ---- */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media(max-width:820px){.grid2,.grid3{grid-template-columns:1fr}}
+.card{border:1px solid var(--line);border-radius:11px;padding:14px 16px;background:#fff}
+.card .h{font-weight:800;font-size:13px;margin-bottom:6px;display:flex;align-items:center;gap:7px}
+.kpi{border:1px solid var(--line);border-radius:11px;padding:13px 15px;background:#fff}
+.kpi .l{font-size:11px;color:var(--mut);font-weight:700;letter-spacing:.04em}
+.kpi .v{font-size:24px;font-weight:800;margin:2px 0;letter-spacing:-.02em}
+.kpi .s{font-size:11.5px;color:var(--mut2)}
+hr{border:none;border-top:1px solid var(--line);margin:22px 0}
+.foot{text-align:center;color:var(--mut2);font-size:11.5px;padding:26px 0 0}
+.arrow{color:var(--p600);font-weight:800}
+.del{color:var(--mut2);text-decoration:line-through}
+.new{color:var(--green);font-weight:700}
+@media print{
+ body{background:#fff}.toc{display:none}.cols{grid-template-columns:1fr}
+ section{break-inside:avoid;border:none;padding:0 0 18px}
+ .hd{background:#4c1d95!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+
+/* ---- interactive prototype (04/05 Part 2) ---- */
+@keyframes flashHi{0%{box-shadow:0 0 0 3px var(--p500)}100%{box-shadow:0 0 0 3px transparent}}
+tr.flash td:first-child{position:relative}
+tr.flash{background:var(--p50)!important;animation:flashHi 2.4s ease-out}
+.proto{background:#fbfbfc;border:1px solid var(--line);border-radius:12px;padding:16px;margin:14px 0}
+.proto .pt{font-size:11px;font-weight:800;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin-bottom:10px}
+.pgrid{display:grid;border:1px solid var(--line2);border-radius:8px;overflow:hidden;font-size:10.5px;background:#fff}
+.pgrid .prow{display:grid;grid-template-columns:52px repeat(var(--cols,5),1fr);border-top:1px solid #eee}
+.pgrid .prow:first-child{border-top:none}
+.pgrid .ph{background:#fafafa;font-weight:700;color:var(--mut);padding:6px 4px;text-align:center;border-right:1px solid #eee}
+.pgrid .pt0{padding:5px 4px;color:var(--mut2);text-align:center;border-right:1px solid #eee;font-variant-numeric:tabular-nums}
+.pgrid .pc{border-right:1px solid #f2f2f2;min-height:34px;padding:2px}
+.pgrid .pc:last-child{border-right:none}
+.hotspot{display:block;height:100%;border-radius:5px;padding:3px 5px;cursor:pointer;transition:.12s;font-size:9.5px;line-height:1.3;border:1px solid transparent}
+.hotspot:hover{outline:2px solid var(--p500);outline-offset:-1px;filter:brightness(.97)}
+.hotspot b{display:block;font-size:10px}
+.hs-self{background:var(--blue-bg);border-color:#bfdbfe;color:#1e3a8a}
+.hs-inst{background:var(--amber-bg);border-color:#fde68a;color:#78350f}
+.hs-no{background:var(--red-bg);border-color:#fecaca;color:#7f1d1d}
+.hs-first{background:#fef9c3;border-color:#fde047;color:#713f12}
+.hs-couple{background:var(--p50);border-color:var(--p200);color:var(--p700)}
+.hs-done{background:#f3f4f6;border-color:#e5e7eb;color:var(--mut2)}
+.hs-empty{border:1px dashed #e5e7eb;color:var(--mut2);display:flex;align-items:center;justify-content:center;font-size:14px}
+.hs-empty:hover{background:var(--p50);border-color:var(--p300,var(--p500))}
+.phint{font-size:11px;color:var(--mut);margin-top:9px;padding-top:9px;border-top:1px dashed var(--line)}
+.mockform{display:grid;gap:8px;font-size:11.5px}
+.mockform label{display:block}
+.mockform .lb{font-size:10.5px;color:var(--mut);font-weight:700;margin-bottom:2px;display:block}
+.mockform .fake{border:1px solid var(--line2);border-radius:6px;padding:6px 9px;background:#fff;cursor:pointer;color:var(--ink2)}
+.mockform .fake:hover{border-color:var(--p500);background:var(--p50)}
+.pbadge{display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;margin-bottom:2px}
+</style>
+</head>
+<body data-doc="14_給診療所的階段成果">
+<header class="hd"><div class="wrap">
+  <div class="kick">CheerPsy V2 · 慈恩心理治療所</div>
+  <h1>給診療所的階段成果</h1>
+  <p>這份不談技術，只談<b>你們每天要做的事，在新系統裡長什麼樣子</b>：哪些流程已經可以整條走完、跟現在的做法差在哪、系統會幫你們擋掉哪些錯、以及還有哪幾件事在等你們決定。<b>建議搭配系統一起看</b>——裡面現在有一整年的模擬資料，每個畫面都點得進去。</p>
+  <div class="meta"><span>2026-09-11</span><span>給診療所</span><span>模擬資料：一年份</span><span>每日約 53 場</span></div>
+</div></header>
+<div class="wrap">
+<div class="cols">
+<nav class="toc" id="toc"></nav>
+<main>
+
+<section id="ready">
+<h2><span class="num">1</span>現在可以整條走完的流程</h2>
+
+<p>從電話打進來，到心理師月底領到錢，中間<b>沒有斷點</b>。可以實際點著走一遍：</p>
+
+<div class="tw"><table>
+<thead><tr><th style="width:150px">環節</th><th style="width:130px">在哪一頁</th><th>做什麼</th></tr></thead>
+<tbody>
+<tr><td><b>① 有人來電詢問</b></td><td>媒合管理</td><td>填一張諮商需求表 → 派案給 1–3 位心理師 → 心理師在自己的「派案邀請」回覆要不要接</td></tr>
+<tr><td><b>② 排初診</b></td><td>媒合管理</td><td>承接之後轉預約，同時自動建立個案（暫存狀態，還沒有病歷號）</td></tr>
+<tr><td><b>③ 初診當天報到</b></td><td><b>診間日曆</b></td><td>那一格會標「初診」，點「已到 · 補個資」填身分證，<b>系統當場產生病歷號</b>並轉成正式個案</td></tr>
+<tr><td><b>④ 一般報到收款</b></td><td><b>診間日曆</b></td><td>已到 → 收款 → 開立收據，三步都在格子上完成，不用換頁</td></tr>
+<tr><td><b>⑤ 當天結帳</b></td><td>日報表 / 對帳</td><td>現金／匯款／未收分開列，跟抽屜和存摺對；零用金也在同一頁</td></tr>
+<tr><td><b>⑥ 收不到的錢</b></td><td>應收帳冊</td><td>未收、月結、機構應收三個分頁。誰欠多久、哪家機構的錢還沒進來</td></tr>
+<tr><td><b>⑦ 機構請款</b></td><td>機構合約 → 核銷案總表</td><td>場次自動收進核銷案 → 心理師確認文件 → 行政核對 → 送出 → 入帳。請款單 PDF 直接下載</td></tr>
+<tr><td><b>⑧ 心理師領錢</b></td><td>我的酬勞</td><td>抽成、回饋制、場地費扣回分三區列清楚——因為這三種錢的方向不一樣</td></tr>
+</tbody></table></div>
+
+<div class="note green"><span class="t">另外還有</span>
+場地租借（含督導模式 A／B 的不同拆帳）、5F 雲燈教室排程、加時／縮短、
+視訊連結轉發、個案請假、收據作廢與重印、退回補件。這些都已經做進去，
+在對應的頁面上找得到。</div>
+</section>
+
+<section id="diff">
+<h2><span class="num">2</span>跟現在的做法差在哪</h2>
+<p>這幾件事<b>會改變櫃檯的習慣</b>，是試用時最需要你們給意見的地方。</p>
+
+<h3>2.1 帳是「按了已到」才產生的</h3>
+<p>以前是時間到了就自動算一筆。現在<b>沒有按「已到」就沒有帳</b>——人沒來就是沒來，不會憑空多出一筆要收的錢，也不會扣掉機構的補助次數。</p>
+<div class="note amber"><span class="t">代價</span>
+櫃檯<b>一定要按</b>。漏按的話那一格會一直留在「待報到」。
+補救方式是日報表那一頁的「執行日結」，可以把當天漏按的一次補登。</div>
+
+<h3>2.2 診間日曆是主控台，不是查詢畫面</h3>
+<p>報到、收款、開收據都在格子上直接做完。格子的顏色只表達<b>狀態</b>（待報到／已到／已收款／未到），按鈕一律是黑白的——這樣眼睛才能靠顏色掃一整天，不會被按鈕的顏色干擾。</p>
+<ul>
+<li><b>整格變灰</b>＝這格今天不用再碰了。自費要收款＋開據都完成；<b>月結案按完「已到」就變灰</b>（本來就不當場收）；機構案還要行政提醒全部勾完。</li>
+<li><b>整格變黃</b>＝這個機構補助<b>剩最後一次</b>，收錢前先確認。</li>
+<li><b>整格紅底</b>＝未到。未到不會變灰，它要被看見。</li>
+</ul>
+
+<h3>2.3 機構案的金額是系統算的，不是查表填的</h3>
+<p>每份合約的費率規則建在系統裡（第幾次、諮商型態、時長、地點……），建約時<b>自動報價</b>並記下「當時算出來的答案」。之後就算費率改了，<b>已經發生的場次金額不會被改動</b>——歷史是事實，不是重算出來的。</p>
+<p>費率也可以自己改：機構合約 → 該方案 →「編輯費率」。改完只影響之後的預約。</p>
+
+<h3>2.4 機構補助的額度會自動扣、自動還</h3>
+<p>建約時預留、報到時扣掉、取消或未到時還回來。合約層級的總額度（例如國軍一年 $149,000）也一起管，<b>見底時會擋下來</b>並在畫面上說剩多少。</p>
+</section>
+
+<section id="guard">
+<h2><span class="num">3</span>系統會幫你們擋掉的錯</h2>
+<p>這一節大概是最值得看的——這些都是<b>實際發生過、而且用眼睛看不出來</b>的錯誤。</p>
+
+<div class="tw"><table>
+<thead><tr><th style="width:230px">會被擋下來的事</th><th>為什麼重要</th></tr></thead>
+<tbody>
+<tr><td><b>還沒收到錢就開收據</b></td><td>收據編號一開出去就是憑證。系統現在只有真的收到款才給號</td></tr>
+<tr><td><b>同一筆場次被收進兩個核銷案</b></td><td>會向機構重複請款</td></tr>
+<tr><td><b>取消或未到卻沒還補助次數</b></td><td>個案的額度會愈用愈少，而且看不出來少在哪</td></tr>
+<tr><td><b>加時改了金額，機構總額度沒跟著調</b></td><td>合約總額度會以為還有錢，實際上已經超支</td></tr>
+<tr><td><b>沒填機構個案代號就送核銷</b></td><td>機構會退件。代號也可以事後補登，不用整個重建</td></tr>
+<tr><td><b>加時撞到下一位</b></td><td>系統不會自動把下一位擠掉，會請你聯絡行政處理</td></tr>
+<tr><td><b>診間、場地租借、雲燈教室互相撞時段</b></td><td>三種佔用空間的事共用同一套檢查</td></tr>
+<tr><td><b>初診沒登記身分證就報到</b></td><td>沒有身分證就產不出病歷號，個案會卡在暫存狀態</td></tr>
+</tbody></table></div>
+
+<div class="note blue"><span class="t">怎麼做到的</span>
+系統裡有一組<b>自動對帳的檢查</b>（目前 25 條），每次資料異動後都會全部跑一遍：
+額度加起來對不對、酬勞總額跟明細合不合、收據號有沒有重複、
+場次金額的機構那半加個案那半等不等於總額……<b>任何一條對不上就會叫</b>。
+這不是給你們用的畫面，但它是「帳不會悄悄算錯」的來源。</div>
+</section>
+
+<section id="waiting">
+<h2><span class="num">4</span>等你們決定的事</h2>
+<p>只有兩件，但都卡著，<b>愈早決定愈好</b>。</p>
+
+<div class="tw"><table>
+<thead><tr><th style="width:170px">項目</th><th>要決定什麼</th></tr></thead>
+<tbody>
+<tr><td><b>日報表的欄位</b></td><td>目前的日報表／對帳是第一版。第二版要放哪些欄位、怎麼分類，取決於你們財務那邊實際怎麼結。<b>我們會先做一版給你們指著改</b>——描述一個還不存在的表格很難，改一個已經在眼前的容易得多</td></tr>
+<tr><td><b>收據編號格式</b></td><td>系統已經做成可切換，預設是新版格式 <code>A20260911001C-1</code>（日期＋流水＋現金/匯款＋狀態碼）。<b>我們會印一張實際的樣張給你們看</b>，確認格式就改設定，不用改程式</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="try">
+<h2><span class="num">5</span>怎麼開始試用</h2>
+
+<div class="note purple"><span class="t">系統裡現在有一整年的模擬資料</span>
+不是空的畫面。<b>每天約 53 場現場諮商</b>、一年一萬九千多筆預約、
+一千多位個案、十一家機構合約。所以打開診間日曆看到的是一間忙碌診所的樣子，
+而不是空白表格——那些為了「一天要處理幾十格」設計的東西，
+要有資料才看得出在解決什麼問題。</div>
+
+<h3>5.1 建議這樣走</h3>
+<ol>
+<li><b>先開診間日曆</b>，看今天。有 34 格還沒報到，隨便挑一格按「已到」，走完收款、開收據三步。</li>
+<li><b>找一格標「初診」的</b>，那是媒合轉進來的新個案。按「已到 · 補個資」，看病歷號怎麼產生出來。</li>
+<li><b>翻到日報表 / 對帳</b>，看剛才那筆有沒有出現在當天的現金裡。</li>
+<li><b>開應收帳冊</b>，看未收的有哪些、機構那邊還有多少錢沒進來。</li>
+<li><b>開機構合約</b>，隨便點一家進去，看額度長條、核銷案、費率規則。</li>
+<li><b>用心理師帳號登入</b>，看「我的今日」「文件確認」「我的酬勞」。</li>
+</ol>
+
+<h3>5.2 更完整的話</h3>
+<p>計畫書裡有兩份操作腳本，本來就是當驗收依據寫的：</p>
+<ul>
+<li><b>04 操作樣本_行政櫃檯</b> —— 35 個步驟</li>
+<li><b>05 操作樣本_心理師</b> —— 31 個步驟</li>
+</ul>
+<p>照著走，<b>在哪一步卡住就停下來講</b>。比起「請試用看看然後給意見」，
+指著一個具體的步驟說「這裡不對」有用得多。</p>
+
+<div class="note amber"><span class="t">我們最想知道的</span>
+不是「好不好看」，而是——<b>哪一步比你們現在的做法更麻煩？</b>
+系統做了很多防呆，但防呆的代價是多按幾下。哪裡防過頭了，只有你們知道。</div>
+
+<div class="foot">CheerPsy V2 升級計畫 · 14 給診療所的階段成果 · 2026-09-11</div>
+</section>
+
+</main>
+</div>
+</div>
+
+<script>
+/* TOC auto-build from h2/h3 */
+(function(){
+  var toc=document.getElementById('toc'); if(!toc) return;
+  var out='<b>目錄</b>';
+  document.querySelectorAll('main section').forEach(function(s){
+    var h2=s.querySelector('h2'); if(!h2) return;
+    if(!s.id) s.id='s'+Math.random().toString(36).slice(2,7);
+    var t=h2.textContent.replace(/^\s*\d+\s*/,'').trim();
+    out+='<a href="#'+s.id+'">'+t+'</a>';
+    s.querySelectorAll('h3').forEach(function(h3,i){
+      if(!h3.id) h3.id=s.id+'-h'+i;
+      out+='<a class="sub" href="#'+h3.id+'">'+h3.textContent.trim()+'</a>';
+    });
+  });
+  toc.innerHTML=out;
+})();
+/* checklist toggle + persistence + progress */
+(function(){
+  var KEY='cheerpsy-v2-'+(document.body.dataset.doc||'doc');
+  var saved={}; try{saved=JSON.parse(localStorage.getItem(KEY)||'{}');}catch(e){}
+  var items=[].slice.call(document.querySelectorAll('.ck li'));
+  items.forEach(function(li,i){
+    var k=li.dataset.k||('i'+i); li.dataset.k=k;
+    if(!li.querySelector('.box')){var b=document.createElement('span');b.className='box';li.insertBefore(b,li.firstChild);}
+    if(saved[k]) li.classList.add('on');
+    li.addEventListener('click',function(){
+      li.classList.toggle('on');
+      saved[k]=li.classList.contains('on');
+      try{localStorage.setItem(KEY,JSON.stringify(saved));}catch(e){}
+      paint();
+    });
+  });
+  function paint(){
+    document.querySelectorAll('[data-prog]').forEach(function(el){
+      var scope=el.dataset.prog==='all'?document:document.getElementById(el.dataset.prog);
+      if(!scope) return;
+      var all=scope.querySelectorAll('.ck li'), done=scope.querySelectorAll('.ck li.on');
+      el.textContent=done.length+' / '+all.length;
+    });
+  }
+  paint();
+  var rst=document.getElementById('ckReset');
+  if(rst) rst.onclick=function(){ if(!confirm('清除本頁所有勾選狀態？'))return;
+    try{localStorage.removeItem(KEY);}catch(e){} items.forEach(function(li){li.classList.remove('on');}); paint(); };
+})();
+
+/* hotspot -> highlight target row (Part 2 interactive prototype) */
+(function(){
+  document.querySelectorAll('.hotspot[data-goto]').forEach(function(h){
+    h.addEventListener('click', function(){
+      var id=h.dataset.goto, el=document.getElementById(id);
+      if(!el) return;
+      document.querySelectorAll('.flash').forEach(function(x){x.classList.remove('flash');});
+      el.classList.add('flash');
+      el.scrollIntoView({behavior:'smooth', block:'center'});
+      setTimeout(function(){el.classList.remove('flash');}, 2600);
+    });
+  });
+})();
+
+/* tab panels: .tabs span[data-tab] -> #tab-{id} */
+(function(){
+  document.querySelectorAll('.tabs').forEach(function(bar){
+    bar.querySelectorAll('span[data-tab]').forEach(function(t){
+      t.onclick=function(){
+        bar.querySelectorAll('span[data-tab]').forEach(function(x){
+          x.classList.remove('on');
+          var p=document.getElementById('tab-'+x.dataset.tab); if(p)p.style.display='none';
+        });
+        t.classList.add('on');
+        var p=document.getElementById('tab-'+t.dataset.tab); if(p)p.style.display='block';
+      };
+    });
+    var first=bar.querySelector('span[data-tab]'); if(first) first.click();
+  });
+})();
+</script>
+</body>
+</html>
