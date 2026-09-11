@@ -34,6 +34,7 @@ from app.models.therapist_payout import PayoutDetail, TherapistPayout
 from app.models.user import User
 from app.referral.models.batch import ReferralBatch, ReferralBatchMember
 from app.referral.models.referral import Referral
+from app.funding.registry import get_provider as get_funding_provider
 from app.routers.payouts import payout_line_amount, venue_deduction_total
 from app.services import numbering
 from scripts import fake_people as fp
@@ -683,6 +684,7 @@ def _duration_adjustments(gen) -> None:
                                              exclude_appointment_id=appt.id):
                 continue
         unit_per_min = Decimal(str(appt.amount)) / Decimal(old_min)
+        payable_before = appt.institution_payable   # 池子要按差額補扣，見下方
         appt.actual_start, appt.actual_end = lower, new_end
         appt.duration_adjusted_at = upper
         appt.duration_adjusted_by = gen.staff.id
@@ -696,6 +698,13 @@ def _duration_adjustments(gen) -> None:
             case_part = Decimal(str(appt.case_payable or 0))
             appt.institution_payable = max(Decimal("0"), Decimal(str(appt.amount)) - case_part)
             sr.institution_payable = appt.institution_payable
+            # 金額變了，合約層級的金額池要跟著調整。
+            # 這一行漏掉的時候，不變量 pool_consumed 會抓到——而且抓到的是
+            # 「池子以為還有額度、實際上已超支」這種只在接近上限時才浮現的偏差。
+            # 這段是端點邏輯的**第二份副本**（因為端點會擋已收款、而歷史資料
+            # 幾乎都收過款了），副本就是會這樣漏掉新加的規則。
+            if appt.plan_id and appt.institution_payable != payable_before:
+                get_funding_provider().resync_consumed(db, appt.id, payable_before)
         if appt.commissionable_base is not None:
             base_per_min = Decimal(str(appt.commissionable_base)) / Decimal(old_min)
             appt.commissionable_base = (base_per_min * Decimal(new_min)).quantize(Decimal("0.01"))
@@ -714,10 +723,12 @@ def _video_links(gen) -> None:
             continue                                  # 有些心理師還沒貼
         appt.video_link = f"https://meet.cheerpsy.tw/{rng.randint(100000, 999999)}"
         # 未來的預約有一部分還沒轉發 → 行政端的「待轉發」待辦才有東西
-        # 過去的一定寄過了；未來的留一半沒寄——行政端「待轉發」那個待辦
-        # 才有東西。原本未來的也有 70% 標成已轉發，於是待轉發只剩 1 筆。
-        is_past = bool(appt.time_range and appt.time_range.lower.date() <= gen.today)
-        if is_past or rng.random() < 0.5:
+        # 連結是**前一天才寄**的，不是建約當下就寄。所以「已轉發」＝場次在
+        # 明天以前；再遠的都還沒寄，那正是行政端「待轉發」待辦要提醒的事。
+        # 原本用擲硬幣決定（未來的 70% 也標成已轉發），結果待轉發只剩 1 筆，
+        # 而那個待辦是視訊流程裡唯一需要人動手的一步。
+        starts_on = appt.time_range.lower.date() if appt.time_range else gen.today
+        if starts_on <= gen.today + timedelta(days=1):
             appt.video_forwarded_at = appt.time_range.lower - timedelta(days=1)
             appt.video_forwarded_by = gen.staff.id
         gen.stats["video_links"] += 1
