@@ -27,6 +27,7 @@ from sqlalchemy import text
 os.environ.setdefault("DATABASE_URL", "postgresql://cheerpsy:cheerpsy@localhost:5432/cheerpsy")
 
 from app.database import SessionLocal  # noqa: E402
+from app.institution.rules.pricing import CONDITION_KEYS  # noqa: E402
 
 
 @dataclass
@@ -40,6 +41,10 @@ class Check:
 # 台北日期的統一寫法。session_records.session_date 是台北日期（見 utils/tz.py），
 # 而 time_range 存的是 timestamptz，所以比對前要先轉時區。
 TPE = "AT TIME ZONE 'Asia/Taipei'"
+
+# 費率規則的合法條件鍵。**從 pricing 生出來**，不在這裡手抄第四份——手抄的
+# 版本會跟著漂移，而那條檢查的全部價值就在於它跟得上真正的 field_map。
+CONDITION_KEY_SQL = ", ".join(f"'{k}'" for k in sorted(CONDITION_KEYS))
 
 CHECKS: list[Check] = [
     Check(
@@ -376,13 +381,43 @@ CHECKS: list[Check] = [
         "費率規則的條件鍵必須被報價引擎認得",
         "pricing.rule_matches() 對未知 key 是寬容跳過，寫錯 key 的規則會靜默變成"
         "「命中全部」而不是報錯——價錢就錯了，畫面上看不出來。",
-        """
+        f"""
         SELECT r.id AS rule_id, r.label, k AS unknown_key
           FROM inst_rate_rules r,
                LATERAL jsonb_object_keys(r.when_json::jsonb) AS k
-         WHERE r.when_json IS NOT NULL AND r.when_json <> '{}'
-           AND k NOT IN ('session_type','consult_type','visit_seq','duration_min',
-                         'location_kind','time_band','sub_unit')
+         WHERE r.when_json IS NOT NULL AND r.when_json <> '{{}}'
+           AND k NOT IN ({CONDITION_KEY_SQL})
+        """,
+    ),
+    Check(
+        "referral_booked_has_pending_appointment",
+        "初診已預約的媒合案，必須真的有一筆還沒報到的預約",
+        "媒合案停在 booked 代表「等待初診報到」。若那筆預約不存在、已取消、或其實"
+        "已經報到過了，這個媒合案就永遠不會前進——它會一直掛在媒合列表上，而個案"
+        "停在 initial 拿不到病歷號。會走到這個狀態，代表有人繞過 referral/service "
+        "直接改了預約（11 §5.9 的閘門就是為此而設）。",
+        """
+        SELECT r.id AS referral_id, r.referral_code, r.name,
+               r.appointment_id, a.status AS appt_status, a.check_in_status
+          FROM referrals r
+          LEFT JOIN appointments a ON a.id = r.appointment_id
+         WHERE r.status = 'booked'
+           AND (a.id IS NULL OR a.status <> 'booked' OR a.check_in_status <> 'pending')
+        """,
+    ),
+    Check(
+        "referral_converted_case_is_active",
+        "已轉個案的媒合案，個案必須已經啟用並拿到病歷號",
+        "converted 的定義就是「初診有到、已建立正式個案」。個案卻還停在 initial "
+        "或沒有 case_number，代表 activate_case 那一步沒跑到——後續核銷、收據、"
+        "報表全部會找不到這個個案的編號。",
+        """
+        SELECT r.id AS referral_id, r.referral_code, r.name,
+               c.id AS case_id, c.status AS case_status, c.case_number
+          FROM referrals r
+          LEFT JOIN cases c ON c.id = r.converted_case_id
+         WHERE r.status = 'converted'
+           AND (c.id IS NULL OR c.status = 'initial' OR c.case_number IS NULL)
         """,
     ),
 ]

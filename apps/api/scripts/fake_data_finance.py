@@ -401,33 +401,63 @@ def _referral_history(gen, ref: Referral, status: str, created: date) -> None:
         return
 
     # booked / converted：接上一個真實個案，代表媒合真的產出了初診預約
-    linked = _link_referral_to_case(gen, ref, acceptor.therapist_id)
+    linked = _link_referral_to_case(gen, ref, acceptor.therapist_id, need_pending=(status == "booked"))
+    if not linked and status == "booked":
+        # 找不到還沒報到的預約就不能留在 booked——那會變成一個永遠不會前進的
+        # 媒合案（不變量 referral_booked_has_pending_appointment）。退回 accepted，
+        # 那個狀態本來就代表「已承接、還沒轉預約」，不需要預約存在。
+        ref.status = "accepted"
+        ref.appointment_id = None
+        ref.converted_case_id = None
+        db.flush()
+        return
     if linked and status == "converted":
         ref.closed_at = datetime.combine(created + timedelta(days=rng.randint(7, 30)),
                                          datetime.min.time())
 
 
-def _link_referral_to_case(gen, ref: Referral, therapist_id: int) -> bool:
-    """把媒合案接到一個真實個案上（兩碼並存以利追溯，v7 編號規則）。"""
+def _link_referral_to_case(gen, ref: Referral, therapist_id: int, *, need_pending: bool) -> bool:
+    """把媒合案接到一個真實個案上（兩碼並存以利追溯，v7 編號規則）。
+
+    `need_pending` 是 booked 狀態的硬性條件：那個狀態的意思是「初診已預約、
+    **還在等報到**」，所以接上去的必須是一筆 status='booked' 且尚未報到的預約。
+
+    原本這裡一律取該個案的**第一筆**預約，不看狀態——而假資料裡絕大多數預約
+    早就執行完或取消了，於是產出了「媒合案停在 booked、預約其實已 arrived」
+    這種永遠不會前進的組合（4 筆，2026-09-11 由新不變量抓到）。
+    """
     db = gen.db
     if not getattr(gen, "_unlinked_cases", None):
         gen._unlinked_cases = [
             c["case"] for c in gen.cases
             if c["case"].case_type != "couple" and c["case"].therapist_id == therapist_id
         ] or [c["case"] for c in gen.cases if c["case"].case_type != "couple"]
-    if not gen._unlinked_cases:
-        return False
-    case = gen._unlinked_cases.pop()
-    first_appt = (
-        db.query(Appointment).filter(Appointment.case_id == case.id)
-        .order_by(Appointment.id.asc()).first()
-    )
-    ref.converted_case_id = case.id
-    ref.appointment_id = first_appt.id if first_appt else None
-    ref.name = case.name
-    ref.phone = case.phone
-    db.flush()
-    return True
+
+    # 找得到合用的才取走；不合用的留給下一個狀態用，不要白白消耗
+    for i in range(len(gen._unlinked_cases) - 1, -1, -1):
+        case = gen._unlinked_cases[i]
+        q = db.query(Appointment).filter(Appointment.case_id == case.id)
+        if need_pending:
+            appt = (
+                q.filter(Appointment.status == "booked", Appointment.check_in_status == "pending")
+                .order_by(Appointment.id.asc()).first()
+            )
+        else:
+            # converted：接的是真的報到過的那一筆，否則「已轉個案」說不通
+            appt = (
+                q.filter(Appointment.check_in_status == "arrived")
+                .order_by(Appointment.id.asc()).first()
+            ) or q.order_by(Appointment.id.asc()).first()
+        if appt is None:
+            continue
+        gen._unlinked_cases.pop(i)
+        ref.converted_case_id = case.id
+        ref.appointment_id = appt.id
+        ref.name = case.name
+        ref.phone = case.phone
+        db.flush()
+        return True
+    return False
 
 
 # ─────────────────────────────────────────────────────────────────────────
