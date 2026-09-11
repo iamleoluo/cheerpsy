@@ -238,6 +238,37 @@ if [ -f "$BUILD_FILE" ]; then
   fi
 fi
 
+# 服務 process 是否比它跑的程式碼舊（git pull 之後忘了 restart）。
+# 2026-09-12 踩到：backend 從開機起一直是舊 process，systemd active、/health ok、
+# 所有檢查全綠，但新前端呼叫的 /dashboard/todos、/room-calendar 在舊後端不存在 → 404。
+# 比對的是「檔案 mtime vs process 啟動時間」而不是 commit 時間：commit 時間可能早於
+# process 啟動（先 commit、後 pull），會漏掉；而 git 只會改寫實際變動的檔案，
+# 所以「有檔案比 process 新」就等於「需要 restart」。
+service_start_epoch() {
+  local ts
+  ts=$(systemctl --user show "$1" -p ExecMainStartTimestamp --value 2>/dev/null)
+  [ -n "$ts" ] && LC_ALL=C date -d "$ts" +%s 2>/dev/null
+}
+backend_start=$(service_start_epoch cheerpsy-backend)
+if [ -n "$backend_start" ]; then
+  stale_py=$(find "$PROJECT_DIR/apps/api/app" -type f -name '*.py' -newermt "@$backend_start" 2>/dev/null | head -1)
+  if [ -n "$stale_py" ]; then
+    warn "backend process 比程式碼舊（pull 之後沒 restart）" "例如 ${stale_py#$PROJECT_DIR/} 比 process 啟動時間新，API 跑的是舊版路由。需要 systemctl --user restart cheerpsy-backend"
+  else
+    log "✅ PASS - backend process 是用目前的程式碼啟動的"
+    PASS=$((PASS+1))
+  fi
+fi
+frontend_start=$(service_start_epoch cheerpsy-frontend)
+if [ -n "$frontend_start" ] && [ -f "$BUILD_FILE" ]; then
+  if [ "$(stat -c %Y "$BUILD_FILE")" -gt "$frontend_start" ]; then
+    warn "frontend process 比 standalone build 舊（build 之後沒 restart）" "需要 systemctl --user restart cheerpsy-frontend"
+  else
+    log "✅ PASS - frontend process 是用目前的 build 啟動的"
+    PASS=$((PASS+1))
+  fi
+fi
+
 log ""
 log "── 系統時鐘 ──"
 # 這台是 Windows/Linux 雙系統。Windows 把 RTC 存成本地時間，Linux 預設當 UTC 讀，
