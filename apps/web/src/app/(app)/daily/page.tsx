@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useApi, useApiMutation } from "@/lib/useApi";
+import { PettyCashTab } from "@/features/finance";
 import {
   AsyncBoundary,
   Badge,
@@ -94,7 +95,12 @@ const methodOf = (r: LedgerRow) => r.copay_payment_method ?? r.payment_method;
 
 export default function DailyPage() {
   const { data: session } = useSession();
-  const isAdmin = (session?.user as { role?: string } | undefined)?.role === "admin";
+  const role = (session?.user as { role?: string; accessToken?: string } | undefined)?.role ?? "";
+  const token = (session?.user as { accessToken?: string } | undefined)?.accessToken ?? "";
+  const isAdmin = role === "admin";
+  // 外層分頁：日結對帳 ｜ 零用金。兩者都是「現金今天對不對得起來」的一半，
+  // 但列的東西完全不同，所以不能塞進內層那組未收／已收（13 §D2）。
+  const [pane, setPane] = useState<"recon" | "petty">("recon");
   const [date, setDate] = useState(todayStr());
   const [view, setView] = useState<"unpaid" | "paid">("unpaid");
   const [settleMsg, setSettleMsg] = useState<string | null>(null);
@@ -188,9 +194,22 @@ export default function DailyPage() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <h1 className="text-xl font-bold text-ink">日報表 / 對帳</h1>
-        <span className="text-xs text-ink-3">當日結束後的對帳工具 · 現金 / 匯款 / 未收</span>
+        <span className="text-xs text-ink-3">當日結束後的對帳工具 · 現金 / 匯款 / 未收 / 零用金</span>
       </div>
 
+      <Tabs
+        value={pane}
+        onChange={setPane}
+        tabs={[
+          { key: "recon", label: "日結對帳" },
+          { key: "petty", label: "零用金" },
+        ]}
+      />
+
+      {pane === "petty" ? (
+        token ? <PettyCashTab token={token} userRole={role} /> : <p className="text-xs text-ink-3">載入中…</p>
+      ) : (
+      <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
         <input
           type="date"
@@ -312,6 +331,8 @@ export default function DailyPage() {
           </AsyncBoundary>
         </div>
       </Card>
+      </div>
+      )}
     </div>
   );
 }

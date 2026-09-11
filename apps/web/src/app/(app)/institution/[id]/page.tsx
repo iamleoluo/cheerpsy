@@ -693,6 +693,23 @@ function DocGateSection({
     }
   }
 
+  /** 逐筆送，不是後端批次端點——一筆失敗不該讓其他筆一起回滾。 */
+  async function verifyAll() {
+    setBusy(true);
+    setError(null);
+    try {
+      for (const r of confirmed) {
+        await clientFetch(`/ledger/${r.id}/admin-verify`, token, { method: "PUT" });
+      }
+    } catch (e: any) {
+      setError(e.message ?? "核對失敗");
+    } finally {
+      setBusy(false);
+      fetchDocs();
+      onChanged();
+    }
+  }
+
   async function returnForCorrection() {
     if (!returnTarget || !returnReason.trim()) return;
     setBusy(true);
@@ -725,7 +742,20 @@ function DocGateSection({
           </ul>
         </div>
         <div>
-          <h4 className="mb-2 text-xs font-medium text-ink-2">待行政核對（{confirmed.length}）</h4>
+          <div className="mb-2 flex items-center gap-2">
+            <h4 className="text-xs font-medium text-ink-2">待行政核對（{confirmed.length}）</h4>
+            {confirmed.length > 1 && (
+              /* 一個核銷案動輒幾十筆，逐筆點核對在 demo 與實務上都撐不住。
+                 舊的 /claims 有 admin-verify-all，那是它唯一比新面板強的地方。 */
+              <button
+                disabled={busy}
+                onClick={verifyAll}
+                className="ml-auto rounded border border-line-2 px-2 py-0.5 text-xs text-ink-2 hover:bg-surface-2 disabled:opacity-40"
+              >
+                全部核對（{confirmed.length}）
+              </button>
+            )}
+          </div>
           <ul className="space-y-1 text-xs text-ink-3">
             {confirmed.map((r) => (
               <li key={r.id} className="flex items-center justify-between border-b border-line py-1">

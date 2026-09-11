@@ -9,11 +9,13 @@ WRITE_ROLES 沿用主系統慣例（見 case_quotas.py、quota_templates.py）�
 
 from __future__ import annotations
 
+import io
 import json
 from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -31,7 +33,9 @@ from app.institution.models.rate_rule import InstRateRule
 from app.institution.rules.pricing import CONDITION_KEYS, unknown_condition_keys
 from app.models.institution import Institution
 from app.models.audit_log import AuditLog
+from app.models.case import Case
 from app.models.session_record import SessionRecord
+from app.services.pdf import generate_institution_claim_form
 from app.models.user import User
 from app.services.audit import write_audit
 
@@ -823,6 +827,74 @@ def record_claim_payment(
 
 class VoidClaimCaseRequest(BaseModel):
     reason: str | None = None
+
+
+@router.get("/claim-cases/{claim_case_id}/claim-form")
+def download_claim_form(
+    claim_case_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """請款單 PDF。
+
+    這支原本只長在舊的 `claim_batches` 上（`claim_batches.py:696`），所以
+    「要印請款單就得回舊頁面」——那正是新舊兩套並存最說不清楚的地方。
+
+    PDF 產生器 `generate_institution_claim_form()` 的參數全是純值（單號、
+    機構名、期間、明細列、總額），跟資料從哪張表來無關，所以搬過來只是把
+    來源換成 InstClaimCase，版面一個字都不用改。
+    """
+    cc = db.query(InstClaimCase).filter(InstClaimCase.id == claim_case_id).first()
+    if not cc:
+        raise HTTPException(status_code=404, detail="核銷案不存在")
+
+    inst_name = _institution_name_for_group(db, cc.claim_group_key) or cc.claim_group_key
+
+    records = []
+    for line in sorted(cc.lines, key=lambda x: x.id):
+        r = db.query(SessionRecord).filter(SessionRecord.id == line.session_record_id).first()
+        if not r:
+            continue
+        case = db.query(Case).filter(Case.id == r.case_id).first() if r.case_id else None
+        therapist = db.query(User).filter(User.id == r.therapist_id).first()
+        records.append({
+            "session_date": r.session_date,
+            "case_name": case.name if case else "",
+            "therapist_name": therapist.name if therapist else "",
+            "session_type": (r.fee_category or "").strip() or "心理治療",
+            # 請款單要的是**機構應付**那一段，不是場次總額——個案自付的部分
+            # 不在這張單子上（09 §1.4a 的分界）
+            "amount": float(r.institution_payable if r.institution_payable is not None else r.amount),
+        })
+
+    pdf_bytes = generate_institution_claim_form(
+        batch_number=cc.claim_no,
+        institution_name=inst_name,
+        period_start=cc.period_start,
+        period_end=cc.period_end,
+        records=records,
+        total_amount=float(cc.applied_amount or sum(x["amount"] for x in records)),
+        external_ref=None,
+    )
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="claim-{cc.claim_no}.pdf"'},
+    )
+
+
+def _institution_name_for_group(db: Session, group_key: str | None) -> str | None:
+    """claim_group_key → 機構名。容器只存 key，單子上要印機構全名。"""
+    if not group_key:
+        return None
+    row = (
+        db.query(Institution.name)
+        .join(InstContract, InstContract.institution_id == Institution.id)
+        .join(InstPlan, InstPlan.contract_id == InstContract.id)
+        .filter(InstPlan.claim_group_key == group_key)
+        .first()
+    )
+    return row[0] if row else None
 
 
 @router.put("/claim-cases/{claim_case_id}/void")

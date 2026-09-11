@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getSession } from "next-auth/react";
 import { useApi } from "@/lib/useApi";
 import {
   AsyncBoundary,
@@ -60,6 +61,32 @@ const statusLabel: Record<string, string> = {
   closed: "已結案",
   void: "已作廢",
 };
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+/**
+ * 下載請款單 PDF。
+ *
+ * 走 fetch 再轉 blob 而不是直接開連結，因為端點要帶 Authorization header；
+ * 直接 window.open 會少掉 token 變成 401。
+ */
+async function downloadClaimForm(claimCaseId: number, claimNo: string) {
+  const res = await fetch(`${API_URL}/institution/claim-cases/${claimCaseId}/claim-form`, {
+    headers: { Authorization: `Bearer ${await getToken()}` },
+  });
+  if (!res.ok) return;
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `claim-${claimNo}.pdf`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function getToken(): Promise<string> {
+  const s = await getSession();
+  return (s?.user as { accessToken?: string } | undefined)?.accessToken ?? "";
+}
 
 export default function ClaimCasesOverviewPage() {
   const router = useRouter();
@@ -175,6 +202,25 @@ export default function ClaimCasesOverviewPage() {
         ) : (
           <Badge tone={claimTone[c.status] ?? "pending"}>{statusLabel[c.status] ?? c.status}</Badge>
         ),
+    },
+    {
+      key: "pdf",
+      header: "",
+      nowrap: true,
+      width: "w-20",
+      // 請款單原本只印得出來自舊的 /claims，所以「要印單子就得回舊頁面」——
+      // 那是新舊兩套並存最說不清楚的地方（13 §D2）
+      cell: (c) => (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            downloadClaimForm(c.id, c.claim_no);
+          }}
+          className="rounded border border-line-2 px-2 py-0.5 text-[11px] text-ink-2 hover:bg-surface-2"
+        >
+          請款單
+        </button>
+      ),
     },
   ];
 
