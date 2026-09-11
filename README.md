@@ -48,7 +48,8 @@ npm run dev
 | 帳號 | 密碼 | 角色 |
 |---|---|---|
 | admin@cheerpsy.com | admin123 | 管理員 |
+| staff@cheerpsy.com | admin123 | 櫃台行政 |
 | accountant@cheerpsy.com | admin123 | 會計 |
-| therapist1@cheerpsy.com | admin123 | 心理師 |
+| therapist1@cheerpsy.com ～ therapist17@cheerpsy.com | admin123 | 心理師 |
 
-共 19 個預設帳號（1 管理員 + 1 會計 + 17 心理師）。
+共 20 個預設帳號（1 管理員 + 1 櫃台行政 + 1 會計 + 17 心理師），密碼一律 `admin123`。
