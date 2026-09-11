@@ -292,7 +292,7 @@ tr.flash{background:var(--p50)!important;animation:flashHi 2.4s ease-out}
 <tr><td>元件庫</td><td class="c"><span class="ok">✓</span></td><td>12 個檔／18 個元件，含領域元件 <code>RoomCell</code> <code>TimeGrid</code> <code>QuotaBar</code> <code>CaseRef</code> <code>Money</code></td></tr>
 <tr><td>資料層</td><td class="c"><span class="ok">✓</span></td><td><code>useApi</code> / <code>AsyncBoundary</code>；401 黑洞已修</td></tr>
 <tr><td>拆檔</td><td class="c"><span class="ok">✓</span></td><td><code>/cases</code> 3,364→493、<code>/rooms</code> 1,279→301；<code>src/features/</code> 五個 feature</td></tr>
-<tr><td>色階債務</td><td class="c"><span class="tag t-a">1,725 處</span></td><td>其中 586 處在 features/ 已標記 legacy、可列舉；其餘在尚未重寫的頁面</td></tr>
+<tr><td>色階債務</td><td class="c"><span class="ok">✓ 0</span></td><td>2026-09-11 清完（實測 2,178 處，高於守門員回報的 1,725，因為那支不掃 legacy 檔）。守門員範圍已擴到整個 <code>src</code></td></tr>
 </tbody></table></div>
 
 <div class="note amber"><span class="t">仍超過 800 行的五個檔案</span>
@@ -428,7 +428,7 @@ tr.flash{background:var(--p50)!important;animation:flashHi 2.4s ease-out}
 
 <h3>5.6 設計層的收尾</h3>
 <ul>
-<li><b>色階債務</b>：1,725 處、116 種。隨各頁重寫遞減，<code>check:tokens --stats</code> 可追蹤。</li>
+<li><b>色階債務</b>：<b>已完成（2026-09-11）</b>，2,178 處歸零，詳見 §5.8。</li>
 <li><b>合約面板共用區塊</b>：§3.1 缺的六個，其中<b>費率規則編輯器</b>是唯一沒有參考畫面的。</li>
 <li><b>後端補兩個欄位</b>：<code>AppointmentResponse</code> 的 <code>gender</code> 與 <code>case_number</code>，診間格第一行才印得完整。</li>
 <li><b><code>/admin</code> 1,392 行</b>：不在任何分期裡，唯一沒被規劃到的頁面。</li>
@@ -446,7 +446,46 @@ tr.flash{background:var(--p50)!important;animation:flashHi 2.4s ease-out}
 <li><b>前端</b>：改用元件庫的 <code>DataTable</code> ＋ <code>QuotaBar</code>／池子進度條重畫，
 一眼看完所有合約的狀況，不必逐份點入。</li>
 </ul>
+
+<h3>5.8 色階債務清理（2026-09-11 完成）</h3>
+<p>實測全站 <b>2,178 處</b>寫死的 Tailwind 色階、122 種，分布在 42 個檔案。
+比守門員回報的 1,725 多，因為那支不掃已標記 <code>@token-guard legacy</code> 的檔案。
+處理方式依「是對應還是決定」分成兩半——</p>
+
+<div class="tw"><table>
+<thead><tr><th style="width:110px">類別</th><th class="c" style="width:70px">處數</th><th>做法</th></tr></thead>
+<tbody>
+<tr><td>中性色</td><td class="c">1,585</td><td>機械轉換。21 種 gray 階 → <code>ink</code>／<code>ink-2</code>／<code>ink-3</code>／<code>line</code>／<code>surface-*</code>。
+<code>text-*</code> 的 400–800 五階一律收斂成同一階：同一個「未收」語意原本散成五種寫法，保留階數只會讓同一件事在不同頁面看起來像不同事</td></tr>
+<tr><td>primary</td><td class="c">299</td><td>機械轉換 → <code>accent</code>。600/700 那一對實測 60/60 都帶 <code>hover:</code>，正好對上 Button 的 accent variant 已經在用的 <code>bg-accent hover:bg-st-active</code></td></tr>
+<tr><td>語意色</td><td class="c">436</td><td>紅玫瑰→danger、琥珀黃橘→warn、綠翠→done。這三個色系在本專案的用法從頭到尾一致，badge.tsx 的六個 tone 本來就是照著這份清單挑的</td></tr>
+<tr><td>要重新決定</td><td class="c">160</td><td>逐處判斷，見下</td></tr>
+</tbody></table></div>
+
+<div class="note"><span class="t">刻意不進 codemod 的三類</span>
+<b>①深色實心鍵</b>（8 處）帶著更深的 hover，中性色只有 <code>ink</code> 一階那麼深，機械轉換會把兩階壓成同一階、hover 靜靜消失。
+<b>②實心彩色按鈕</b>（約 30 處）是 v7 定案 ③ 明文禁止的東西，轉成 <code>bg-st-danger</code> 只是把違規做得更整齊。
+<b>③藍色系</b>在本專案身兼說明框／文字連結／狀態徽章三職，一律對到某個 token 一定會錯。</div>
+
+<p>逐處判斷那 160 處，暴露出三件比顏色本身更值得記的事：</p>
+<ul>
+<li><b>四份互相矛盾的核銷狀態表</b>。同一個 <code>submitted</code>，<code>/finance</code> 是琥珀、<code>/claims</code> 是紫、機構合約專頁是天藍。
+行政一天要在這幾頁之間來回，同一個狀態每頁換一種顏色，等於顏色沒有在傳遞資訊。三頁都改成用 <code>badge.tsx</code> 的 <code>claimTone</code>。</li>
+<li><b>類別色冒充狀態色</b>。這是機械轉換自己暴露出來的——角色徽章原本 admin=綠、accountant=琥珀，轉成 token 之後
+「管理員」讀起來像已完成、「會計」像要注意。角色、付費別（機構／自費）、年齡層（兒青／成人）、指定心理師
+都是<b>屬性</b>不是狀態，一律改中性，字面本來就寫著是哪一種。需要分組的地方改用底色深淺（進案統計四張卡、
+<code>/reports</code> 的指定欄位群）取代色相。</li>
+<li><b>「已到／未到」在 <code>/match</code> 還是綠紅實心</b>。那跟診間日曆的報到鍵是同一個情境，v7 定案 ③ 已經裁過。改成同一組寫法。</li>
 </ul>
+
+<p><b>守門員範圍從「只守新寫的目錄」擴到整個 <code>src</code></b>，14 個 <code>@token-guard legacy</code> 標記全部移除——
+債務歸零之後那條線只會讓它靜靜長回來。三支 codemod 留在 <code>apps/web/scripts/</code> 下，因為它們記錄的是<b>為什麼這樣對應</b>，
+特別是上面那三類為什麼不對應。</p>
+
+<div class="note green"><span class="t">驗證</span>
+<code>tsc --noEmit</code> 零錯誤；<code>check-tokens.mjs</code> 全 <code>src</code> 通過，並以植入一處 <code>text-red-600</code> 反向驗證確實會擋（exit=1）；
+瀏覽器實測 23 個 CSS 變數全部有定義、44 個新色票類別全部產生得出顏色（<code>hover:</code>／<code>focus:</code> 前綴的另外查樣式表確認，
+因為那些只以前綴形式出現，裸類別本來就不會被產生）。</div>
 </section>
 
 <section id="rulings">
