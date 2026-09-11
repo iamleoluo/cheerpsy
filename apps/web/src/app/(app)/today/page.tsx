@@ -91,39 +91,39 @@ export default function TodayPage() {
   return (
     <div className="mx-auto max-w-3xl">
       <h1 className="mb-1 text-2xl font-bold">我的今日</h1>
-      <p className="mb-6 text-sm text-gray-400">{todayLabel}</p>
+      <p className="mb-6 text-sm text-ink-3">{todayLabel}</p>
 
-      {error && <div className="mb-4 rounded-lg bg-rose-50 px-4 py-2 text-sm text-rose-600">{error}</div>}
+      {error && <div className="mb-4 rounded-lg bg-st-danger-bg px-4 py-2 text-sm text-st-danger">{error}</div>}
 
-      {loading && appts.length === 0 && <p className="text-sm text-gray-400">載入中...</p>}
+      {loading && appts.length === 0 && <p className="text-sm text-ink-3">載入中...</p>}
       {!loading && appts.length === 0 && (
-        <div className="rounded-xl border border-dashed border-gray-200 py-12 text-center text-sm text-gray-400">今天沒有排定的場次</div>
+        <div className="rounded-xl border border-dashed border-line py-12 text-center text-sm text-ink-3">今天沒有排定的場次</div>
       )}
 
       <div className="space-y-2">
         {appts.map((a) => {
           const selfCheckIn = a.session_type !== "in_person";
           return (
-            <div key={a.id} className={`flex items-center justify-between rounded-xl border px-4 py-3 ${a.status === "cancelled" ? "border-gray-100 bg-gray-50 opacity-50" : "border-gray-200 bg-white"}`}>
+            <div key={a.id} className={`flex items-center justify-between rounded-xl border px-4 py-3 ${a.status === "cancelled" ? "border-line bg-surface-2 opacity-50" : "border-line bg-white"}`}>
               <div className="flex items-center gap-4">
-                <div className="w-20 font-mono text-sm text-gray-600">{a.start_time?.slice(11, 16)}–{a.end_time?.slice(11, 16)}</div>
+                <div className="w-20 font-mono text-sm text-ink-2">{a.start_time?.slice(11, 16)}–{a.end_time?.slice(11, 16)}</div>
                 <div>
                   <div className="text-sm font-medium">{a.is_couple ? `👫 ${a.couple_name}` : a.case_name}</div>
-                  <div className="text-xs text-gray-400">{sessionTypeLabel[a.session_type] ?? a.session_type}{a.room_name ? ` · ${a.room_name}` : ""}</div>
+                  <div className="text-xs text-ink-3">{sessionTypeLabel[a.session_type] ?? a.session_type}{a.room_name ? ` · ${a.room_name}` : ""}</div>
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
-                {a.check_in_status === "arrived" && <span className="rounded bg-emerald-100 px-2 py-1 text-xs text-emerald-700">✓ 已到</span>}
-                {a.check_in_status === "no_show" && <span className="rounded bg-gray-100 px-2 py-1 text-xs text-gray-500">未到</span>}
+                {a.check_in_status === "arrived" && <span className="rounded bg-st-done-bg px-2 py-1 text-xs text-st-done">✓ 已到</span>}
+                {a.check_in_status === "no_show" && <span className="rounded bg-surface-3 px-2 py-1 text-xs text-ink-3">未到</span>}
                 {a.check_in_status === "pending" && a.status !== "cancelled" && (
                   selfCheckIn ? (
                     <>
-                      <button disabled={busyId === a.id} onClick={() => checkIn(a.id, "arrived")} className="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-50">已到</button>
-                      <button disabled={busyId === a.id} onClick={() => checkIn(a.id, "no_show")} className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50">未到</button>
+                      <button disabled={busyId === a.id} onClick={() => checkIn(a.id, "arrived")} className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-st-active disabled:opacity-50">已到</button>
+                      <button disabled={busyId === a.id} onClick={() => checkIn(a.id, "no_show")} className="rounded-lg border border-line-2 px-3 py-1.5 text-xs text-ink-2 hover:bg-surface-2 disabled:opacity-50">未到</button>
                     </>
                   ) : (
-                    <span className="rounded bg-gray-100 px-2 py-1 text-xs text-gray-400">待行政報到</span>
+                    <span className="rounded bg-surface-3 px-2 py-1 text-xs text-ink-3">待行政報到</span>
                   )
                 )}
               </div>

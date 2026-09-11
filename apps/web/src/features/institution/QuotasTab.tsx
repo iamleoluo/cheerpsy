@@ -92,16 +92,16 @@ export function QuotasTab({ token, userRole }: { token: string; userRole: string
 
   return (
     <div>
-      {error && <div className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+      {error && <div className="mb-3 rounded bg-st-danger-bg px-3 py-2 text-sm text-st-danger">{error}</div>}
 
       {/* Sub-tab navigation */}
-      <div className="mb-4 flex gap-1 border-b border-gray-200">
+      <div className="mb-4 flex gap-1 border-b border-line">
         {(["quotas", "templates"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setSubTab(t)}
             className={`px-4 py-2 text-sm font-medium transition-colors ${
-              subTab === t ? "border-b-2 border-primary-600 text-primary-700" : "text-gray-500 hover:text-gray-700"
+              subTab === t ? "border-b-2 border-accent text-accent" : "text-ink-3 hover:text-ink-2"
             }`}
           >
             {t === "quotas" ? "額度管理" : "方案範本"}
@@ -119,12 +119,12 @@ export function QuotasTab({ token, userRole }: { token: string; userRole: string
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="搜尋個案 / 機構"
-                className="w-64 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                className="w-64 rounded-lg border border-line-2 px-3 py-2 text-sm"
               />
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value as any)}
-                className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                className="rounded-lg border border-line-2 px-3 py-2 text-sm"
               >
                 <option value="all">全部</option>
                 <option value="active">有效中</option>
@@ -134,7 +134,7 @@ export function QuotasTab({ token, userRole }: { token: string; userRole: string
             {canWrite && (
               <button
                 onClick={() => { setEditing(null); setFormDefaultCaseId(null); setShowForm(true); }}
-                className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-st-active"
               >
                 ＋新增 Quota
               </button>

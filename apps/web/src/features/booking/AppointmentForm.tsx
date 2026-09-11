@@ -134,14 +134,14 @@ export function AppointmentForm({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className={`flex rounded-xl bg-white shadow-xl transition-all ${showCalendar ? "w-full max-w-4xl" : "w-full max-w-md"}`}>
-        <div className={`p-6 ${showCalendar ? "w-1/2 border-r border-gray-200" : "w-full"}`}>
+        <div className={`p-6 ${showCalendar ? "w-1/2 border-r border-line" : "w-full"}`}>
           <h2 className="mb-4 text-lg font-bold">新增預約{fixedCaseName ? ` — ${fixedCaseName}` : ""}</h2>
-          {error && <div className="mb-3 rounded-lg bg-red-50 p-2 text-sm text-red-600">{error}</div>}
+          {error && <div className="mb-3 rounded-lg bg-st-danger-bg p-2 text-sm text-st-danger">{error}</div>}
           <form onSubmit={handleSubmit} className="space-y-3">
             {!fixedCaseId && (
               <label className="block">
-                <span className="mb-1 block text-xs text-gray-500">個案 <span className="text-red-500">*</span></span>
-                <select required value={form.case_id} onChange={(e) => { sf("case_id", e.target.value); setPayerCaseId(""); }} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                <span className="mb-1 block text-xs text-ink-3">個案 <span className="text-st-danger">*</span></span>
+                <select required value={form.case_id} onChange={(e) => { sf("case_id", e.target.value); setPayerCaseId(""); }} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm">
                   <option value="">請選擇</option>
                   {cases.map((c) => <option key={c.id} value={c.id}>{c.case_type === "couple" ? "👫 " : ""}{c.name}</option>)}
                 </select>
@@ -149,19 +149,19 @@ export function AppointmentForm({
             )}
             {isCouple && (
               <label className="block">
-                <span className="mb-1 block text-xs text-gray-500">付款方（誰付款）<span className="text-red-500">*</span></span>
-                <select value={billingCaseId} onChange={(e) => setPayerCaseId(e.target.value)} className="w-full rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm">
+                <span className="mb-1 block text-xs text-ink-3">付款方（誰付款）<span className="text-st-danger">*</span></span>
+                <select value={billingCaseId} onChange={(e) => setPayerCaseId(e.target.value)} className="w-full rounded-lg border border-st-danger/30 bg-st-danger-bg px-3 py-2 text-sm">
                   <option value={selectedCase!.id}>伴侶案（自費合計）</option>
                   {(selectedCase!.members ?? []).map((m) => (
                     <option key={m.case_id} value={m.case_id}>{m.name}（機構請選此，扣其扣打）</option>
                   ))}
                 </select>
-                <span className="mt-1 block text-xs text-gray-400">機構合療請選某位成員，費用記在他名下、扣他的機構扣打。</span>
+                <span className="mt-1 block text-xs text-ink-3">機構合療請選某位成員，費用記在他名下、扣他的機構扣打。</span>
               </label>
             )}
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">諮商類型</span>
-              <select value={form.session_type} onChange={(e) => sf("session_type", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+              <span className="mb-1 block text-xs text-ink-3">諮商類型</span>
+              <select value={form.session_type} onChange={(e) => sf("session_type", e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm">
                 <option value="in_person">現場</option>
                 <option value="online">線上</option>
                 <option value="outdoor">外出</option>
@@ -169,33 +169,33 @@ export function AppointmentForm({
             </label>
             {form.session_type === "in_person" && (
               <label className="block">
-                <span className="mb-1 block text-xs text-gray-500">診間 <span className="text-red-500">*</span></span>
-                <select required={form.session_type === "in_person"} value={form.room_id} onChange={(e) => sf("room_id", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                <span className="mb-1 block text-xs text-ink-3">診間 <span className="text-st-danger">*</span></span>
+                <select required={form.session_type === "in_person"} value={form.room_id} onChange={(e) => sf("room_id", e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm">
                   <option value="">請選擇</option>
                   {rooms.map((r) => <option key={r.id} value={r.id}>{r.name} ({r.room_code})</option>)}
                 </select>
               </label>
             )}
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">日期 <span className="text-red-500">*</span></span>
-              <input required type="date" value={form.start_date} onChange={(e) => sf("start_date", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <span className="mb-1 block text-xs text-ink-3">日期 <span className="text-st-danger">*</span></span>
+              <input required type="date" value={form.start_date} onChange={(e) => sf("start_date", e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
             </label>
             <div className="grid grid-cols-2 gap-3">
               <label className="block">
-                <span className="mb-1 block text-xs text-gray-500">開始時間</span>
-                <input required type="time" value={form.start_time} onChange={(e) => sf("start_time", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                <span className="mb-1 block text-xs text-ink-3">開始時間</span>
+                <input required type="time" value={form.start_time} onChange={(e) => sf("start_time", e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
               </label>
               <label className="block">
-                <span className="mb-1 block text-xs text-gray-500">結束時間</span>
-                <input required type="time" value={form.end_time} onChange={(e) => sf("end_time", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                <span className="mb-1 block text-xs text-ink-3">結束時間</span>
+                <input required type="time" value={form.end_time} onChange={(e) => sf("end_time", e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
               </label>
             </div>
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">金額 <span className="text-red-500">*</span></span>
-              <input required type="number" value={form.amount} onChange={(e) => sf("amount", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <span className="mb-1 block text-xs text-ink-3">金額 <span className="text-st-danger">*</span></span>
+              <input required type="number" value={form.amount} onChange={(e) => sf("amount", e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
             </label>
             <div>
-              <span className="mb-1 block text-xs text-gray-500">付款方式</span>
+              <span className="mb-1 block text-xs text-ink-3">付款方式</span>
               <div className="flex gap-3 text-sm">
                 <label className="inline-flex items-center gap-1">
                   <input
@@ -217,12 +217,12 @@ export function AppointmentForm({
             </div>
             {form.funding_source === "institution" && (
               <label className="block">
-                <span className="mb-1 block text-xs text-gray-500">機構 Quota <span className="text-red-500">*</span></span>
+                <span className="mb-1 block text-xs text-ink-3">機構 Quota <span className="text-st-danger">*</span></span>
                 <select
                   required
                   value={form.quota_id}
                   onChange={(e) => sf("quota_id", e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm"
                 >
                   <option value="">{availableQuotas.length === 0 ? "該日無可用 Quota" : "請選擇"}</option>
                   {availableQuotas.map((q) => (
@@ -234,8 +234,8 @@ export function AppointmentForm({
               </label>
             )}
             <div className="flex justify-end gap-2 pt-2">
-              <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">取消</button>
-              <button type="submit" disabled={saving} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">{saving ? "儲存中..." : "儲存"}</button>
+              <button type="button" onClick={onClose} className="rounded-lg border border-line-2 px-4 py-2 text-sm hover:bg-surface-2">取消</button>
+              <button type="submit" disabled={saving} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-st-active disabled:opacity-50">{saving ? "儲存中..." : "儲存"}</button>
             </div>
           </form>
         </div>

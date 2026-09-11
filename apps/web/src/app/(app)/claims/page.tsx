@@ -156,7 +156,7 @@ export default function ClaimsPage() {
       <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} guideId="claims" />
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-bold">帳冊管理</h1>
-        <button onClick={() => setHelpOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700">
+        <button onClick={() => setHelpOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-sm text-ink-3 hover:bg-surface-2 hover:text-ink-2">
           <span>ℹ️</span> 說明
         </button>
       </div>
@@ -173,8 +173,8 @@ export default function ClaimsPage() {
             onClick={() => setMode(key)}
             className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
               mode === key
-                ? "bg-primary-600 text-white"
-                : "border border-gray-300 text-gray-600 hover:bg-gray-50"
+                ? "bg-accent text-white"
+                : "border border-line-2 text-ink-2 hover:bg-surface-2"
             }`}
           >
             {label}
@@ -186,7 +186,7 @@ export default function ClaimsPage() {
 
       {mode === "institution" && (
         <div>
-          <div className="mb-4 flex gap-1 border-b border-gray-200">
+          <div className="mb-4 flex gap-1 border-b border-line">
             {(
               [
                 ["batches", "核銷案列表"],
@@ -198,8 +198,8 @@ export default function ClaimsPage() {
                 onClick={() => setInstTab(key)}
                 className={`px-4 py-2 text-sm font-medium transition-colors ${
                   instTab === key
-                    ? "border-b-2 border-primary-600 text-primary-600"
-                    : "text-gray-500 hover:text-gray-700"
+                    ? "border-b-2 border-accent text-accent"
+                    : "text-ink-3 hover:text-ink-2"
                 }`}
               >
                 {label}
@@ -226,16 +226,16 @@ const STATUS_LABELS: Record<string, string> = {
   closed: "已結案",
 };
 const STATUS_COLORS: Record<string, string> = {
-  collecting: "bg-yellow-100 text-yellow-800",
+  collecting: "bg-st-warn-bg text-st-warn",
   ready: "bg-blue-100 text-blue-800",
   submitted: "bg-purple-100 text-purple-800",
-  received: "bg-green-100 text-green-800",
-  closed: "bg-gray-100 text-gray-600",
+  received: "bg-st-done-bg text-st-done",
+  closed: "bg-surface-3 text-ink-2",
 };
 
 function StatusBadge({ status }: { status: string }) {
   return (
-    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[status] ?? "bg-gray-100 text-gray-600"}`}>
+    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[status] ?? "bg-surface-3 text-ink-2"}`}>
       {STATUS_LABELS[status] ?? status}
     </span>
   );
@@ -319,12 +319,12 @@ function SelfPayPaymentModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
       <div className="w-80 rounded-lg bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <h3 className="mb-4 text-base font-semibold">{isBatch ? `批次付款（${recordIds.length} 筆）` : "確認付款"}</h3>
-        <p className="mb-3 text-sm text-gray-600">
+        <p className="mb-3 text-sm text-ink-2">
           合計：<strong>${total.toLocaleString()}</strong>
         </p>
 
         <label className="mb-3 block">
-          <span className="text-xs font-medium text-gray-700">收款日期</span>
+          <span className="text-xs font-medium text-ink-2">收款日期</span>
           <input
             type="date"
             value={paidDate}
@@ -333,12 +333,12 @@ function SelfPayPaymentModal({
             className="mt-1 block w-full rounded border px-2 py-1.5 text-sm"
           />
           {paidDate !== today && (
-            <span className="mt-1 block text-xs text-amber-600">補登：實際收款日 {paidDate}</span>
+            <span className="mt-1 block text-xs text-st-warn">補登：實際收款日 {paidDate}</span>
           )}
         </label>
 
         <fieldset className="mb-3">
-          <legend className="mb-1 text-xs font-medium text-gray-700">付款方式</legend>
+          <legend className="mb-1 text-xs font-medium text-ink-2">付款方式</legend>
           <label className="flex items-center gap-2 text-sm">
             <input type="radio" checked={method === "cash"} onChange={() => setMethod("cash")} />
             現金
@@ -350,7 +350,7 @@ function SelfPayPaymentModal({
         </fieldset>
 
         <label className="mb-3 block">
-          <span className="text-xs font-medium text-gray-700">
+          <span className="text-xs font-medium text-ink-2">
             匯款資訊{method === "cash" ? "（選填）" : "（必填）"}
           </span>
           <input
@@ -364,7 +364,7 @@ function SelfPayPaymentModal({
 
         {isBatch && (
           <fieldset className="mb-4">
-            <legend className="mb-1 text-xs font-medium text-gray-700">收據</legend>
+            <legend className="mb-1 text-xs font-medium text-ink-2">收據</legend>
             <label className="flex items-center gap-2 text-sm">
               <input type="radio" checked={combine} onChange={() => setCombine(true)} />
               合併一張收據
@@ -377,7 +377,7 @@ function SelfPayPaymentModal({
         )}
 
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="rounded px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100">
+          <button onClick={onClose} className="rounded px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-3">
             取消
           </button>
           <button
@@ -486,7 +486,7 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
         <select
           value={statusFilter}
           onChange={(e) => { setStatusFilter(e.target.value as "all" | "unpaid" | "paid"); setExpandedCaseId(null); }}
-          className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm"
+          className="rounded-lg border border-line-2 px-3 py-1.5 text-sm"
         >
           <option value="all">全部狀態</option>
           <option value="unpaid">待付款</option>
@@ -495,9 +495,9 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
       </div>
 
       {loading ? (
-        <div className="py-8 text-center text-gray-400">載入中...</div>
+        <div className="py-8 text-center text-ink-3">載入中...</div>
       ) : filtered.length === 0 ? (
-        <div className="py-8 text-center text-gray-400">
+        <div className="py-8 text-center text-ink-3">
           {statusFilter === "unpaid" ? "沒有待收款的自費帳務 🎉"
             : statusFilter === "paid" ? "尚無已付款的自費帳務"
             : "尚無自費帳務"}
@@ -514,36 +514,36 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
             const caseSelectedTotal = caseSelected.reduce((s, r) => s + r.effective_amount, 0);
 
             return (
-              <div key={caseKey} className="rounded-lg border border-gray-200 overflow-hidden">
+              <div key={caseKey} className="rounded-lg border border-line overflow-hidden">
                 {/* Accordion header */}
                 <button
                   onClick={() => toggleCase(caseKey)}
-                  className="flex w-full items-center justify-between bg-gray-50 px-4 py-3 hover:bg-gray-100 transition-colors"
+                  className="flex w-full items-center justify-between bg-surface-2 px-4 py-3 hover:bg-surface-3 transition-colors"
                 >
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-sm">
                       {caseName}
                       {caseBillingCycle && (
-                        <span className="ml-1 font-normal text-gray-400">（{BILLING_CYCLE_LABEL[caseBillingCycle] ?? caseBillingCycle}）</span>
+                        <span className="ml-1 font-normal text-ink-3">（{BILLING_CYCLE_LABEL[caseBillingCycle] ?? caseBillingCycle}）</span>
                       )}
                     </span>
                     {unpaidRs.length > 0 && (
-                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">
+                      <span className="rounded-full bg-st-warn-bg px-2 py-0.5 text-xs text-st-warn">
                         {unpaidRs.length} 筆待收
                       </span>
                     )}
                     {paidRs.length > 0 && (
-                      <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700">
+                      <span className="rounded-full bg-st-done-bg px-2 py-0.5 text-xs text-st-done">
                         {paidRs.length} 筆已付
                       </span>
                     )}
                   </div>
                   <div className="flex items-center gap-3">
                     {unpaidTotal > 0
-                      ? <span className="text-sm text-amber-600">待收 ${unpaidTotal.toLocaleString()}</span>
-                      : <span className="text-sm text-green-600">全部結清 ✓</span>
+                      ? <span className="text-sm text-st-warn">待收 ${unpaidTotal.toLocaleString()}</span>
+                      : <span className="text-sm text-st-done">全部結清 ✓</span>
                     }
-                    <span className={`text-gray-400 transition-transform text-xs ${isOpen ? "rotate-180" : ""}`}>▼</span>
+                    <span className={`text-ink-3 transition-transform text-xs ${isOpen ? "rotate-180" : ""}`}>▼</span>
                   </div>
                 </button>
 
@@ -552,7 +552,7 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
                   <>
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="border-b border-t text-left text-xs text-gray-500 bg-white">
+                        <tr className="border-b border-t text-left text-xs text-ink-3 bg-white">
                           {canEdit && <th className="px-3 py-2 w-8"></th>}
                           <th className="px-3 py-2">收據編號</th>
                           <th className="px-3 py-2">日期</th>
@@ -567,7 +567,7 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
                         {rs.map((r) => {
                           const paid = isPaid(r);
                           return (
-                          <tr key={r.id} className={`border-b hover:bg-gray-50 ${paid ? "bg-green-50/40" : ""}`}>
+                          <tr key={r.id} className={`border-b hover:bg-surface-2 ${paid ? "bg-st-done-bg/40" : ""}`}>
                             {canEdit && (
                               <td className="px-3 py-2">
                                 {!paid && (
@@ -582,13 +582,13 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
                             <td className="px-3 py-2 text-right">
                               ${r.effective_amount.toLocaleString()}
                               {r.discount_amount > 0 && (
-                                <span className="ml-1 text-xs text-amber-600">(優待 ${r.discount_amount.toLocaleString()})</span>
+                                <span className="ml-1 text-xs text-st-warn">(優待 ${r.discount_amount.toLocaleString()})</span>
                               )}
                             </td>
                             <td className="px-3 py-2">
                               {paid
-                                ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700">已付款</span>
-                                : <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">待付款</span>
+                                ? <span className="rounded-full bg-st-done-bg px-2 py-0.5 text-xs text-st-done">已付款</span>
+                                : <span className="rounded-full bg-st-warn-bg px-2 py-0.5 text-xs text-st-warn">待付款</span>
                               }
                             </td>
                             <td className="px-3 py-2">
@@ -603,7 +603,7 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
                               {paid && r.claim_batch_id && (
                                 <button
                                   onClick={() => setReceiptBatchId(r.claim_batch_id!)}
-                                  className="rounded border border-primary-300 px-2 py-0.5 text-xs text-primary-600 hover:bg-primary-50"
+                                  className="rounded border border-accent/40 px-2 py-0.5 text-xs text-accent hover:bg-accent-soft"
                                 >
                                   整體收據
                                 </button>
@@ -611,7 +611,7 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
                               {paid && !r.claim_batch_id && (
                                 <button
                                   onClick={() => setReceiptRecordId(r.id)}
-                                  className="rounded border border-primary-300 px-2 py-0.5 text-xs text-primary-600 hover:bg-primary-50"
+                                  className="rounded border border-accent/40 px-2 py-0.5 text-xs text-accent hover:bg-accent-soft"
                                 >
                                   開立收據
                                 </button>
@@ -624,8 +624,8 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
                     </table>
                     {/* Per-case payment footer */}
                     {canEdit && caseSelected.length > 0 && (
-                      <div className="flex items-center justify-end gap-2 border-t bg-gray-50 px-4 py-2">
-                        <span className="text-xs text-gray-500">
+                      <div className="flex items-center justify-end gap-2 border-t bg-surface-2 px-4 py-2">
+                        <span className="text-xs text-ink-3">
                           已選 {caseSelected.length} 筆 · ${caseSelectedTotal.toLocaleString()}
                         </span>
                         <button
@@ -680,7 +680,7 @@ function BatchListTab({ token, userRole }: { token: string; userRole: string }) 
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded border border-gray-300 px-3 py-1.5 text-sm"
+          className="rounded border border-line-2 px-3 py-1.5 text-sm"
         >
           <option value="">全部狀態</option>
           {Object.entries(STATUS_LABELS).map(([k, v]) => (
@@ -690,7 +690,7 @@ function BatchListTab({ token, userRole }: { token: string; userRole: string }) 
         {canEdit && (
           <button
             onClick={() => setShowCreate(true)}
-            className="ml-auto rounded bg-primary-600 px-4 py-1.5 text-sm text-white hover:bg-primary-700"
+            className="ml-auto rounded bg-accent px-4 py-1.5 text-sm text-white hover:bg-st-active"
           >
             + 建立核銷案
           </button>
@@ -706,14 +706,14 @@ function BatchListTab({ token, userRole }: { token: string; userRole: string }) 
       )}
 
       {loading ? (
-        <div className="py-8 text-center text-gray-400">載入中...</div>
+        <div className="py-8 text-center text-ink-3">載入中...</div>
       ) : batches.length === 0 ? (
-        <div className="py-8 text-center text-gray-400">目前沒有機構核銷案</div>
+        <div className="py-8 text-center text-ink-3">目前沒有機構核銷案</div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b bg-gray-50 text-left text-xs text-gray-500">
+              <tr className="border-b bg-surface-2 text-left text-xs text-ink-3">
                 <th className="px-3 py-2">編號</th>
                 <th className="px-3 py-2">機構</th>
                 <th className="px-3 py-2">期間</th>
@@ -849,19 +849,19 @@ function BatchRow({
           </td>
         </tr>
       )}
-      <tr className="border-b hover:bg-gray-50 cursor-pointer" onClick={onToggle}>
+      <tr className="border-b hover:bg-surface-2 cursor-pointer" onClick={onToggle}>
         <td className="px-3 py-2 font-mono text-xs">{b.batch_number}</td>
         <td className="px-3 py-2">{b.institution_name}</td>
         <td className="px-3 py-2 text-xs">{b.period_start ?? ""} ~ {b.period_end ?? ""}</td>
         <td className="px-3 py-2 text-right">${b.total_amount.toLocaleString()}</td>
         <td className="px-3 py-2 text-xs">
           {b.docs_required === false ? (
-            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-500">免繳資料</span>
+            <span className="rounded-full bg-surface-3 px-2 py-0.5 text-ink-3">免繳資料</span>
           ) : (
             <>
               {b.confirmed_count}/{b.record_count}
               {b.record_count > 0 && b.confirmed_count === b.record_count && (
-                <span className="ml-1 text-green-600">&#10003;</span>
+                <span className="ml-1 text-st-done">&#10003;</span>
               )}
             </>
           )}
@@ -871,18 +871,18 @@ function BatchRow({
           <div className="flex flex-wrap gap-1">
             {canEdit && !["submitted", "received", "closed"].includes(b.status) && (
               b.docs_waived_at ? (
-                <button onClick={() => transition("unwaive-docs")} className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-100">
+                <button onClick={() => transition("unwaive-docs")} className="rounded border border-line-2 px-2 py-0.5 text-xs hover:bg-surface-3">
                   恢復需繳資料
                 </button>
               ) : (
-                <button onClick={() => transition("waive-docs")} className="rounded border border-amber-300 px-2 py-0.5 text-xs text-amber-700 hover:bg-amber-50">
+                <button onClick={() => transition("waive-docs")} className="rounded border border-st-warn/30 px-2 py-0.5 text-xs text-st-warn hover:bg-st-warn-bg">
                   豁免本案資料
                 </button>
               )
             )}
             {canEdit && (b.status === "collecting" || b.status === "ready") && b.type === "institution" && b.docs_required && (
               b.record_count - b.admin_verified_count > 0 && (
-                <button onClick={verifyAll} className="rounded border border-emerald-300 px-2 py-0.5 text-xs text-emerald-700 hover:bg-emerald-50" title="一鍵將整批紀錄標為已行政核對">
+                <button onClick={verifyAll} className="rounded border border-st-done/30 px-2 py-0.5 text-xs text-st-done hover:bg-st-done-bg" title="一鍵將整批紀錄標為已行政核對">
                   全部核對
                 </button>
               )
@@ -900,14 +900,14 @@ function BatchRow({
             {b.status === "closed" && (
               <button
                 onClick={() => downloadPdf(`/claim-batches/${b.id}/claim-form`, token, `claim-${b.batch_number}.pdf`)}
-                className="rounded border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-100"
+                className="rounded border border-line-2 px-2 py-0.5 text-xs hover:bg-surface-3"
               >
                 請款單
               </button>
             )}
             <button
               onClick={(e) => { e.stopPropagation(); setShowReceiptModal(true); }}
-              className="rounded border border-primary-300 px-2 py-0.5 text-xs text-primary-600 hover:bg-primary-50"
+              className="rounded border border-accent/40 px-2 py-0.5 text-xs text-accent hover:bg-accent-soft"
             >
               開立收據
             </button>
@@ -916,7 +916,7 @@ function BatchRow({
       </tr>
       {expanded && (
         <tr>
-          <td colSpan={7} className="border-b bg-gray-50 px-4 py-3">
+          <td colSpan={7} className="border-b bg-surface-2 px-4 py-3">
             {canEdit && (
               <div className="mb-3">
                 {editRef ? (
@@ -947,11 +947,11 @@ function BatchRow({
                         className="ml-1 rounded border px-2 py-1 text-xs"
                       />
                     </label>
-                    <button onClick={saveInfo} className="rounded bg-primary-600 px-3 py-1 text-xs text-white">儲存</button>
-                    <button onClick={() => setEditRef(false)} className="text-xs text-gray-500">取消</button>
+                    <button onClick={saveInfo} className="rounded bg-accent px-3 py-1 text-xs text-white">儲存</button>
+                    <button onClick={() => setEditRef(false)} className="text-xs text-ink-3">取消</button>
                   </div>
                 ) : (
-                  <button onClick={() => setEditRef(true)} className="text-xs text-primary-600 hover:underline">
+                  <button onClick={() => setEditRef(true)} className="text-xs text-accent hover:underline">
                     編輯付款資訊 {b.external_ref ? `(${b.external_ref})` : ""}
                     {b.item_name ? `｜服務項目：${b.item_name}` : ""}
                   </button>
@@ -960,11 +960,11 @@ function BatchRow({
             )}
 
             {records.length === 0 ? (
-              <p className="text-xs text-gray-400">無紀錄</p>
+              <p className="text-xs text-ink-3">無紀錄</p>
             ) : (
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-left text-gray-500">
+                  <tr className="text-left text-ink-3">
                     <th className="px-2 py-1">日期</th>
                     <th className="px-2 py-1">個案</th>
                     <th className="px-2 py-1">心理師</th>
@@ -977,7 +977,7 @@ function BatchRow({
                 </thead>
                 <tbody>
                   {records.map((r) => (
-                    <tr key={r.id} className="border-t border-gray-200">
+                    <tr key={r.id} className="border-t border-line">
                       <td className="px-2 py-1">{r.session_date}</td>
                       <td className="px-2 py-1">{r.case_name}</td>
                       <td className="px-2 py-1">{r.therapist_name}</td>
@@ -986,27 +986,27 @@ function BatchRow({
                       <td className="px-2 py-1">{r.payment_status}</td>
                       <td className="px-2 py-1">
                         {r.therapist_doc_submitted_at ? (
-                          <span className="text-green-600">&#10003; 已確認</span>
+                          <span className="text-st-done">&#10003; 已確認</span>
                         ) : (
-                          <span className="text-amber-600">待確認</span>
+                          <span className="text-st-warn">待確認</span>
                         )}
                       </td>
                       <td className="px-2 py-1">
                         {r.admin_verified_at ? (
-                          <span className="text-green-700">&#10003; 已核對</span>
+                          <span className="text-st-done">&#10003; 已核對</span>
                         ) : r.therapist_doc_submitted_at ? (
                           canEdit ? (
                             <button
                               onClick={() => verifyRecord(r.id)}
-                              className="rounded border border-emerald-300 px-1.5 py-0.5 text-[10px] text-emerald-700 hover:bg-emerald-50"
+                              className="rounded border border-st-done/30 px-1.5 py-0.5 text-[10px] text-st-done hover:bg-st-done-bg"
                             >
                               核對
                             </button>
                           ) : (
-                            <span className="text-amber-600">待核對</span>
+                            <span className="text-st-warn">待核對</span>
                           )
                         ) : (
-                          <span className="text-gray-400">—</span>
+                          <span className="text-ink-3">—</span>
                         )}
                       </td>
                     </tr>
@@ -1102,7 +1102,7 @@ function CreateBatchModal({
       <div className="w-full max-w-3xl rounded-lg bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-bold">建立機構核銷案</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+          <button onClick={onClose} className="text-ink-3 hover:text-ink-2 text-xl">&times;</button>
         </div>
 
         {step === 1 && (
@@ -1139,7 +1139,7 @@ function CreateBatchModal({
               <button
                 onClick={loadUnassigned}
                 disabled={!selectedInstId}
-                className="rounded bg-primary-600 px-4 py-2 text-sm text-white hover:bg-primary-700 disabled:opacity-50"
+                className="rounded bg-accent px-4 py-2 text-sm text-white hover:bg-st-active disabled:opacity-50"
               >
                 下一步：選擇紀錄
               </button>
@@ -1149,17 +1149,17 @@ function CreateBatchModal({
 
         {step === 2 && (
           <div className="space-y-4">
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-ink-3">
               找到 {unassigned.length} 筆未歸屬紀錄，已選 {selectedIds.size} 筆，合計 ${totalAmount.toLocaleString()}
             </p>
 
             {unassigned.length === 0 ? (
-              <p className="py-4 text-center text-gray-400">沒有可用的未歸屬紀錄</p>
+              <p className="py-4 text-center text-ink-3">沒有可用的未歸屬紀錄</p>
             ) : (
               <div className="max-h-64 overflow-y-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b bg-gray-50 text-left text-xs text-gray-500">
+                    <tr className="border-b bg-surface-2 text-left text-xs text-ink-3">
                       <th className="px-2 py-1">
                         <input type="checkbox" checked={selectedIds.size === unassigned.length} onChange={toggleAll} />
                       </th>
@@ -1173,7 +1173,7 @@ function CreateBatchModal({
                   </thead>
                   <tbody>
                     {unassigned.map((r) => (
-                      <tr key={r.id} className="border-b hover:bg-gray-50">
+                      <tr key={r.id} className="border-b hover:bg-surface-2">
                         <td className="px-2 py-1">
                           <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleId(r.id)} />
                         </td>
@@ -1184,9 +1184,9 @@ function CreateBatchModal({
                         <td className="px-2 py-1 text-right">${r.amount.toLocaleString()}</td>
                         <td className="px-2 py-1">
                           {r.therapist_doc_submitted_at ? (
-                            <span className="text-green-600 text-xs">&#10003;</span>
+                            <span className="text-st-done text-xs">&#10003;</span>
                           ) : (
-                            <span className="text-amber-500 text-xs">-</span>
+                            <span className="text-st-warn text-xs">-</span>
                           )}
                         </td>
                       </tr>
@@ -1201,7 +1201,7 @@ function CreateBatchModal({
               <button
                 onClick={handleCreate}
                 disabled={selectedIds.size === 0 || submitting}
-                className="rounded bg-primary-600 px-4 py-2 text-sm text-white hover:bg-primary-700 disabled:opacity-50"
+                className="rounded bg-accent px-4 py-2 text-sm text-white hover:bg-st-active disabled:opacity-50"
               >
                 {submitting ? "建立中..." : `建立核銷案 (${selectedIds.size} 筆)`}
               </button>
@@ -1263,19 +1263,19 @@ function DocConfirmTab({ token, userRole }: { token: string; userRole: string })
 
   return (
     <div>
-      <p className="mb-4 text-sm text-gray-500">
+      <p className="mb-4 text-sm text-ink-3">
         以下是您負責且屬於核銷案、尚未確認文件的諮商紀錄。確認後核銷案將自動檢查是否所有紀錄都已確認。
       </p>
 
       {loading ? (
-        <div className="py-8 text-center text-gray-400">載入中...</div>
+        <div className="py-8 text-center text-ink-3">載入中...</div>
       ) : records.length === 0 ? (
-        <div className="py-8 text-center text-gray-400">目前沒有待確認的紀錄</div>
+        <div className="py-8 text-center text-ink-3">目前沒有待確認的紀錄</div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b bg-gray-50 text-left text-xs text-gray-500">
+              <tr className="border-b bg-surface-2 text-left text-xs text-ink-3">
                 <th className="px-3 py-2">日期</th>
                 <th className="px-3 py-2">個案</th>
                 <th className="px-3 py-2">類型</th>
@@ -1286,7 +1286,7 @@ function DocConfirmTab({ token, userRole }: { token: string; userRole: string })
             </thead>
             <tbody>
               {records.map((r: any) => (
-                <tr key={r.id} className="border-b hover:bg-gray-50">
+                <tr key={r.id} className="border-b hover:bg-surface-2">
                   <td className="px-3 py-2">{r.session_date}</td>
                   <td className="px-3 py-2">{r.case_name}</td>
                   <td className="px-3 py-2">{SESSION_TYPE_LABELS[r.session_type] ?? r.session_type}</td>
@@ -1309,11 +1309,11 @@ function DocConfirmTab({ token, userRole }: { token: string; userRole: string })
 
       {canCancel && confirmed.length > 0 && (
         <div className="mt-8">
-          <p className="mb-3 text-sm font-medium text-gray-600">已確認文件（可撤回）</p>
+          <p className="mb-3 text-sm font-medium text-ink-2">已確認文件（可撤回）</p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b bg-gray-50 text-left text-xs text-gray-500">
+                <tr className="border-b bg-surface-2 text-left text-xs text-ink-3">
                   <th className="px-3 py-2">日期</th>
                   <th className="px-3 py-2">個案</th>
                   <th className="px-3 py-2">類型</th>
@@ -1324,7 +1324,7 @@ function DocConfirmTab({ token, userRole }: { token: string; userRole: string })
               </thead>
               <tbody>
                 {confirmed.map((r: any) => (
-                  <tr key={r.id} className="border-b hover:bg-gray-50">
+                  <tr key={r.id} className="border-b hover:bg-surface-2">
                     <td className="px-3 py-2">{r.session_date}</td>
                     <td className="px-3 py-2">{r.case_name}</td>
                     <td className="px-3 py-2">{SESSION_TYPE_LABELS[r.session_type] ?? r.session_type}</td>
@@ -1333,7 +1333,7 @@ function DocConfirmTab({ token, userRole }: { token: string; userRole: string })
                     <td className="px-3 py-2">
                       <button
                         onClick={() => cancelDoc(r.id)}
-                        className="rounded border border-red-300 px-3 py-1 text-xs text-red-600 hover:bg-red-50"
+                        className="rounded border border-st-danger/30 px-3 py-1 text-xs text-st-danger hover:bg-st-danger-bg"
                       >
                         撤回確認
                       </button>

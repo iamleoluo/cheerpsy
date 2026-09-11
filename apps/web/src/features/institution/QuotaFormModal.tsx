@@ -76,16 +76,16 @@ export function QuotaFormModal({
       <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
         <h3 className="mb-4 text-lg font-bold">{isEdit ? "編輯 Quota" : "新增機構額度"}</h3>
 
-        {error && <div className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+        {error && <div className="mb-3 rounded bg-st-danger-bg px-3 py-2 text-sm text-st-danger">{error}</div>}
 
         <div className="space-y-3 text-sm">
           <div>
-            <label className="mb-1 block text-xs text-gray-500">個案</label>
+            <label className="mb-1 block text-xs text-ink-3">個案</label>
             <select
               value={caseId}
               onChange={(e) => setCaseId(e.target.value ? Number(e.target.value) : "")}
               disabled={isEdit}
-              className="w-full rounded border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+              className="w-full rounded border border-line-2 px-3 py-2 disabled:bg-surface-3"
             >
               <option value="">— 選擇個案 —</option>
               {cases.map((c) => (
@@ -94,12 +94,12 @@ export function QuotaFormModal({
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs text-gray-500">機構</label>
+            <label className="mb-1 block text-xs text-ink-3">機構</label>
             <select
               value={institutionId}
               onChange={(e) => setInstitutionId(e.target.value ? Number(e.target.value) : "")}
               disabled={isEdit}
-              className="w-full rounded border border-gray-300 px-3 py-2 disabled:bg-gray-100"
+              className="w-full rounded border border-line-2 px-3 py-2 disabled:bg-surface-3"
             >
               <option value="">— 選擇機構 —</option>
               {institutions.filter((i) => i.is_active).map((i) => (
@@ -108,42 +108,42 @@ export function QuotaFormModal({
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs text-gray-500">總次數</label>
+            <label className="mb-1 block text-xs text-ink-3">總次數</label>
             <input
               type="number"
               min={1}
               value={totalCount}
               onChange={(e) => setTotalCount(Number(e.target.value))}
-              className="w-full rounded border border-gray-300 px-3 py-2"
+              className="w-full rounded border border-line-2 px-3 py-2"
             />
           </div>
           <div className="flex gap-3">
             <div className="flex-1">
-              <label className="mb-1 block text-xs text-gray-500">有效起日（留空＝無下限）</label>
+              <label className="mb-1 block text-xs text-ink-3">有效起日（留空＝無下限）</label>
               <input
                 type="date"
                 value={validFrom}
                 onChange={(e) => setValidFrom(e.target.value)}
-                className="w-full rounded border border-gray-300 px-3 py-2"
+                className="w-full rounded border border-line-2 px-3 py-2"
               />
             </div>
             <div className="flex-1">
-              <label className="mb-1 block text-xs text-gray-500">有效迄日（留空＝永久）</label>
+              <label className="mb-1 block text-xs text-ink-3">有效迄日（留空＝永久）</label>
               <input
                 type="date"
                 value={validUntil}
                 onChange={(e) => setValidUntil(e.target.value)}
-                className="w-full rounded border border-gray-300 px-3 py-2"
+                className="w-full rounded border border-line-2 px-3 py-2"
               />
             </div>
           </div>
           <div>
-            <label className="mb-1 block text-xs text-gray-500">備註</label>
+            <label className="mb-1 block text-xs text-ink-3">備註</label>
             <input
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="選填"
-              className="w-full rounded border border-gray-300 px-3 py-2"
+              className="w-full rounded border border-line-2 px-3 py-2"
             />
           </div>
         </div>
@@ -151,14 +151,14 @@ export function QuotaFormModal({
         <div className="mt-5 flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            className="rounded border border-line-2 px-4 py-2 text-sm text-ink-2 hover:bg-surface-2"
           >
             取消
           </button>
           <button
             onClick={submit}
             disabled={submitting}
-            className="rounded bg-primary-600 px-4 py-2 text-sm text-white hover:bg-primary-700 disabled:opacity-50"
+            className="rounded bg-accent px-4 py-2 text-sm text-white hover:bg-st-active disabled:opacity-50"
           >
             {submitting ? "儲存中..." : "儲存"}
           </button>

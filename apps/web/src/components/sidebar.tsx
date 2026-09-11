@@ -129,11 +129,11 @@ export function Sidebar({ userName, userRole }: { userName: string; userRole: st
   const shellLabel = userRole === "therapist" ? "心理師端" : "行政端";
 
   return (
-    <aside className="flex h-screen w-60 flex-col border-r border-gray-200 bg-white">
-      <div className="border-b border-gray-200 px-4 py-5">
-        <h1 className="text-lg font-bold text-primary-700">CheerPsy</h1>
-        <p className="mt-1 text-sm text-gray-500">慈恩心理治療所</p>
-        <span className="mt-1 inline-block rounded bg-primary-50 px-1.5 py-0.5 text-[10px] font-medium text-primary-600">
+    <aside className="flex h-screen w-60 flex-col border-r border-line bg-white">
+      <div className="border-b border-line px-4 py-5">
+        <h1 className="text-lg font-bold text-accent">CheerPsy</h1>
+        <p className="mt-1 text-sm text-ink-3">慈恩心理治療所</p>
+        <span className="mt-1 inline-block rounded bg-accent-soft px-1.5 py-0.5 text-[10px] font-medium text-accent">
           V2 · {shellLabel}
         </span>
       </div>
@@ -146,7 +146,7 @@ export function Sidebar({ userName, userRole }: { userName: string; userRole: st
           if (visibleItems.length === 0) return null;
           return (
             <div key={group.section} className="mb-3">
-              <div className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wide text-gray-400">
+              <div className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wide text-ink-3">
                 {group.section}
               </div>
               {visibleItems.map((item) => {
@@ -157,8 +157,8 @@ export function Sidebar({ userName, userRole }: { userName: string; userRole: st
                     href={item.href}
                     className={`mb-0.5 flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${
                       active
-                        ? "bg-primary-50 font-medium text-primary-700"
-                        : "text-gray-600 hover:bg-gray-100"
+                        ? "bg-accent-soft font-medium text-accent"
+                        : "text-ink-2 hover:bg-surface-3"
                     }`}
                   >
                     <span>{item.icon}</span>
@@ -167,8 +167,8 @@ export function Sidebar({ userName, userRole }: { userName: string; userRole: st
                       <span
                         className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
                           item.badge === "NEW"
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-amber-100 text-amber-700"
+                            ? "bg-st-done-bg text-st-done"
+                            : "bg-st-warn-bg text-st-warn"
                         }`}
                       >
                         {item.badge}
@@ -182,15 +182,15 @@ export function Sidebar({ userName, userRole }: { userName: string; userRole: st
         })}
       </nav>
 
-      <div className="border-t border-gray-200 px-4 py-3">
+      <div className="border-t border-line px-4 py-3">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-medium">{userName}</p>
-            <p className="text-xs text-gray-500">{roleLabel[userRole] ?? userRole}</p>
+            <p className="text-xs text-ink-3">{roleLabel[userRole] ?? userRole}</p>
           </div>
           <button
             onClick={() => signOut({ callbackUrl: "/login" })}
-            className="rounded-lg px-2 py-1 text-xs text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            className="rounded-lg px-2 py-1 text-xs text-ink-3 hover:bg-surface-3 hover:text-ink-2"
             title="登出"
           >
             登出

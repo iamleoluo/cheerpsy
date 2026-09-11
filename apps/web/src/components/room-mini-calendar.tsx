@@ -98,8 +98,8 @@ export default function RoomMiniCalendar({
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-700">{roomName}</h3>
-        {loading && <span className="text-xs text-gray-400">載入中...</span>}
+        <h3 className="text-sm font-semibold text-ink-2">{roomName}</h3>
+        {loading && <span className="text-xs text-ink-3">載入中...</span>}
       </div>
       <FullCalendar
         ref={calendarRef}

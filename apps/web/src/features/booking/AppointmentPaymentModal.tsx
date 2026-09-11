@@ -75,11 +75,11 @@ export function AppointmentPaymentModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
       <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
         <h3 className="mb-4 text-lg font-bold">編輯付款方式</h3>
-        <p className="mb-3 text-xs text-gray-500">
+        <p className="mb-3 text-xs text-ink-3">
           預約 {appointment.appointment_number} · {apptDate}
         </p>
 
-        {error && <div className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+        {error && <div className="mb-3 rounded bg-st-danger-bg px-3 py-2 text-sm text-st-danger">{error}</div>}
 
         <div className="space-y-3 text-sm">
           <div className="flex gap-3">
@@ -103,11 +103,11 @@ export function AppointmentPaymentModal({
 
           {fundingSource === "institution" && (
             <div>
-              <label className="mb-1 block text-xs text-gray-500">機構 Quota</label>
+              <label className="mb-1 block text-xs text-ink-3">機構 Quota</label>
               <select
                 value={quotaId}
                 onChange={(e) => setQuotaId(e.target.value)}
-                className="w-full rounded border border-gray-300 px-3 py-2"
+                className="w-full rounded border border-line-2 px-3 py-2"
               >
                 <option value="">{availableQuotas.length === 0 ? "該日無可用 Quota" : "請選擇"}</option>
                 {availableQuotas.map((q) => (
@@ -121,11 +121,11 @@ export function AppointmentPaymentModal({
         </div>
 
         <div className="mt-5 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">取消</button>
+          <button onClick={onClose} className="rounded border border-line-2 px-4 py-2 text-sm text-ink-2 hover:bg-surface-2">取消</button>
           <button
             onClick={submit}
             disabled={submitting}
-            className="rounded bg-primary-600 px-4 py-2 text-sm text-white hover:bg-primary-700 disabled:opacity-50"
+            className="rounded bg-accent px-4 py-2 text-sm text-white hover:bg-st-active disabled:opacity-50"
           >
             {submitting ? "儲存中..." : "儲存"}
           </button>

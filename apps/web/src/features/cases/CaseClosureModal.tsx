@@ -71,7 +71,7 @@ export function CaseClosureModal({
         </h3>
 
         {isClose ? (
-          <div className="mb-4 rounded bg-red-50 px-3 py-2 text-xs text-red-700">
+          <div className="mb-4 rounded bg-st-danger-bg px-3 py-2 text-xs text-st-danger">
             <p className="mb-1 font-semibold">結案後將執行：</p>
             <ul className="list-disc pl-4 space-y-0.5">
               <li>個案標記為結案，從預約／個案名單預設隱藏</li>
@@ -81,34 +81,34 @@ export function CaseClosureModal({
             <p className="mt-2">所有過往資料完整保留，可隨時復案恢復。請重新輸入密碼確認。</p>
           </div>
         ) : (
-          <div className="mb-4 rounded bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+          <div className="mb-4 rounded bg-st-done-bg px-3 py-2 text-xs text-st-done">
             <p>復案後個案恢復為「進行中」，可重新編輯與建立新預約。</p>
             <p className="mt-1">已取消的舊預約與已歸零的額度不會自動還原。請重新輸入密碼確認。</p>
           </div>
         )}
 
-        {error && <div className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
+        {error && <div className="mb-3 rounded bg-st-danger-bg px-3 py-2 text-sm text-st-danger">{error}</div>}
 
         <div className="space-y-3 text-sm">
           <div>
-            <label className="mb-1 block text-xs text-gray-500">您的登入密碼</label>
+            <label className="mb-1 block text-xs text-ink-3">您的登入密碼</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoFocus
-              className="w-full rounded border border-gray-300 px-3 py-2"
+              className="w-full rounded border border-line-2 px-3 py-2"
             />
           </div>
           {isClose && (
             <div>
-              <label className="mb-1 block text-xs text-gray-500">結案原因（選填）</label>
+              <label className="mb-1 block text-xs text-ink-3">結案原因（選填）</label>
               <textarea
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 rows={2}
                 placeholder="例：流失、長期未派案"
-                className="w-full rounded border border-gray-300 px-3 py-2"
+                className="w-full rounded border border-line-2 px-3 py-2"
               />
             </div>
           )}
@@ -117,7 +117,7 @@ export function CaseClosureModal({
         <div className="mt-5 flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            className="rounded border border-line-2 px-4 py-2 text-sm text-ink-2 hover:bg-surface-2"
           >
             取消
           </button>

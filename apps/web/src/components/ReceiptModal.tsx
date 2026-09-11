@@ -151,13 +151,13 @@ export default function ReceiptModal({ token, type, sourceId, onClose }: Receipt
         <h3 className="mb-4 text-base font-semibold">開立收據</h3>
 
         {loading ? (
-          <div className="py-8 text-center text-sm text-gray-400">載入中...</div>
+          <div className="py-8 text-center text-sm text-ink-3">載入中...</div>
         ) : (
           <div className="space-y-3">
             {/* 收據編號 */}
             <div className="flex gap-3">
               <label className="flex-1">
-                <span className="text-xs font-medium text-gray-700">收據編號</span>
+                <span className="text-xs font-medium text-ink-2">收據編號</span>
                 <input
                   type="text"
                   value={receiptNumber}
@@ -166,7 +166,7 @@ export default function ReceiptModal({ token, type, sourceId, onClose }: Receipt
                 />
               </label>
               <label className="w-36">
-                <span className="text-xs font-medium text-gray-700">開立日期</span>
+                <span className="text-xs font-medium text-ink-2">開立日期</span>
                 <input
                   type="text"
                   value={issueDate}
@@ -179,7 +179,7 @@ export default function ReceiptModal({ token, type, sourceId, onClose }: Receipt
 
             {/* 姓名/單位 */}
             <label className="block">
-              <span className="text-xs font-medium text-gray-700">姓名 / 單位</span>
+              <span className="text-xs font-medium text-ink-2">姓名 / 單位</span>
               <input
                 type="text"
                 value={payee}
@@ -191,12 +191,12 @@ export default function ReceiptModal({ token, type, sourceId, onClose }: Receipt
 
             {/* 統一編號（可開關） */}
             <div>
-              <label className="flex items-center gap-2 text-xs font-medium text-gray-700">
+              <label className="flex items-center gap-2 text-xs font-medium text-ink-2">
                 <input
                   type="checkbox"
                   checked={showTaxId}
                   onChange={(e) => setShowTaxId(e.target.checked)}
-                  className="accent-primary-600"
+                  className="accent-[hsl(var(--accent))]"
                 />
                 加入統一編號
               </label>
@@ -216,26 +216,26 @@ export default function ReceiptModal({ token, type, sourceId, onClose }: Receipt
             {type !== "self_pay_batch" ? (
               <div className="flex gap-3">
                 <div className="flex-1">
-                  <p className="text-xs font-medium text-gray-700">收費項目</p>
-                  <p className="mt-1 rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-sm">{feeCat}</p>
+                  <p className="text-xs font-medium text-ink-2">收費項目</p>
+                  <p className="mt-1 rounded border border-line bg-surface-2 px-2 py-1.5 text-sm">{feeCat}</p>
                 </div>
                 <div className="w-28">
-                  <p className="text-xs font-medium text-gray-700">{qtyLabel}</p>
-                  <p className="mt-1 rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-sm">{qty}</p>
+                  <p className="text-xs font-medium text-ink-2">{qtyLabel}</p>
+                  <p className="mt-1 rounded border border-line bg-surface-2 px-2 py-1.5 text-sm">{qty}</p>
                 </div>
                 <div className="w-28">
-                  <p className="text-xs font-medium text-gray-700">總計</p>
-                  <p className="mt-1 rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-sm font-medium">
+                  <p className="text-xs font-medium text-ink-2">總計</p>
+                  <p className="mt-1 rounded border border-line bg-surface-2 px-2 py-1.5 text-sm font-medium">
                     ${total.toLocaleString()}
                   </p>
                 </div>
               </div>
             ) : (
               <div>
-                <p className="text-xs font-medium text-gray-700 mb-1">明細清單</p>
-                <table className="w-full text-xs border border-gray-200 rounded">
+                <p className="text-xs font-medium text-ink-2 mb-1">明細清單</p>
+                <table className="w-full text-xs border border-line rounded">
                   <thead>
-                    <tr className="bg-gray-50 text-gray-500">
+                    <tr className="bg-surface-2 text-ink-3">
                       <th className="px-2 py-1 text-left">日期</th>
                       <th className="px-2 py-1 text-left">項目</th>
                       <th className="px-2 py-1 text-left">收據編號</th>
@@ -244,14 +244,14 @@ export default function ReceiptModal({ token, type, sourceId, onClose }: Receipt
                   </thead>
                   <tbody>
                     {items.map((item, i) => (
-                      <tr key={i} className="border-t border-gray-100">
+                      <tr key={i} className="border-t border-line">
                         <td className="px-2 py-1">{item.date}</td>
                         <td className="px-2 py-1">{item.name}</td>
                         <td className="px-2 py-1 font-mono">{item.receipt_no}</td>
                         <td className="px-2 py-1 text-right">${item.amount.toLocaleString()}</td>
                       </tr>
                     ))}
-                    <tr className="border-t border-gray-300 font-medium bg-gray-50">
+                    <tr className="border-t border-line-2 font-medium bg-surface-2">
                       <td colSpan={3} className="px-2 py-1">合計 {items.length} 筆</td>
                       <td className="px-2 py-1 text-right">${total.toLocaleString()}</td>
                     </tr>
@@ -262,7 +262,7 @@ export default function ReceiptModal({ token, type, sourceId, onClose }: Receipt
 
             {/* 備註 */}
             <label className="block">
-              <span className="text-xs font-medium text-gray-700">備註（自動帶入，可修改）</span>
+              <span className="text-xs font-medium text-ink-2">備註（自動帶入，可修改）</span>
               <textarea
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
@@ -273,19 +273,19 @@ export default function ReceiptModal({ token, type, sourceId, onClose }: Receipt
           </div>
         )}
 
-        {error && <p className="mt-3 text-xs text-red-500">{error}</p>}
+        {error && <p className="mt-3 text-xs text-st-danger">{error}</p>}
 
         <div className="mt-5 flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="rounded px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
+            className="rounded px-3 py-1.5 text-sm text-ink-2 hover:bg-surface-3"
           >
             取消
           </button>
           <button
             onClick={submit}
             disabled={loading || submitting}
-            className="rounded bg-primary-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+            className="rounded bg-accent px-4 py-1.5 text-sm font-medium text-white hover:bg-st-active disabled:opacity-50"
           >
             {submitting ? "產生中..." : "確認開立 PDF"}
           </button>

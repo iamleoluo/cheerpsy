@@ -103,26 +103,26 @@ export default function SchedPage() {
       <h1 className="mb-4 text-2xl font-bold">我的班表</h1>
 
       <div className="mb-4 flex items-center gap-2">
-        <button onClick={prevWeek} className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm hover:bg-gray-50">← 上週</button>
-        <button onClick={goThisWeek} className="rounded-lg border border-primary-300 px-3 py-1.5 text-sm text-primary-600 hover:bg-primary-50">本週</button>
-        <button onClick={nextWeek} className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm hover:bg-gray-50">下週 →</button>
-        <span className="text-sm font-medium text-gray-700">
+        <button onClick={prevWeek} className="rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-surface-2">← 上週</button>
+        <button onClick={goThisWeek} className="rounded-lg border border-accent/40 px-3 py-1.5 text-sm text-accent hover:bg-accent-soft">本週</button>
+        <button onClick={nextWeek} className="rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-surface-2">下週 →</button>
+        <span className="text-sm font-medium text-ink-2">
           {weekDays[0].toLocaleDateString("zh-TW", { month: "short", day: "numeric" })} – {weekDays[6].toLocaleDateString("zh-TW", { month: "short", day: "numeric" })}
         </span>
-        {loading && <span className="text-xs text-gray-400">載入中...</span>}
+        {loading && <span className="text-xs text-ink-3">載入中...</span>}
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
+      <div className="overflow-x-auto rounded-lg border border-line">
         <table className="w-full border-collapse text-xs">
           <thead>
-            <tr className="bg-gray-50">
-              <th className="w-14 border-b border-r border-gray-200 px-2 py-2 text-left text-gray-500">時段</th>
+            <tr className="bg-surface-2">
+              <th className="w-14 border-b border-r border-line px-2 py-2 text-left text-ink-3">時段</th>
               {weekDays.map((d, i) => {
                 const isToday = d.toDateString() === new Date().toDateString();
                 return (
-                  <th key={i} className={`min-w-[100px] border-b border-r border-gray-200 px-2 py-2 text-center font-medium ${isToday ? "bg-primary-50" : ""}`}>
+                  <th key={i} className={`min-w-[100px] border-b border-r border-line px-2 py-2 text-center font-medium ${isToday ? "bg-accent-soft" : ""}`}>
                     <div>週{DOW_ZH[d.getDay()]}</div>
-                    <div className="text-[10px] font-normal text-gray-400">{d.getMonth() + 1}/{d.getDate()}</div>
+                    <div className="text-[10px] font-normal text-ink-3">{d.getMonth() + 1}/{d.getDate()}</div>
                   </th>
                 );
               })}
@@ -132,10 +132,10 @@ export default function SchedPage() {
             {SLOT_HOURS.map((slot) => {
               const rowHasAny = matrix[slot]?.some(Boolean);
               return (
-                <tr key={slot} className={rowHasAny ? "bg-white" : "bg-gray-50/30"}>
-                  <td className="whitespace-nowrap border-b border-r border-gray-200 px-2 py-1 font-mono text-gray-400">{slot}</td>
+                <tr key={slot} className={rowHasAny ? "bg-white" : "bg-surface-2/30"}>
+                  <td className="whitespace-nowrap border-b border-r border-line px-2 py-1 font-mono text-ink-3">{slot}</td>
                   {matrix[slot].map((a, i) => (
-                    <td key={i} className={`border-b border-r border-gray-200 px-1 py-1 align-middle ${a ? (a.check_in_status === "arrived" ? "bg-emerald-50 text-emerald-800" : a.check_in_status === "no_show" ? "bg-gray-100 text-gray-400 line-through" : "bg-primary-50 text-primary-700") : ""}`}>
+                    <td key={i} className={`border-b border-r border-line px-1 py-1 align-middle ${a ? (a.check_in_status === "arrived" ? "bg-st-done-bg text-st-done" : a.check_in_status === "no_show" ? "bg-surface-3 text-ink-3 line-through" : "bg-accent-soft text-accent") : ""}`}>
                       {a && (
                         <div className="truncate leading-tight" title={`${sessionTypeLabel[a.session_type]} ${a.start_time?.slice(11, 16)}~${a.end_time?.slice(11, 16)}`}>
                           {a.is_couple ? `👫${a.couple_name?.slice(0, 4)}` : a.case_name?.slice(0, 5) ?? "—"}

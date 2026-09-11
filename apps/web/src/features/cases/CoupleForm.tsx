@@ -82,45 +82,45 @@ export function CoupleForm({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
         <h2 className="mb-1 text-lg font-bold">建立伴侶案</h2>
-        <p className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-700">
+        <p className="mb-4 rounded-lg bg-st-danger-bg px-3 py-2 text-xs text-st-danger">
           把兩個既有個案綁成一筆「伴侶案」，做為合療的預約與收費單位。費用記在伴侶案，計為一個案；兩人仍可各自單獨預約。
         </p>
-        {error && <div className="mb-3 rounded-lg bg-red-50 p-2 text-sm text-red-600">{error}</div>}
+        {error && <div className="mb-3 rounded-lg bg-st-danger-bg p-2 text-sm text-st-danger">{error}</div>}
         <form onSubmit={handleSubmit} className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">個案一 <span className="text-red-500">*</span></span>
-              <select required value={memberA} onChange={(e) => setMemberA(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+              <span className="mb-1 block text-xs text-ink-3">個案一 <span className="text-st-danger">*</span></span>
+              <select required value={memberA} onChange={(e) => setMemberA(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm">
                 <option value="">請選擇</option>
                 {selectable.map((c) => <option key={c.id} value={c.id} disabled={String(c.id) === memberB}>{c.name}{c.case_number ? `（${c.case_number}）` : ""}</option>)}
               </select>
             </label>
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">個案二 <span className="text-red-500">*</span></span>
-              <select required value={memberB} onChange={(e) => setMemberB(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+              <span className="mb-1 block text-xs text-ink-3">個案二 <span className="text-st-danger">*</span></span>
+              <select required value={memberB} onChange={(e) => setMemberB(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm">
                 <option value="">請選擇</option>
                 {selectable.map((c) => <option key={c.id} value={c.id} disabled={String(c.id) === memberA}>{c.name}{c.case_number ? `（${c.case_number}）` : ""}</option>)}
               </select>
             </label>
           </div>
           <label className="block">
-            <span className="mb-1 block text-xs text-gray-500">共同心理師 <span className="text-red-500">*</span></span>
-            <select required value={therapistId} onChange={(e) => setTherapistId(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            <span className="mb-1 block text-xs text-ink-3">共同心理師 <span className="text-st-danger">*</span></span>
+            <select required value={therapistId} onChange={(e) => setTherapistId(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm">
               <option value="">請選擇</option>
               {therapists.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </label>
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">付費方式</span>
-              <select value={fundingSource} onChange={(e) => setFundingSource(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+              <span className="mb-1 block text-xs text-ink-3">付費方式</span>
+              <select value={fundingSource} onChange={(e) => setFundingSource(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm">
                 <option value="self_pay">自費</option>
                 <option value="institution">機構</option>
               </select>
             </label>
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">結帳方式</span>
-              <select value={billingCycle} onChange={(e) => setBillingCycle(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+              <span className="mb-1 block text-xs text-ink-3">結帳方式</span>
+              <select value={billingCycle} onChange={(e) => setBillingCycle(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm">
                 <option value="once">次結</option>
                 <option value="monthly">月結</option>
                 <option value="multiple">多次結</option>
@@ -129,19 +129,19 @@ export function CoupleForm({
           </div>
           {fundingSource === "institution" && (
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">機構</span>
-              <select value={institutionId} onChange={(e) => setInstitutionId(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+              <span className="mb-1 block text-xs text-ink-3">機構</span>
+              <select value={institutionId} onChange={(e) => setInstitutionId(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm">
                 <option value="">請選擇機構</option>
                 {institutions.filter((i) => i.is_active).map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
               </select>
             </label>
           )}
           <label className="block">
-            <span className="mb-1 block text-xs text-gray-500">顯示名稱<span className="text-gray-400">（留空自動組合）</span></span>
-            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder={autoName || "例：陳○○＆林○○（伴侶）"} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            <span className="mb-1 block text-xs text-ink-3">顯示名稱<span className="text-ink-3">（留空自動組合）</span></span>
+            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder={autoName || "例：陳○○＆林○○（伴侶）"} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
           </label>
           <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">取消</button>
+            <button type="button" onClick={onClose} className="rounded-lg border border-line-2 px-4 py-2 text-sm hover:bg-surface-2">取消</button>
             <button type="submit" disabled={saving} className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-50">
               {saving ? "建立中..." : "建立伴侶案"}
             </button>

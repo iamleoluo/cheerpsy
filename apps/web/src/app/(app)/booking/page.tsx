@@ -196,40 +196,40 @@ export default function BookingPage() {
     <div className="mx-auto max-w-2xl">
       <h1 className="mb-6 text-2xl font-bold">預約作業</h1>
 
-      {success && <div className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{success}</div>}
-      {error && <div className="mb-4 rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-600">{error}</div>}
+      {success && <div className="mb-4 rounded-lg bg-st-done-bg px-4 py-3 text-sm text-st-done">{success}</div>}
+      {error && <div className="mb-4 rounded-lg bg-st-danger-bg px-4 py-3 text-sm text-st-danger">{error}</div>}
 
-      <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-gray-200 bg-white p-6">
+      <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-line bg-white p-6">
         <label className="block">
-          <span className="mb-1 block text-xs text-gray-500">個案 <span className="text-rose-500">*</span></span>
+          <span className="mb-1 block text-xs text-ink-3">個案 <span className="text-st-danger">*</span></span>
           <input
             value={caseQuery}
             onChange={(e) => setCaseQuery(e.target.value)}
             placeholder="輸入姓名搜尋"
-            className="mb-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            className="mb-1 w-full rounded-lg border border-line-2 px-3 py-2 text-sm"
           />
-          <select required value={caseId} onChange={(e) => { setCaseId(e.target.value); setPlanId(""); }} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+          <select required value={caseId} onChange={(e) => { setCaseId(e.target.value); setPlanId(""); }} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm">
             <option value="">請選擇</option>
             {filteredCases.map((c) => (
               <option key={c.id} value={c.id}>{c.case_type === "couple" ? "👫 " : ""}{c.name}</option>
             ))}
           </select>
           {selectedCase?.case_type === "couple" && (
-            <p className="mt-1 text-xs text-amber-600">伴侶案付款方選擇請至「個案管理」既有的新增預約入口，這裡先支援一般個案。</p>
+            <p className="mt-1 text-xs text-st-warn">伴侶案付款方選擇請至「個案管理」既有的新增預約入口，這裡先支援一般個案。</p>
           )}
         </label>
 
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
-            <span className="mb-1 block text-xs text-gray-500">諮商類型</span>
-            <select value={sessionType} onChange={(e) => setSessionType(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            <span className="mb-1 block text-xs text-ink-3">諮商類型</span>
+            <select value={sessionType} onChange={(e) => setSessionType(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm">
               {sessionTypeOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </label>
           {sessionType === "in_person" && (
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">診間</span>
-              <select value={roomId} onChange={(e) => setRoomId(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+              <span className="mb-1 block text-xs text-ink-3">診間</span>
+              <select value={roomId} onChange={(e) => setRoomId(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm">
                 <option value="">請選擇</option>
                 {rooms.map((r) => <option key={r.id} value={r.id}>{r.name}（{r.floor}F）</option>)}
               </select>
@@ -239,43 +239,43 @@ export default function BookingPage() {
 
         <div className="grid grid-cols-3 gap-3">
           <label className="block">
-            <span className="mb-1 block text-xs text-gray-500">日期</span>
-            <input type="date" required value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            <span className="mb-1 block text-xs text-ink-3">日期</span>
+            <input type="date" required value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
           </label>
           <label className="block">
-            <span className="mb-1 block text-xs text-gray-500">開始時間</span>
-            <input type="time" required value={startTime} onChange={(e) => setStartTime(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            <span className="mb-1 block text-xs text-ink-3">開始時間</span>
+            <input type="time" required value={startTime} onChange={(e) => setStartTime(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
           </label>
           <label className="block">
-            <span className="mb-1 block text-xs text-gray-500">時長</span>
-            <select value={durationMin} onChange={(e) => setDurationMin(Number(e.target.value))} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            <span className="mb-1 block text-xs text-ink-3">時長</span>
+            <select value={durationMin} onChange={(e) => setDurationMin(Number(e.target.value))} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm">
               <option value={60}>60 分</option>
               <option value={90}>90 分（伴侶）</option>
               <option value={30}>30 分</option>
             </select>
           </label>
         </div>
-        <p className="text-xs text-gray-400">{date} {startTime} ~ {endTime}</p>
+        <p className="text-xs text-ink-3">{date} {startTime} ~ {endTime}</p>
 
-        <div className="border-t border-gray-100 pt-4">
-          <span className="mb-2 block text-xs text-gray-500">付款方式</span>
+        <div className="border-t border-line pt-4">
+          <span className="mb-2 block text-xs text-ink-3">付款方式</span>
           <div className="mb-3 flex gap-2">
-            <button type="button" onClick={() => setPayWith("self_pay")} className={`flex-1 rounded-lg border py-2 text-sm ${payWith === "self_pay" ? "border-primary-500 bg-primary-50 text-primary-700" : "border-gray-200 text-gray-500"}`}>自費</button>
-            <button type="button" onClick={() => setPayWith("plan")} className={`flex-1 rounded-lg border py-2 text-sm ${payWith === "plan" ? "border-primary-500 bg-primary-50 text-primary-700" : "border-gray-200 text-gray-500"}`}>機構方案</button>
+            <button type="button" onClick={() => setPayWith("self_pay")} className={`flex-1 rounded-lg border py-2 text-sm ${payWith === "self_pay" ? "border-accent bg-accent-soft text-accent" : "border-line text-ink-3"}`}>自費</button>
+            <button type="button" onClick={() => setPayWith("plan")} className={`flex-1 rounded-lg border py-2 text-sm ${payWith === "plan" ? "border-accent bg-accent-soft text-accent" : "border-line text-ink-3"}`}>機構方案</button>
           </div>
 
           {payWith === "self_pay" && (
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">金額</span>
-              <input type="number" required value={selfPayAmount} onChange={(e) => setSelfPayAmount(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <span className="mb-1 block text-xs text-ink-3">金額</span>
+              <input type="number" required value={selfPayAmount} onChange={(e) => setSelfPayAmount(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
             </label>
           )}
 
           {payWith === "plan" && (
             <div className="space-y-3">
               <label className="block">
-                <span className="mb-1 block text-xs text-gray-500">機構方案 <span className="text-rose-500">*</span></span>
-                <select required={payWith === "plan"} value={planId} onChange={(e) => setPlanId(e.target.value)} disabled={!caseId} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                <span className="mb-1 block text-xs text-ink-3">機構方案 <span className="text-st-danger">*</span></span>
+                <select required={payWith === "plan"} value={planId} onChange={(e) => setPlanId(e.target.value)} disabled={!caseId} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm">
                   <option value="">{caseId ? "請選擇" : "請先選個案"}</option>
                   {plans.map((p) => (
                     <option key={p.plan_id} value={p.plan_id} disabled={p.disabled}>
@@ -283,24 +283,24 @@ export default function BookingPage() {
                     </option>
                   ))}
                 </select>
-                {caseId && plans.length === 0 && <p className="mt-1 text-xs text-gray-400">此個案目前沒有可用的機構方案</p>}
+                {caseId && plans.length === 0 && <p className="mt-1 text-xs text-ink-3">此個案目前沒有可用的機構方案</p>}
               </label>
 
-              {quoteError && <div className="rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">{quoteError}</div>}
+              {quoteError && <div className="rounded-lg bg-st-danger-bg px-3 py-2 text-xs text-st-danger">{quoteError}</div>}
               {quote && (
-                <div className={`rounded-lg p-3 text-xs ${quote.quota.blocking ? "bg-rose-50 text-rose-600" : "bg-sky-50 text-sky-800"}`}>
+                <div className={`rounded-lg p-3 text-xs ${quote.quota.blocking ? "bg-st-danger-bg text-st-danger" : "bg-sky-50 text-sky-800"}`}>
                   <div className="flex justify-between"><span>總鐘點費</span><span>${Number(quote.pricing.unit_price).toLocaleString()}</span></div>
                   <div className="flex justify-between"><span>個案自付</span><span>${Number(quote.pricing.case_payable).toLocaleString()}</span></div>
                   <div className="flex justify-between"><span>機構請款</span><span>${Number(quote.pricing.institution_payable).toLocaleString()}</span></div>
                   {quote.quota.blocking && <div className="mt-1 font-medium">⚠️ {quote.quota.blocking}</div>}
-                  {quote.quota.is_last && !quote.quota.blocking && <div className="mt-1 font-medium text-amber-600">⚠️ 最後一次額度</div>}
+                  {quote.quota.is_last && !quote.quota.blocking && <div className="mt-1 font-medium text-st-warn">⚠️ 最後一次額度</div>}
                 </div>
               )}
             </div>
           )}
         </div>
 
-        <button type="submit" disabled={saving} className="w-full rounded-lg bg-primary-600 py-2.5 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">
+        <button type="submit" disabled={saving} className="w-full rounded-lg bg-accent py-2.5 text-sm font-medium text-white hover:bg-st-active disabled:opacity-50">
           {saving ? "建立中…" : "建立預約"}
         </button>
       </form>

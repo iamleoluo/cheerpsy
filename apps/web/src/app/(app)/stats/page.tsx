@@ -65,55 +65,55 @@ export default function StatsPage() {
   return (
     <div>
       <h1 className="mb-1 text-2xl font-bold">我的數據</h1>
-      <p className="mb-6 text-sm text-gray-400">{month}</p>
-      {loading && <p className="text-sm text-gray-400">載入中...</p>}
+      <p className="mb-6 text-sm text-ink-3">{month}</p>
+      {loading && <p className="text-sm text-ink-3">載入中...</p>}
 
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <div className="text-xs text-gray-400">進行中個案</div>
+        <div className="rounded-xl border border-line bg-white p-4">
+          <div className="text-xs text-ink-3">進行中個案</div>
           <div className="mt-1 text-xl font-bold">{activeCases}</div>
         </div>
-        <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <div className="text-xs text-gray-400">本月場次</div>
+        <div className="rounded-xl border border-line bg-white p-4">
+          <div className="text-xs text-ink-3">本月場次</div>
           <div className="mt-1 text-xl font-bold">{records.length}</div>
         </div>
-        <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <div className="text-xs text-gray-400">本月營收（總額）</div>
+        <div className="rounded-xl border border-line bg-white p-4">
+          <div className="text-xs text-ink-3">本月營收（總額）</div>
           <div className="mt-1 text-xl font-bold">${totalRevenue.toLocaleString()}</div>
         </div>
-        <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <div className="text-xs text-gray-400">本月我的酬勞</div>
-          <div className="mt-1 text-xl font-bold text-primary-600">${totalEarned.toLocaleString()}</div>
+        <div className="rounded-xl border border-line bg-white p-4">
+          <div className="text-xs text-ink-3">本月我的酬勞</div>
+          <div className="mt-1 text-xl font-bold text-accent">${totalEarned.toLocaleString()}</div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <h3 className="mb-3 text-sm font-medium text-gray-600">場次類型分布</h3>
+        <div className="rounded-xl border border-line bg-white p-4">
+          <h3 className="mb-3 text-sm font-medium text-ink-2">場次類型分布</h3>
           <div className="space-y-2">
             {Object.entries(bySessionType).map(([type, count]) => (
               <div key={type} className="flex items-center gap-2">
-                <span className="w-10 text-xs text-gray-500">{sessionTypeLabel[type] ?? type}</span>
-                <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-100">
+                <span className="w-10 text-xs text-ink-3">{sessionTypeLabel[type] ?? type}</span>
+                <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-3">
                   <div
-                    className="h-full rounded-full bg-primary-400"
+                    className="h-full rounded-full bg-accent/70"
                     style={{ width: records.length ? `${(count / records.length) * 100}%` : "0%" }}
                   />
                 </div>
-                <span className="w-6 text-right text-xs text-gray-500">{count}</span>
+                <span className="w-6 text-right text-xs text-ink-3">{count}</span>
               </div>
             ))}
           </div>
         </div>
-        <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <h3 className="mb-3 text-sm font-medium text-gray-600">收款狀態</h3>
+        <div className="rounded-xl border border-line bg-white p-4">
+          <h3 className="mb-3 text-sm font-medium text-ink-2">收款狀態</h3>
           <div className="flex items-center gap-2">
-            <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-100">
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-3">
               <div className="h-full rounded-full bg-emerald-400" style={{ width: records.length ? `${(paidCount / records.length) * 100}%` : "0%" }} />
             </div>
-            <span className="text-xs text-gray-500">{paidCount} / {records.length}</span>
+            <span className="text-xs text-ink-3">{paidCount} / {records.length}</span>
           </div>
-          <p className="mt-2 text-xs text-gray-400">已收款／已請款場次占比</p>
+          <p className="mt-2 text-xs text-ink-3">已收款／已請款場次占比</p>
         </div>
       </div>
     </div>

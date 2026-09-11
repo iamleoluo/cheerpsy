@@ -33,16 +33,16 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
+    <div className="flex min-h-screen items-center justify-center bg-surface-2">
       <div className="w-full max-w-sm rounded-xl bg-white p-8 shadow-lg">
         <div className="mb-6 text-center">
-          <h1 className="text-2xl font-bold text-primary-700">CheerPsy</h1>
-          <p className="mt-1 text-sm text-gray-500">心理診療所管理系統</p>
+          <h1 className="text-2xl font-bold text-accent">CheerPsy</h1>
+          <p className="mt-1 text-sm text-ink-3">心理診療所管理系統</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
+            <label className="mb-1 block text-sm font-medium text-ink-2">
               電子信箱
             </label>
             <input
@@ -50,13 +50,13 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
               placeholder="email@cheerpsy.com"
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
+            <label className="mb-1 block text-sm font-medium text-ink-2">
               密碼
             </label>
             <input
@@ -64,27 +64,27 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
             />
           </div>
 
           {error && (
-            <p className="text-sm text-red-600">{error}</p>
+            <p className="text-sm text-st-danger">{error}</p>
           )}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-lg bg-primary-600 py-2.5 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+            className="w-full rounded-lg bg-accent py-2.5 text-sm font-medium text-white hover:bg-st-active disabled:opacity-50"
           >
             {loading ? "登入中..." : "登入"}
           </button>
         </form>
 
-        <div className="mt-4 flex justify-center gap-3 text-xs text-gray-400">
-          <a href="/register" className="hover:text-primary-600">首次註冊</a>
+        <div className="mt-4 flex justify-center gap-3 text-xs text-ink-3">
+          <a href="/register" className="hover:text-accent">首次註冊</a>
           <span>|</span>
-          <a href="/reset-password" className="hover:text-primary-600">忘記密碼</a>
+          <a href="/reset-password" className="hover:text-accent">忘記密碼</a>
         </div>
       </div>
     </div>

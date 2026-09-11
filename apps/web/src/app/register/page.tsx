@@ -77,29 +77,29 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
+    <div className="flex min-h-screen items-center justify-center bg-surface-2">
       <div className="w-full max-w-sm rounded-xl bg-white p-8 shadow-lg">
         <div className="mb-6 text-center">
-          <h1 className="text-2xl font-bold text-primary-700">CheerPsy</h1>
-          <p className="mt-1 text-sm text-gray-500">首次註冊</p>
+          <h1 className="text-2xl font-bold text-accent">CheerPsy</h1>
+          <p className="mt-1 text-sm text-ink-3">首次註冊</p>
         </div>
 
         {step === "key" && (
           <form onSubmit={verifyKey} className="space-y-4">
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">邀請金鑰</label>
+              <label className="mb-1 block text-sm font-medium text-ink-2">邀請金鑰</label>
               <input
                 type="text"
                 value={key}
                 onChange={(e) => setKey(e.target.value)}
                 required
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono tracking-wider focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm font-mono tracking-wider focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
                 placeholder="CHEER-XXXX-XXXX-XXXX"
               />
-              <p className="mt-1 text-xs text-gray-400">請輸入管理員提供的邀請金鑰</p>
+              <p className="mt-1 text-xs text-ink-3">請輸入管理員提供的邀請金鑰</p>
             </div>
-            {error && <p className="text-sm text-red-600">{error}</p>}
-            <button type="submit" disabled={loading} className="w-full rounded-lg bg-primary-600 py-2.5 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">
+            {error && <p className="text-sm text-st-danger">{error}</p>}
+            <button type="submit" disabled={loading} className="w-full rounded-lg bg-accent py-2.5 text-sm font-medium text-white hover:bg-st-active disabled:opacity-50">
               {loading ? "驗證中..." : "驗證金鑰"}
             </button>
           </form>
@@ -107,52 +107,52 @@ export default function RegisterPage() {
 
         {step === "form" && info && (
           <form onSubmit={handleRegister} className="space-y-4">
-            <div className="rounded-lg bg-primary-50 p-3 text-sm">
-              <p className="font-medium text-primary-700">{info.name}</p>
-              <p className="text-xs text-primary-500">{roleLabels[info.role ?? ""] ?? info.role}</p>
+            <div className="rounded-lg bg-accent-soft p-3 text-sm">
+              <p className="font-medium text-accent">{info.name}</p>
+              <p className="text-xs text-accent">{roleLabels[info.role ?? ""] ?? info.role}</p>
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">電子信箱</label>
+              <label className="mb-1 block text-sm font-medium text-ink-2">電子信箱</label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
                 placeholder="your@email.com"
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">設定密碼</label>
+              <label className="mb-1 block text-sm font-medium text-ink-2">設定密碼</label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={6}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">確認密碼</label>
+              <label className="mb-1 block text-sm font-medium text-ink-2">確認密碼</label>
               <input
                 type="password"
                 value={password2}
                 onChange={(e) => setPassword2(e.target.value)}
                 required
                 minLength={6}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
               />
             </div>
-            {error && <p className="text-sm text-red-600">{error}</p>}
-            <button type="submit" disabled={loading} className="w-full rounded-lg bg-primary-600 py-2.5 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">
+            {error && <p className="text-sm text-st-danger">{error}</p>}
+            <button type="submit" disabled={loading} className="w-full rounded-lg bg-accent py-2.5 text-sm font-medium text-white hover:bg-st-active disabled:opacity-50">
               {loading ? "建立中..." : "建立帳號"}
             </button>
           </form>
         )}
 
         <div className="mt-4 text-center">
-          <a href="/login" className="text-xs text-gray-400 hover:text-primary-600">返回登入</a>
+          <a href="/login" className="text-xs text-ink-3 hover:text-accent">返回登入</a>
         </div>
       </div>
     </div>

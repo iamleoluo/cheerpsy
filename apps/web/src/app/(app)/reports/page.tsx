@@ -83,13 +83,13 @@ export default function ReportsPage() {
       <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} guideId="reports" />
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-bold">報表</h1>
-        <button onClick={() => setHelpOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700">
+        <button onClick={() => setHelpOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-sm text-ink-3 hover:bg-surface-2 hover:text-ink-2">
           <span>ℹ️</span> 說明
         </button>
       </div>
 
       {/* Outer tabs */}
-      <div className="mb-4 flex gap-1 border-b border-gray-200">
+      <div className="mb-4 flex gap-1 border-b border-line">
         {(
           [
             ["operations", "📊 營運報表"],
@@ -102,8 +102,8 @@ export default function ReportsPage() {
             onClick={() => setOuterTab(key)}
             className={`px-4 py-2.5 text-sm font-medium transition-colors ${
               outerTab === key
-                ? "border-b-2 border-primary-600 text-primary-700"
-                : "text-gray-500 hover:text-gray-700"
+                ? "border-b-2 border-accent text-accent"
+                : "text-ink-3 hover:text-ink-2"
             }`}
           >
             {label}
@@ -357,16 +357,16 @@ function ChartsView({ token }: { token: string }) {
     <div>
       {/* Controls */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <select value={year} onChange={(e) => setYear(parseInt(e.target.value))} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+        <select value={year} onChange={(e) => setYear(parseInt(e.target.value))} className="rounded-lg border border-line-2 px-3 py-2 text-sm">
           {[2024, 2025, 2026, 2027].map((y) => <option key={y} value={y}>{y} 年</option>)}
         </select>
-        <select value={month} onChange={(e) => setMonth(parseInt(e.target.value))} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+        <select value={month} onChange={(e) => setMonth(parseInt(e.target.value))} className="rounded-lg border border-line-2 px-3 py-2 text-sm">
           {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => <option key={m} value={m}>{m} 月</option>)}
         </select>
         {isReady && (
           <button
             onClick={handleDownload}
-            className="ml-auto flex items-center gap-1.5 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
+            className="ml-auto flex items-center gap-1.5 rounded-lg border border-line-2 px-4 py-2 text-sm font-medium hover:bg-surface-2"
           >
             ⬇️ 下載圖片
           </button>
@@ -381,8 +381,8 @@ function ChartsView({ token }: { token: string }) {
             onClick={() => setChartId(opt.id)}
             className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors ${
               chartId === opt.id
-                ? "bg-primary-600 text-white shadow-sm"
-                : "border border-gray-200 bg-white text-gray-600 hover:border-primary-300 hover:text-primary-700"
+                ? "bg-accent text-white shadow-sm"
+                : "border border-line bg-white text-ink-2 hover:border-accent/40 hover:text-accent"
             }`}
           >
             {opt.label}
@@ -390,18 +390,18 @@ function ChartsView({ token }: { token: string }) {
         ))}
       </div>
 
-      {error && <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</div>}
+      {error && <div className="mb-4 rounded-lg bg-st-danger-bg p-3 text-sm text-st-danger">{error}</div>}
 
       {/* Chart area */}
-      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-        <h3 className="mb-4 text-base font-semibold text-gray-700">
+      <div className="rounded-xl border border-line bg-white p-6 shadow-sm">
+        <h3 className="mb-4 text-base font-semibold text-ink-2">
           {CHART_OPTIONS.find((o) => o.id === chartId)?.label} — {year} 年 {month} 月
         </h3>
 
         {loading ? (
-          <div className="flex h-72 items-center justify-center text-gray-400">載入中...</div>
+          <div className="flex h-72 items-center justify-center text-ink-3">載入中...</div>
         ) : !chartConfig ? (
-          <div className="flex h-72 items-center justify-center text-gray-400">本月無資料</div>
+          <div className="flex h-72 items-center justify-center text-ink-3">本月無資料</div>
         ) : (
           <div className="relative h-80">
             {chartConfig.type === "doughnut" ? (
@@ -425,7 +425,7 @@ function OperationsSection({ token }: { token: string }) {
 
   return (
     <div>
-      <div className="mb-4 flex gap-1 border-b border-gray-100">
+      <div className="mb-4 flex gap-1 border-b border-line">
         {(
           [
             ["intake", "進案統計"],
@@ -438,8 +438,8 @@ function OperationsSection({ token }: { token: string }) {
             onClick={() => setTab(key)}
             className={`px-4 py-2 text-sm font-medium transition-colors ${
               tab === key
-                ? "border-b-2 border-primary-500 text-primary-600"
-                : "text-gray-500 hover:text-gray-700"
+                ? "border-b-2 border-accent text-accent"
+                : "text-ink-3 hover:text-ink-2"
             }`}
           >
             {label}
@@ -463,7 +463,7 @@ function FinanceSection({ token }: { token: string }) {
 
   return (
     <div>
-      <div className="mb-4 flex gap-1 border-b border-gray-100">
+      <div className="mb-4 flex gap-1 border-b border-line">
         {(
           [
             ["monthly", "月報表"],
@@ -475,8 +475,8 @@ function FinanceSection({ token }: { token: string }) {
             onClick={() => setTab(key)}
             className={`px-4 py-2 text-sm font-medium transition-colors ${
               tab === key
-                ? "border-b-2 border-primary-500 text-primary-600"
-                : "text-gray-500 hover:text-gray-700"
+                ? "border-b-2 border-accent text-accent"
+                : "text-ink-3 hover:text-ink-2"
             }`}
           >
             {label}
@@ -596,7 +596,7 @@ function IntakeStatsTab({ token }: { token: string }) {
         <select
           value={year}
           onChange={(e) => setYear(parseInt(e.target.value))}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          className="rounded-lg border border-line-2 px-3 py-2 text-sm"
         >
           {[2024, 2025, 2026, 2027].map((y) => (
             <option key={y} value={y}>{y} 年</option>
@@ -605,7 +605,7 @@ function IntakeStatsTab({ token }: { token: string }) {
         <select
           value={month}
           onChange={(e) => setMonth(parseInt(e.target.value))}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          className="rounded-lg border border-line-2 px-3 py-2 text-sm"
         >
           {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
             <option key={m} value={m}>{m} 月</option>
@@ -614,7 +614,7 @@ function IntakeStatsTab({ token }: { token: string }) {
         <button
           onClick={fetchData}
           disabled={loading}
-          className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-st-active disabled:opacity-50"
         >
           {loading ? "載入中..." : "重新查詢"}
         </button>
@@ -622,28 +622,28 @@ function IntakeStatsTab({ token }: { token: string }) {
           <button
             onClick={handleExport}
             disabled={exporting}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+            className="rounded-lg border border-line-2 px-4 py-2 text-sm font-medium hover:bg-surface-2 disabled:opacity-50"
           >
             {exporting ? "匯出中..." : "📥 匯出 Excel"}
           </button>
         )}
       </div>
 
-      {error && <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</div>}
+      {error && <div className="mb-4 rounded-lg bg-st-danger-bg p-3 text-sm text-st-danger">{error}</div>}
 
       {loading ? (
-        <div className="rounded-lg border border-dashed border-gray-300 p-16 text-center text-gray-400">
+        <div className="rounded-lg border border-dashed border-line-2 p-16 text-center text-ink-3">
           載入中...
         </div>
       ) : !data ? (
-        <div className="rounded-lg border border-dashed border-gray-300 p-16 text-center text-gray-400">
+        <div className="rounded-lg border border-dashed border-line-2 p-16 text-center text-ink-3">
           無資料
         </div>
       ) : (
         <div className="space-y-6">
           {/* Summary cards */}
           <div>
-            <h2 className="mb-3 text-base font-semibold text-gray-700">
+            <h2 className="mb-3 text-base font-semibold text-ink-2">
               {data.year} 年 {data.month} 月 新進案摘要（共 {data.summary.total} 案）
             </h2>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -672,20 +672,20 @@ function IntakeStatsTab({ token }: { token: string }) {
 
           {/* By therapist */}
           <div>
-            <h2 className="mb-3 text-base font-semibold text-gray-700">各心理師進案量</h2>
+            <h2 className="mb-3 text-base font-semibold text-ink-2">各心理師進案量</h2>
             {data.by_therapist.length === 0 ? (
-              <p className="text-sm text-gray-400">無資料</p>
+              <p className="text-sm text-ink-3">無資料</p>
             ) : (
-              <div className="overflow-x-auto rounded-lg border border-gray-200">
+              <div className="overflow-x-auto rounded-lg border border-line">
                 <table className="w-full text-left text-sm">
-                  <thead className="bg-gray-50 text-xs text-gray-500">
+                  <thead className="bg-surface-2 text-xs text-ink-3">
                     <tr>
                       <th className="px-3 py-2.5 font-semibold">心理師</th>
                       <th className="px-3 py-2.5 text-center font-semibold" colSpan={4}>進案數</th>
                       <th className="px-3 py-2.5 text-center font-semibold" colSpan={4}>其中 — 指定</th>
                       <th className="px-3 py-2.5 text-right font-semibold">合計</th>
                     </tr>
-                    <tr className="text-xs text-gray-400">
+                    <tr className="text-xs text-ink-3">
                       <th className="px-3 pb-2"></th>
                       <th className="px-2 pb-2 text-center">機構成人</th>
                       <th className="px-2 pb-2 text-center">機構兒青</th>
@@ -698,9 +698,9 @@ function IntakeStatsTab({ token }: { token: string }) {
                       <th className="px-3 pb-2 text-right"></th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-line">
                     {data.by_therapist.map((row, idx) => (
-                      <tr key={idx} className="hover:bg-gray-50">
+                      <tr key={idx} className="hover:bg-surface-2">
                         <td className="px-3 py-2 font-medium">{row.therapist_name}</td>
                         <td className="px-2 py-2 text-center">{row.institution_adult || "—"}</td>
                         <td className="px-2 py-2 text-center">{row.institution_child || "—"}</td>
@@ -722,10 +722,10 @@ function IntakeStatsTab({ token }: { token: string }) {
           {/* By institution */}
           {data.by_institution.length > 0 && (
             <div>
-              <h2 className="mb-3 text-base font-semibold text-gray-700">各機構進案量</h2>
-              <div className="overflow-x-auto rounded-lg border border-gray-200">
+              <h2 className="mb-3 text-base font-semibold text-ink-2">各機構進案量</h2>
+              <div className="overflow-x-auto rounded-lg border border-line">
                 <table className="w-full text-left text-sm">
-                  <thead className="bg-gray-50 text-xs text-gray-500">
+                  <thead className="bg-surface-2 text-xs text-ink-3">
                     <tr>
                       <th className="px-4 py-2.5 font-semibold">機構名稱</th>
                       <th className="px-4 py-2.5 text-center font-semibold">成人</th>
@@ -733,9 +733,9 @@ function IntakeStatsTab({ token }: { token: string }) {
                       <th className="px-4 py-2.5 text-right font-semibold">合計</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-line">
                     {data.by_institution.map((row, idx) => (
-                      <tr key={idx} className="hover:bg-gray-50">
+                      <tr key={idx} className="hover:bg-surface-2">
                         <td className="px-4 py-2.5 font-medium">{row.institution_name}</td>
                         <td className="px-4 py-2.5 text-center">{row.adult}</td>
                         <td className="px-4 py-2.5 text-center">{row.child}</td>
@@ -751,10 +751,10 @@ function IntakeStatsTab({ token }: { token: string }) {
           {/* Case list */}
           {data.cases.length > 0 && (
             <div>
-              <h2 className="mb-3 text-base font-semibold text-gray-700">新進個案清單</h2>
-              <div className="overflow-x-auto rounded-lg border border-gray-200">
+              <h2 className="mb-3 text-base font-semibold text-ink-2">新進個案清單</h2>
+              <div className="overflow-x-auto rounded-lg border border-line">
                 <table className="w-full text-left text-sm">
-                  <thead className="bg-gray-50 text-xs text-gray-500">
+                  <thead className="bg-surface-2 text-xs text-ink-3">
                     <tr>
                       <th className="px-3 py-2.5 font-semibold">案號</th>
                       <th className="px-3 py-2.5 font-semibold">姓名</th>
@@ -766,27 +766,27 @@ function IntakeStatsTab({ token }: { token: string }) {
                       <th className="px-3 py-2.5 font-semibold">首次諮商</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-line">
                     {data.cases.map((c, idx) => (
-                      <tr key={idx} className="hover:bg-gray-50">
-                        <td className="px-3 py-2 font-mono text-xs text-gray-500">{c.case_number ?? "—"}</td>
+                      <tr key={idx} className="hover:bg-surface-2">
+                        <td className="px-3 py-2 font-mono text-xs text-ink-3">{c.case_number ?? "—"}</td>
                         <td className="px-3 py-2 font-medium">{c.name}</td>
                         <td className="px-3 py-2 text-xs">
-                          <span className={`rounded px-1.5 py-0.5 ${c.funding_source === "institution" ? "bg-blue-100 text-blue-700" : "bg-emerald-100 text-emerald-700"}`}>
+                          <span className={`rounded px-1.5 py-0.5 ${c.funding_source === "institution" ? "bg-blue-100 text-blue-700" : "bg-st-done-bg text-st-done"}`}>
                             {c.funding_source === "institution" ? "機構" : "自費"}
                           </span>
                         </td>
                         <td className="px-3 py-2 text-xs">
-                          <span className={`rounded px-1.5 py-0.5 ${c.age_group === "child" ? "bg-orange-100 text-orange-700" : "bg-gray-100 text-gray-600"}`}>
+                          <span className={`rounded px-1.5 py-0.5 ${c.age_group === "child" ? "bg-st-warn-bg text-st-warn" : "bg-surface-3 text-ink-2"}`}>
                             {c.age_group === "child" ? "兒青" : "成人"}
                           </span>
                         </td>
                         <td className="px-3 py-2 text-sm">{c.therapist_name}</td>
-                        <td className="px-3 py-2 text-sm text-gray-500">{c.institution_name ?? "—"}</td>
+                        <td className="px-3 py-2 text-sm text-ink-3">{c.institution_name ?? "—"}</td>
                         <td className="px-3 py-2 text-center">
-                          {c.is_designated ? <span className="text-violet-600" title="指定心理師">●</span> : <span className="text-gray-200">●</span>}
+                          {c.is_designated ? <span className="text-violet-600" title="指定心理師">●</span> : <span className="text-st-muted">●</span>}
                         </td>
-                        <td className="px-3 py-2 text-xs text-gray-500">{c.first_session_date ?? "—"}</td>
+                        <td className="px-3 py-2 text-xs text-ink-3">{c.first_session_date ?? "—"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -803,7 +803,7 @@ function IntakeStatsTab({ token }: { token: string }) {
 function IntakeSummaryCard({ label, value, color }: { label: string; value: number; color: "blue" | "emerald" }) {
   const colors = {
     blue: "bg-blue-50 border-blue-200 text-blue-700",
-    emerald: "bg-emerald-50 border-emerald-200 text-emerald-700",
+    emerald: "bg-st-done-bg border-st-done/30 text-st-done",
   };
   return (
     <div className={`rounded-lg border p-4 ${colors[color]}`}>
@@ -872,61 +872,61 @@ function RoomUtilizationTab({ token }: { token: string }) {
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <select value={year} onChange={(e) => setYear(parseInt(e.target.value))} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+        <select value={year} onChange={(e) => setYear(parseInt(e.target.value))} className="rounded-lg border border-line-2 px-3 py-2 text-sm">
           {[2024, 2025, 2026, 2027].map((y) => <option key={y} value={y}>{y} 年</option>)}
         </select>
-        <select value={month} onChange={(e) => setMonth(parseInt(e.target.value))} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+        <select value={month} onChange={(e) => setMonth(parseInt(e.target.value))} className="rounded-lg border border-line-2 px-3 py-2 text-sm">
           {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => <option key={m} value={m}>{m} 月</option>)}
         </select>
-        <button onClick={fetchData} disabled={loading} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">
+        <button onClick={fetchData} disabled={loading} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-st-active disabled:opacity-50">
           {loading ? "載入中..." : "重新查詢"}
         </button>
       </div>
 
-      {error && <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</div>}
+      {error && <div className="mb-4 rounded-lg bg-st-danger-bg p-3 text-sm text-st-danger">{error}</div>}
 
       {loading ? (
-        <div className="rounded-lg border border-dashed border-gray-300 p-16 text-center text-gray-400">載入中...</div>
+        <div className="rounded-lg border border-dashed border-line-2 p-16 text-center text-ink-3">載入中...</div>
       ) : !data ? (
-        <div className="rounded-lg border border-dashed border-gray-300 p-16 text-center text-gray-400">無資料</div>
+        <div className="rounded-lg border border-dashed border-line-2 p-16 text-center text-ink-3">無資料</div>
       ) : (
         <div className="space-y-6">
           {/* Summary */}
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <div className="rounded-lg border border-gray-200 bg-white p-4">
-              <div className="text-xs text-gray-500">本月預約總數</div>
-              <div className="mt-1 text-2xl font-bold text-gray-900">{data.total_appointments}</div>
-              <div className="text-xs text-gray-400">次</div>
+            <div className="rounded-lg border border-line bg-white p-4">
+              <div className="text-xs text-ink-3">本月預約總數</div>
+              <div className="mt-1 text-2xl font-bold text-ink">{data.total_appointments}</div>
+              <div className="text-xs text-ink-3">次</div>
             </div>
-            <div className="rounded-lg border border-gray-200 bg-white p-4">
-              <div className="text-xs text-gray-500">使用診間數</div>
-              <div className="mt-1 text-2xl font-bold text-gray-900">
+            <div className="rounded-lg border border-line bg-white p-4">
+              <div className="text-xs text-ink-3">使用診間數</div>
+              <div className="mt-1 text-2xl font-bold text-ink">
                 {data.rooms.filter((r) => r.appointment_count > 0).length}
               </div>
-              <div className="text-xs text-gray-400">/ {data.rooms.length} 間</div>
+              <div className="text-xs text-ink-3">/ {data.rooms.length} 間</div>
             </div>
-            <div className="rounded-lg border border-gray-200 bg-white p-4">
-              <div className="text-xs text-gray-500">總使用時數</div>
-              <div className="mt-1 text-2xl font-bold text-gray-900">
+            <div className="rounded-lg border border-line bg-white p-4">
+              <div className="text-xs text-ink-3">總使用時數</div>
+              <div className="mt-1 text-2xl font-bold text-ink">
                 {data.rooms.reduce((s, r) => s + r.used_hours, 0).toFixed(1)}
               </div>
-              <div className="text-xs text-gray-400">小時</div>
+              <div className="text-xs text-ink-3">小時</div>
             </div>
-            <div className="rounded-lg border border-gray-200 bg-white p-4">
-              <div className="text-xs text-gray-500">最忙時段</div>
-              <div className="mt-1 text-2xl font-bold text-gray-900">
+            <div className="rounded-lg border border-line bg-white p-4">
+              <div className="text-xs text-ink-3">最忙時段</div>
+              <div className="mt-1 text-2xl font-bold text-ink">
                 {Object.entries(data.hourly_distribution).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "—"}:00
               </div>
-              <div className="text-xs text-gray-400">點</div>
+              <div className="text-xs text-ink-3">點</div>
             </div>
           </div>
 
           {/* Room table */}
           <div>
-            <h2 className="mb-3 text-base font-semibold text-gray-700">各診間使用狀況</h2>
-            <div className="overflow-x-auto rounded-lg border border-gray-200">
+            <h2 className="mb-3 text-base font-semibold text-ink-2">各診間使用狀況</h2>
+            <div className="overflow-x-auto rounded-lg border border-line">
               <table className="w-full text-left text-sm">
-                <thead className="bg-gray-50 text-xs text-gray-500">
+                <thead className="bg-surface-2 text-xs text-ink-3">
                   <tr>
                     <th className="px-4 py-2.5 font-semibold">樓層</th>
                     <th className="px-4 py-2.5 font-semibold">診間</th>
@@ -935,25 +935,25 @@ function RoomUtilizationTab({ token }: { token: string }) {
                     <th className="px-4 py-2.5 font-semibold">使用比例</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-line">
                   {data.rooms.map((r) => (
-                    <tr key={r.room_id} className="hover:bg-gray-50">
-                      <td className="px-4 py-2.5 text-gray-500">{r.floor}F</td>
+                    <tr key={r.room_id} className="hover:bg-surface-2">
+                      <td className="px-4 py-2.5 text-ink-3">{r.floor}F</td>
                       <td className="px-4 py-2.5 font-medium">
                         {r.room_name}
-                        <span className="ml-1.5 text-xs text-gray-400">{r.room_code}</span>
+                        <span className="ml-1.5 text-xs text-ink-3">{r.room_code}</span>
                       </td>
                       <td className="px-4 py-2.5 text-right">{r.appointment_count}</td>
                       <td className="px-4 py-2.5 text-right">{r.used_hours}h</td>
                       <td className="px-4 py-2.5 w-40">
                         <div className="flex items-center gap-2">
-                          <div className="h-2 flex-1 rounded-full bg-gray-100">
+                          <div className="h-2 flex-1 rounded-full bg-surface-3">
                             <div
-                              className="h-2 rounded-full bg-primary-500"
+                              className="h-2 rounded-full bg-accent"
                               style={{ width: `${Math.round((r.used_hours / maxHours) * 100)}%` }}
                             />
                           </div>
-                          <span className="w-8 text-right text-xs text-gray-500">
+                          <span className="w-8 text-right text-xs text-ink-3">
                             {Math.round((r.used_hours / maxHours) * 100)}%
                           </span>
                         </div>
@@ -968,20 +968,20 @@ function RoomUtilizationTab({ token }: { token: string }) {
           {/* By floor */}
           {data.by_floor.length > 0 && (
             <div>
-              <h2 className="mb-3 text-base font-semibold text-gray-700">各樓層彙總</h2>
+              <h2 className="mb-3 text-base font-semibold text-ink-2">各樓層彙總</h2>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                 {data.by_floor.map((f) => (
-                  <div key={f.floor} className="rounded-lg border border-gray-200 bg-white p-4">
-                    <div className="text-sm font-semibold text-gray-700">{f.floor}F</div>
+                  <div key={f.floor} className="rounded-lg border border-line bg-white p-4">
+                    <div className="text-sm font-semibold text-ink-2">{f.floor}F</div>
                     <div className="mt-2 space-y-1">
-                      <div className="flex justify-between text-xs text-gray-500">
-                        <span>診間數</span><span className="font-medium text-gray-800">{f.room_count} 間</span>
+                      <div className="flex justify-between text-xs text-ink-3">
+                        <span>診間數</span><span className="font-medium text-ink">{f.room_count} 間</span>
                       </div>
-                      <div className="flex justify-between text-xs text-gray-500">
-                        <span>預約次數</span><span className="font-medium text-gray-800">{f.total_appointments} 次</span>
+                      <div className="flex justify-between text-xs text-ink-3">
+                        <span>預約次數</span><span className="font-medium text-ink">{f.total_appointments} 次</span>
                       </div>
-                      <div className="flex justify-between text-xs text-gray-500">
-                        <span>使用時數</span><span className="font-medium text-gray-800">{f.total_used_hours}h</span>
+                      <div className="flex justify-between text-xs text-ink-3">
+                        <span>使用時數</span><span className="font-medium text-ink">{f.total_used_hours}h</span>
                       </div>
                     </div>
                   </div>
@@ -992,23 +992,23 @@ function RoomUtilizationTab({ token }: { token: string }) {
 
           {/* Hourly distribution */}
           <div>
-            <h2 className="mb-3 text-base font-semibold text-gray-700">預約時段分布</h2>
-            <div className="rounded-lg border border-gray-200 bg-white p-4">
+            <h2 className="mb-3 text-base font-semibold text-ink-2">預約時段分布</h2>
+            <div className="rounded-lg border border-line bg-white p-4">
               <div className="flex items-end gap-1 h-24">
                 {Object.entries(data.hourly_distribution).map(([h, cnt]) => (
                   <div key={h} className="flex flex-1 flex-col items-center gap-1">
                     <div className="w-full flex flex-col justify-end" style={{ height: "80px" }}>
                       <div
-                        className={`w-full rounded-t ${cnt > 0 ? "bg-primary-400" : "bg-gray-100"}`}
+                        className={`w-full rounded-t ${cnt > 0 ? "bg-accent/70" : "bg-surface-3"}`}
                         style={{ height: `${Math.max(2, Math.round((cnt / maxHourly) * 76))}px` }}
                         title={`${h}:00 — ${cnt} 次`}
                       />
                     </div>
-                    <span className="text-xs text-gray-400">{h}</span>
+                    <span className="text-xs text-ink-3">{h}</span>
                   </div>
                 ))}
               </div>
-              <p className="mt-2 text-xs text-gray-400 text-center">預約開始時間（小時）</p>
+              <p className="mt-2 text-xs text-ink-3 text-center">預約開始時間（小時）</p>
             </div>
           </div>
         </div>
@@ -1071,50 +1071,50 @@ function TherapistLoadTab({ token }: { token: string }) {
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <select value={year} onChange={(e) => setYear(parseInt(e.target.value))} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+        <select value={year} onChange={(e) => setYear(parseInt(e.target.value))} className="rounded-lg border border-line-2 px-3 py-2 text-sm">
           {[2024, 2025, 2026, 2027].map((y) => <option key={y} value={y}>{y} 年</option>)}
         </select>
-        <select value={month} onChange={(e) => setMonth(parseInt(e.target.value))} className="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+        <select value={month} onChange={(e) => setMonth(parseInt(e.target.value))} className="rounded-lg border border-line-2 px-3 py-2 text-sm">
           {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => <option key={m} value={m}>{m} 月</option>)}
         </select>
-        <button onClick={fetchData} disabled={loading} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">
+        <button onClick={fetchData} disabled={loading} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-st-active disabled:opacity-50">
           {loading ? "載入中..." : "重新查詢"}
         </button>
       </div>
 
-      {error && <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</div>}
+      {error && <div className="mb-4 rounded-lg bg-st-danger-bg p-3 text-sm text-st-danger">{error}</div>}
 
       {loading ? (
-        <div className="rounded-lg border border-dashed border-gray-300 p-16 text-center text-gray-400">載入中...</div>
+        <div className="rounded-lg border border-dashed border-line-2 p-16 text-center text-ink-3">載入中...</div>
       ) : !data ? (
-        <div className="rounded-lg border border-dashed border-gray-300 p-16 text-center text-gray-400">無資料</div>
+        <div className="rounded-lg border border-dashed border-line-2 p-16 text-center text-ink-3">無資料</div>
       ) : (
         <div className="space-y-6">
           {/* Summary cards */}
           <div className="grid grid-cols-3 gap-3">
-            <div className="rounded-lg border border-gray-200 bg-white p-4">
-              <div className="text-xs text-gray-500">進行中個案總數</div>
-              <div className="mt-1 text-2xl font-bold text-gray-900">{data.summary.total_active_cases}</div>
-              <div className="text-xs text-gray-400">位</div>
+            <div className="rounded-lg border border-line bg-white p-4">
+              <div className="text-xs text-ink-3">進行中個案總數</div>
+              <div className="mt-1 text-2xl font-bold text-ink">{data.summary.total_active_cases}</div>
+              <div className="text-xs text-ink-3">位</div>
             </div>
-            <div className="rounded-lg border border-gray-200 bg-white p-4">
-              <div className="text-xs text-gray-500">{data.month} 月諮商總次數</div>
-              <div className="mt-1 text-2xl font-bold text-gray-900">{data.summary.total_sessions}</div>
-              <div className="text-xs text-gray-400">次</div>
+            <div className="rounded-lg border border-line bg-white p-4">
+              <div className="text-xs text-ink-3">{data.month} 月諮商總次數</div>
+              <div className="mt-1 text-2xl font-bold text-ink">{data.summary.total_sessions}</div>
+              <div className="text-xs text-ink-3">次</div>
             </div>
-            <div className="rounded-lg border border-gray-200 bg-white p-4">
-              <div className="text-xs text-gray-500">有接案心理師</div>
-              <div className="mt-1 text-2xl font-bold text-gray-900">{data.summary.active_therapist_count}</div>
-              <div className="text-xs text-gray-400">/ {data.therapists.length} 位</div>
+            <div className="rounded-lg border border-line bg-white p-4">
+              <div className="text-xs text-ink-3">有接案心理師</div>
+              <div className="mt-1 text-2xl font-bold text-ink">{data.summary.active_therapist_count}</div>
+              <div className="text-xs text-ink-3">/ {data.therapists.length} 位</div>
             </div>
           </div>
 
           {/* Therapist table */}
           <div>
-            <h2 className="mb-3 text-base font-semibold text-gray-700">各心理師接案狀況</h2>
-            <div className="overflow-x-auto rounded-lg border border-gray-200">
+            <h2 className="mb-3 text-base font-semibold text-ink-2">各心理師接案狀況</h2>
+            <div className="overflow-x-auto rounded-lg border border-line">
               <table className="w-full text-left text-sm">
-                <thead className="bg-gray-50 text-xs text-gray-500">
+                <thead className="bg-surface-2 text-xs text-ink-3">
                   <tr>
                     <th className="px-4 py-2.5 font-semibold">心理師</th>
                     <th className="px-4 py-2.5 text-right font-semibold">進行中個案</th>
@@ -1125,19 +1125,19 @@ function TherapistLoadTab({ token }: { token: string }) {
                     <th className="px-4 py-2.5 text-right font-semibold">抽成</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-line">
                   {data.therapists.map((t) => (
-                    <tr key={t.therapist_id} className="hover:bg-gray-50">
+                    <tr key={t.therapist_id} className="hover:bg-surface-2">
                       <td className="px-4 py-2.5">
                         <div className="font-medium">{t.therapist_name}</div>
-                        <div className="text-xs text-gray-400">{t.user_code}</div>
+                        <div className="text-xs text-ink-3">{t.user_code}</div>
                       </td>
                       <td className="px-4 py-2.5 text-right font-bold">
                         {t.active_cases}
                       </td>
                       <td className="px-4 py-2.5 w-32">
                         <div className="flex items-center gap-2">
-                          <div className="h-2 flex-1 rounded-full bg-gray-100">
+                          <div className="h-2 flex-1 rounded-full bg-surface-3">
                             <div
                               className="h-2 rounded-full bg-emerald-400"
                               style={{ width: `${Math.round((t.active_cases / maxCases) * 100)}%` }}
@@ -1153,10 +1153,10 @@ function TherapistLoadTab({ token }: { token: string }) {
                             {t.upcoming_appointments}
                           </span>
                         ) : (
-                          <span className="text-gray-300">—</span>
+                          <span className="text-st-muted">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-2.5 text-right text-xs text-gray-500">
+                      <td className="px-4 py-2.5 text-right text-xs text-ink-3">
                         {Math.round(t.commission_rate * 100)}%
                       </td>
                     </tr>
@@ -1268,7 +1268,7 @@ function MonthlyReportTab({ token }: { token: string }) {
         <select
           value={year}
           onChange={(e) => setYear(parseInt(e.target.value))}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          className="rounded-lg border border-line-2 px-3 py-2 text-sm"
         >
           {[2025, 2026, 2027].map((y) => (
             <option key={y} value={y}>
@@ -1279,7 +1279,7 @@ function MonthlyReportTab({ token }: { token: string }) {
         <select
           value={month}
           onChange={(e) => setMonth(parseInt(e.target.value))}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          className="rounded-lg border border-line-2 px-3 py-2 text-sm"
         >
           {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
             <option key={m} value={m}>
@@ -1290,7 +1290,7 @@ function MonthlyReportTab({ token }: { token: string }) {
         <button
           onClick={fetchReport}
           disabled={loading}
-          className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-st-active disabled:opacity-50"
         >
           {loading ? "載入中..." : "重新查詢"}
         </button>
@@ -1298,20 +1298,20 @@ function MonthlyReportTab({ token }: { token: string }) {
           onClick={() =>
             exportCsv(`/export/ledger?year=${year}&month=${month}`, token, `ledger_${year}_${month}.csv`)
           }
-          className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
+          className="rounded-lg border border-line-2 px-4 py-2 text-sm font-medium hover:bg-surface-2"
         >
           匯出 CSV
         </button>
       </div>
 
-      {error && <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</div>}
+      {error && <div className="mb-4 rounded-lg bg-st-danger-bg p-3 text-sm text-st-danger">{error}</div>}
 
       {loading ? (
-        <div className="rounded-lg border border-dashed border-gray-300 p-16 text-center text-gray-400">
+        <div className="rounded-lg border border-dashed border-line-2 p-16 text-center text-ink-3">
           載入中...
         </div>
       ) : !report ? (
-        <div className="rounded-lg border border-dashed border-gray-300 p-16 text-center text-gray-400">
+        <div className="rounded-lg border border-dashed border-line-2 p-16 text-center text-ink-3">
           無資料
         </div>
       ) : (
@@ -1332,7 +1332,7 @@ function MonthlyReportTab({ token }: { token: string }) {
 
           <div>
             <h2 className="mb-3 text-lg font-semibold">損益摘要</h2>
-            <div className="rounded-lg border border-gray-200 bg-white p-4">
+            <div className="rounded-lg border border-line bg-white p-4">
               <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
                 <PnlRow label="總營收" value={report.pnl.gross_revenue} />
                 <PnlRow label="心理師成本" value={-report.pnl.therapist_cost} negative />
@@ -1351,7 +1351,7 @@ function MonthlyReportTab({ token }: { token: string }) {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <div>
               <h2 className="mb-3 text-lg font-semibold">KPI 指標</h2>
-              <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-4">
+              <div className="space-y-2 rounded-lg border border-line bg-white p-4">
                 <KpiRow label="取消率" value={`${report.kpi.cancel_rate}%`} warn={report.kpi.cancel_rate > 15} />
                 <KpiRow label="續診率" value={`${report.kpi.continuation_rate}%`} />
                 <KpiRow label="活躍心理師" value={`${report.kpi.active_therapists} 位`} />
@@ -1361,39 +1361,39 @@ function MonthlyReportTab({ token }: { token: string }) {
 
             <div>
               <h2 className="mb-3 text-lg font-semibold">諮商類型分布</h2>
-              <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-4">
+              <div className="space-y-2 rounded-lg border border-line bg-white p-4">
                 {Object.entries(report.session_type_breakdown).map(([type, data]) => (
                   <div key={type} className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">{sessionTypeLabels[type] ?? type}</span>
+                    <span className="text-sm text-ink-2">{sessionTypeLabels[type] ?? type}</span>
                     <span className="text-sm font-medium">
                       {data.count} 次 · ${data.revenue.toLocaleString()}
                     </span>
                   </div>
                 ))}
                 {Object.keys(report.session_type_breakdown).length === 0 && (
-                  <p className="text-sm text-gray-400">無資料</p>
+                  <p className="text-sm text-ink-3">無資料</p>
                 )}
               </div>
             </div>
 
             <div>
               <h2 className="mb-3 text-lg font-semibold">金流來源分析</h2>
-              <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-4">
+              <div className="space-y-2 rounded-lg border border-line bg-white p-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">自費收入</span>
+                  <span className="text-sm text-ink-2">自費收入</span>
                   <span className="text-sm font-medium">
                     ${report.funding_breakdown.self_pay_revenue.toLocaleString()}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">機構收入</span>
+                  <span className="text-sm text-ink-2">機構收入</span>
                   <span className="text-sm font-medium">
                     ${report.funding_breakdown.institution_revenue.toLocaleString()}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-red-600">機構待請款</span>
-                  <span className="text-sm font-medium text-red-600">
+                  <span className="text-sm text-st-danger">機構待請款</span>
+                  <span className="text-sm font-medium text-st-danger">
                     ${report.funding_breakdown.institution_unpaid.toLocaleString()}
                   </span>
                 </div>
@@ -1402,21 +1402,21 @@ function MonthlyReportTab({ token }: { token: string }) {
 
             <div>
               <h2 className="mb-3 text-lg font-semibold">其他商品販售</h2>
-              <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-4">
+              <div className="space-y-2 rounded-lg border border-line bg-white p-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">銷售總額</span>
+                  <span className="text-sm text-ink-2">銷售總額</span>
                   <span className="text-sm font-medium">
                     ${(report.product_sales?.total ?? 0).toLocaleString()}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">筆數</span>
+                  <span className="text-sm text-ink-2">筆數</span>
                   <span className="text-sm font-medium">{report.product_sales?.count ?? 0}</span>
                 </div>
                 {Object.entries(report.product_sales?.by_payment_method ?? {}).map(([m, v]) => (
                   <div key={m} className="flex items-center justify-between">
-                    <span className="text-sm text-gray-500">{m === "cash" ? "現金" : m === "transfer" ? "匯款" : m}</span>
-                    <span className="text-sm text-gray-500">${v.toLocaleString()}</span>
+                    <span className="text-sm text-ink-3">{m === "cash" ? "現金" : m === "transfer" ? "匯款" : m}</span>
+                    <span className="text-sm text-ink-3">${v.toLocaleString()}</span>
                   </div>
                 ))}
               </div>
@@ -1425,9 +1425,9 @@ function MonthlyReportTab({ token }: { token: string }) {
 
           <div>
             <h2 className="mb-3 text-lg font-semibold">心理師績效</h2>
-            <div className="overflow-x-auto rounded-lg border border-gray-200">
+            <div className="overflow-x-auto rounded-lg border border-line">
               <table className="w-full text-left text-sm">
-                <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+                <thead className="bg-surface-2 text-xs uppercase text-ink-3">
                   <tr>
                     <th className="px-4 py-3">心理師</th>
                     <th className="px-4 py-3 text-right">次數</th>
@@ -1436,9 +1436,9 @@ function MonthlyReportTab({ token }: { token: string }) {
                     <th className="px-4 py-3 text-right">所得</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200">
+                <tbody className="divide-y divide-line">
                   {report.therapist_summary.map((t) => (
-                    <tr key={t.therapist_id} className="hover:bg-gray-50">
+                    <tr key={t.therapist_id} className="hover:bg-surface-2">
                       <td className="px-4 py-3 font-medium">{t.therapist_name}</td>
                       <td className="px-4 py-3 text-right">{t.sessions}</td>
                       <td className="px-4 py-3 text-right">${t.revenue.toLocaleString()}</td>
@@ -1456,8 +1456,8 @@ function MonthlyReportTab({ token }: { token: string }) {
               <h2 className="mb-3 text-lg font-semibold">零用金分類</h2>
               <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                 {Object.entries(report.petty_cash_by_category).map(([cat, amt]) => (
-                  <div key={cat} className="rounded-lg border border-gray-200 p-3">
-                    <div className="text-xs text-gray-500">{categoryLabels[cat] ?? cat}</div>
+                  <div key={cat} className="rounded-lg border border-line p-3">
+                    <div className="text-xs text-ink-3">{categoryLabels[cat] ?? cat}</div>
                     <div className="text-lg font-bold">${amt.toLocaleString()}</div>
                   </div>
                 ))}
@@ -1509,11 +1509,11 @@ function ChurnTab({ token }: { token: string }) {
   return (
     <div>
       <div className="mb-4 flex items-center gap-2">
-        <label className="text-sm text-gray-500">超過</label>
+        <label className="text-sm text-ink-3">超過</label>
         <select
           value={days}
           onChange={(e) => setDays(parseInt(e.target.value))}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          className="rounded-lg border border-line-2 px-3 py-2 text-sm"
         >
           <option value={14}>14 天</option>
           <option value={21}>21 天</option>
@@ -1522,21 +1522,21 @@ function ChurnTab({ token }: { token: string }) {
           <option value={60}>60 天</option>
           <option value={90}>90 天</option>
         </select>
-        <span className="text-sm text-gray-500">未預約的活躍個案</span>
+        <span className="text-sm text-ink-3">未預約的活躍個案</span>
       </div>
 
       {loading ? (
-        <p className="text-gray-400">載入中...</p>
+        <p className="text-ink-3">載入中...</p>
       ) : cases.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-300 p-16 text-center text-gray-400">
+        <div className="rounded-lg border border-dashed border-line-2 p-16 text-center text-ink-3">
           目前無流失預警個案
         </div>
       ) : (
         <>
-          <div className="mb-4 text-sm text-gray-500">共 {cases.length} 位個案需關注</div>
-          <div className="overflow-x-auto rounded-lg border border-gray-200">
+          <div className="mb-4 text-sm text-ink-3">共 {cases.length} 位個案需關注</div>
+          <div className="overflow-x-auto rounded-lg border border-line">
             <table className="w-full text-left text-sm">
-              <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+              <thead className="bg-surface-2 text-xs uppercase text-ink-3">
                 <tr>
                   <th className="px-4 py-3">個案姓名</th>
                   <th className="px-4 py-3">負責心理師</th>
@@ -1547,9 +1547,9 @@ function ChurnTab({ token }: { token: string }) {
                   <th className="px-4 py-3">狀態</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-line">
                 {cases.map((c) => (
-                  <tr key={c.case_id} className="hover:bg-gray-50">
+                  <tr key={c.case_id} className="hover:bg-surface-2">
                     <td className="px-4 py-3 font-medium">{c.case_name}</td>
                     <td className="px-4 py-3">{c.therapist_name ?? "-"}</td>
                     <td className="px-4 py-3 text-xs">{c.phone ?? "-"}</td>
@@ -1560,12 +1560,12 @@ function ChurnTab({ token }: { token: string }) {
                     <td className="px-4 py-3">
                       {c.days_since_last !== null ? (
                         <span
-                          className={`font-medium ${c.days_since_last > 60 ? "text-red-600" : c.days_since_last > 30 ? "text-amber-600" : "text-gray-900"}`}
+                          className={`font-medium ${c.days_since_last > 60 ? "text-st-danger" : c.days_since_last > 30 ? "text-st-warn" : "text-ink"}`}
                         >
                           {c.days_since_last} 天
                         </span>
                       ) : (
-                        <span className="text-gray-400">—</span>
+                        <span className="text-ink-3">—</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-xs">{c.status === "initial" ? "初談" : "持續中"}</td>
@@ -1585,15 +1585,15 @@ function ChurnTab({ token }: { token: string }) {
 function StatCard({ label, value, color }: { label: string; value: string; color?: string }) {
   const colorClass =
     color === "green"
-      ? "text-green-600"
+      ? "text-st-done"
       : color === "red"
-        ? "text-red-600"
+        ? "text-st-danger"
         : color === "gray"
-          ? "text-gray-500"
-          : "text-gray-900";
+          ? "text-ink-3"
+          : "text-ink";
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4">
-      <div className="text-xs text-gray-500">{label}</div>
+    <div className="rounded-lg border border-line bg-white p-4">
+      <div className="text-xs text-ink-3">{label}</div>
       <div className={`mt-1 text-xl font-bold ${colorClass}`}>{value}</div>
     </div>
   );
@@ -1612,8 +1612,8 @@ function PnlRow({
 }) {
   return (
     <div className="flex items-center justify-between">
-      <span className={`text-sm ${bold ? "font-semibold" : "text-gray-600"}`}>{label}</span>
-      <span className={`text-sm ${bold ? "font-bold text-gray-900" : ""} ${negative ? "text-red-600" : ""}`}>
+      <span className={`text-sm ${bold ? "font-semibold" : "text-ink-2"}`}>{label}</span>
+      <span className={`text-sm ${bold ? "font-bold text-ink" : ""} ${negative ? "text-st-danger" : ""}`}>
         {value < 0 ? "-" : ""}${Math.abs(value).toLocaleString()}
       </span>
     </div>
@@ -1623,8 +1623,8 @@ function PnlRow({
 function KpiRow({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-sm text-gray-600">{label}</span>
-      <span className={`text-sm font-medium ${warn ? "text-red-600" : "text-gray-900"}`}>{value}</span>
+      <span className="text-sm text-ink-2">{label}</span>
+      <span className={`text-sm font-medium ${warn ? "text-st-danger" : "text-ink"}`}>{value}</span>
     </div>
   );
 }

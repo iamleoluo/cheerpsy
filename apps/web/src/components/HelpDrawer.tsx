@@ -22,11 +22,11 @@ function SectionBlock({ section }: { section: DocSection | HelpSection }) {
 
   return (
     <div>
-      <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">
-        {type === "steps" && <span className="text-primary-500">▶</span>}
-        {type === "tips" && <span className="text-amber-500">⚠</span>}
+      <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-3">
+        {type === "steps" && <span className="text-accent">▶</span>}
+        {type === "tips" && <span className="text-st-warn">⚠</span>}
         {type === "notes" && <span className="text-blue-500">💡</span>}
-        {(type === "text" || type === "flow") && <span className="text-gray-400">•</span>}
+        {(type === "text" || type === "flow") && <span className="text-ink-3">•</span>}
         {section.heading}
       </h3>
 
@@ -36,10 +36,10 @@ function SectionBlock({ section }: { section: DocSection | HelpSection }) {
             const text = typeof item === "string" ? item : (item as HelpStep).text;
             return (
               <li key={ii} className="flex items-start gap-2.5">
-                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-bold text-primary-700">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent-soft text-xs font-bold text-accent">
                   {ii + 1}
                 </span>
-                <p className="text-sm text-gray-700">{text}</p>
+                <p className="text-sm text-ink-2">{text}</p>
               </li>
             );
           })}
@@ -49,8 +49,8 @@ function SectionBlock({ section }: { section: DocSection | HelpSection }) {
       {type === "tips" && (
         <ul className="space-y-1.5">
           {items.map((item, ii) => (
-            <li key={ii} className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              <span className="mt-0.5 shrink-0 text-amber-500">!</span>
+            <li key={ii} className="flex items-start gap-2 rounded-lg bg-st-warn-bg px-3 py-2 text-sm text-st-warn">
+              <span className="mt-0.5 shrink-0 text-st-warn">!</span>
               {typeof item === "string" ? item : (item as HelpStep).text}
             </li>
           ))}
@@ -71,8 +71,8 @@ function SectionBlock({ section }: { section: DocSection | HelpSection }) {
       {(type === "text" || type === "flow") && (
         <ul className="space-y-1">
           {items.map((item, ii) => (
-            <li key={ii} className="flex items-start gap-2 text-sm text-gray-600">
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gray-300" />
+            <li key={ii} className="flex items-start gap-2 text-sm text-ink-2">
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-line-2" />
               {typeof item === "string" ? item : (item as HelpStep).text}
             </li>
           ))}
@@ -104,12 +104,12 @@ export default function HelpDrawer({ open, onClose, guideId, content }: Props) {
       <div className="fixed inset-0 z-40 bg-black/20" onClick={onClose} />
       <div className="fixed right-0 top-0 z-50 flex h-full w-full max-w-sm flex-col bg-white shadow-2xl">
         {/* header */}
-        <div className="flex items-center justify-between border-b border-gray-200 bg-primary-50 px-5 py-4">
+        <div className="flex items-center justify-between border-b border-line bg-accent-soft px-5 py-4">
           <div>
-            <p className="text-xs font-medium text-primary-600 uppercase tracking-wide">操作說明</p>
-            <h2 className="text-base font-bold text-gray-900">{title}</h2>
+            <p className="text-xs font-medium text-accent uppercase tracking-wide">操作說明</p>
+            <h2 className="text-base font-bold text-ink">{title}</h2>
           </div>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+          <button onClick={onClose} className="rounded-lg p-1.5 text-ink-3 hover:bg-surface-3 hover:text-ink-2">
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -118,17 +118,17 @@ export default function HelpDrawer({ open, onClose, guideId, content }: Props) {
 
         {/* content */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-          <p className="text-sm text-gray-600 leading-relaxed">{overview}</p>
+          <p className="text-sm text-ink-2 leading-relaxed">{overview}</p>
           {(sections as (DocSection | HelpSection)[]).map((section, si) => (
             <SectionBlock key={si} section={section} />
           ))}
         </div>
 
         {/* footer */}
-        <div className="border-t border-gray-100 px-5 py-3 flex items-center justify-between">
-          <p className="text-xs text-gray-400">CheerPsy v2</p>
+        <div className="border-t border-line px-5 py-3 flex items-center justify-between">
+          <p className="text-xs text-ink-3">CheerPsy v2</p>
           {resolvedId && (
-            <a href={`/guide#${resolvedId}`} className="text-xs text-primary-600 hover:underline">
+            <a href={`/guide#${resolvedId}`} className="text-xs text-accent hover:underline">
               完整操作指南 →
             </a>
           )}

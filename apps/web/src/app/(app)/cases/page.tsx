@@ -54,23 +54,23 @@ export default function CasesPage() {
   const [mainTab, setMainTab] = useState<"cases" | "appointments" | "quotas">("cases");
   const [helpOpen, setHelpOpen] = useState(false);
 
-  if (!token) return <p className="p-6 text-gray-400">載入中...</p>;
+  if (!token) return <p className="p-6 text-ink-3">載入中...</p>;
 
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">個案管理</h1>
-        <button onClick={() => setHelpOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700">
+        <button onClick={() => setHelpOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-sm text-ink-3 hover:bg-surface-2 hover:text-ink-2">
           <span>ℹ️</span> 說明
         </button>
       </div>
       <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} guideId="cases" />
 
-      <div className="mb-6 flex gap-1 border-b border-gray-200">
+      <div className="mb-6 flex gap-1 border-b border-line">
         <button
           onClick={() => setMainTab("cases")}
           className={`px-4 py-2.5 text-sm font-medium transition-colors ${
-            mainTab === "cases" ? "border-b-2 border-primary-600 text-primary-700" : "text-gray-500 hover:text-gray-700"
+            mainTab === "cases" ? "border-b-2 border-accent text-accent" : "text-ink-3 hover:text-ink-2"
           }`}
         >
           個案列表
@@ -78,7 +78,7 @@ export default function CasesPage() {
         <button
           onClick={() => setMainTab("appointments")}
           className={`px-4 py-2.5 text-sm font-medium transition-colors ${
-            mainTab === "appointments" ? "border-b-2 border-primary-600 text-primary-700" : "text-gray-500 hover:text-gray-700"
+            mainTab === "appointments" ? "border-b-2 border-accent text-accent" : "text-ink-3 hover:text-ink-2"
           }`}
         >
           預約總表
@@ -86,7 +86,7 @@ export default function CasesPage() {
         <button
           onClick={() => setMainTab("quotas")}
           className={`px-4 py-2.5 text-sm font-medium transition-colors ${
-            mainTab === "quotas" ? "border-b-2 border-primary-600 text-primary-700" : "text-gray-500 hover:text-gray-700"
+            mainTab === "quotas" ? "border-b-2 border-accent text-accent" : "text-ink-3 hover:text-ink-2"
           }`}
         >
           機構額度
@@ -167,12 +167,12 @@ function CasesTab({ token, userRole }: { token: string; userRole: string }) {
             placeholder="搜尋個案姓名 / 案號 / 心理師..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+            className="rounded-lg border border-line-2 px-3 py-2 text-sm focus:border-accent focus:outline-none"
           />
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            className="rounded-lg border border-line-2 px-3 py-2 text-sm"
           >
             <option value="">全部狀態</option>
             {Object.entries(statusLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
@@ -180,7 +180,7 @@ function CasesTab({ token, userRole }: { token: string; userRole: string }) {
           <select
             value={billingFilter}
             onChange={(e) => setBillingFilter(e.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            className="rounded-lg border border-line-2 px-3 py-2 text-sm"
             title="結帳方式"
           >
             <option value="">全部結帳方式</option>
@@ -192,7 +192,7 @@ function CasesTab({ token, userRole }: { token: string; userRole: string }) {
             <select
               value={therapistFilter}
               onChange={(e) => setTherapistFilter(e.target.value)}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              className="rounded-lg border border-line-2 px-3 py-2 text-sm"
               title="心理師"
             >
               <option value="">全部心理師</option>
@@ -206,30 +206,30 @@ function CasesTab({ token, userRole }: { token: string; userRole: string }) {
         </div>
         <div className="flex items-center gap-2">
           {userRole !== "therapist" && (
-            <button onClick={() => exportCsv("/export/cases", token, "cases.csv")} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">匯出 CSV</button>
+            <button onClick={() => exportCsv("/export/cases", token, "cases.csv")} className="rounded-lg border border-line-2 px-4 py-2 text-sm hover:bg-surface-2">匯出 CSV</button>
           )}
           {userRole !== "therapist" && (
             <button
               onClick={() => setShowCoupleForm(true)}
-              className="rounded-lg border border-rose-300 px-4 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50"
+              className="rounded-lg border border-st-danger/30 px-4 py-2 text-sm font-medium text-st-danger hover:bg-st-danger-bg"
             >
               + 伴侶案
             </button>
           )}
           <button
             onClick={() => { setEditingCase(null); setShowForm(true); }}
-            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-st-active"
           >
             + 新增個案
           </button>
         </div>
       </div>
 
-      {error && <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</div>}
+      {error && <div className="mb-4 rounded-lg bg-st-danger-bg p-3 text-sm text-st-danger">{error}</div>}
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
+      <div className="overflow-x-auto rounded-lg border border-line">
         <table className="w-full text-left text-sm">
-          <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+          <thead className="bg-surface-2 text-xs uppercase text-ink-3">
             <tr>
               <th className="px-4 py-3">編號</th>
               <th className="px-4 py-3">姓名</th>
@@ -239,34 +239,34 @@ function CasesTab({ token, userRole }: { token: string; userRole: string }) {
               <th className="px-4 py-3">操作</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
+          <tbody className="divide-y divide-line">
             {loading ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">載入中...</td></tr>
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-ink-3">載入中...</td></tr>
             ) : cases.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">尚無個案資料</td></tr>
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-ink-3">尚無個案資料</td></tr>
             ) : cases.map((c) => (
               <React.Fragment key={c.id}>
                 <tr
-                  className={`hover:bg-gray-50 cursor-pointer ${expandedId === c.id ? "bg-primary-50" : ""}`}
+                  className={`hover:bg-surface-2 cursor-pointer ${expandedId === c.id ? "bg-accent-soft" : ""}`}
                   onClick={() => setExpandedId(expandedId === c.id ? null : c.id)}
                 >
                   <td className="px-4 py-3">
                     <div className="font-mono text-xs">
                       {c.case_number ? (
-                        <span className="font-medium text-gray-800">{c.case_number}</span>
+                        <span className="font-medium text-ink">{c.case_number}</span>
                       ) : (
-                        <span className="text-gray-400">#{String(c.temp_seq ?? 0).padStart(4, "0")}</span>
+                        <span className="text-ink-3">#{String(c.temp_seq ?? 0).padStart(4, "0")}</span>
                       )}
                     </div>
                   </td>
                   <td className="px-4 py-3 font-medium">
                     {c.case_type === "couple" && (
-                      <span className="mr-1.5 inline-block rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">伴侶</span>
+                      <span className="mr-1.5 inline-block rounded-full bg-st-danger-bg px-2 py-0.5 text-xs font-medium text-st-danger">伴侶</span>
                     )}
                     {c.name}
-                    {c.age && !c.birth_date && <span className="ml-1 text-xs text-gray-400">({c.age}歲)</span>}
+                    {c.age && !c.birth_date && <span className="ml-1 text-xs text-ink-3">({c.age}歲)</span>}
                     {c.case_type === "couple" && c.members && c.members.length > 0 && (
-                      <span className="ml-1.5 text-xs text-gray-400">🔗 {c.members.map((m) => m.name).join("、")}</span>
+                      <span className="ml-1.5 text-xs text-ink-3">🔗 {c.members.map((m) => m.name).join("、")}</span>
                     )}
                   </td>
                   <td className="px-4 py-3">{c.therapist_name ?? "—"}</td>
@@ -274,7 +274,7 @@ function CasesTab({ token, userRole }: { token: string; userRole: string }) {
                     <span className="text-xs">{billingLabels[c.billing_cycle ?? "once"] ?? c.billing_cycle}</span>
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusColors[c.status] ?? "bg-gray-100"}`}>
+                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusColors[c.status] ?? "bg-surface-3"}`}>
                       {statusLabels[c.status] ?? c.status}
                     </span>
                   </td>
@@ -282,7 +282,7 @@ function CasesTab({ token, userRole }: { token: string; userRole: string }) {
                     <div className="flex items-center gap-2">
                       <button onClick={() => { setEditingCase(c); setShowForm(true); }} className="text-xs text-blue-600 hover:underline">編輯</button>
                       {c.status === "initial" && (
-                        <button onClick={() => handleActivate(c)} className="text-xs text-green-600 hover:underline">轉正式</button>
+                        <button onClick={() => handleActivate(c)} className="text-xs text-st-done hover:underline">轉正式</button>
                       )}
                     </div>
                   </td>
@@ -392,12 +392,12 @@ function AppointmentsTab({ token, userRole }: { token: string; userRole: string 
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="搜尋個案或心理師…"
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm w-48"
+            className="rounded-lg border border-line-2 px-3 py-2 text-sm w-48"
           />
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            className="rounded-lg border border-line-2 px-3 py-2 text-sm"
           >
             <option value="">全部狀態</option>
             {Object.entries(apptStatusLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
@@ -405,18 +405,18 @@ function AppointmentsTab({ token, userRole }: { token: string; userRole: string 
         </div>
         <div className="flex gap-2">
           {userRole !== "therapist" && (
-            <button onClick={() => exportCsv("/export/appointments", token, "appointments.csv")} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">匯出 CSV</button>
+            <button onClick={() => exportCsv("/export/appointments", token, "appointments.csv")} className="rounded-lg border border-line-2 px-4 py-2 text-sm hover:bg-surface-2">匯出 CSV</button>
           )}
-          <button onClick={() => setShowBatchForm(true)} className="rounded-lg border border-primary-600 px-4 py-2 text-sm font-medium text-primary-600 hover:bg-primary-50">批次預約</button>
-          <button onClick={() => setShowForm(true)} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700">+ 新增預約</button>
+          <button onClick={() => setShowBatchForm(true)} className="rounded-lg border border-accent px-4 py-2 text-sm font-medium text-accent hover:bg-accent-soft">批次預約</button>
+          <button onClick={() => setShowForm(true)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-st-active">+ 新增預約</button>
         </div>
       </div>
 
-      {error && <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</div>}
+      {error && <div className="mb-4 rounded-lg bg-st-danger-bg p-3 text-sm text-st-danger">{error}</div>}
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
+      <div className="overflow-x-auto rounded-lg border border-line">
         <table className="w-full text-left text-sm">
-          <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+          <thead className="bg-surface-2 text-xs uppercase text-ink-3">
             <tr>
               <th className="px-4 py-3">到訪序號</th>
               <th className="px-4 py-3">個案</th>
@@ -430,16 +430,16 @@ function AppointmentsTab({ token, userRole }: { token: string; userRole: string 
               <th className="px-4 py-3">操作</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
+          <tbody className="divide-y divide-line">
             {loading ? (
-              <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">載入中...</td></tr>
+              <tr><td colSpan={10} className="px-4 py-8 text-center text-ink-3">載入中...</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">{search ? "找不到符合的預約" : "尚無預約資料"}</td></tr>
+              <tr><td colSpan={10} className="px-4 py-8 text-center text-ink-3">{search ? "找不到符合的預約" : "尚無預約資料"}</td></tr>
             ) : filtered.map((a) => {
               const c = casesMap[a.case_id];
               return (
-                <tr key={a.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-mono text-xs text-gray-600">{visitId(c, a)}</td>
+                <tr key={a.id} className="hover:bg-surface-2">
+                  <td className="px-4 py-3 font-mono text-xs text-ink-2">{visitId(c, a)}</td>
                   <td className="px-4 py-3">{a.case_name ?? "—"}</td>
                   <td className="px-4 py-3">{a.therapist_name ?? "—"}</td>
                   <td className="px-4 py-3 text-xs">
@@ -448,9 +448,9 @@ function AppointmentsTab({ token, userRole }: { token: string; userRole: string 
                   <td className="px-4 py-3 text-xs">{sessionTypeLabels[a.session_type] ?? a.session_type}</td>
                   <td className="px-4 py-3 text-xs">{a.room_name ?? "—"}</td>
                   <td className="px-4 py-3">${a.amount.toLocaleString()}</td>
-                  <td className="px-4 py-3 text-xs text-gray-500">${a.therapist_share?.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-xs text-ink-3">${a.therapist_share?.toLocaleString()}</td>
                   <td className="px-4 py-3">
-                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${apptStatusColors[a.status] ?? "bg-gray-100"}`}>
+                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${apptStatusColors[a.status] ?? "bg-surface-3"}`}>
                       {apptStatusLabels[a.status] ?? a.status}
                     </span>
                   </td>
@@ -458,7 +458,7 @@ function AppointmentsTab({ token, userRole }: { token: string; userRole: string 
                     {a.status === "booked" && (
                       <div className="flex gap-2">
                         <button onClick={() => setEditAppt(a)} className="text-xs text-blue-600 hover:underline">編輯</button>
-                        <button onClick={() => handleCancel(a.id)} className="text-xs text-red-500 hover:underline">取消</button>
+                        <button onClick={() => handleCancel(a.id)} className="text-xs text-st-danger hover:underline">取消</button>
                       </div>
                     )}
                   </td>

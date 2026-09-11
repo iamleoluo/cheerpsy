@@ -94,8 +94,8 @@ interface DocRow {
 const compensationLabel: Record<string, string> = { commission: "抽成", kickback: "回饋", none: "無心理師勞務" };
 const statusLabel: Record<string, string> = { collecting: "收集中", submitted: "已送出", closed: "已結案", void: "已作廢" };
 const statusTagClass: Record<string, string> = {
-  collecting: "bg-amber-100 text-amber-700", submitted: "bg-sky-100 text-sky-700",
-  closed: "bg-emerald-100 text-emerald-700", void: "bg-gray-100 text-gray-400",
+  collecting: "bg-st-warn-bg text-st-warn", submitted: "bg-sky-100 text-sky-700",
+  closed: "bg-st-done-bg text-st-done", void: "bg-surface-3 text-ink-3",
 };
 
 export default function ContractPanelPage() {
@@ -222,8 +222,8 @@ export default function ContractPanelPage() {
   }
 
   if (!token) return <p>Loading...</p>;
-  if (loading && !panel) return <p className="text-sm text-gray-400">載入中...</p>;
-  if (!panel) return <p className="text-sm text-rose-500">{error ?? "找不到合約"}</p>;
+  if (loading && !panel) return <p className="text-sm text-ink-3">載入中...</p>;
+  if (!panel) return <p className="text-sm text-st-danger">{error ?? "找不到合約"}</p>;
 
   const { contract } = panel;
 
@@ -231,22 +231,22 @@ export default function ContractPanelPage() {
     <div>
       <div className="mb-1 flex items-center gap-2">
         <h1 className="text-2xl font-bold">{contract.name}</h1>
-        {!contract.is_active && <span className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-400">已停用</span>}
+        {!contract.is_active && <span className="rounded bg-surface-3 px-2 py-0.5 text-xs text-ink-3">已停用</span>}
         {panel.module !== "generic" && (
-          <span className="rounded bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700">{moduleLabel[panel.module] ?? panel.module}</span>
+          <span className="rounded bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent">{moduleLabel[panel.module] ?? panel.module}</span>
         )}
       </div>
-      <p className="mb-4 text-sm text-gray-400">
+      <p className="mb-4 text-sm text-ink-3">
         {contract.institution_name}
         {contract.valid_from && contract.valid_until ? ` · ${contract.valid_from} ~ ${contract.valid_until}` : ""}
         {contract.contact_name ? ` · 承辦 ${contract.contact_name}${contract.contact_phone ? ` (${contract.contact_phone})` : ""}` : ""}
       </p>
 
-      {error && <div className="mb-4 rounded-lg bg-rose-50 px-4 py-2 text-sm text-rose-600">{error}</div>}
+      {error && <div className="mb-4 rounded-lg bg-st-danger-bg px-4 py-2 text-sm text-st-danger">{error}</div>}
 
       {claimWarnings.length > 0 && (
 
-        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+        <div className="mb-4 rounded-lg border border-st-warn/30 bg-st-warn-bg px-4 py-3 text-xs text-st-warn">
 
           <p className="mb-1 font-medium">核銷期間提醒（不影響已建立的核銷案）</p>
 
@@ -256,7 +256,7 @@ export default function ContractPanelPage() {
 
           </ul>
 
-          <button onClick={() => setClaimWarnings([])} className="mt-1.5 text-amber-600 underline">知道了</button>
+          <button onClick={() => setClaimWarnings([])} className="mt-1.5 text-st-warn underline">知道了</button>
 
         </div>
 
@@ -264,7 +264,7 @@ export default function ContractPanelPage() {
 
       {panel.guidance && <GuidanceBanner guidance={panel.guidance} />}
 
-      <div className="mb-4 flex gap-1 border-b border-gray-200">
+      <div className="mb-4 flex gap-1 border-b border-line">
         {([
           ["quota", "個案與額度"],
           ["claims", "核銷"],
@@ -274,7 +274,7 @@ export default function ContractPanelPage() {
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`px-4 py-2 text-sm font-medium ${tab === key ? "border-b-2 border-primary-600 text-primary-600" : "text-gray-500 hover:text-gray-700"}`}
+            className={`px-4 py-2 text-sm font-medium ${tab === key ? "border-b-2 border-accent text-accent" : "text-ink-3 hover:text-ink-2"}`}
           >
             {label}
           </button>
@@ -284,44 +284,44 @@ export default function ContractPanelPage() {
       {tab === "quota" && (
         <div className="space-y-6">
           {panel.plans.map((p) => (
-            <div key={p.plan.id} className="rounded-xl border border-gray-200 bg-white p-4">
+            <div key={p.plan.id} className="rounded-xl border border-line bg-white p-4">
               <div className="mb-3 flex items-center gap-2">
                 <h3 className="font-semibold">{p.plan.name}</h3>
-                <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">{compensationLabel[p.plan.compensation_mode] ?? p.plan.compensation_mode}</span>
+                <span className="rounded bg-surface-3 px-1.5 py-0.5 text-xs text-ink-3">{compensationLabel[p.plan.compensation_mode] ?? p.plan.compensation_mode}</span>
                 {p.blocks.includes("period_sublimit") && (
-                  <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700">
+                  <span className="rounded bg-st-warn-bg px-1.5 py-0.5 text-xs text-st-warn">
                     {p.plan.period_unit === "week" ? "每週" : "每月"}上限 {p.plan.period_limit} 次
                   </span>
                 )}
-                <button onClick={() => setEnrollForPlan(p)} className="ml-auto rounded-lg border border-primary-300 px-2 py-1 text-xs text-primary-600 hover:bg-primary-50">
+                <button onClick={() => setEnrollForPlan(p)} className="ml-auto rounded-lg border border-accent/40 px-2 py-1 text-xs text-accent hover:bg-accent-soft">
                   ＋ 加入個案
                 </button>
               </div>
 
               {p.blocks.includes("quota_pool") && p.quota_pool && (
-                <div className="mb-3 rounded-lg bg-gray-50 p-3 text-xs">
-                  <div className="mb-1 flex justify-between text-gray-600">
+                <div className="mb-3 rounded-lg bg-surface-2 p-3 text-xs">
+                  <div className="mb-1 flex justify-between text-ink-2">
                     <span>{p.quota_pool.name}（合約層級總額度）</span>
                     <span>{p.quota_pool.unit === "amount" ? "$" : ""}{p.quota_pool.consumed_total.toLocaleString()} / {p.quota_pool.total_limit != null ? (p.quota_pool.unit === "amount" ? "$" : "") + p.quota_pool.total_limit.toLocaleString() : "不限"}</span>
                   </div>
                   {p.quota_pool.total_limit != null && (
-                    <div className="h-2 overflow-hidden rounded-full bg-gray-200">
+                    <div className="h-2 overflow-hidden rounded-full bg-surface-3">
                       <div
-                        className={`h-full ${(p.quota_pool.remaining ?? 0) <= 0 ? "bg-rose-500" : "bg-primary-500"}`}
+                        className={`h-full ${(p.quota_pool.remaining ?? 0) <= 0 ? "bg-rose-500" : "bg-accent"}`}
                         style={{ width: `${Math.min(100, (p.quota_pool.consumed_total / p.quota_pool.total_limit) * 100)}%` }}
                       />
                     </div>
                   )}
-                  {p.quota_pool.remaining != null && <div className="mt-1 text-gray-400">剩餘 {p.quota_pool.unit === "amount" ? "$" : ""}{p.quota_pool.remaining.toLocaleString()}</div>}
+                  {p.quota_pool.remaining != null && <div className="mt-1 text-ink-3">剩餘 {p.quota_pool.unit === "amount" ? "$" : ""}{p.quota_pool.remaining.toLocaleString()}</div>}
                 </div>
               )}
 
               {p.enrollments.length === 0 ? (
-                <p className="text-xs text-gray-400">尚無個案加入此方案</p>
+                <p className="text-xs text-ink-3">尚無個案加入此方案</p>
               ) : (
-                <div className="overflow-hidden rounded-lg border border-gray-100">
+                <div className="overflow-hidden rounded-lg border border-line">
                   <table className="w-full text-xs">
-                    <thead className="bg-gray-50 text-gray-500">
+                    <thead className="bg-surface-2 text-ink-3">
                       <tr>
                         <th className="px-2 py-1.5 text-left">個案</th>
                         <th className="px-2 py-1.5 text-left">代號</th>
@@ -336,7 +336,7 @@ export default function ContractPanelPage() {
                         const limit = e.quota_limit ?? 0;
                         const total = limit + e.extended_count || 1;
                         return (
-                          <tr key={e.enrollment_id} className="border-t border-gray-100">
+                          <tr key={e.enrollment_id} className="border-t border-line">
                             <td className="px-2 py-1.5 font-medium">{e.case_name ?? "—"}</td>
                             <td className="px-2 py-1.5">
                               <ExternalCodeCell
@@ -349,7 +349,7 @@ export default function ContractPanelPage() {
                             </td>
                             {p.blocks.includes("quota_per_case") && (
                               <td className="px-2 py-1.5">
-                                <div className="flex h-2 w-24 overflow-hidden rounded-full bg-gray-100">
+                                <div className="flex h-2 w-24 overflow-hidden rounded-full bg-surface-3">
                                   <div className="bg-rose-400" style={{ width: `${(e.used / total) * 100}%` }} />
                                   <div className="bg-amber-400" style={{ width: `${(e.booked / total) * 100}%` }} />
                                   <div className="bg-sky-300" style={{ width: `${(e.reserved / total) * 100}%` }} />
@@ -359,7 +359,7 @@ export default function ContractPanelPage() {
                             <td className="px-2 py-1.5 text-right font-mono">{e.used} / {e.booked} / {e.reserved}</td>
                             <td className="px-2 py-1.5">{e.status === "active" ? "使用中" : e.status === "exhausted" ? "已用罄" : "已結案"}</td>
                             <td className="px-2 py-1.5">
-                              <button disabled={busy} onClick={() => setExtendTarget(e)} className="text-primary-500 hover:underline disabled:opacity-40">延長</button>
+                              <button disabled={busy} onClick={() => setExtendTarget(e)} className="text-accent hover:underline disabled:opacity-40">延長</button>
                             </td>
                           </tr>
                         );
@@ -376,30 +376,30 @@ export default function ContractPanelPage() {
       {tab === "claims" && (
         <div className="space-y-6">
           {panel.plans.map((p) => (
-            <div key={p.plan.id} className="rounded-xl border border-gray-200 bg-white p-4">
+            <div key={p.plan.id} className="rounded-xl border border-line bg-white p-4">
               <h3 className="mb-3 font-semibold">{p.plan.name}</h3>
 
               {p.blocks.includes("claim_by_period") && (
                 <div>
                   <div className="mb-2 flex items-center justify-between">
-                    <span className="text-xs text-gray-500">待核銷（{p.claim_uncollected.length} 筆）</span>
+                    <span className="text-xs text-ink-3">待核銷（{p.claim_uncollected.length} 筆）</span>
                     <button
                       disabled={busy || p.claim_uncollected.length === 0}
                       onClick={() => openAndSubmitClaim(p.plan.claim_group_key, "period", p.claim_uncollected.map((r) => r.id))}
-                      className="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-40"
+                      className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-st-active disabled:opacity-40"
                     >
                       開核銷案並送出
                     </button>
                   </div>
                   {p.claim_uncollected.length > 0 && (
-                    <ul className="space-y-1 text-xs text-gray-500">
+                    <ul className="space-y-1 text-xs text-ink-3">
                       {p.claim_uncollected.slice(0, 8).map((r) => (
-                        <li key={r.id} className="flex justify-between border-b border-gray-50 py-1">
+                        <li key={r.id} className="flex justify-between border-b border-line py-1">
                           <span>{r.session_date} · 個案 #{r.case_id}</span>
                           <span>${r.amount.toLocaleString()}</span>
                         </li>
                       ))}
-                      {p.claim_uncollected.length > 8 && <li className="text-gray-400">…還有 {p.claim_uncollected.length - 8} 筆</li>}
+                      {p.claim_uncollected.length > 8 && <li className="text-ink-3">…還有 {p.claim_uncollected.length - 8} 筆</li>}
                     </ul>
                   )}
                 </div>
@@ -407,14 +407,14 @@ export default function ContractPanelPage() {
 
               {p.blocks.includes("claim_by_count") && p.claim_candidates && (
                 <div className="space-y-2">
-                  {p.claim_candidates.length === 0 && <p className="text-xs text-gray-400">目前沒有累積中的紀錄</p>}
+                  {p.claim_candidates.length === 0 && <p className="text-xs text-ink-3">目前沒有累積中的紀錄</p>}
                   {p.claim_candidates.map((c) => (
-                    <div key={c.case_id} className={`flex items-center justify-between rounded-lg p-2 text-xs ${c.ready ? "bg-amber-50" : "bg-gray-50"}`}>
-                      <span>個案 #{c.case_id} · 已達 {c.count} / {p.plan.claim_capacity} 次{c.ready && <b className="ml-1 text-amber-700">可核銷</b>}</span>
+                    <div key={c.case_id} className={`flex items-center justify-between rounded-lg p-2 text-xs ${c.ready ? "bg-st-warn-bg" : "bg-surface-2"}`}>
+                      <span>個案 #{c.case_id} · 已達 {c.count} / {p.plan.claim_capacity} 次{c.ready && <b className="ml-1 text-st-warn">可核銷</b>}</span>
                       <button
                         disabled={busy}
                         onClick={() => openAndSubmitClaim(p.plan.claim_group_key, "per_case_count", c.session_record_ids)}
-                        className="rounded-lg border border-primary-300 px-2 py-1 text-primary-600 hover:bg-primary-50 disabled:opacity-40"
+                        className="rounded-lg border border-accent/40 px-2 py-1 text-accent hover:bg-accent-soft disabled:opacity-40"
                       >
                         開核銷案
                       </button>
@@ -425,13 +425,13 @@ export default function ContractPanelPage() {
             </div>
           ))}
 
-          <div className="rounded-xl border border-gray-200 bg-white p-4">
+          <div className="rounded-xl border border-line bg-white p-4">
             <h3 className="mb-3 font-semibold">本合約核銷案清單</h3>
             {panel.claim_cases.length === 0 ? (
-              <p className="text-xs text-gray-400">尚無核銷案</p>
+              <p className="text-xs text-ink-3">尚無核銷案</p>
             ) : (
               <table className="w-full text-xs">
-                <thead className="bg-gray-50 text-gray-500">
+                <thead className="bg-surface-2 text-ink-3">
                   <tr>
                     <th className="px-2 py-1.5 text-left">核銷案編號</th>
                     <th className="px-2 py-1.5 text-right">場次</th>
@@ -443,7 +443,7 @@ export default function ContractPanelPage() {
                 </thead>
                 <tbody>
                   {panel.claim_cases.map((c) => (
-                    <tr key={c.id} className="border-t border-gray-100">
+                    <tr key={c.id} className="border-t border-line">
                       <td className="px-2 py-1.5 font-mono">{c.claim_no}</td>
                       <td className="px-2 py-1.5 text-right">{c.record_count}</td>
                       <td className="px-2 py-1.5 text-right">{c.applied_amount != null ? `$${c.applied_amount.toLocaleString()}` : "—"}</td>
@@ -452,20 +452,20 @@ export default function ContractPanelPage() {
                         {c.docs_waived_at ? (
                           <span className="rounded bg-sky-100 px-1.5 py-0.5 text-sky-700">已豁免</span>
                         ) : (
-                          <span className="text-gray-300">—</span>
+                          <span className="text-st-muted">—</span>
                         )}
                       </td>
                       <td className="px-2 py-1.5 space-x-2">
-                        <button onClick={() => setExportTarget(c)} className="text-primary-500 hover:underline">請款資料</button>
+                        <button onClick={() => setExportTarget(c)} className="text-accent hover:underline">請款資料</button>
                         {c.status !== "void" && c.status !== "closed" && (
                           c.docs_waived_at ? (
-                            <button disabled={busy} onClick={() => unwaiveDocs(c.id)} className="text-gray-500 hover:underline disabled:opacity-40">撤銷豁免</button>
+                            <button disabled={busy} onClick={() => unwaiveDocs(c.id)} className="text-ink-3 hover:underline disabled:opacity-40">撤銷豁免</button>
                           ) : (
-                            <button disabled={busy} onClick={() => waiveDocs(c.id)} className="text-gray-500 hover:underline disabled:opacity-40">豁免本案資料</button>
+                            <button disabled={busy} onClick={() => waiveDocs(c.id)} className="text-ink-3 hover:underline disabled:opacity-40">豁免本案資料</button>
                           )
                         )}
                         {c.status !== "void" && c.status !== "closed" && (
-                          <button disabled={busy} onClick={() => setVoidTarget(c)} className="text-rose-500 hover:underline disabled:opacity-40">作廢</button>
+                          <button disabled={busy} onClick={() => setVoidTarget(c)} className="text-st-danger hover:underline disabled:opacity-40">作廢</button>
                         )}
                       </td>
                     </tr>
@@ -480,7 +480,7 @@ export default function ContractPanelPage() {
       {tab === "docs" && (
         <div className="space-y-6">
           {panel.plans.filter((p) => p.blocks.includes("doc_gate")).length === 0 && (
-            <p className="text-sm text-gray-400">此合約底下的方案都不需要文件確認</p>
+            <p className="text-sm text-ink-3">此合約底下的方案都不需要文件確認</p>
           )}
           {panel.plans.filter((p) => p.blocks.includes("doc_gate")).map((p) => (
             <DocGateSection key={p.plan.id} claimGroupKey={p.plan.claim_group_key} planName={p.plan.name} token={token} onChanged={fetchPanel} />
@@ -491,25 +491,25 @@ export default function ContractPanelPage() {
       {tab === "settings" && (
         <div className="space-y-6">
           <div className="flex justify-end">
-            <button onClick={() => setShowCreatePlan(true)} className="rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700">
+            <button onClick={() => setShowCreatePlan(true)} className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-st-active">
               ＋ 新增方案
             </button>
           </div>
           {panel.plans.map((p) => (
-            <div key={p.plan.id} className="rounded-xl border border-gray-200 bg-white p-4">
+            <div key={p.plan.id} className="rounded-xl border border-line bg-white p-4">
               <h3 className="mb-3 font-semibold">{p.plan.name}</h3>
-              <dl className="mb-4 grid grid-cols-2 gap-2 text-xs text-gray-500 md:grid-cols-3">
-                <div><dt className="text-gray-400">額度單位</dt><dd>{p.plan.quota_unit === "amount" ? "金額" : "次數"}</dd></div>
-                <div><dt className="text-gray-400">個人上限</dt><dd>{p.plan.default_quota_limit_numeric ?? "不限"}</dd></div>
-                <div><dt className="text-gray-400">核銷方式</dt><dd>{p.plan.claim_grouping_mode === "per_case_count" ? `每滿 ${p.plan.claim_capacity} 次` : "期間制"}</dd></div>
-                <div><dt className="text-gray-400">核銷頻率</dt><dd>{p.plan.claim_timing}</dd></div>
-                <div><dt className="text-gray-400">酬勞模式</dt><dd>{compensationLabel[p.plan.compensation_mode] ?? p.plan.compensation_mode}</dd></div>
-                <div><dt className="text-gray-400">外部代號</dt><dd>{p.plan.requires_external_code ? "需要" : "不需要"}</dd></div>
+              <dl className="mb-4 grid grid-cols-2 gap-2 text-xs text-ink-3 md:grid-cols-3">
+                <div><dt className="text-ink-3">額度單位</dt><dd>{p.plan.quota_unit === "amount" ? "金額" : "次數"}</dd></div>
+                <div><dt className="text-ink-3">個人上限</dt><dd>{p.plan.default_quota_limit_numeric ?? "不限"}</dd></div>
+                <div><dt className="text-ink-3">核銷方式</dt><dd>{p.plan.claim_grouping_mode === "per_case_count" ? `每滿 ${p.plan.claim_capacity} 次` : "期間制"}</dd></div>
+                <div><dt className="text-ink-3">核銷頻率</dt><dd>{p.plan.claim_timing}</dd></div>
+                <div><dt className="text-ink-3">酬勞模式</dt><dd>{compensationLabel[p.plan.compensation_mode] ?? p.plan.compensation_mode}</dd></div>
+                <div><dt className="text-ink-3">外部代號</dt><dd>{p.plan.requires_external_code ? "需要" : "不需要"}</dd></div>
               </dl>
 
-              <h4 className="mb-2 text-xs font-medium text-gray-500">費率規則（依序先匹配先贏）</h4>
+              <h4 className="mb-2 text-xs font-medium text-ink-3">費率規則（依序先匹配先贏）</h4>
               <table className="w-full text-xs">
-                <thead className="bg-gray-50 text-gray-500">
+                <thead className="bg-surface-2 text-ink-3">
                   <tr>
                     <th className="px-2 py-1.5 text-left">#</th>
                     <th className="px-2 py-1.5 text-left">條件</th>
@@ -520,7 +520,7 @@ export default function ContractPanelPage() {
                 </thead>
                 <tbody>
                   {p.rate_rules.map((rr) => (
-                    <tr key={rr.id} className="border-t border-gray-100">
+                    <tr key={rr.id} className="border-t border-line">
                       <td className="px-2 py-1.5">{rr.sort_order}</td>
                       <td className="px-2 py-1.5 font-mono">{rr.when_json === "{}" ? "（無條件・保底）" : rr.when_json}</td>
                       <td className="px-2 py-1.5 text-right">${rr.unit_price.toLocaleString()}</td>
@@ -530,15 +530,15 @@ export default function ContractPanelPage() {
                   ))}
                 </tbody>
               </table>
-              <p className="mt-2 text-xs text-gray-400">既有方案的費率規則編輯功能尚未上線，目前僅供檢視；建立新方案時可以直接設定。</p>
+              <p className="mt-2 text-xs text-ink-3">既有方案的費率規則編輯功能尚未上線，目前僅供檢視；建立新方案時可以直接設定。</p>
 
               {(p.admin_checklist.length > 0 || p.therapist_checklist.length > 0) && (
                 <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
                   {p.admin_checklist.length > 0 && (
-                    <div><dt className="mb-1 text-gray-400">行政流程提醒</dt><ul className="list-disc pl-4 text-gray-600">{p.admin_checklist.map((i) => <li key={i}>{i}</li>)}</ul></div>
+                    <div><dt className="mb-1 text-ink-3">行政流程提醒</dt><ul className="list-disc pl-4 text-ink-2">{p.admin_checklist.map((i) => <li key={i}>{i}</li>)}</ul></div>
                   )}
                   {p.therapist_checklist.length > 0 && (
-                    <div><dt className="mb-1 text-gray-400">心理師端提醒</dt><ul className="list-disc pl-4 text-gray-600">{p.therapist_checklist.map((i) => <li key={i}>{i}</li>)}</ul></div>
+                    <div><dt className="mb-1 text-ink-3">心理師端提醒</dt><ul className="list-disc pl-4 text-ink-2">{p.therapist_checklist.map((i) => <li key={i}>{i}</li>)}</ul></div>
                   )}
                 </div>
               )}
@@ -605,21 +605,21 @@ function GuidanceBanner({ guidance }: { guidance: GuidanceData }) {
   return (
     <div className="mb-4 space-y-2">
       {guidance.alerts?.map((a, i) => (
-        <div key={i} className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">⚠️ {a}</div>
+        <div key={i} className="rounded-lg bg-st-warn-bg px-3 py-2 text-sm text-st-warn">⚠️ {a}</div>
       ))}
 
       {guidance.ready_to_claim && guidance.ready_to_claim.length > 0 && (
-        <div className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+        <div className="rounded-lg bg-st-done-bg px-3 py-2 text-sm text-st-done">
           ✓ {guidance.ready_to_claim.length} 位個案已達核銷次數，可到「核銷」分頁一鍵開案：
           {guidance.ready_to_claim.map((c) => ` 個案#${c.case_id}(${c.count}/${c.capacity})`).join("、")}
         </div>
       )}
 
       {guidance.kickback_summary && guidance.kickback_summary.length > 0 && (
-        <div className="rounded-lg border border-gray-200 bg-white p-3 text-xs">
-          <div className="mb-2 font-medium text-gray-600">心理師直接收款彙總</div>
+        <div className="rounded-lg border border-line bg-white p-3 text-xs">
+          <div className="mb-2 font-medium text-ink-2">心理師直接收款彙總</div>
           <table className="w-full">
-            <thead className="text-gray-400"><tr><th className="text-left">心理師</th><th className="text-right">場次</th><th className="text-right">收款總額</th></tr></thead>
+            <thead className="text-ink-3"><tr><th className="text-left">心理師</th><th className="text-right">場次</th><th className="text-right">收款總額</th></tr></thead>
             <tbody>
               {guidance.kickback_summary.map((s) => (
                 <tr key={s.therapist_id}><td>{s.therapist_name}</td><td className="text-right">{s.session_count}</td><td className="text-right">${s.total_collected.toLocaleString()}</td></tr>
@@ -635,7 +635,7 @@ function GuidanceBanner({ guidance }: { guidance: GuidanceData }) {
         </div>
       )}
 
-      {guidance.note && <p className="text-xs text-gray-400">{guidance.note}</p>}
+      {guidance.note && <p className="text-xs text-ink-3">{guidance.note}</p>}
     </div>
   );
 }
@@ -690,54 +690,54 @@ function DocGateSection({
   }
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4">
+    <div className="rounded-xl border border-line bg-white p-4">
       <h3 className="mb-3 font-semibold">{planName}</h3>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
-          <h4 className="mb-2 text-xs font-medium text-amber-600">待心理師提交（{pending.length}）</h4>
-          <ul className="space-y-1 text-xs text-gray-500">
-            {pending.map((r) => <li key={r.id} className="border-b border-gray-50 py-1">{r.session_date} · {r.case_name} · {r.therapist_name}</li>)}
-            {pending.length === 0 && <li className="text-gray-300">無</li>}
+          <h4 className="mb-2 text-xs font-medium text-st-warn">待心理師提交（{pending.length}）</h4>
+          <ul className="space-y-1 text-xs text-ink-3">
+            {pending.map((r) => <li key={r.id} className="border-b border-line py-1">{r.session_date} · {r.case_name} · {r.therapist_name}</li>)}
+            {pending.length === 0 && <li className="text-st-muted">無</li>}
           </ul>
         </div>
         <div>
           <h4 className="mb-2 text-xs font-medium text-sky-600">待行政核對（{confirmed.length}）</h4>
-          <ul className="space-y-1 text-xs text-gray-500">
+          <ul className="space-y-1 text-xs text-ink-3">
             {confirmed.map((r) => (
-              <li key={r.id} className="flex items-center justify-between border-b border-gray-50 py-1">
+              <li key={r.id} className="flex items-center justify-between border-b border-line py-1">
                 <span>{r.session_date} · {r.case_name} · {r.therapist_name}</span>
                 <span className="flex gap-2">
-                  <button disabled={busy} onClick={() => verify(r.id)} className="text-primary-600 hover:underline disabled:opacity-40">核對</button>
-                  <button disabled={busy} onClick={() => setReturnTarget(r)} className="text-rose-500 hover:underline disabled:opacity-40">退回補件</button>
+                  <button disabled={busy} onClick={() => verify(r.id)} className="text-accent hover:underline disabled:opacity-40">核對</button>
+                  <button disabled={busy} onClick={() => setReturnTarget(r)} className="text-st-danger hover:underline disabled:opacity-40">退回補件</button>
                 </span>
               </li>
             ))}
-            {confirmed.length === 0 && <li className="text-gray-300">無</li>}
+            {confirmed.length === 0 && <li className="text-st-muted">無</li>}
           </ul>
         </div>
       </div>
 
-      {error && <div className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">{error}</div>}
+      {error && <div className="mt-3 rounded-lg bg-st-danger-bg px-3 py-2 text-xs text-st-danger">{error}</div>}
 
       {returnTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setReturnTarget(null)}>
           <div className="w-[420px] rounded-xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-1 font-semibold">退回補件</h3>
-            <p className="mb-3 text-xs text-gray-400">
+            <p className="mb-3 text-xs text-ink-3">
               {returnTarget.session_date} · {returnTarget.case_name} · {returnTarget.therapist_name}
             </p>
-            <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+            <p className="mb-3 rounded-lg bg-st-warn-bg px-3 py-2 text-xs text-st-warn">
               退回會<strong>同時清除心理師確認與行政核對</strong>，該筆回到「待提交」並通知心理師。
               只影響這一筆，但只要有一筆未齊備，整案就無法送出。
             </p>
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">退回原因 <span className="text-rose-500">*</span></span>
+              <span className="mb-1 block text-xs text-ink-3">退回原因 <span className="text-st-danger">*</span></span>
               <textarea
                 value={returnReason}
                 onChange={(e) => setReturnReason(e.target.value)}
                 rows={3}
                 placeholder="例：出席單缺個案簽名"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm"
               />
             </label>
             <div className="flex gap-2 pt-3">
@@ -748,7 +748,7 @@ function DocGateSection({
               >
                 {busy ? "處理中…" : "確認退回"}
               </button>
-              <button onClick={() => setReturnTarget(null)} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-500 hover:bg-gray-50">
+              <button onClick={() => setReturnTarget(null)} className="rounded-lg border border-line px-4 py-2 text-sm text-ink-3 hover:bg-surface-2">
                 取消
               </button>
             </div>
@@ -807,41 +807,41 @@ function EnrollCaseModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
       <div className="w-[380px] rounded-xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <h3 className="mb-1 font-semibold">加入個案</h3>
-        <p className="mb-4 text-xs text-gray-400">方案：{plan.plan.name}</p>
-        {error && <div className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">{error}</div>}
+        <p className="mb-4 text-xs text-ink-3">方案：{plan.plan.name}</p>
+        {error && <div className="mb-3 rounded-lg bg-st-danger-bg px-3 py-2 text-xs text-st-danger">{error}</div>}
         <form onSubmit={handleSubmit} className="space-y-3">
           <label className="block">
-            <span className="mb-1 block text-xs text-gray-500">個案 <span className="text-rose-500">*</span></span>
-            <select required value={caseId} onChange={(e) => setCaseId(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            <span className="mb-1 block text-xs text-ink-3">個案 <span className="text-st-danger">*</span></span>
+            <select required value={caseId} onChange={(e) => setCaseId(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm">
               <option value="">請選擇</option>
               {cases.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </label>
           {plan.plan.requires_external_code && (
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">外部案號（可稍後補）</span>
-              <input value={externalCode} onChange={(e) => setExternalCode(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <span className="mb-1 block text-xs text-ink-3">外部案號（可稍後補）</span>
+              <input value={externalCode} onChange={(e) => setExternalCode(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
             </label>
           )}
           <label className="block">
-            <span className="mb-1 block text-xs text-gray-500">個人額度上限（留空＝方案預設 {plan.plan.default_quota_limit_numeric ?? "不限"}）</span>
-            <input type="number" value={quotaLimit} onChange={(e) => setQuotaLimit(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            <span className="mb-1 block text-xs text-ink-3">個人額度上限（留空＝方案預設 {plan.plan.default_quota_limit_numeric ?? "不限"}）</span>
+            <input type="number" value={quotaLimit} onChange={(e) => setQuotaLimit(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
           </label>
           <div className="grid grid-cols-2 gap-2">
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">有效起日</span>
-              <input type="date" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <span className="mb-1 block text-xs text-ink-3">有效起日</span>
+              <input type="date" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
             </label>
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">有效迄日</span>
-              <input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <span className="mb-1 block text-xs text-ink-3">有效迄日</span>
+              <input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
             </label>
           </div>
           <div className="flex gap-2 pt-2">
-            <button type="submit" disabled={saving} className="flex-1 rounded-lg bg-primary-600 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">
+            <button type="submit" disabled={saving} className="flex-1 rounded-lg bg-accent py-2 text-sm font-medium text-white hover:bg-st-active disabled:opacity-50">
               {saving ? "加入中…" : "加入"}
             </button>
-            <button type="button" onClick={onClose} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-500 hover:bg-gray-50">取消</button>
+            <button type="button" onClick={onClose} className="rounded-lg border border-line px-4 py-2 text-sm text-ink-3 hover:bg-surface-2">取消</button>
           </div>
         </form>
       </div>
@@ -939,35 +939,35 @@ function CreatePlanModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
       <div className="max-h-[90vh] w-[560px] overflow-y-auto rounded-xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <h3 className="mb-4 font-semibold">新增方案</h3>
-        {error && <div className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">{error}</div>}
+        {error && <div className="mb-3 rounded-lg bg-st-danger-bg px-3 py-2 text-xs text-st-danger">{error}</div>}
         <form onSubmit={handleSubmit} className="space-y-3">
           <label className="block">
-            <span className="mb-1 block text-xs text-gray-500">方案名稱 <span className="text-rose-500">*</span></span>
-            <input required value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="如「15-45 青壯世代」" />
+            <span className="mb-1 block text-xs text-ink-3">方案名稱 <span className="text-st-danger">*</span></span>
+            <input required value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" placeholder="如「15-45 青壯世代」" />
           </label>
 
           <div className="grid grid-cols-2 gap-2">
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">額度單位</span>
-              <select value={quotaUnit} onChange={(e) => setQuotaUnit(e.target.value as any)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+              <span className="mb-1 block text-xs text-ink-3">額度單位</span>
+              <select value={quotaUnit} onChange={(e) => setQuotaUnit(e.target.value as any)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm">
                 <option value="count">次數</option>
                 <option value="amount">金額</option>
               </select>
             </label>
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">個人上限（留空＝不限）</span>
-              <input type="number" value={defaultLimit} onChange={(e) => setDefaultLimit(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <span className="mb-1 block text-xs text-ink-3">個人上限（留空＝不限）</span>
+              <input type="number" value={defaultLimit} onChange={(e) => setDefaultLimit(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
             </label>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">週期子上限（留空＝無）</span>
-              <input type="number" value={periodLimit} onChange={(e) => setPeriodLimit(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="如 4" />
+              <span className="mb-1 block text-xs text-ink-3">週期子上限（留空＝無）</span>
+              <input type="number" value={periodLimit} onChange={(e) => setPeriodLimit(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" placeholder="如 4" />
             </label>
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">週期單位</span>
-              <select value={periodUnit} onChange={(e) => setPeriodUnit(e.target.value as any)} disabled={!periodLimit} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50">
+              <span className="mb-1 block text-xs text-ink-3">週期單位</span>
+              <select value={periodUnit} onChange={(e) => setPeriodUnit(e.target.value as any)} disabled={!periodLimit} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm disabled:bg-surface-2">
                 <option value="month">每月</option>
                 <option value="week">每週</option>
               </select>
@@ -976,90 +976,90 @@ function CreatePlanModal({
 
           <div className="grid grid-cols-2 gap-2">
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">酬勞模式</span>
-              <select value={compensationMode} onChange={(e) => setCompensationMode(e.target.value as any)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+              <span className="mb-1 block text-xs text-ink-3">酬勞模式</span>
+              <select value={compensationMode} onChange={(e) => setCompensationMode(e.target.value as any)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm">
                 <option value="commission">抽成</option>
                 <option value="kickback">回饋</option>
                 <option value="none">無心理師勞務</option>
               </select>
             </label>
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">個案收據項目</span>
-              <input value={caseReceiptItemName} onChange={(e) => setCaseReceiptItemName(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <span className="mb-1 block text-xs text-ink-3">個案收據項目</span>
+              <input value={caseReceiptItemName} onChange={(e) => setCaseReceiptItemName(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
             </label>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">核銷方式</span>
-              <select value={claimGroupingMode} onChange={(e) => setClaimGroupingMode(e.target.value as any)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+              <span className="mb-1 block text-xs text-ink-3">核銷方式</span>
+              <select value={claimGroupingMode} onChange={(e) => setClaimGroupingMode(e.target.value as any)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm">
                 <option value="period">期間制</option>
                 <option value="per_case_count">次數制（每滿 N 次）</option>
               </select>
             </label>
             {claimGroupingMode === "per_case_count" && (
               <label className="block">
-                <span className="mb-1 block text-xs text-gray-500">容量 N</span>
-                <input type="number" value={claimCapacity} onChange={(e) => setClaimCapacity(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                <span className="mb-1 block text-xs text-ink-3">容量 N</span>
+                <input type="number" value={claimCapacity} onChange={(e) => setClaimCapacity(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
               </label>
             )}
           </div>
 
           <label className="block">
-            <span className="mb-1 block text-xs text-gray-500">核銷群組（留空＝用方案名稱；同群組的方案會一起請款）</span>
-            <input value={claimGroupKey} onChange={(e) => setClaimGroupKey(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            <span className="mb-1 block text-xs text-ink-3">核銷群組（留空＝用方案名稱；同群組的方案會一起請款）</span>
+            <input value={claimGroupKey} onChange={(e) => setClaimGroupKey(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
           </label>
 
           <div className="grid grid-cols-2 gap-2">
-            <label className="flex items-center gap-2 text-xs text-gray-600">
+            <label className="flex items-center gap-2 text-xs text-ink-2">
               <input type="checkbox" checked={requiresExternalCode} onChange={(e) => setRequiresExternalCode(e.target.checked)} />
               需要外部案號
             </label>
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">未到補助（留空＝不做）</span>
-              <input type="number" value={noShowFee} onChange={(e) => setNoShowFee(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <span className="mb-1 block text-xs text-ink-3">未到補助（留空＝不做）</span>
+              <input type="number" value={noShowFee} onChange={(e) => setNoShowFee(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
             </label>
           </div>
 
-          <div className="border-t border-gray-100 pt-3">
+          <div className="border-t border-line pt-3">
             <div className="mb-2 flex items-center justify-between">
-              <span className="text-xs font-medium text-gray-500">費率規則（依序先匹配先贏）</span>
-              <button type="button" onClick={addRule} className="text-xs text-primary-600 hover:underline">＋ 新增規則</button>
+              <span className="text-xs font-medium text-ink-3">費率規則（依序先匹配先贏）</span>
+              <button type="button" onClick={addRule} className="text-xs text-accent hover:underline">＋ 新增規則</button>
             </div>
             <div className="space-y-2">
               {rules.map((r, i) => (
-                <div key={i} className="rounded-lg border border-gray-200 p-2">
+                <div key={i} className="rounded-lg border border-line p-2">
                   <div className="mb-2 flex items-center gap-1 text-xs">
                     <span>當</span>
-                    <select value={r.condition} onChange={(e) => updateRule(i, { condition: e.target.value as any })} className="rounded border border-gray-300 px-1 py-0.5">
+                    <select value={r.condition} onChange={(e) => updateRule(i, { condition: e.target.value as any })} className="rounded border border-line-2 px-1 py-0.5">
                       <option value="none">（無條件・保底）</option>
                       <option value="visit_seq">次數</option>
                     </select>
                     {r.condition === "visit_seq" && (
                       <>
-                        <select value={r.operator} onChange={(e) => updateRule(i, { operator: e.target.value as any })} className="rounded border border-gray-300 px-1 py-0.5">
+                        <select value={r.operator} onChange={(e) => updateRule(i, { operator: e.target.value as any })} className="rounded border border-line-2 px-1 py-0.5">
                           <option value="eq">＝</option>
                           <option value="gte">≥</option>
                         </select>
-                        <input type="number" value={r.value} onChange={(e) => updateRule(i, { value: e.target.value })} className="w-14 rounded border border-gray-300 px-1 py-0.5" />
+                        <input type="number" value={r.value} onChange={(e) => updateRule(i, { value: e.target.value })} className="w-14 rounded border border-line-2 px-1 py-0.5" />
                       </>
                     )}
                     {rules.length > 1 && (
-                      <button type="button" onClick={() => removeRule(i)} className="ml-auto text-rose-400 hover:underline">刪除</button>
+                      <button type="button" onClick={() => removeRule(i)} className="ml-auto text-st-danger hover:underline">刪除</button>
                     )}
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     <label className="block">
-                      <span className="mb-0.5 block text-[10px] text-gray-400">單價</span>
-                      <input type="number" required value={r.unit_price} onChange={(e) => updateRule(i, { unit_price: e.target.value })} className="w-full rounded border border-gray-300 px-1.5 py-1 text-xs" />
+                      <span className="mb-0.5 block text-[10px] text-ink-3">單價</span>
+                      <input type="number" required value={r.unit_price} onChange={(e) => updateRule(i, { unit_price: e.target.value })} className="w-full rounded border border-line-2 px-1.5 py-1 text-xs" />
                     </label>
                     <label className="block">
-                      <span className="mb-0.5 block text-[10px] text-gray-400">個案自付</span>
-                      <input type="number" value={r.case_payable} onChange={(e) => updateRule(i, { case_payable: e.target.value })} className="w-full rounded border border-gray-300 px-1.5 py-1 text-xs" />
+                      <span className="mb-0.5 block text-[10px] text-ink-3">個案自付</span>
+                      <input type="number" value={r.case_payable} onChange={(e) => updateRule(i, { case_payable: e.target.value })} className="w-full rounded border border-line-2 px-1.5 py-1 text-xs" />
                     </label>
                     <label className="block">
-                      <span className="mb-0.5 block text-[10px] text-gray-400">標籤</span>
-                      <input value={r.label} onChange={(e) => updateRule(i, { label: e.target.value })} className="w-full rounded border border-gray-300 px-1.5 py-1 text-xs" />
+                      <span className="mb-0.5 block text-[10px] text-ink-3">標籤</span>
+                      <input value={r.label} onChange={(e) => updateRule(i, { label: e.target.value })} className="w-full rounded border border-line-2 px-1.5 py-1 text-xs" />
                     </label>
                   </div>
                 </div>
@@ -1068,10 +1068,10 @@ function CreatePlanModal({
           </div>
 
           <div className="flex gap-2 pt-2">
-            <button type="submit" disabled={saving} className="flex-1 rounded-lg bg-primary-600 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">
+            <button type="submit" disabled={saving} className="flex-1 rounded-lg bg-accent py-2 text-sm font-medium text-white hover:bg-st-active disabled:opacity-50">
               {saving ? "建立中…" : "建立方案"}
             </button>
-            <button type="button" onClick={onClose} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-500 hover:bg-gray-50">取消</button>
+            <button type="button" onClick={onClose} className="rounded-lg border border-line px-4 py-2 text-sm text-ink-3 hover:bg-surface-2">取消</button>
           </div>
         </form>
       </div>
@@ -1102,19 +1102,19 @@ function ExtendQuotaModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
       <div className="w-80 rounded-xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <h3 className="mb-1 font-semibold">延長額度</h3>
-        <p className="mb-4 text-xs text-gray-400">{enrollment.case_name ?? "此個案"}</p>
+        <p className="mb-4 text-xs text-ink-3">{enrollment.case_name ?? "此個案"}</p>
         <form onSubmit={handleSubmit} className="space-y-3">
           <label className="block">
-            <span className="mb-1 block text-xs text-gray-500">延長次數 <span className="text-rose-500">*</span></span>
-            <input required type="number" min={1} value={additional} onChange={(e) => setAdditional(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" autoFocus />
+            <span className="mb-1 block text-xs text-ink-3">延長次數 <span className="text-st-danger">*</span></span>
+            <input required type="number" min={1} value={additional} onChange={(e) => setAdditional(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" autoFocus />
           </label>
           <label className="block">
-            <span className="mb-1 block text-xs text-gray-500">備註（選填）</span>
-            <input value={note} onChange={(e) => setNote(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            <span className="mb-1 block text-xs text-ink-3">備註（選填）</span>
+            <input value={note} onChange={(e) => setNote(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
           </label>
           <div className="flex gap-2 pt-1">
-            <button type="submit" disabled={busy} className="flex-1 rounded-lg bg-primary-600 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">確認延長</button>
-            <button type="button" onClick={onClose} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-500 hover:bg-gray-50">取消</button>
+            <button type="submit" disabled={busy} className="flex-1 rounded-lg bg-accent py-2 text-sm font-medium text-white hover:bg-st-active disabled:opacity-50">確認延長</button>
+            <button type="button" onClick={onClose} className="rounded-lg border border-line px-4 py-2 text-sm text-ink-3 hover:bg-surface-2">取消</button>
           </div>
         </form>
       </div>
@@ -1130,15 +1130,15 @@ function VoidClaimCaseModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
       <div className="w-80 rounded-xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <h3 className="mb-1 font-semibold text-rose-600">作廢核銷案</h3>
-        <p className="mb-4 text-xs text-gray-400">{claimCase.claim_no} · 內含 {claimCase.record_count} 筆紀錄將全數脫離、退回未核銷</p>
+        <h3 className="mb-1 font-semibold text-st-danger">作廢核銷案</h3>
+        <p className="mb-4 text-xs text-ink-3">{claimCase.claim_no} · 內含 {claimCase.record_count} 筆紀錄將全數脫離、退回未核銷</p>
         <label className="mb-3 block">
-          <span className="mb-1 block text-xs text-gray-500">作廢原因（選填）</span>
-          <input value={reason} onChange={(e) => setReason(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" autoFocus />
+          <span className="mb-1 block text-xs text-ink-3">作廢原因（選填）</span>
+          <input value={reason} onChange={(e) => setReason(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" autoFocus />
         </label>
         <div className="flex gap-2">
           <button disabled={busy} onClick={() => onConfirm(reason)} className="flex-1 rounded-lg bg-rose-600 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-50">確認作廢</button>
-          <button onClick={onClose} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-500 hover:bg-gray-50">取消</button>
+          <button onClick={onClose} className="rounded-lg border border-line px-4 py-2 text-sm text-ink-3 hover:bg-surface-2">取消</button>
         </div>
       </div>
     </div>
@@ -1185,25 +1185,25 @@ function ClaimExportModal({
         <div className="mb-4 flex items-start justify-between">
           <div>
             <h3 className="font-semibold">請款資料</h3>
-            {data && <p className="text-xs text-gray-400">{data.claim_no} · {data.institution_name} · {data.contract_name} · {data.plan_names.join("、")}</p>}
+            {data && <p className="text-xs text-ink-3">{data.claim_no} · {data.institution_name} · {data.contract_name} · {data.plan_names.join("、")}</p>}
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
+          <button onClick={onClose} className="text-ink-3 hover:text-ink-2">✕</button>
         </div>
 
         {!data ? (
-          <p className="text-sm text-gray-400">載入中...</p>
+          <p className="text-sm text-ink-3">載入中...</p>
         ) : (
           <>
-            <div className="mb-3 flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600">
+            <div className="mb-3 flex items-center justify-between rounded-lg bg-surface-2 px-3 py-2 text-xs text-ink-2">
               <span>{data.period_start ?? "—"} ~ {data.period_end ?? "—"} · 共 {data.record_count} 筆 · 合計 ${data.total_amount.toLocaleString()}</span>
-              <button onClick={copyAsTable} className="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700">
+              <button onClick={copyAsTable} className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-st-active">
                 {copied ? "已複製 ✓" : "複製為表格"}
               </button>
             </div>
-            <p className="mb-2 text-xs text-gray-400">複製後可直接貼到 Excel 或 Word 表格——不同機構的請款單格式不同，這裡先把欄位備齊，貼上後再依各自格式調整。</p>
-            <div className="overflow-x-auto rounded-lg border border-gray-200">
+            <p className="mb-2 text-xs text-ink-3">複製後可直接貼到 Excel 或 Word 表格——不同機構的請款單格式不同，這裡先把欄位備齊，貼上後再依各自格式調整。</p>
+            <div className="overflow-x-auto rounded-lg border border-line">
               <table className="w-full text-xs">
-                <thead className="bg-gray-50 text-gray-500">
+                <thead className="bg-surface-2 text-ink-3">
                   <tr>
                     <th className="px-2 py-1.5 text-left">個案</th>
                     <th className="px-2 py-1.5 text-left">病歷號</th>
@@ -1217,7 +1217,7 @@ function ClaimExportModal({
                 </thead>
                 <tbody>
                   {data.rows.map((r) => (
-                    <tr key={r.session_record_id} className="border-t border-gray-100">
+                    <tr key={r.session_record_id} className="border-t border-line">
                       <td className="px-2 py-1.5">{r.case_name ?? "—"}</td>
                       <td className="px-2 py-1.5 font-mono">{r.case_number ?? "—"}</td>
                       <td className="px-2 py-1.5 font-mono">{r.external_case_code ?? "—"}</td>

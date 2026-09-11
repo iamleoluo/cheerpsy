@@ -69,12 +69,12 @@ export default function FinancePage() {
       <HelpDrawer open={helpOpen} onClose={() => setHelpOpen(false)} guideId="finance" />
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-2xl font-bold">財務管理</h1>
-        <button onClick={() => setHelpOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700">
+        <button onClick={() => setHelpOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-sm text-ink-3 hover:bg-surface-2 hover:text-ink-2">
           <span>ℹ️</span> 說明
         </button>
       </div>
 
-      <div className="mb-4 flex gap-1 border-b border-gray-200">
+      <div className="mb-4 flex gap-1 border-b border-line">
         {(
           [
             ["tracking", "款項追蹤"],
@@ -87,8 +87,8 @@ export default function FinancePage() {
             onClick={() => setTab(key)}
             className={`px-4 py-2 text-sm font-medium transition-colors ${
               tab === key
-                ? "border-b-2 border-primary-600 text-primary-600"
-                : "text-gray-500 hover:text-gray-700"
+                ? "border-b-2 border-accent text-accent"
+                : "text-ink-3 hover:text-ink-2"
             }`}
           >
             {label}
@@ -146,8 +146,8 @@ const TRACK_STATUS_LABELS: Record<string, string> = {
 const TRACK_STATUS_COLORS: Record<string, string> = {
   collecting: "bg-blue-100 text-blue-700",
   ready: "bg-cyan-100 text-cyan-700",
-  submitted: "bg-amber-100 text-amber-700",
-  received: "bg-green-100 text-green-700",
+  submitted: "bg-st-warn-bg text-st-warn",
+  received: "bg-st-done-bg text-st-done",
 };
 
 function fmtTs(iso: string | null) {
@@ -182,20 +182,20 @@ function ProgressBar({ steps, timestamps }: { steps: readonly string[]; timestam
             <div className="flex flex-col items-center">
               <div
                 className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
-                  done ? "bg-green-500 text-white" : "bg-gray-200 text-gray-400"
+                  done ? "bg-green-500 text-white" : "bg-surface-3 text-ink-3"
                 }`}
               >
                 {done ? "✓" : i + 1}
               </div>
-              <span className={`mt-0.5 text-[10px] leading-tight ${done ? "text-green-700 font-medium" : "text-gray-400"}`}>
+              <span className={`mt-0.5 text-[10px] leading-tight ${done ? "text-st-done font-medium" : "text-ink-3"}`}>
                 {label}
               </span>
               {ts && (
-                <span className="text-[9px] text-gray-400">{fmtDateOnly(ts)}</span>
+                <span className="text-[9px] text-ink-3">{fmtDateOnly(ts)}</span>
               )}
             </div>
             {!isLast && (
-              <div className={`mx-0.5 h-0.5 w-6 ${done && timestamps[i + 1] ? "bg-green-400" : "bg-gray-200"}`} />
+              <div className={`mx-0.5 h-0.5 w-6 ${done && timestamps[i + 1] ? "bg-green-400" : "bg-surface-3"}`} />
             )}
           </div>
         );
@@ -238,7 +238,7 @@ function InstitutionTrackingContent({ token, reconDate }: { token: string; recon
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            className="rounded-lg border border-line-2 px-3 py-2 text-sm"
           >
             <option value="">全部狀態</option>
             {Object.entries(TRACK_STATUS_LABELS).map(([k, v]) => (
@@ -246,15 +246,15 @@ function InstitutionTrackingContent({ token, reconDate }: { token: string; recon
             ))}
           </select>
         </div>
-        <div className="flex items-center gap-4 text-sm text-gray-500">
+        <div className="flex items-center gap-4 text-sm text-ink-3">
           <span>共 {batches.length} 筆</span>
-          <span>合計 <strong className="text-gray-800">${totalAmount.toLocaleString()}</strong></span>
-          {openCount > 0 && <span className="text-amber-600">{openCount} 筆進行中</span>}
+          <span>合計 <strong className="text-ink">${totalAmount.toLocaleString()}</strong></span>
+          {openCount > 0 && <span className="text-st-warn">{openCount} 筆進行中</span>}
         </div>
       </div>
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
+      <div className="overflow-x-auto rounded-lg border border-line">
         <table className="w-full text-left text-sm">
-          <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+          <thead className="bg-surface-2 text-xs uppercase text-ink-3">
             <tr>
               <th className="px-3 py-3">案號</th>
               <th className="px-3 py-3">機構</th>
@@ -265,26 +265,26 @@ function InstitutionTrackingContent({ token, reconDate }: { token: string; recon
               <th className="px-3 py-3">進度</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
+          <tbody className="divide-y divide-line">
             {loading ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">載入中...</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-ink-3">載入中...</td></tr>
             ) : batches.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400">尚無機構核銷案</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-ink-3">尚無機構核銷案</td></tr>
             ) : batches.map((b) => {
               const timestamps = [b.created_at, b.submitted_at, b.received_at];
               const highlighted = b.received_at?.slice(0, 10) === reconDate;
               return (
-                <tr key={b.id} className={`hover:bg-gray-50 ${highlighted ? "bg-green-50" : ""}`}>
+                <tr key={b.id} className={`hover:bg-surface-2 ${highlighted ? "bg-st-done-bg" : ""}`}>
                   <td className="px-3 py-3 font-mono text-xs">{b.batch_number}</td>
                   <td className="px-3 py-3 text-xs">{b.institution_name}</td>
                   <td className="px-3 py-3 text-xs">{b.record_count}</td>
                   <td className="px-3 py-3 text-right font-medium">${b.total_amount.toLocaleString()}</td>
                   <td className="px-3 py-3 text-xs">
                     {b.payment_method === "cash" ? "現金" : b.payment_method === "transfer" ? "匯款" : "—"}
-                    {b.payment_note && <span className="ml-1 text-gray-400">({b.payment_note})</span>}
+                    {b.payment_note && <span className="ml-1 text-ink-3">({b.payment_note})</span>}
                   </td>
                   <td className="px-3 py-3">
-                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${TRACK_STATUS_COLORS[b.status] ?? "bg-gray-100"}`}>
+                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${TRACK_STATUS_COLORS[b.status] ?? "bg-surface-3"}`}>
                       {TRACK_STATUS_LABELS[b.status] ?? b.status}
                     </span>
                   </td>
@@ -318,19 +318,19 @@ interface SelfPayRecord {
 const PAY_METHOD_LABEL = (m: string | null) =>
   m === "cash" ? "現金" : m === "transfer" ? "匯款" : "—";
 const PAY_STATUS_BADGE = (s: string) =>
-  s === "paid" ? <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700">已付款</span>
+  s === "paid" ? <span className="rounded-full bg-st-done-bg px-2 py-0.5 text-xs text-st-done">已付款</span>
   : s === "claimed" ? <span className="rounded-full bg-cyan-100 px-2 py-0.5 text-xs text-cyan-700">已核銷</span>
-  : <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">待付款</span>;
+  : <span className="rounded-full bg-st-warn-bg px-2 py-0.5 text-xs text-st-warn">待付款</span>;
 
 function SelfPayTrackingContent({ records, loading, reconDate }: { records: SelfPayRecord[]; loading: boolean; reconDate: string }) {
   const [expandedCase, setExpandedCase] = useState<string | number | null>(null);
 
-  if (loading) return <div className="py-12 text-center text-gray-400">載入中...</div>;
+  if (loading) return <div className="py-12 text-center text-ink-3">載入中...</div>;
 
   if (records.length === 0) {
     return (
-      <div className="rounded-lg border border-green-200 bg-green-50 py-12 text-center">
-        <p className="text-lg font-medium text-green-700">目前尚無自費記錄</p>
+      <div className="rounded-lg border border-st-done/30 bg-st-done-bg py-12 text-center">
+        <p className="text-lg font-medium text-st-done">目前尚無自費記錄</p>
       </div>
     );
   }
@@ -358,27 +358,27 @@ function SelfPayTrackingContent({ records, loading, reconDate }: { records: Self
     <div>
       <div className="mb-3 flex flex-wrap items-center gap-4 text-sm">
         {unpaidTotal > 0 && (
-          <span className="rounded-full bg-amber-100 px-3 py-1 font-medium text-amber-700">
+          <span className="rounded-full bg-st-warn-bg px-3 py-1 font-medium text-st-warn">
             待收合計 ${unpaidTotal.toLocaleString()}
           </span>
         )}
         {/* Legend: explain the progress dots */}
-        <div className="flex items-center gap-3 text-xs text-gray-500">
-          <span className="font-medium text-gray-600">療程付款進度：每個點代表一次療程</span>
+        <div className="flex items-center gap-3 text-xs text-ink-3">
+          <span className="font-medium text-ink-2">療程付款進度：每個點代表一次療程</span>
           <span className="flex items-center gap-1">
-            <span className="h-3 w-3 rounded-full border border-green-600 bg-green-500" /> 已付款
+            <span className="h-3 w-3 rounded-full border border-st-done bg-green-500" /> 已付款
           </span>
           <span className="flex items-center gap-1">
-            <span className="h-3 w-3 rounded-full border border-gray-300 bg-gray-200" /> 待付款
+            <span className="h-3 w-3 rounded-full border border-line-2 bg-surface-3" /> 待付款
           </span>
           <span className="flex items-center gap-1">
             <span className="h-3 w-3 rounded-full border border-blue-500 bg-blue-400" /> 當日入帳（付款日 = 對帳日）
           </span>
         </div>
       </div>
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
+      <div className="overflow-x-auto rounded-lg border border-line">
         <table className="w-full text-left text-sm">
-          <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+          <thead className="bg-surface-2 text-xs uppercase text-ink-3">
             <tr>
               <th className="px-4 py-3 w-8"></th>
               <th className="px-4 py-3">個案</th>
@@ -387,23 +387,23 @@ function SelfPayTrackingContent({ records, loading, reconDate }: { records: Self
               <th className="px-4 py-3 text-right">待收金額</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
+          <tbody className="divide-y divide-line">
             {groups.map(({ key, caseName, therapistName, recs, paidCount, unpaidAmount, allPaid }) => {
               const isOpen = expandedCase === key;
               return (
                 <Fragment key={String(key)}>
                   <tr
-                    className="cursor-pointer hover:bg-gray-50"
+                    className="cursor-pointer hover:bg-surface-2"
                     onClick={() => setExpandedCase(isOpen ? null : key)}
                   >
-                    <td className="px-4 py-3 text-gray-400">
+                    <td className="px-4 py-3 text-ink-3">
                       <span className={`inline-block text-xs transition-transform ${isOpen ? "rotate-180" : ""}`}>▼</span>
                     </td>
-                    <td className="px-4 py-3 font-medium text-gray-900">{caseName}</td>
+                    <td className="px-4 py-3 font-medium text-ink">{caseName}</td>
                     <td className="px-4 py-3">
                       {therapistName
                         ? <span className="inline-block rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">{therapistName}</span>
-                        : <span className="text-xs text-gray-400">—</span>
+                        : <span className="text-xs text-ink-3">—</span>
                       }
                     </td>
                     <td className="px-4 py-3">
@@ -419,29 +419,29 @@ function SelfPayTrackingContent({ records, loading, reconDate }: { records: Self
                                 isToday
                                   ? "bg-blue-400 border-blue-500"
                                   : isPaid
-                                    ? "bg-green-500 border-green-600"
-                                    : "bg-gray-200 border-gray-300"
+                                    ? "bg-green-500 border-st-done"
+                                    : "bg-surface-3 border-line-2"
                               }`}
                             />
                           );
                         })}
-                        <span className="ml-1 text-xs text-gray-400">
+                        <span className="ml-1 text-xs text-ink-3">
                           {paidCount}/{recs.length} 筆
                         </span>
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right font-medium">
                       {allPaid
-                        ? <span className="text-green-600 text-xs font-medium">全部結清 ✓</span>
-                        : <span className="text-amber-700">${unpaidAmount.toLocaleString()}</span>
+                        ? <span className="text-st-done text-xs font-medium">全部結清 ✓</span>
+                        : <span className="text-st-warn">${unpaidAmount.toLocaleString()}</span>
                       }
                     </td>
                   </tr>
                   {isOpen && (
                     <tr>
-                      <td colSpan={5} className="bg-gray-50 px-4 py-3">
+                      <td colSpan={5} className="bg-surface-2 px-4 py-3">
                         <table className="w-full text-left text-xs">
-                          <thead className="text-gray-500">
+                          <thead className="text-ink-3">
                             <tr>
                               <th className="px-3 py-2">預約日期</th>
                               <th className="px-3 py-2">付款日期</th>
@@ -450,21 +450,21 @@ function SelfPayTrackingContent({ records, loading, reconDate }: { records: Self
                               <th className="px-3 py-2">付款方式</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-gray-200">
+                          <tbody className="divide-y divide-line">
                             {recs.map((r) => (
                               <tr key={r.id} className="bg-white">
                                 <td className="px-3 py-2">{r.session_date}</td>
                                 <td className="px-3 py-2">
-                                  {r.paid_at ? r.paid_at.slice(0, 10) : <span className="text-gray-300">—</span>}
+                                  {r.paid_at ? r.paid_at.slice(0, 10) : <span className="text-st-muted">—</span>}
                                 </td>
                                 <td className="px-3 py-2 text-right font-medium">${r.effective_amount.toLocaleString()}</td>
                                 <td className="px-3 py-2">{PAY_STATUS_BADGE(r.payment_status)}</td>
                                 <td className="px-3 py-2">
                                   {r.payment_status === "unpaid"
-                                    ? <span className="text-gray-300">—</span>
+                                    ? <span className="text-st-muted">—</span>
                                     : <>
                                         {PAY_METHOD_LABEL(r.payment_method)}
-                                        {r.payment_note && <span className="ml-1 text-gray-400">({r.payment_note})</span>}
+                                        {r.payment_note && <span className="ml-1 text-ink-3">({r.payment_note})</span>}
                                       </>
                                   }
                                 </td>
@@ -573,8 +573,8 @@ function PaymentTrackingTab({ token }: { token: string }) {
               onClick={() => setTrackingSubTab(t)}
               className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
                 trackingSubTab === t
-                  ? "bg-primary-600 text-white shadow-sm"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  ? "bg-accent text-white shadow-sm"
+                  : "bg-surface-3 text-ink-2 hover:bg-surface-3"
               }`}
             >
               {t === "institution" ? "機構" : "自費"}
@@ -591,13 +591,13 @@ function PaymentTrackingTab({ token }: { token: string }) {
 
       {/* ── Right: 每日對帳 (機構 + 自費 合計) ── */}
       <div className="w-72 shrink-0">
-        <div className="sticky top-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-          <h3 className="mb-3 text-sm font-bold text-gray-700">每日對帳</h3>
+        <div className="sticky top-4 rounded-lg border border-line bg-white p-4 shadow-sm">
+          <h3 className="mb-3 text-sm font-bold text-ink-2">每日對帳</h3>
           <input
             type="date"
             value={reconDate}
             onChange={(e) => setReconDate(e.target.value)}
-            className="mb-2 w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+            className="mb-2 w-full rounded border border-line-2 px-2 py-1.5 text-sm"
           />
           {/* Payment method filter */}
           <div className="mb-3 flex gap-1">
@@ -607,8 +607,8 @@ function PaymentTrackingTab({ token }: { token: string }) {
                 onClick={() => setReconMethod(m)}
                 className={`flex-1 rounded px-2 py-1 text-xs font-medium transition-colors ${
                   reconMethod === m
-                    ? "bg-primary-600 text-white"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    ? "bg-accent text-white"
+                    : "bg-surface-3 text-ink-2 hover:bg-surface-3"
                 }`}
               >
                 {m === "all" ? "全部" : m === "cash" ? "現金" : "匯款"}
@@ -617,34 +617,34 @@ function PaymentTrackingTab({ token }: { token: string }) {
           </div>
 
           {!hasRecon ? (
-            <p className="py-4 text-center text-xs text-gray-400">該日無到帳/結案項目</p>
+            <p className="py-4 text-center text-xs text-ink-3">該日無到帳/結案項目</p>
           ) : (
             <>
               {/* Summary */}
-              <div className="mb-3 space-y-1 rounded bg-gray-50 p-2 text-xs">
+              <div className="mb-3 space-y-1 rounded bg-surface-2 p-2 text-xs">
                 <div className="flex justify-between">
-                  <span className="text-gray-500">筆數</span>
+                  <span className="text-ink-3">筆數</span>
                   <span className="font-medium">{reconInstItems.length + reconSpItems.length} 筆</span>
                 </div>
-                <div className="flex justify-between border-t border-gray-200 pt-1">
-                  <span className="text-gray-500">合計</span>
-                  <span className="font-bold text-gray-800">${reconTotal.toLocaleString()}</span>
+                <div className="flex justify-between border-t border-line pt-1">
+                  <span className="text-ink-3">合計</span>
+                  <span className="font-bold text-ink">${reconTotal.toLocaleString()}</span>
                 </div>
                 {reconCash > 0 && (
                   <div className="flex justify-between">
-                    <span className="text-gray-400">現金</span>
+                    <span className="text-ink-3">現金</span>
                     <span>${reconCash.toLocaleString()}</span>
                   </div>
                 )}
                 {reconTransfer > 0 && (
                   <div className="flex justify-between">
-                    <span className="text-gray-400">匯款</span>
+                    <span className="text-ink-3">匯款</span>
                     <span>${reconTransfer.toLocaleString()}</span>
                   </div>
                 )}
                 {reconOther > 0 && (
                   <div className="flex justify-between">
-                    <span className="text-gray-400">其他</span>
+                    <span className="text-ink-3">其他</span>
                     <span>${reconOther.toLocaleString()}</span>
                   </div>
                 )}
@@ -656,13 +656,13 @@ function PaymentTrackingTab({ token }: { token: string }) {
                   <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-indigo-500">機構撥款</p>
                   <div className="space-y-1.5">
                     {reconInstItems.map((b) => (
-                      <div key={b.id} className="rounded border border-gray-100 bg-gray-50 px-3 py-2">
+                      <div key={b.id} className="rounded border border-line bg-surface-2 px-3 py-2">
                         <div className="flex items-center justify-between">
                           <span className="font-mono text-xs font-medium">{b.batch_number}</span>
                         </div>
-                        <div className="mt-0.5 text-xs text-gray-500">{b.institution_name}</div>
+                        <div className="mt-0.5 text-xs text-ink-3">{b.institution_name}</div>
                         <div className="mt-1 flex items-center justify-between">
-                          <span className="text-xs text-gray-400">
+                          <span className="text-xs text-ink-3">
                             {b.payment_method === "cash" ? "現金" : b.payment_method === "transfer" ? "匯款" : "—"}
                           </span>
                           <span className="text-sm font-bold">${b.total_amount.toLocaleString()}</span>
@@ -679,10 +679,10 @@ function PaymentTrackingTab({ token }: { token: string }) {
                   <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-purple-500">自費到款</p>
                   <div className="space-y-1.5">
                     {reconSpItems.map((r) => (
-                      <div key={r.id} className="rounded border border-gray-100 bg-gray-50 px-3 py-2">
-                        <div className="text-xs font-medium text-gray-800">{r.case_name ?? "—"}</div>
+                      <div key={r.id} className="rounded border border-line bg-surface-2 px-3 py-2">
+                        <div className="text-xs font-medium text-ink">{r.case_name ?? "—"}</div>
                         <div className="mt-1 flex items-center justify-between">
-                          <span className="text-xs text-gray-400">
+                          <span className="text-xs text-ink-3">
                             {r.payment_method === "cash" ? "現金" : r.payment_method === "transfer" ? "匯款" : "—"}
                             {r.payment_note && <span className="ml-1">({r.payment_note})</span>}
                           </span>
@@ -697,16 +697,16 @@ function PaymentTrackingTab({ token }: { token: string }) {
               {/* Product sales items */}
               {reconProductItems.length > 0 && (
                 <div>
-                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-500">商品販售</p>
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-st-done">商品販售</p>
                   <div className="space-y-1.5">
                     {reconProductItems.map((p) => (
-                      <div key={p.id} className="rounded border border-gray-100 bg-gray-50 px-3 py-2">
-                        <div className="text-xs font-medium text-gray-800">
+                      <div key={p.id} className="rounded border border-line bg-surface-2 px-3 py-2">
+                        <div className="text-xs font-medium text-ink">
                           {p.product_name}
-                          {p.quantity > 1 && <span className="ml-1 text-gray-400">× {p.quantity}</span>}
+                          {p.quantity > 1 && <span className="ml-1 text-ink-3">× {p.quantity}</span>}
                         </div>
                         <div className="mt-1 flex items-center justify-between">
-                          <span className="text-xs text-gray-400">
+                          <span className="text-xs text-ink-3">
                             {p.payment_method === "cash" ? "現金" : p.payment_method === "transfer" ? "匯款" : "—"}
                             {p.payment_note && <span className="ml-1">({p.payment_note})</span>}
                           </span>
@@ -751,8 +751,8 @@ interface PayoutSession {
 
 const payoutStatusLabels: Record<string, string> = { pending: "待發放", paid: "已發放" };
 const payoutStatusColors: Record<string, string> = {
-  pending: "bg-amber-100 text-amber-700",
-  paid: "bg-green-100 text-green-700",
+  pending: "bg-st-warn-bg text-st-warn",
+  paid: "bg-st-done-bg text-st-done",
 };
 const sessionTypeLabels: Record<string, string> = { in_person: "現場", online: "線上", outdoor: "外出" };
 
@@ -835,10 +835,10 @@ function PayoutsTab({ token, userRole }: { token: string; userRole: string }) {
             type="month"
             value={filterMonth}
             onChange={(e) => setFilterMonth(e.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            className="rounded-lg border border-line-2 px-3 py-2 text-sm"
           />
           {payouts.length > 0 && (
-            <span className="text-sm text-gray-500">
+            <span className="text-sm text-ink-3">
               合計 ${totalAmount.toLocaleString()} · {pendingCount > 0 ? `${pendingCount} 筆待發放` : "全部已發放"}
             </span>
           )}
@@ -847,16 +847,16 @@ function PayoutsTab({ token, userRole }: { token: string; userRole: string }) {
           <button
             onClick={handleGenerate}
             disabled={generating}
-            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-st-active disabled:opacity-50"
           >
             {generating ? "產生中..." : "產生酬勞"}
           </button>
         )}
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
+      <div className="overflow-x-auto rounded-lg border border-line">
         <table className="w-full text-left text-sm">
-          <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+          <thead className="bg-surface-2 text-xs uppercase text-ink-3">
             <tr>
               <th className="px-4 py-3">月份</th>
               <th className="px-4 py-3">心理師</th>
@@ -867,27 +867,27 @@ function PayoutsTab({ token, userRole }: { token: string; userRole: string }) {
               <th className="px-4 py-3">操作</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
+          <tbody className="divide-y divide-line">
             {loading ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-gray-400">載入中...</td>
+                <td colSpan={7} className="px-4 py-8 text-center text-ink-3">載入中...</td>
               </tr>
             ) : payouts.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
+                <td colSpan={7} className="px-4 py-8 text-center text-ink-3">
                   尚無酬勞資料（管理員可產生月結酬勞）
                 </td>
               </tr>
             ) : (
               payouts.map((p) => (
-                <tr key={p.id} className="hover:bg-gray-50">
+                <tr key={p.id} className="hover:bg-surface-2">
                   <td className="px-4 py-3">{p.payout_month}</td>
                   <td className="px-4 py-3 font-medium">{p.therapist_name ?? "-"}</td>
                   <td className="px-4 py-3 text-right">{p.session_count}</td>
                   <td className="px-4 py-3 text-right font-medium">${p.total_amount.toLocaleString()}</td>
                   <td className="px-4 py-3">
                     <span
-                      className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${payoutStatusColors[p.status] ?? "bg-gray-100"}`}
+                      className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${payoutStatusColors[p.status] ?? "bg-surface-3"}`}
                     >
                       {payoutStatusLabels[p.status] ?? p.status}
                     </span>
@@ -899,12 +899,12 @@ function PayoutsTab({ token, userRole }: { token: string; userRole: string }) {
                     <div className="flex gap-2">
                       <button
                         onClick={() => showDetails(p.id, p.therapist_name ?? "")}
-                        className="text-xs text-primary-600 hover:underline"
+                        className="text-xs text-accent hover:underline"
                       >
                         明細
                       </button>
                       {userRole === "admin" && p.status === "pending" && (
-                        <button onClick={() => handlePay(p.id)} className="text-xs text-green-600 hover:underline">
+                        <button onClick={() => handlePay(p.id)} className="text-xs text-st-done hover:underline">
                           確認發放
                         </button>
                       )}
@@ -922,11 +922,11 @@ function PayoutsTab({ token, userRole }: { token: string; userRole: string }) {
           <div className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-xl">
             <h2 className="mb-4 text-lg font-bold">{detailModal.name} — 酬勞明細</h2>
             {details.length === 0 ? (
-              <p className="text-sm text-gray-400">無明細資料</p>
+              <p className="text-sm text-ink-3">無明細資料</p>
             ) : (
               <div className="max-h-96 overflow-y-auto">
                 <table className="w-full text-left text-sm">
-                  <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+                  <thead className="bg-surface-2 text-xs uppercase text-ink-3">
                     <tr>
                       <th className="px-4 py-2">日期</th>
                       <th className="px-4 py-2">類型</th>
@@ -935,7 +935,7 @@ function PayoutsTab({ token, userRole }: { token: string; userRole: string }) {
                       <th className="px-4 py-2 text-right">師酬</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
+                  <tbody className="divide-y divide-line">
                     {details.map((d) => (
                       <tr key={d.session_id}>
                         <td className="px-4 py-2">{d.session_date}</td>
@@ -952,7 +952,7 @@ function PayoutsTab({ token, userRole }: { token: string; userRole: string }) {
             <div className="mt-4 flex justify-end">
               <button
                 onClick={() => setDetailModal(null)}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
+                className="rounded-lg border border-line-2 px-4 py-2 text-sm hover:bg-surface-2"
               >
                 關閉
               </button>
@@ -1012,9 +1012,9 @@ function PettyCashTab({ token, userRole }: { token: string; userRole: string }) 
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-ink-3">
           目前餘額：
-          <span className={`font-bold ${currentBalance >= 0 ? "text-green-600" : "text-red-600"}`}>
+          <span className={`font-bold ${currentBalance >= 0 ? "text-st-done" : "text-st-danger"}`}>
             ${currentBalance.toLocaleString()}
           </span>
         </p>
@@ -1022,7 +1022,7 @@ function PettyCashTab({ token, userRole }: { token: string; userRole: string }) 
           {userRole !== "therapist" && (
             <button
               onClick={() => exportCsv("/export/petty-cash", token, "petty_cash.csv")}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
+              className="rounded-lg border border-line-2 px-4 py-2 text-sm font-medium hover:bg-surface-2"
             >
               匯出 CSV
             </button>
@@ -1030,7 +1030,7 @@ function PettyCashTab({ token, userRole }: { token: string; userRole: string }) 
           {userRole !== "therapist" && (
             <button
               onClick={() => setShowForm(true)}
-              className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-st-active"
             >
               + 新增紀錄
             </button>
@@ -1038,9 +1038,9 @@ function PettyCashTab({ token, userRole }: { token: string; userRole: string }) 
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
+      <div className="overflow-x-auto rounded-lg border border-line">
         <table className="w-full text-left text-sm">
-          <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+          <thead className="bg-surface-2 text-xs uppercase text-ink-3">
             <tr>
               <th className="px-4 py-3">日期</th>
               <th className="px-4 py-3">類別</th>
@@ -1050,28 +1050,28 @@ function PettyCashTab({ token, userRole }: { token: string; userRole: string }) 
               <th className="px-4 py-3">收據備註</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
+          <tbody className="divide-y divide-line">
             {loading ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-gray-400">載入中...</td>
+                <td colSpan={6} className="px-4 py-8 text-center text-ink-3">載入中...</td>
               </tr>
             ) : records.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-gray-400">尚無零用金紀錄</td>
+                <td colSpan={6} className="px-4 py-8 text-center text-ink-3">尚無零用金紀錄</td>
               </tr>
             ) : (
               records.map((r) => (
-                <tr key={r.id} className="hover:bg-gray-50">
+                <tr key={r.id} className="hover:bg-surface-2">
                   <td className="px-4 py-3">{r.date}</td>
                   <td className="px-4 py-3">{categoryLabels[r.category] ?? r.category}</td>
                   <td className="px-4 py-3">{r.description ?? "-"}</td>
                   <td
-                    className={`px-4 py-3 text-right font-medium ${r.amount >= 0 ? "text-green-600" : "text-red-600"}`}
+                    className={`px-4 py-3 text-right font-medium ${r.amount >= 0 ? "text-st-done" : "text-st-danger"}`}
                   >
                     {r.amount >= 0 ? "+" : ""}${r.amount.toLocaleString()}
                   </td>
                   <td className="px-4 py-3 text-right">${r.balance_after.toLocaleString()}</td>
-                  <td className="px-4 py-3 text-xs text-gray-400">{r.receipt_note ?? "-"}</td>
+                  <td className="px-4 py-3 text-xs text-ink-3">{r.receipt_note ?? "-"}</td>
                 </tr>
               ))
             )}
@@ -1143,25 +1143,25 @@ function PettyCashForm({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
         <h2 className="mb-4 text-lg font-bold">新增零用金紀錄</h2>
-        {error && <div className="mb-3 rounded-lg bg-red-50 p-2 text-sm text-red-600">{error}</div>}
+        {error && <div className="mb-3 rounded-lg bg-st-danger-bg p-2 text-sm text-st-danger">{error}</div>}
         <form onSubmit={handleSubmit} className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">日期 *</span>
+              <span className="mb-1 block text-xs text-ink-3">日期 *</span>
               <input
                 required
                 type="date"
                 value={form.date}
                 onChange={(e) => setField("date", e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm"
               />
             </label>
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">類型</span>
+              <span className="mb-1 block text-xs text-ink-3">類型</span>
               <select
                 value={form.type}
                 onChange={(e) => setField("type", e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm"
               >
                 <option value="expense">支出</option>
                 <option value="income">補充</option>
@@ -1171,7 +1171,7 @@ function PettyCashForm({
 
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">金額 *</span>
+              <span className="mb-1 block text-xs text-ink-3">金額 *</span>
               <input
                 required
                 type="number"
@@ -1179,15 +1179,15 @@ function PettyCashForm({
                 step="1"
                 value={form.amount}
                 onChange={(e) => setField("amount", e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm"
               />
             </label>
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">類別</span>
+              <span className="mb-1 block text-xs text-ink-3">類別</span>
               <select
                 value={form.category}
                 onChange={(e) => setField("category", e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm"
               >
                 <option value="cleaning">清潔費</option>
                 <option value="supplies">文具耗材</option>
@@ -1199,20 +1199,20 @@ function PettyCashForm({
           </div>
 
           <label className="block">
-            <span className="mb-1 block text-xs text-gray-500">說明</span>
+            <span className="mb-1 block text-xs text-ink-3">說明</span>
             <input
               value={form.description}
               onChange={(e) => setField("description", e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm"
             />
           </label>
 
           <label className="block">
-            <span className="mb-1 block text-xs text-gray-500">收據備註</span>
+            <span className="mb-1 block text-xs text-ink-3">收據備註</span>
             <input
               value={form.receipt_note}
               onChange={(e) => setField("receipt_note", e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm"
               placeholder="收據編號或備註"
             />
           </label>
@@ -1221,14 +1221,14 @@ function PettyCashForm({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
+              className="rounded-lg border border-line-2 px-4 py-2 text-sm hover:bg-surface-2"
             >
               取消
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-st-active disabled:opacity-50"
             >
               {saving ? "儲存中..." : "儲存"}
             </button>

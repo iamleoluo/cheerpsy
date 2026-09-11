@@ -78,9 +78,9 @@ export default function PoolPage() {
   return (
     <div>
       <h1 className="mb-1 text-2xl font-bold">派案邀請</h1>
-      <p className="mb-4 text-sm text-gray-400">諮商需求表個資僅供參考，唯讀；個資編輯權限僅行政有</p>
+      <p className="mb-4 text-sm text-ink-3">諮商需求表個資僅供參考，唯讀；個資編輯權限僅行政有</p>
 
-      <div className="mb-4 flex gap-1 border-b border-gray-200">
+      <div className="mb-4 flex gap-1 border-b border-line">
         {[
           { key: "pending", label: "待回覆" },
           { key: "accepted", label: "已承接" },
@@ -89,61 +89,61 @@ export default function PoolPage() {
           <button
             key={t.key}
             onClick={() => setTab(t.key as any)}
-            className={`px-4 py-2 text-sm font-medium ${tab === t.key ? "border-b-2 border-primary-600 text-primary-700" : "text-gray-500 hover:text-gray-700"}`}
+            className={`px-4 py-2 text-sm font-medium ${tab === t.key ? "border-b-2 border-accent text-accent" : "text-ink-3 hover:text-ink-2"}`}
           >
             {t.label}
           </button>
         ))}
       </div>
 
-      {loading && <p className="text-sm text-gray-400">載入中...</p>}
+      {loading && <p className="text-sm text-ink-3">載入中...</p>}
       {!loading && invites.length === 0 && (
-        <div className="rounded-xl border border-dashed border-gray-200 py-12 text-center text-sm text-gray-400">目前沒有資料</div>
+        <div className="rounded-xl border border-dashed border-line py-12 text-center text-sm text-ink-3">目前沒有資料</div>
       )}
 
       <div className="space-y-3">
         {invites.map((inv) => (
-          <div key={inv.member_id} className={`rounded-lg border bg-white p-4 ${tab === "pending" && isOverdue(inv.sent_at) ? "border-rose-300" : "border-gray-200"}`}>
+          <div key={inv.member_id} className={`rounded-lg border bg-white p-4 ${tab === "pending" && isOverdue(inv.sent_at) ? "border-st-danger/30" : "border-line"}`}>
             <div className="mb-2 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="font-mono text-xs text-gray-400">{inv.referral_code}</span>
+                <span className="font-mono text-xs text-ink-3">{inv.referral_code}</span>
                 <span className="font-medium">{inv.name}</span>
-                <span className="text-xs text-gray-400">{inv.age ? `${inv.age}歲` : ""}{inv.gender ? ` · ${inv.gender}` : ""}</span>
-                <span className="rounded bg-gray-50 px-1.5 py-0.5 text-xs text-gray-500">{MODE_LABEL[inv.mode] ?? inv.mode}</span>
+                <span className="text-xs text-ink-3">{inv.age ? `${inv.age}歲` : ""}{inv.gender ? ` · ${inv.gender}` : ""}</span>
+                <span className="rounded bg-surface-2 px-1.5 py-0.5 text-xs text-ink-3">{MODE_LABEL[inv.mode] ?? inv.mode}</span>
               </div>
-              {tab === "pending" && isOverdue(inv.sent_at) && <span className="rounded bg-rose-100 px-2 py-0.5 text-xs text-rose-700">逾時提醒</span>}
+              {tab === "pending" && isOverdue(inv.sent_at) && <span className="rounded bg-st-danger-bg px-2 py-0.5 text-xs text-st-danger">逾時提醒</span>}
             </div>
 
-            <div className="mb-2 flex flex-wrap gap-2 text-xs text-gray-500">
+            <div className="mb-2 flex flex-wrap gap-2 text-xs text-ink-3">
               <span className="rounded bg-indigo-50 px-2 py-0.5 text-indigo-600">{inv.designated_label}</span>
               {tab === "pending" && inv.other_pending_count > 0 && (
-                <span className="rounded bg-amber-50 px-2 py-0.5 text-amber-600">另有 {inv.other_pending_count} 位心理師評估中</span>
+                <span className="rounded bg-st-warn-bg px-2 py-0.5 text-st-warn">另有 {inv.other_pending_count} 位心理師評估中</span>
               )}
-              {inv.is_dual_relationship_risk && <span className="rounded bg-rose-50 px-2 py-0.5 text-rose-600">⚠️ 親友介紹，留意雙重關係</span>}
+              {inv.is_dual_relationship_risk && <span className="rounded bg-st-danger-bg px-2 py-0.5 text-st-danger">⚠️ 親友介紹，留意雙重關係</span>}
             </div>
 
-            <div className="mb-3 text-xs text-gray-600">
+            <div className="mb-3 text-xs text-ink-2">
               <div>主述議題：{(inv.issues ?? []).join("、") || "—"}{inv.issue_note ? `（${inv.issue_note}）` : ""}</div>
               <div>可諮商時段：{inv.availability ?? "—"}</div>
               {inv.proposed_slots && inv.proposed_slots.length > 0 && (
                 <div>我提供的時段：{inv.proposed_slots.map((s) => new Date(s).toLocaleString("zh-TW")).join("、")}</div>
               )}
               {inv.decline_reason && <div>婉拒原因：{DECLINE_REASONS.find((d) => d.value === inv.decline_reason)?.label ?? inv.decline_reason}</div>}
-              {tab === "history" && <div className="text-gray-400">狀態：{REPLY_LABEL[inv.reply_status] ?? inv.reply_status}</div>}
+              {tab === "history" && <div className="text-ink-3">狀態：{REPLY_LABEL[inv.reply_status] ?? inv.reply_status}</div>}
             </div>
 
             {tab === "pending" && (
               <div className="flex gap-2">
-                <button onClick={() => setAcceptTarget(inv)} className="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700">
+                <button onClick={() => setAcceptTarget(inv)} className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-st-active">
                   願意承接
                 </button>
-                <button onClick={() => setDeclineTarget(inv)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-50">
+                <button onClick={() => setDeclineTarget(inv)} className="rounded-lg border border-line px-3 py-1.5 text-xs text-ink-3 hover:bg-surface-2">
                   無意願承接
                 </button>
               </div>
             )}
             {tab === "accepted" && (
-              <button onClick={() => handleRelease(inv.member_id)} className="rounded-lg border border-rose-200 px-3 py-1.5 text-xs text-rose-600 hover:bg-rose-50">
+              <button onClick={() => handleRelease(inv.member_id)} className="rounded-lg border border-st-danger/30 px-3 py-1.5 text-xs text-st-danger hover:bg-st-danger-bg">
                 釋出（不承接此案）
               </button>
             )}
@@ -196,26 +196,26 @@ function AcceptModal({ token, invite, onClose, onDone }: { token: string; invite
 
   return (
     <ModalShell title={`願意承接（${invite.name}）— 提供可預約時段`} onClose={onClose}>
-      {error && <div className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">{error}</div>}
+      {error && <div className="mb-3 rounded-lg bg-st-danger-bg px-3 py-2 text-xs text-st-danger">{error}</div>}
       <div className="space-y-2">
         <label className="block">
-          <span className="mb-1 block text-xs text-gray-500">時段一 <span className="text-rose-500">*</span></span>
-          <input type="datetime-local" value={slot1} onChange={(e) => setSlot1(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+          <span className="mb-1 block text-xs text-ink-3">時段一 <span className="text-st-danger">*</span></span>
+          <input type="datetime-local" value={slot1} onChange={(e) => setSlot1(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
         </label>
         <label className="block">
-          <span className="mb-1 block text-xs text-gray-500">時段二（選填）</span>
-          <input type="datetime-local" value={slot2} onChange={(e) => setSlot2(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+          <span className="mb-1 block text-xs text-ink-3">時段二（選填）</span>
+          <input type="datetime-local" value={slot2} onChange={(e) => setSlot2(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
         </label>
         <label className="block">
-          <span className="mb-1 block text-xs text-gray-500">時段三（選填）</span>
-          <input type="datetime-local" value={slot3} onChange={(e) => setSlot3(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+          <span className="mb-1 block text-xs text-ink-3">時段三（選填）</span>
+          <input type="datetime-local" value={slot3} onChange={(e) => setSlot3(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
         </label>
       </div>
       <div className="flex gap-2 pt-4">
-        <button onClick={handleSubmit} disabled={saving} className="flex-1 rounded-lg bg-primary-600 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">
+        <button onClick={handleSubmit} disabled={saving} className="flex-1 rounded-lg bg-accent py-2 text-sm font-medium text-white hover:bg-st-active disabled:opacity-50">
           {saving ? "送出中…" : "送出"}
         </button>
-        <button onClick={onClose} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-500 hover:bg-gray-50">取消</button>
+        <button onClick={onClose} className="rounded-lg border border-line px-4 py-2 text-sm text-ink-3 hover:bg-surface-2">取消</button>
       </div>
     </ModalShell>
   );
@@ -241,10 +241,10 @@ function DeclineModal({ token, invite, onClose, onDone }: { token: string; invit
 
   return (
     <ModalShell title={`無意願承接（${invite.name}）`} onClose={onClose}>
-      {error && <div className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">{error}</div>}
+      {error && <div className="mb-3 rounded-lg bg-st-danger-bg px-3 py-2 text-xs text-st-danger">{error}</div>}
       <label className="block">
-        <span className="mb-1 block text-xs text-gray-500">原因</span>
-        <select value={reason} onChange={(e) => setReason(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+        <span className="mb-1 block text-xs text-ink-3">原因</span>
+        <select value={reason} onChange={(e) => setReason(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm">
           {DECLINE_REASONS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
         </select>
       </label>
@@ -252,7 +252,7 @@ function DeclineModal({ token, invite, onClose, onDone }: { token: string; invit
         <button onClick={handleSubmit} disabled={saving} className="flex-1 rounded-lg bg-rose-600 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-50">
           {saving ? "送出中…" : "確認婉拒"}
         </button>
-        <button onClick={onClose} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-500 hover:bg-gray-50">返回</button>
+        <button onClick={onClose} className="rounded-lg border border-line px-4 py-2 text-sm text-ink-3 hover:bg-surface-2">返回</button>
       </div>
     </ModalShell>
   );

@@ -12,8 +12,8 @@ export function ComingSoon({
   return (
     <div className="flex min-h-[60vh] flex-col items-center justify-center text-center">
       <div className="mb-3 text-4xl">🚧</div>
-      <h2 className="mb-1 text-lg font-semibold text-gray-700">{title}</h2>
-      <p className="max-w-md text-sm text-gray-400">
+      <h2 className="mb-1 text-lg font-semibold text-ink-2">{title}</h2>
+      <p className="max-w-md text-sm text-ink-3">
         {note ?? "這頁還在施工中，依 V2升級計畫 09 的建議順序陸續建置。"}
       </p>
     </div>

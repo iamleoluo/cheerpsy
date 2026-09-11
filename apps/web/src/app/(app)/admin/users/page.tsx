@@ -92,8 +92,8 @@ const roleCodePrefix: Record<string, string> = {
 };
 
 const roleBadgeClass: Record<string, string> = {
-  admin: "bg-green-100 text-green-700",
-  accountant: "bg-amber-100 text-amber-700",
+  admin: "bg-st-done-bg text-st-done",
+  accountant: "bg-st-warn-bg text-st-warn",
   staff: "bg-purple-100 text-purple-700",
   therapist: "bg-blue-100 text-blue-700",
 };
@@ -278,12 +278,12 @@ export default function AdminUsersPage() {
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">帳號管理</h1>
         <div className="flex items-center gap-2">
-          <button onClick={() => setHelpOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700">
+          <button onClick={() => setHelpOpen(true)} className="flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-sm text-ink-3 hover:bg-surface-2 hover:text-ink-2">
             <span>ℹ️</span> 說明
           </button>
           <button
             onClick={openInvite}
-            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-st-active"
           >
             + 建立邀請
           </button>
@@ -291,9 +291,9 @@ export default function AdminUsersPage() {
       </div>
 
       {/* Users table */}
-      <div className="mb-8 overflow-x-auto rounded-lg border border-gray-200">
+      <div className="mb-8 overflow-x-auto rounded-lg border border-line">
         <table className="w-full text-left text-sm">
-          <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+          <thead className="bg-surface-2 text-xs uppercase text-ink-3">
             <tr>
               <th className="px-4 py-3">姓名</th>
               <th className="px-4 py-3">Email</th>
@@ -305,43 +305,43 @@ export default function AdminUsersPage() {
               <th className="px-4 py-3">操作</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
+          <tbody className="divide-y divide-line">
             {loading ? (
-              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">載入中...</td></tr>
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-ink-3">載入中...</td></tr>
             ) : users.map((u) => (
-              <tr key={u.id} className={`hover:bg-gray-50 ${!u.is_active ? "opacity-50" : ""}`}>
+              <tr key={u.id} className={`hover:bg-surface-2 ${!u.is_active ? "opacity-50" : ""}`}>
                 <td className="px-4 py-3 font-medium">{u.name}</td>
-                <td className="px-4 py-3 text-gray-500">{u.email}</td>
+                <td className="px-4 py-3 text-ink-3">{u.email}</td>
                 <td className="px-4 py-3">
-                  <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${roleBadgeClass[u.role] ?? "bg-gray-100 text-gray-700"}`}>
+                  <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${roleBadgeClass[u.role] ?? "bg-surface-3 text-ink-2"}`}>
                     {roleLabels[u.role] ?? u.role}
                   </span>
                 </td>
-                <td className="px-4 py-3 font-mono text-xs text-gray-500">
-                  {u.user_code ? u.user_code : <span className="text-red-400">未設定</span>}
+                <td className="px-4 py-3 font-mono text-xs text-ink-3">
+                  {u.user_code ? u.user_code : <span className="text-st-danger">未設定</span>}
                 </td>
-                <td className="px-4 py-3 text-xs text-gray-600">
+                <td className="px-4 py-3 text-xs text-ink-2">
                   {u.role === "therapist" && u.commission_rate != null
                     ? `${Math.round(u.commission_rate * 100)}%`
-                    : <span className="text-gray-300">—</span>}
+                    : <span className="text-st-muted">—</span>}
                 </td>
-                <td className="px-4 py-3 text-xs text-gray-600">
+                <td className="px-4 py-3 text-xs text-ink-2">
                   {u.role === "therapist"
                     ? (u.base_price != null
                         ? `$${Number(u.base_price).toLocaleString()}`
-                        : <span className="text-red-400">未設定</span>)
-                    : <span className="text-gray-300">—</span>}
+                        : <span className="text-st-danger">未設定</span>)
+                    : <span className="text-st-muted">—</span>}
                 </td>
                 <td className="px-4 py-3">
-                  <span className={`inline-block rounded-full px-2 py-0.5 text-xs ${u.is_active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                  <span className={`inline-block rounded-full px-2 py-0.5 text-xs ${u.is_active ? "bg-st-done-bg text-st-done" : "bg-st-danger-bg text-st-danger"}`}>
                     {u.is_active ? "啟用" : "停用"}
                   </span>
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
-                    <button onClick={() => openEdit(u)} className="text-xs text-primary-600 hover:underline">編輯</button>
+                    <button onClick={() => openEdit(u)} className="text-xs text-accent hover:underline">編輯</button>
                     <button onClick={() => handleResetPassword(u.id, u.name)} className="text-xs text-blue-600 hover:underline">重設密碼</button>
-                    <button onClick={() => handleToggle(u.id)} className="text-xs text-gray-500 hover:underline">
+                    <button onClick={() => handleToggle(u.id)} className="text-xs text-ink-3 hover:underline">
                       {u.is_active ? "停用" : "啟用"}
                     </button>
                   </div>
@@ -356,9 +356,9 @@ export default function AdminUsersPage() {
       {pendingInvitations.length > 0 && (
         <>
           <h2 className="mb-3 text-lg font-semibold">待使用的邀請 / 重設金鑰</h2>
-          <div className="overflow-x-auto rounded-lg border border-gray-200">
+          <div className="overflow-x-auto rounded-lg border border-line">
             <table className="w-full text-left text-sm">
-              <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+              <thead className="bg-surface-2 text-xs uppercase text-ink-3">
                 <tr>
                   <th className="px-4 py-3">金鑰</th>
                   <th className="px-4 py-3">類型</th>
@@ -367,18 +367,18 @@ export default function AdminUsersPage() {
                   <th className="px-4 py-3">到期時間</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-line">
                 {pendingInvitations.map((inv) => (
-                  <tr key={inv.id} className="hover:bg-gray-50">
+                  <tr key={inv.id} className="hover:bg-surface-2">
                     <td className="px-4 py-3 font-mono text-xs">{inv.invite_key}</td>
                     <td className="px-4 py-3">
-                      <span className={`inline-block rounded-full px-2 py-0.5 text-xs ${inv.type === "invite" ? "bg-primary-100 text-primary-700" : "bg-amber-100 text-amber-700"}`}>
+                      <span className={`inline-block rounded-full px-2 py-0.5 text-xs ${inv.type === "invite" ? "bg-accent-soft text-accent" : "bg-st-warn-bg text-st-warn"}`}>
                         {inv.type === "invite" ? "新帳號" : "重設密碼"}
                       </span>
                     </td>
                     <td className="px-4 py-3">{inv.name}</td>
-                    <td className="px-4 py-3 text-xs text-gray-500">{inv.role ? (roleLabels[inv.role] ?? inv.role) : "-"}</td>
-                    <td className="px-4 py-3 text-xs text-gray-400">{new Date(inv.expires_at).toLocaleString("zh-TW")}</td>
+                    <td className="px-4 py-3 text-xs text-ink-3">{inv.role ? (roleLabels[inv.role] ?? inv.role) : "-"}</td>
+                    <td className="px-4 py-3 text-xs text-ink-3">{new Date(inv.expires_at).toLocaleString("zh-TW")}</td>
                   </tr>
                 ))}
               </tbody>
@@ -394,12 +394,12 @@ export default function AdminUsersPage() {
             <h3 className="mb-4 text-lg font-semibold">建立邀請</h3>
             <div className="space-y-3">
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500">姓名 *</label>
-                <input type="text" value={invName} onChange={(e) => setInvName(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="使用者姓名" autoFocus />
+                <label className="mb-1 block text-xs font-medium text-ink-3">姓名 *</label>
+                <input type="text" value={invName} onChange={(e) => setInvName(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" placeholder="使用者姓名" autoFocus />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500">角色 *</label>
-                <select value={invRole} onChange={(e) => setInvRole(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                <label className="mb-1 block text-xs font-medium text-ink-3">角色 *</label>
+                <select value={invRole} onChange={(e) => setInvRole(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm">
                   <option value="therapist">心理師（T）</option>
                   <option value="accountant">會計（C）</option>
                   <option value="staff">行政人員（S）</option>
@@ -411,20 +411,20 @@ export default function AdminUsersPage() {
                 const reusable = users.filter((u) => u.user_code?.startsWith(prefix) && !u.is_active);
                 return (
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-500">使用者代號（留空自動產生）</label>
+                    <label className="mb-1 block text-xs font-medium text-ink-3">使用者代號（留空自動產生）</label>
                     <input
                       type="text"
                       value={invCode}
                       onChange={(e) => setInvCode(e.target.value.toUpperCase())}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono"
+                      className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm font-mono"
                       placeholder={`留空自動產生（如 ${prefix}001）`}
                     />
                     {reusable.length > 0 && (
                       <div className="mt-2">
-                        <p className="mb-1 text-xs text-gray-400">可重用停用帳號的代號：</p>
+                        <p className="mb-1 text-xs text-ink-3">可重用停用帳號的代號：</p>
                         <div className="flex flex-wrap gap-1">
                           {reusable.map((u) => (
-                            <button key={u.user_code} type="button" onClick={() => setInvCode(u.user_code!)} className={`rounded px-2 py-0.5 text-xs ${invCode === u.user_code ? "bg-amber-200 text-amber-800" : "bg-amber-50 text-amber-600 hover:bg-amber-100"}`}>
+                            <button key={u.user_code} type="button" onClick={() => setInvCode(u.user_code!)} className={`rounded px-2 py-0.5 text-xs ${invCode === u.user_code ? "bg-st-warn-bg text-st-warn" : "bg-st-warn-bg text-st-warn hover:bg-st-warn-bg"}`}>
                               {u.user_code}（原 {u.name}，已停用）
                             </button>
                           ))}
@@ -436,8 +436,8 @@ export default function AdminUsersPage() {
               })()}
             </div>
             <div className="mt-5 flex justify-end gap-2">
-              <button onClick={() => setShowInvite(false)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">取消</button>
-              <button onClick={handleCreateInvite} disabled={!invName.trim() || creatingInvite} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">
+              <button onClick={() => setShowInvite(false)} className="rounded-lg border border-line-2 px-4 py-2 text-sm hover:bg-surface-2">取消</button>
+              <button onClick={handleCreateInvite} disabled={!invName.trim() || creatingInvite} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-st-active disabled:opacity-50">
                 {creatingInvite ? "建立中..." : "建立"}
               </button>
             </div>
@@ -450,15 +450,15 @@ export default function AdminUsersPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={closeEdit}>
           <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-1 text-lg font-semibold">編輯帳號</h3>
-            <p className="mb-4 text-xs text-gray-400">{editUser.email}</p>
+            <p className="mb-4 text-xs text-ink-3">{editUser.email}</p>
             <div className="space-y-3">
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500">姓名 *</label>
-                <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" autoFocus />
+                <label className="mb-1 block text-xs font-medium text-ink-3">姓名 *</label>
+                <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" autoFocus />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500">角色 *</label>
-                <select value={editRole} onChange={(e) => setEditRole(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                <label className="mb-1 block text-xs font-medium text-ink-3">角色 *</label>
+                <select value={editRole} onChange={(e) => setEditRole(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm">
                   <option value="therapist">心理師（T）</option>
                   <option value="accountant">會計（C）</option>
                   <option value="staff">行政人員（S）</option>
@@ -466,18 +466,18 @@ export default function AdminUsersPage() {
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500">使用者代號</label>
+                <label className="mb-1 block text-xs font-medium text-ink-3">使用者代號</label>
                 <input
                   type="text"
                   value={editCode}
                   onChange={(e) => setEditCode(e.target.value.toUpperCase())}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono"
+                  className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm font-mono"
                   placeholder="如 T001、S002"
                 />
               </div>
               {editRole === "therapist" && (
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-500">抽成比例（心理師）</label>
+                  <label className="mb-1 block text-xs font-medium text-ink-3">抽成比例（心理師）</label>
                   <input
                     type="number"
                     step="0.01"
@@ -485,30 +485,30 @@ export default function AdminUsersPage() {
                     max="1"
                     value={editRate}
                     onChange={(e) => setEditRate(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm"
                     placeholder="預設 0.70"
                   />
-                  <p className="mt-1 text-xs text-gray-400">0.70 = 70%，留空維持現有比例</p>
+                  <p className="mt-1 text-xs text-ink-3">0.70 = 70%，留空維持現有比例</p>
                 </div>
               )}
               {editRole === "therapist" && (
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-500">預約基礎價格（心理師）</label>
+                  <label className="mb-1 block text-xs font-medium text-ink-3">預約基礎價格（心理師）</label>
                   <input
                     type="number"
                     min="0"
                     value={editBase}
                     onChange={(e) => setEditBase(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm"
                     placeholder="例如 2000"
                   />
-                  <p className="mt-1 text-xs text-gray-400">建立預約時自動帶入，可於當下調整</p>
+                  <p className="mt-1 text-xs text-ink-3">建立預約時自動帶入，可於當下調整</p>
                 </div>
               )}
             </div>
             <div className="mt-5 flex justify-end gap-2">
-              <button onClick={closeEdit} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">取消</button>
-              <button onClick={handleSaveEdit} disabled={!editName.trim() || savingEdit} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">
+              <button onClick={closeEdit} className="rounded-lg border border-line-2 px-4 py-2 text-sm hover:bg-surface-2">取消</button>
+              <button onClick={handleSaveEdit} disabled={!editName.trim() || savingEdit} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-st-active disabled:opacity-50">
                 {savingEdit ? "儲存中..." : "儲存"}
               </button>
             </div>
@@ -521,13 +521,13 @@ export default function AdminUsersPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
             <h3 className="mb-2 text-lg font-semibold">{resultLabel}</h3>
-            <p className="mb-4 text-sm text-gray-500">請複製此金鑰並提供給使用者。金鑰 72 小時內有效，僅可使用一次。</p>
-            <div className="flex items-center gap-2 rounded-lg bg-gray-50 p-4">
-              <code className="flex-1 text-center text-lg font-bold tracking-widest text-primary-700">{resultKey}</code>
-              <button onClick={copyKey} className="rounded-lg bg-primary-100 px-3 py-1.5 text-xs font-medium text-primary-700 hover:bg-primary-200">複製</button>
+            <p className="mb-4 text-sm text-ink-3">請複製此金鑰並提供給使用者。金鑰 72 小時內有效，僅可使用一次。</p>
+            <div className="flex items-center gap-2 rounded-lg bg-surface-2 p-4">
+              <code className="flex-1 text-center text-lg font-bold tracking-widest text-accent">{resultKey}</code>
+              <button onClick={copyKey} className="rounded-lg bg-accent-soft px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/20">複製</button>
             </div>
             <div className="mt-5 flex justify-end">
-              <button onClick={() => setResultKey("")} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">關閉</button>
+              <button onClick={() => setResultKey("")} className="rounded-lg border border-line-2 px-4 py-2 text-sm hover:bg-surface-2">關閉</button>
             </div>
           </div>
         </div>

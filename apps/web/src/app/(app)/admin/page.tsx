@@ -59,8 +59,8 @@ const roleLabels: Record<string, string> = {
 };
 
 const roleBadge: Record<string, string> = {
-  admin: "bg-green-100 text-green-700",
-  accountant: "bg-amber-100 text-amber-700",
+  admin: "bg-st-done-bg text-st-done",
+  accountant: "bg-st-warn-bg text-st-warn",
   staff: "bg-purple-100 text-purple-700",
   therapist: "bg-blue-100 text-blue-700",
 };
@@ -76,13 +76,13 @@ export default function AdminPage() {
 
   if (userRole !== "admin") {
     return (
-      <div className="flex h-64 items-center justify-center text-gray-400">
+      <div className="flex h-64 items-center justify-center text-ink-3">
         僅管理員可存取此頁面
       </div>
     );
   }
 
-  if (!token) return <p className="p-6 text-gray-400">載入中...</p>;
+  if (!token) return <p className="p-6 text-ink-3">載入中...</p>;
 
   return (
     <div>
@@ -91,13 +91,13 @@ export default function AdminPage() {
       </div>
 
       {/* Tab bar */}
-      <div className="mb-6 flex gap-1 border-b border-gray-200">
+      <div className="mb-6 flex gap-1 border-b border-line">
         <button
           onClick={() => setTab("users")}
           className={`px-4 py-2.5 text-sm font-medium transition-colors ${
             tab === "users"
-              ? "border-b-2 border-primary-600 text-primary-700"
-              : "text-gray-500 hover:text-gray-700"
+              ? "border-b-2 border-accent text-accent"
+              : "text-ink-3 hover:text-ink-2"
           }`}
         >
           帳號管理
@@ -106,8 +106,8 @@ export default function AdminPage() {
           onClick={() => setTab("institutions")}
           className={`px-4 py-2.5 text-sm font-medium transition-colors ${
             tab === "institutions"
-              ? "border-b-2 border-primary-600 text-primary-700"
-              : "text-gray-500 hover:text-gray-700"
+              ? "border-b-2 border-accent text-accent"
+              : "text-ink-3 hover:text-ink-2"
           }`}
         >
           機構管理
@@ -116,8 +116,8 @@ export default function AdminPage() {
           onClick={() => setTab("data")}
           className={`px-4 py-2.5 text-sm font-medium transition-colors ${
             tab === "data"
-              ? "border-b-2 border-primary-600 text-primary-700"
-              : "text-gray-500 hover:text-gray-700"
+              ? "border-b-2 border-accent text-accent"
+              : "text-ink-3 hover:text-ink-2"
           }`}
         >
           資料匯出入
@@ -297,19 +297,19 @@ function UsersTab({ token }: { token: string }) {
     <>
       {/* Header */}
       <div className="mb-4 flex items-center justify-between">
-        <p className="text-sm text-gray-500">管理帳號、角色權限與心理師抽成比例</p>
+        <p className="text-sm text-ink-3">管理帳號、角色權限與心理師抽成比例</p>
         <button
           onClick={() => setShowInvite(true)}
-          className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-st-active"
         >
           + 建立邀請
         </button>
       </div>
 
       {/* Users table */}
-      <div className="mb-8 overflow-x-auto rounded-lg border border-gray-200">
+      <div className="mb-8 overflow-x-auto rounded-lg border border-line">
         <table className="w-full text-left text-sm">
-          <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+          <thead className="bg-surface-2 text-xs uppercase text-ink-3">
             <tr>
               <th className="px-4 py-3">姓名</th>
               <th className="px-4 py-3">Email</th>
@@ -321,23 +321,23 @@ function UsersTab({ token }: { token: string }) {
               <th className="px-4 py-3">操作</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
+          <tbody className="divide-y divide-line">
             {loading ? (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-gray-400">載入中...</td>
+                <td colSpan={8} className="px-4 py-8 text-center text-ink-3">載入中...</td>
               </tr>
             ) : (
               users.map((u) => (
-                <tr key={u.id} className={`hover:bg-gray-50 ${!u.is_active ? "opacity-50" : ""}`}>
+                <tr key={u.id} className={`hover:bg-surface-2 ${!u.is_active ? "opacity-50" : ""}`}>
                   <td className="px-4 py-3 font-medium">{u.name}</td>
-                  <td className="px-4 py-3 text-gray-500">{u.email}</td>
+                  <td className="px-4 py-3 text-ink-3">{u.email}</td>
                   <td className="px-4 py-3">
-                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${roleBadge[u.role] ?? "bg-gray-100 text-gray-600"}`}>
+                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${roleBadge[u.role] ?? "bg-surface-3 text-ink-2"}`}>
                       {roleLabels[u.role] ?? u.role}
                     </span>
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs text-gray-500">
-                    {u.user_code ? u.user_code : <span className="text-red-400">未設定</span>}
+                  <td className="px-4 py-3 font-mono text-xs text-ink-3">
+                    {u.user_code ? u.user_code : <span className="text-st-danger">未設定</span>}
                   </td>
                   <td className="px-4 py-3">
                     {u.role === "therapist" ? (
@@ -350,7 +350,7 @@ function UsersTab({ token }: { token: string }) {
                             max="1"
                             value={editRateValue}
                             onChange={(e) => setEditRateValue(e.target.value)}
-                            className="w-20 rounded border border-gray-300 px-2 py-1 text-xs"
+                            className="w-20 rounded border border-line-2 px-2 py-1 text-xs"
                             autoFocus
                             onKeyDown={(e) => {
                               if (e.key === "Enter") handleSaveRate(u.id);
@@ -359,13 +359,13 @@ function UsersTab({ token }: { token: string }) {
                           />
                           <button
                             onClick={() => handleSaveRate(u.id)}
-                            className="text-xs text-green-600 hover:text-green-700"
+                            className="text-xs text-st-done hover:text-st-done"
                           >
                             ✓
                           </button>
                           <button
                             onClick={() => setEditingRate(null)}
-                            className="text-xs text-gray-400 hover:text-gray-600"
+                            className="text-xs text-ink-3 hover:text-ink-2"
                           >
                             ✕
                           </button>
@@ -383,7 +383,7 @@ function UsersTab({ token }: { token: string }) {
                         </button>
                       )
                     ) : (
-                      <span className="text-xs text-gray-300">—</span>
+                      <span className="text-xs text-st-muted">—</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
@@ -395,7 +395,7 @@ function UsersTab({ token }: { token: string }) {
                             min="0"
                             value={editBaseValue}
                             onChange={(e) => setEditBaseValue(e.target.value)}
-                            className="w-24 rounded border border-gray-300 px-2 py-1 text-xs"
+                            className="w-24 rounded border border-line-2 px-2 py-1 text-xs"
                             autoFocus
                             onKeyDown={(e) => {
                               if (e.key === "Enter") handleSaveBase(u.id);
@@ -404,13 +404,13 @@ function UsersTab({ token }: { token: string }) {
                           />
                           <button
                             onClick={() => handleSaveBase(u.id)}
-                            className="text-xs text-green-600 hover:text-green-700"
+                            className="text-xs text-st-done hover:text-st-done"
                           >
                             ✓
                           </button>
                           <button
                             onClick={() => setEditingBase(null)}
-                            className="text-xs text-gray-400 hover:text-gray-600"
+                            className="text-xs text-ink-3 hover:text-ink-2"
                           >
                             ✕
                           </button>
@@ -428,11 +428,11 @@ function UsersTab({ token }: { token: string }) {
                         </button>
                       )
                     ) : (
-                      <span className="text-xs text-gray-300">—</span>
+                      <span className="text-xs text-st-muted">—</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs ${u.is_active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs ${u.is_active ? "bg-st-done-bg text-st-done" : "bg-st-danger-bg text-st-danger"}`}>
                       {u.is_active ? "啟用" : "停用"}
                     </span>
                   </td>
@@ -441,7 +441,7 @@ function UsersTab({ token }: { token: string }) {
                       <button onClick={() => handleResetPassword(u.id, u.name)} className="text-xs text-blue-600 hover:underline">
                         重設密碼
                       </button>
-                      <button onClick={() => handleToggle(u.id)} className="text-xs text-gray-500 hover:underline">
+                      <button onClick={() => handleToggle(u.id)} className="text-xs text-ink-3 hover:underline">
                         {u.is_active ? "停用" : "啟用"}
                       </button>
                     </div>
@@ -457,9 +457,9 @@ function UsersTab({ token }: { token: string }) {
       {pendingInvitations.length > 0 && (
         <>
           <h2 className="mb-3 text-lg font-semibold">待使用的邀請 / 重設金鑰</h2>
-          <div className="overflow-x-auto rounded-lg border border-gray-200">
+          <div className="overflow-x-auto rounded-lg border border-line">
             <table className="w-full text-left text-sm">
-              <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+              <thead className="bg-surface-2 text-xs uppercase text-ink-3">
                 <tr>
                   <th className="px-4 py-3">金鑰</th>
                   <th className="px-4 py-3">類型</th>
@@ -468,20 +468,20 @@ function UsersTab({ token }: { token: string }) {
                   <th className="px-4 py-3">到期時間</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-line">
                 {pendingInvitations.map((inv) => (
-                  <tr key={inv.id} className="hover:bg-gray-50">
+                  <tr key={inv.id} className="hover:bg-surface-2">
                     <td className="px-4 py-3 font-mono text-xs">{inv.invite_key}</td>
                     <td className="px-4 py-3">
-                      <span className={`inline-block rounded-full px-2 py-0.5 text-xs ${inv.type === "invite" ? "bg-primary-100 text-primary-700" : "bg-amber-100 text-amber-700"}`}>
+                      <span className={`inline-block rounded-full px-2 py-0.5 text-xs ${inv.type === "invite" ? "bg-accent-soft text-accent" : "bg-st-warn-bg text-st-warn"}`}>
                         {inv.type === "invite" ? "新帳號" : "重設密碼"}
                       </span>
                     </td>
                     <td className="px-4 py-3">{inv.name}</td>
-                    <td className="px-4 py-3 text-xs text-gray-500">
+                    <td className="px-4 py-3 text-xs text-ink-3">
                       {inv.role ? (roleLabels[inv.role] ?? inv.role) : "—"}
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-400">
+                    <td className="px-4 py-3 text-xs text-ink-3">
                       {new Date(inv.expires_at).toLocaleString("zh-TW")}
                     </td>
                   </tr>
@@ -499,22 +499,22 @@ function UsersTab({ token }: { token: string }) {
             <h3 className="mb-4 text-lg font-semibold">建立邀請</h3>
             <div className="space-y-3">
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500">姓名 *</label>
+                <label className="mb-1 block text-xs font-medium text-ink-3">姓名 *</label>
                 <input
                   type="text"
                   value={invName}
                   onChange={(e) => setInvName(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm"
                   placeholder="使用者姓名"
                   autoFocus
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500">角色 *</label>
+                <label className="mb-1 block text-xs font-medium text-ink-3">角色 *</label>
                 <select
                   value={invRole}
                   onChange={(e) => setInvRole(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm"
                 >
                   <option value="therapist">心理師</option>
                   <option value="staff">行政人員</option>
@@ -530,19 +530,19 @@ function UsersTab({ token }: { token: string }) {
                   .map((u) => ({ code: u.user_code!, name: u.name }));
                 return (
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-500">
+                    <label className="mb-1 block text-xs font-medium text-ink-3">
                       使用者代號（留空自動產生）
                     </label>
                     <input
                       type="text"
                       value={invCode}
                       onChange={(e) => setInvCode(e.target.value.toUpperCase())}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono"
+                      className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm font-mono"
                       placeholder={`留空自動產生（如 ${prefix}001）`}
                     />
                     {reusable.length > 0 && (
                       <div className="mt-2">
-                        <p className="mb-1 text-xs text-gray-400">可重用停用帳號的代號：</p>
+                        <p className="mb-1 text-xs text-ink-3">可重用停用帳號的代號：</p>
                         <div className="flex flex-wrap gap-1">
                           {reusable.map((c) => (
                             <button
@@ -551,8 +551,8 @@ function UsersTab({ token }: { token: string }) {
                               onClick={() => setInvCode(c.code)}
                               className={`rounded px-2 py-0.5 text-xs ${
                                 invCode === c.code
-                                  ? "bg-amber-200 text-amber-800"
-                                  : "bg-amber-50 text-amber-600 hover:bg-amber-100"
+                                  ? "bg-st-warn-bg text-st-warn"
+                                  : "bg-st-warn-bg text-st-warn hover:bg-st-warn-bg"
                               }`}
                             >
                               {c.code}（原 {c.name}，已停用）
@@ -568,7 +568,7 @@ function UsersTab({ token }: { token: string }) {
               {invRole === "therapist" && (
                 <>
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-500">抽成比例</label>
+                    <label className="mb-1 block text-xs font-medium text-ink-3">抽成比例</label>
                     <div className="flex items-center gap-2">
                       <input
                         type="number"
@@ -577,24 +577,24 @@ function UsersTab({ token }: { token: string }) {
                         max="1"
                         value={invCommission}
                         onChange={(e) => setInvCommission(e.target.value)}
-                        className="w-24 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                        className="w-24 rounded-lg border border-line-2 px-3 py-2 text-sm"
                       />
-                      <span className="text-sm text-gray-500">
+                      <span className="text-sm text-ink-3">
                         （{Math.round(parseFloat(invCommission || "0") * 100)}% 歸心理師）
                       </span>
                     </div>
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-gray-500">預約基礎價格</label>
+                    <label className="mb-1 block text-xs font-medium text-ink-3">預約基礎價格</label>
                     <input
                       type="number"
                       min="0"
                       value={invBase}
                       onChange={(e) => setInvBase(e.target.value)}
-                      className="w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      className="w-32 rounded-lg border border-line-2 px-3 py-2 text-sm"
                       placeholder="例如 2000"
                     />
-                    <p className="mt-1 text-xs text-gray-400">建立預約時自動帶入，可於當下調整</p>
+                    <p className="mt-1 text-xs text-ink-3">建立預約時自動帶入，可於當下調整</p>
                   </div>
                 </>
               )}
@@ -609,14 +609,14 @@ function UsersTab({ token }: { token: string }) {
                   setInvCommission("0.70");
                   setInvBase("2000");
                 }}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
+                className="rounded-lg border border-line-2 px-4 py-2 text-sm hover:bg-surface-2"
               >
                 取消
               </button>
               <button
                 onClick={handleCreateInvite}
                 disabled={!invName.trim() || creatingInvite}
-                className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-st-active disabled:opacity-50"
               >
                 {creatingInvite ? "建立中..." : "建立"}
               </button>
@@ -630,16 +630,16 @@ function UsersTab({ token }: { token: string }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
             <h3 className="mb-2 text-lg font-semibold">{resultLabel}</h3>
-            <p className="mb-4 text-sm text-gray-500">
+            <p className="mb-4 text-sm text-ink-3">
               請複製此金鑰並提供給使用者。金鑰 72 小時內有效，僅可使用一次。
             </p>
-            <div className="flex items-center gap-2 rounded-lg bg-gray-50 p-4">
-              <code className="flex-1 text-center text-lg font-bold tracking-widest text-primary-700">
+            <div className="flex items-center gap-2 rounded-lg bg-surface-2 p-4">
+              <code className="flex-1 text-center text-lg font-bold tracking-widest text-accent">
                 {resultKey}
               </code>
               <button
                 onClick={copyKey}
-                className="rounded-lg bg-primary-100 px-3 py-1.5 text-xs font-medium text-primary-700 hover:bg-primary-200"
+                className="rounded-lg bg-accent-soft px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/20"
               >
                 複製
               </button>
@@ -647,7 +647,7 @@ function UsersTab({ token }: { token: string }) {
             <div className="mt-5 flex justify-end">
               <button
                 onClick={() => setResultKey("")}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
+                className="rounded-lg border border-line-2 px-4 py-2 text-sm hover:bg-surface-2"
               >
                 關閉
               </button>
@@ -764,12 +764,12 @@ function InstitutionsTab({ token }: { token: string }) {
     <>
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <p className="text-sm text-gray-500">管理轉介機構名稱與代號，供個案經費來源與核銷案使用</p>
-          <span className="rounded-full bg-green-50 px-2.5 py-0.5 text-xs text-green-700">
+          <p className="text-sm text-ink-3">管理轉介機構名稱與代號，供個案經費來源與核銷案使用</p>
+          <span className="rounded-full bg-st-done-bg px-2.5 py-0.5 text-xs text-st-done">
             啟用 {activeCount}
           </span>
           {inactiveCount > 0 && (
-            <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-500">
+            <span className="rounded-full bg-surface-3 px-2.5 py-0.5 text-xs text-ink-3">
               已停用 {inactiveCount}
             </span>
           )}
@@ -777,13 +777,13 @@ function InstitutionsTab({ token }: { token: string }) {
         <div className="flex items-center gap-2">
           <button
             onClick={() => exportCsv("/export/institutions", token, "institutions.csv")}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
+            className="rounded-lg border border-line-2 px-3 py-2 text-sm hover:bg-surface-2"
           >
             匯出 CSV
           </button>
           <button
             onClick={() => setShowAdd(true)}
-            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-st-active"
           >
             + 新增機構
           </button>
@@ -791,7 +791,7 @@ function InstitutionsTab({ token }: { token: string }) {
       </div>
 
       {error && (
-        <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">
+        <div className="mb-4 rounded-lg bg-st-danger-bg p-3 text-sm text-st-danger">
           {error}
           <button onClick={() => setError("")} className="ml-2 font-medium underline">關閉</button>
         </div>
@@ -803,20 +803,20 @@ function InstitutionsTab({ token }: { token: string }) {
           placeholder="搜尋機構名稱或代號..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-64 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+          className="w-64 rounded-lg border border-line-2 px-3 py-2 text-sm focus:border-accent focus:outline-none"
         />
       </div>
 
       {loading ? (
-        <div className="py-12 text-center text-gray-400">載入中...</div>
+        <div className="py-12 text-center text-ink-3">載入中...</div>
       ) : filtered.length === 0 ? (
-        <div className="py-12 text-center text-gray-400">
+        <div className="py-12 text-center text-ink-3">
           {search ? "找不到符合的機構" : "尚無機構資料"}
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-gray-200">
+        <div className="overflow-x-auto rounded-lg border border-line">
           <table className="w-full text-left text-sm">
-            <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+            <thead className="bg-surface-2 text-xs uppercase text-ink-3">
               <tr>
                 <th className="px-4 py-3">機構代號</th>
                 <th className="px-4 py-3">機構名稱</th>
@@ -825,9 +825,9 @@ function InstitutionsTab({ token }: { token: string }) {
                 <th className="px-4 py-3">操作</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody className="divide-y divide-line">
               {filtered.map((inst) => (
-                <tr key={inst.id} className={`hover:bg-gray-50 ${!inst.is_active ? "opacity-50" : ""}`}>
+                <tr key={inst.id} className={`hover:bg-surface-2 ${!inst.is_active ? "opacity-50" : ""}`}>
                   {editingId === inst.id ? (
                     <>
                       <td className="px-4 py-3">
@@ -835,7 +835,7 @@ function InstitutionsTab({ token }: { token: string }) {
                           type="text"
                           value={editCode}
                           onChange={(e) => setEditCode(e.target.value)}
-                          className="w-24 rounded border border-gray-300 px-2 py-1 text-xs font-mono"
+                          className="w-24 rounded border border-line-2 px-2 py-1 text-xs font-mono"
                           placeholder="代號"
                           maxLength={5}
                           autoFocus
@@ -846,11 +846,11 @@ function InstitutionsTab({ token }: { token: string }) {
                           type="text"
                           value={editName}
                           onChange={(e) => setEditName(e.target.value)}
-                          className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                          className="w-full rounded border border-line-2 px-2 py-1 text-sm"
                         />
                       </td>
                       <td className="px-4 py-3">
-                        <label className="flex items-center gap-1 text-xs text-gray-600">
+                        <label className="flex items-center gap-1 text-xs text-ink-2">
                           <input
                             type="checkbox"
                             checked={editRequiresDocs}
@@ -860,7 +860,7 @@ function InstitutionsTab({ token }: { token: string }) {
                         </label>
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs ${inst.is_active ? "bg-green-100 text-green-700" : "bg-gray-200 text-gray-500"}`}>
+                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs ${inst.is_active ? "bg-st-done-bg text-st-done" : "bg-surface-3 text-ink-3"}`}>
                           {inst.is_active ? "啟用" : "停用"}
                         </span>
                       </td>
@@ -868,13 +868,13 @@ function InstitutionsTab({ token }: { token: string }) {
                         <div className="flex gap-2">
                           <button
                             onClick={() => handleSaveEdit(inst.id)}
-                            className="text-xs text-green-600 hover:underline"
+                            className="text-xs text-st-done hover:underline"
                           >
                             儲存
                           </button>
                           <button
                             onClick={() => setEditingId(null)}
-                            className="text-xs text-gray-400 hover:underline"
+                            className="text-xs text-ink-3 hover:underline"
                           >
                             取消
                           </button>
@@ -883,19 +883,19 @@ function InstitutionsTab({ token }: { token: string }) {
                     </>
                   ) : (
                     <>
-                      <td className="px-4 py-3 font-mono text-xs text-gray-500">
+                      <td className="px-4 py-3 font-mono text-xs text-ink-3">
                         {inst.code || "—"}
                       </td>
                       <td className="px-4 py-3 font-medium">{inst.name}</td>
                       <td className="px-4 py-3">
                         {inst.requires_therapist_docs ? (
-                          <span className="text-xs text-gray-400">需繳資料</span>
+                          <span className="text-xs text-ink-3">需繳資料</span>
                         ) : (
-                          <span className="inline-block rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">免繳資料</span>
+                          <span className="inline-block rounded-full bg-surface-3 px-2 py-0.5 text-xs text-ink-3">免繳資料</span>
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs ${inst.is_active ? "bg-green-100 text-green-700" : "bg-gray-200 text-gray-500"}`}>
+                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs ${inst.is_active ? "bg-st-done-bg text-st-done" : "bg-surface-3 text-ink-3"}`}>
                           {inst.is_active ? "啟用" : "停用"}
                         </span>
                       </td>
@@ -914,7 +914,7 @@ function InstitutionsTab({ token }: { token: string }) {
                           </button>
                           <button
                             onClick={() => handleToggle(inst)}
-                            className={`text-xs hover:underline ${inst.is_active ? "text-red-500" : "text-green-600"}`}
+                            className={`text-xs hover:underline ${inst.is_active ? "text-st-danger" : "text-st-done"}`}
                           >
                             {inst.is_active ? "停用" : "啟用"}
                           </button>
@@ -936,29 +936,29 @@ function InstitutionsTab({ token }: { token: string }) {
             <h3 className="mb-4 text-lg font-semibold">新增機構</h3>
             <div className="space-y-3">
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500">機構名稱 *</label>
+                <label className="mb-1 block text-xs font-medium text-ink-3">機構名稱 *</label>
                 <input
                   type="text"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm"
                   placeholder="例如：新北市教育局"
                   autoFocus
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500">機構代號（最多 5 碼，用於核銷案編號）</label>
+                <label className="mb-1 block text-xs font-medium text-ink-3">機構代號（最多 5 碼，用於核銷案編號）</label>
                 <input
                   type="text"
                   value={newCode}
                   onChange={(e) => setNewCode(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono"
+                  className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm font-mono"
                   placeholder="例如：NTC01"
                   maxLength={5}
                 />
               </div>
               <div>
-                <label className="flex items-center gap-2 text-sm text-gray-600">
+                <label className="flex items-center gap-2 text-sm text-ink-2">
                   <input
                     type="checkbox"
                     checked={newRequiresDocs}
@@ -971,14 +971,14 @@ function InstitutionsTab({ token }: { token: string }) {
             <div className="mt-5 flex justify-end gap-2">
               <button
                 onClick={() => { setShowAdd(false); setNewName(""); setNewCode(""); setNewRequiresDocs(true); }}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
+                className="rounded-lg border border-line-2 px-4 py-2 text-sm hover:bg-surface-2"
               >
                 取消
               </button>
               <button
                 onClick={handleAdd}
                 disabled={!newName.trim() || adding}
-                className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-st-active disabled:opacity-50"
               >
                 {adding ? "新增中..." : "新增"}
               </button>
@@ -1137,26 +1137,26 @@ function DataTab({ token }: { token: string }) {
   return (
     <>
       <div className="mb-6">
-        <p className="text-sm text-gray-500">匯出各資料表為 CSV 格式（含所有欄位），或上傳 CSV 進行資料匯入。</p>
+        <p className="text-sm text-ink-3">匯出各資料表為 CSV 格式（含所有欄位），或上傳 CSV 進行資料匯入。</p>
       </div>
 
       {/* Export section */}
       <div className="mb-10">
         <h2 className="mb-4 text-lg font-semibold">📥 資料匯出</h2>
         {loading ? (
-          <div className="py-8 text-center text-gray-400">載入中...</div>
+          <div className="py-8 text-center text-ink-3">載入中...</div>
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {tables.map((t) => (
-              <div key={t.key} className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3">
+              <div key={t.key} className="flex items-center justify-between rounded-lg border border-line bg-white px-4 py-3">
                 <div>
-                  <p className="text-sm font-medium text-gray-900">{t.label}</p>
-                  <p className="text-xs text-gray-400">{t.key}.csv</p>
+                  <p className="text-sm font-medium text-ink">{t.label}</p>
+                  <p className="text-xs text-ink-3">{t.key}.csv</p>
                 </div>
                 <button
                   onClick={() => handleDownload(t)}
                   disabled={downloading === t.key}
-                  className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                  className="rounded-lg border border-line-2 px-3 py-1.5 text-xs font-medium text-ink-2 hover:bg-surface-2 disabled:opacity-50"
                 >
                   {downloading === t.key ? "下載中..." : "下載 CSV"}
                 </button>
@@ -1171,7 +1171,7 @@ function DataTab({ token }: { token: string }) {
               await new Promise((r) => setTimeout(r, 300));
             }
           }}
-          className="mt-4 rounded-lg bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-900"
+          className="mt-4 rounded-lg bg-ink px-4 py-2 text-sm font-medium text-surface hover:bg-ink-2"
         >
           全部下載
         </button>
@@ -1180,14 +1180,14 @@ function DataTab({ token }: { token: string }) {
       {/* Import section */}
       <div>
         <h2 className="mb-4 text-lg font-semibold">📤 資料匯入</h2>
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <div className="rounded-lg border border-line bg-white p-6">
           {/* Step 1: Table */}
           <div className="mb-4">
-            <label className="mb-1 block text-xs font-semibold text-gray-700">① 選擇資料表</label>
+            <label className="mb-1 block text-xs font-semibold text-ink-2">① 選擇資料表</label>
             <select
               value={impTable}
               onChange={(e) => { setImpTable(e.target.value); setImpResult(null); setImpError(null); }}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm"
             >
               {IMPORT_TABLES.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
@@ -1197,16 +1197,16 @@ function DataTab({ token }: { token: string }) {
 
           {/* Step 2: Mode */}
           <div className="mb-4">
-            <label className="mb-2 block text-xs font-semibold text-gray-700">② 匯入模式</label>
+            <label className="mb-2 block text-xs font-semibold text-ink-2">② 匯入模式</label>
             <div className="flex flex-col gap-2">
               {[
                 { value: "dry_run", icon: "🔍", label: "除錯模式（只驗證，不寫入資料庫）", desc: "安全，無副作用", cls: "border-blue-200 bg-blue-50" },
-                { value: "supplement", icon: "➕", label: "補登（只新增不存在的記錄）", desc: "跳過 ID 已存在的列", cls: "border-green-200 bg-green-50" },
-                { value: "clean", icon: "⚠️", label: "清洗覆蓋（更新現有 + 新增）", desc: "高風險，需輸入管理員密碼", cls: "border-orange-200 bg-orange-50" },
+                { value: "supplement", icon: "➕", label: "補登（只新增不存在的記錄）", desc: "跳過 ID 已存在的列", cls: "border-st-done/30 bg-st-done-bg" },
+                { value: "clean", icon: "⚠️", label: "清洗覆蓋（更新現有 + 新增）", desc: "高風險，需輸入管理員密碼", cls: "border-st-warn/30 bg-st-warn-bg" },
               ].map((m) => (
                 <label
                   key={m.value}
-                  className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${impMode === m.value ? m.cls : "border-gray-200 bg-gray-50"}`}
+                  className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${impMode === m.value ? m.cls : "border-line bg-surface-2"}`}
                 >
                   <input
                     type="radio"
@@ -1218,7 +1218,7 @@ function DataTab({ token }: { token: string }) {
                   />
                   <div>
                     <span className="text-sm font-medium">{m.icon} {m.label}</span>
-                    <p className="text-xs text-gray-500">{m.desc}</p>
+                    <p className="text-xs text-ink-3">{m.desc}</p>
                   </div>
                 </label>
               ))}
@@ -1227,28 +1227,28 @@ function DataTab({ token }: { token: string }) {
 
           {/* Step 3: File */}
           <div className="mb-4">
-            <label className="mb-1 block text-xs font-semibold text-gray-700">③ 上傳 CSV 檔案</label>
+            <label className="mb-1 block text-xs font-semibold text-ink-2">③ 上傳 CSV 檔案</label>
             <input
               type="file"
               accept=".csv"
               onChange={(e) => { setImpFile(e.target.files?.[0] ?? null); setImpResult(null); setImpError(null); }}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm"
             />
-            {impFile && <p className="mt-1 text-xs text-gray-400">已選擇：{impFile.name}（{(impFile.size / 1024).toFixed(1)} KB）</p>}
+            {impFile && <p className="mt-1 text-xs text-ink-3">已選擇：{impFile.name}（{(impFile.size / 1024).toFixed(1)} KB）</p>}
           </div>
 
           {/* Step 4: Password (clean only) */}
           {impMode === "clean" && (
-            <div className="mb-4 rounded-lg border border-orange-200 bg-orange-50 p-4">
-              <label className="mb-1 block text-xs font-semibold text-orange-700">④ 管理員密碼確認 <span className="text-red-500">*</span></label>
+            <div className="mb-4 rounded-lg border border-st-warn/30 bg-st-warn-bg p-4">
+              <label className="mb-1 block text-xs font-semibold text-st-warn">④ 管理員密碼確認 <span className="text-st-danger">*</span></label>
               <input
                 type="password"
                 value={impPassword}
                 onChange={(e) => setImpPassword(e.target.value)}
                 placeholder="請輸入您的管理員密碼"
-                className="w-full rounded-lg border border-orange-300 bg-white px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-st-warn/30 bg-white px-3 py-2 text-sm"
               />
-              <p className="mt-1 text-xs text-orange-600">清洗模式將更新現有記錄，所有變更將記錄於稽核日誌</p>
+              <p className="mt-1 text-xs text-st-warn">清洗模式將更新現有記錄，所有變更將記錄於稽核日誌</p>
             </div>
           )}
 
@@ -1271,29 +1271,29 @@ function DataTab({ token }: { token: string }) {
               </button>
             )}
             {impResult && impResult.errors.length > 0 && impMode !== "dry_run" && (
-              <p className="text-xs text-red-500">⛔ 請先修正 {impResult.errors.length} 個錯誤後才能執行匯入</p>
+              <p className="text-xs text-st-danger">⛔ 請先修正 {impResult.errors.length} 個錯誤後才能執行匯入</p>
             )}
           </div>
 
           {/* Error message */}
           {impError && (
-            <div className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-600">{impError}</div>
+            <div className="mt-3 rounded-lg bg-st-danger-bg p-3 text-sm text-st-danger">{impError}</div>
           )}
 
           {/* Preview result panel */}
           {impResult && (
-            <div className="mt-5 rounded-lg border border-gray-200 bg-gray-50">
+            <div className="mt-5 rounded-lg border border-line bg-surface-2">
               {/* Summary */}
-              <div className={`rounded-t-lg px-4 py-3 ${impResult.committed ? "bg-green-50 border-b border-green-200" : "bg-white border-b border-gray-200"}`}>
+              <div className={`rounded-t-lg px-4 py-3 ${impResult.committed ? "bg-st-done-bg border-b border-st-done/30" : "bg-white border-b border-line"}`}>
                 <div className="flex flex-wrap items-center gap-4 text-sm">
-                  {impResult.committed && <span className="font-semibold text-green-700">✅ 匯入完成</span>}
-                  {!impResult.committed && <span className="font-semibold text-gray-700">預覽結果</span>}
-                  <span className="text-gray-600">共 <strong>{impResult.total_rows}</strong> 列</span>
-                  {impResult.would_insert > 0 && <span className="text-green-600">新增 <strong>{impResult.would_insert}</strong></span>}
+                  {impResult.committed && <span className="font-semibold text-st-done">✅ 匯入完成</span>}
+                  {!impResult.committed && <span className="font-semibold text-ink-2">預覽結果</span>}
+                  <span className="text-ink-2">共 <strong>{impResult.total_rows}</strong> 列</span>
+                  {impResult.would_insert > 0 && <span className="text-st-done">新增 <strong>{impResult.would_insert}</strong></span>}
                   {impResult.would_update > 0 && <span className="text-blue-600">更新 <strong>{impResult.would_update}</strong></span>}
-                  {impResult.would_skip > 0 && <span className="text-gray-500">跳過 <strong>{impResult.would_skip}</strong></span>}
-                  {impResult.errors.length > 0 && <span className="text-red-600 font-semibold">❌ {impResult.errors.length} 個錯誤</span>}
-                  {impResult.warnings.length > 0 && <span className="text-amber-600">⚠️ {impResult.warnings.length} 個警告</span>}
+                  {impResult.would_skip > 0 && <span className="text-ink-3">跳過 <strong>{impResult.would_skip}</strong></span>}
+                  {impResult.errors.length > 0 && <span className="text-st-danger font-semibold">❌ {impResult.errors.length} 個錯誤</span>}
+                  {impResult.warnings.length > 0 && <span className="text-st-warn">⚠️ {impResult.warnings.length} 個警告</span>}
                   {impResult.errors.length === 0 && impResult.mode === "dry_run" && (
                     <span className="text-blue-600">✅ 驗證通過，可切換至補登或清洗模式執行匯入</span>
                   )}
@@ -1302,10 +1302,10 @@ function DataTab({ token }: { token: string }) {
 
               {/* Errors */}
               {impResult.errors.length > 0 && (
-                <div className="border-b border-gray-200">
+                <div className="border-b border-line">
                   <button
                     onClick={() => setShowErrors((v) => !v)}
-                    className="flex w-full items-center justify-between px-4 py-2 text-left text-sm font-medium text-red-700 hover:bg-red-50"
+                    className="flex w-full items-center justify-between px-4 py-2 text-left text-sm font-medium text-st-danger hover:bg-st-danger-bg"
                   >
                     <span>❌ 錯誤列表（{impResult.errors.length} 個）</span>
                     <span>{showErrors ? "▲" : "▼"}</span>
@@ -1313,7 +1313,7 @@ function DataTab({ token }: { token: string }) {
                   {showErrors && (
                     <div className="max-h-60 overflow-y-auto">
                       <table className="w-full text-xs">
-                        <thead className="bg-red-50 text-red-700">
+                        <thead className="bg-st-danger-bg text-st-danger">
                           <tr>
                             <th className="px-3 py-1.5 text-left">列</th>
                             <th className="px-3 py-1.5 text-left">欄位</th>
@@ -1323,10 +1323,10 @@ function DataTab({ token }: { token: string }) {
                         </thead>
                         <tbody>
                           {impResult.errors.map((e, i) => (
-                            <tr key={i} className="border-t border-red-100">
-                              <td className="px-3 py-1 text-red-600">第 {e.row} 列</td>
+                            <tr key={i} className="border-t border-st-danger/30">
+                              <td className="px-3 py-1 text-st-danger">第 {e.row} 列</td>
                               <td className="px-3 py-1 font-mono">{e.field}</td>
-                              <td className="px-3 py-1 text-gray-500">{e.value ?? ""}</td>
+                              <td className="px-3 py-1 text-ink-3">{e.value ?? ""}</td>
                               <td className="px-3 py-1">{e.message}</td>
                             </tr>
                           ))}
@@ -1342,7 +1342,7 @@ function DataTab({ token }: { token: string }) {
                 <div>
                   <button
                     onClick={() => setShowWarnings((v) => !v)}
-                    className="flex w-full items-center justify-between px-4 py-2 text-left text-sm font-medium text-amber-700 hover:bg-amber-50"
+                    className="flex w-full items-center justify-between px-4 py-2 text-left text-sm font-medium text-st-warn hover:bg-st-warn-bg"
                   >
                     <span>⚠️ 警告列表（{impResult.warnings.length} 個）</span>
                     <span>{showWarnings ? "▲" : "▼"}</span>
@@ -1350,7 +1350,7 @@ function DataTab({ token }: { token: string }) {
                   {showWarnings && (
                     <div className="max-h-48 overflow-y-auto">
                       <table className="w-full text-xs">
-                        <thead className="bg-amber-50 text-amber-700">
+                        <thead className="bg-st-warn-bg text-st-warn">
                           <tr>
                             <th className="px-3 py-1.5 text-left">列</th>
                             <th className="px-3 py-1.5 text-left">欄位</th>
@@ -1359,8 +1359,8 @@ function DataTab({ token }: { token: string }) {
                         </thead>
                         <tbody>
                           {impResult.warnings.map((w, i) => (
-                            <tr key={i} className="border-t border-amber-100">
-                              <td className="px-3 py-1 text-amber-600">第 {w.row} 列</td>
+                            <tr key={i} className="border-t border-st-warn/30">
+                              <td className="px-3 py-1 text-st-warn">第 {w.row} 列</td>
                               <td className="px-3 py-1 font-mono">{w.field}</td>
                               <td className="px-3 py-1">{w.message}</td>
                             </tr>

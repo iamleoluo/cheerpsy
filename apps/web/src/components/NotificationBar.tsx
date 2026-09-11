@@ -106,15 +106,15 @@ export function NotificationBar() {
 
   const severityColor = {
     info: "bg-blue-50 border-blue-200 text-blue-700",
-    warning: "bg-amber-50 border-amber-200 text-amber-700",
-    error: "bg-red-50 border-red-200 text-red-700",
+    warning: "bg-st-warn-bg border-st-warn/30 text-st-warn",
+    error: "bg-st-danger-bg border-st-danger/30 text-st-danger",
   };
 
   return (
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="relative flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
+        className="relative flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm text-ink-2 hover:bg-surface-3"
       >
         <span className="text-lg">🔔</span>
         {totalUnread > 0 && (
@@ -125,13 +125,13 @@ export function NotificationBar() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-2 w-80 rounded-xl border border-gray-200 bg-white shadow-xl">
-          <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-            <h3 className="text-sm font-bold text-gray-900">系統通知</h3>
+        <div className="absolute right-0 top-full z-50 mt-2 w-80 rounded-xl border border-line bg-white shadow-xl">
+          <div className="flex items-center justify-between border-b border-line px-4 py-3">
+            <h3 className="text-sm font-bold text-ink">系統通知</h3>
             {data.notifications.some((n) => !n.is_read) && (
               <button
                 onClick={markAllRead}
-                className="text-xs text-primary-600 hover:underline"
+                className="text-xs text-accent hover:underline"
               >
                 全部已讀
               </button>
@@ -140,7 +140,7 @@ export function NotificationBar() {
 
           <div className="max-h-80 overflow-y-auto">
             {allItems.length === 0 ? (
-              <div className="px-4 py-8 text-center text-sm text-gray-400">
+              <div className="px-4 py-8 text-center text-sm text-ink-3">
                 目前沒有通知
               </div>
             ) : (
@@ -154,7 +154,7 @@ export function NotificationBar() {
                     }
                     setOpen(false);
                   }}
-                  className={`block border-b border-gray-50 px-4 py-3 transition-colors hover:bg-gray-50 ${
+                  className={`block border-b border-line px-4 py-3 transition-colors hover:bg-surface-2 ${
                     !item.is_read ? "bg-blue-50/30" : ""
                   }`}
                 >
@@ -163,9 +163,9 @@ export function NotificationBar() {
                       <span
                         className={`mt-0.5 inline-block rounded px-1.5 py-0.5 text-[10px] font-bold ${
                           item.severity === "warning"
-                            ? "bg-amber-100 text-amber-700"
+                            ? "bg-st-warn-bg text-st-warn"
                             : item.severity === "error"
-                            ? "bg-red-100 text-red-700"
+                            ? "bg-st-danger-bg text-st-danger"
                             : "bg-blue-100 text-blue-700"
                         }`}
                       >
@@ -173,16 +173,16 @@ export function NotificationBar() {
                       </span>
                     )}
                     <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-800">
+                      <p className="text-sm font-medium text-ink">
                         {item.title}
                       </p>
                       {"message" in item && item.message && (
-                        <p className="mt-0.5 text-xs text-gray-500">
+                        <p className="mt-0.5 text-xs text-ink-3">
                           {item.message}
                         </p>
                       )}
                       {"created_at" in item && item.created_at && (
-                        <p className="mt-1 text-[10px] text-gray-400">
+                        <p className="mt-1 text-[10px] text-ink-3">
                           {new Date(item.created_at as string).toLocaleString("zh-TW")}
                         </p>
                       )}

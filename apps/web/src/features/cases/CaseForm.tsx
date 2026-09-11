@@ -134,27 +134,27 @@ export function CaseForm({
             Stage 1：僅需填寫基本資料。初診到場後再補填完整資料並轉為正式個案。
           </p>
         )}
-        {error && <div className="mb-3 rounded-lg bg-red-50 p-2 text-sm text-red-600">{error}</div>}
+        {error && <div className="mb-3 rounded-lg bg-st-danger-bg p-2 text-sm text-st-danger">{error}</div>}
         <form onSubmit={handleSubmit} className="space-y-3">
           {/* === 基本資料（新增＋編輯都顯示）=== */}
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">姓名 <span className="text-red-500">*</span></span>
-              <input required value={form.name} onChange={(e) => sf("name", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <span className="mb-1 block text-xs text-ink-3">姓名 <span className="text-st-danger">*</span></span>
+              <input required value={form.name} onChange={(e) => sf("name", e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
             </label>
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">年齡</span>
-              <input type="number" min="0" max="120" value={form.age} onChange={(e) => sf("age", e.target.value)} placeholder="初談前先記年紀" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <span className="mb-1 block text-xs text-ink-3">年齡</span>
+              <input type="number" min="0" max="120" value={form.age} onChange={(e) => sf("age", e.target.value)} placeholder="初談前先記年紀" className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
             </label>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">電話<span className="text-red-500"> *</span><span className="text-gray-400">（轉正式必填）</span></span>
-              <input value={form.phone} onChange={(e) => sf("phone", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <span className="mb-1 block text-xs text-ink-3">電話<span className="text-st-danger"> *</span><span className="text-ink-3">（轉正式必填）</span></span>
+              <input value={form.phone} onChange={(e) => sf("phone", e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
             </label>
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">負責心理師 <span className="text-red-500">*</span></span>
-              <select required value={form.therapist_id} onChange={(e) => sf("therapist_id", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+              <span className="mb-1 block text-xs text-ink-3">負責心理師 <span className="text-st-danger">*</span></span>
+              <select required value={form.therapist_id} onChange={(e) => sf("therapist_id", e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm">
                 <option value="">請選擇</option>
                 {therapists.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
@@ -162,8 +162,8 @@ export function CaseForm({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">結帳方式</span>
-              <select value={form.billing_cycle} onChange={(e) => sf("billing_cycle", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+              <span className="mb-1 block text-xs text-ink-3">結帳方式</span>
+              <select value={form.billing_cycle} onChange={(e) => sf("billing_cycle", e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm">
                 <option value="once">次結</option>
                 <option value="monthly">月結</option>
                 <option value="multiple">多次結</option>
@@ -175,9 +175,9 @@ export function CaseForm({
                   type="checkbox"
                   checked={form.is_designated}
                   onChange={(e) => setForm((prev) => ({ ...prev, is_designated: e.target.checked }))}
-                  className="h-4 w-4 rounded border-gray-300 text-primary-600"
+                  className="h-4 w-4 rounded border-line-2 text-accent"
                 />
-                <span className="text-sm text-gray-700">指定心理師</span>
+                <span className="text-sm text-ink-2">指定心理師</span>
               </label>
             </div>
           </div>
@@ -185,83 +185,83 @@ export function CaseForm({
           {/* === 完整資料（編輯時顯示，用於轉正式前補填）=== */}
           {isEditing && (
             <>
-              <hr className="my-2 border-gray-200" />
-              <p className="text-xs font-medium text-gray-500">
+              <hr className="my-2 border-line" />
+              <p className="text-xs font-medium text-ink-3">
                 轉正式所需資料（初診後補填）
-                <span className="ml-1 font-normal text-gray-400">— 僅需 身份證字號、出生日期、電話 三項</span>
+                <span className="ml-1 font-normal text-ink-3">— 僅需 身份證字號、出生日期、電話 三項</span>
               </p>
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
-                  <span className="mb-1 block text-xs text-gray-500">性別</span>
-                  <select value={form.gender} onChange={(e) => sf("gender", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                  <span className="mb-1 block text-xs text-ink-3">性別</span>
+                  <select value={form.gender} onChange={(e) => sf("gender", e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm">
                     <option value="">未填寫</option>
                     <option value="male">男</option>
                     <option value="female">女</option>
                   </select>
                 </label>
                 <label className="block">
-                  <span className="mb-1 block text-xs text-gray-500">出生日期<span className="text-red-500"> *</span></span>
-                  <input type="date" value={form.birth_date} onChange={(e) => sf("birth_date", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  <span className="mb-1 block text-xs text-ink-3">出生日期<span className="text-st-danger"> *</span></span>
+                  <input type="date" value={form.birth_date} onChange={(e) => sf("birth_date", e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
                 </label>
               </div>
               <label className="block">
-                <span className="mb-1 block text-xs text-gray-500">
+                <span className="mb-1 block text-xs text-ink-3">
                   身份證字號（加密儲存）
-                  {!editingCase?.has_national_id && <span className="text-red-500"> *</span>}
+                  {!editingCase?.has_national_id && <span className="text-st-danger"> *</span>}
                 </span>
                 <input
                   required={!editingCase?.has_national_id}
                   value={form.national_id}
                   onChange={(e) => sf("national_id", e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm"
                   placeholder={editingCase?.has_national_id ? "已填寫（重新輸入將覆蓋）" : "必填，轉正式編號需要"}
                 />
               </label>
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
-                  <span className="mb-1 block text-xs text-gray-500">市話</span>
-                  <input value={form.phone_home} onChange={(e) => sf("phone_home", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  <span className="mb-1 block text-xs text-ink-3">市話</span>
+                  <input value={form.phone_home} onChange={(e) => sf("phone_home", e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
                 </label>
                 <label className="block">
-                  <span className="mb-1 block text-xs text-gray-500">地址</span>
-                  <input value={form.address} onChange={(e) => sf("address", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  <span className="mb-1 block text-xs text-ink-3">地址</span>
+                  <input value={form.address} onChange={(e) => sf("address", e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
                 </label>
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <label className="block">
-                  <span className="mb-1 block text-xs text-gray-500">緊急聯絡人</span>
-                  <input value={form.emergency_contact} onChange={(e) => sf("emergency_contact", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  <span className="mb-1 block text-xs text-ink-3">緊急聯絡人</span>
+                  <input value={form.emergency_contact} onChange={(e) => sf("emergency_contact", e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
                 </label>
                 <label className="block">
-                  <span className="mb-1 block text-xs text-gray-500">聯絡電話1</span>
-                  <input value={form.emergency_phone} onChange={(e) => sf("emergency_phone", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  <span className="mb-1 block text-xs text-ink-3">聯絡電話1</span>
+                  <input value={form.emergency_phone} onChange={(e) => sf("emergency_phone", e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
                 </label>
                 <label className="block">
-                  <span className="mb-1 block text-xs text-gray-500">聯絡電話2</span>
-                  <input value={form.emergency_phone2} onChange={(e) => sf("emergency_phone2", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-                </label>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="block">
-                  <span className="mb-1 block text-xs text-gray-500">轉介來源</span>
-                  <input value={form.referral_source} onChange={(e) => sf("referral_source", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-                </label>
-                <label className="block">
-                  <span className="mb-1 block text-xs text-gray-500">會談地點</span>
-                  <input value={form.session_location} onChange={(e) => sf("session_location", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  <span className="mb-1 block text-xs text-ink-3">聯絡電話2</span>
+                  <input value={form.emergency_phone2} onChange={(e) => sf("emergency_phone2", e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
                 </label>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
-                  <span className="mb-1 block text-xs text-gray-500">初談日期</span>
-                  <input type="date" value={form.initial_visit_date} onChange={(e) => sf("initial_visit_date", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+                  <span className="mb-1 block text-xs text-ink-3">轉介來源</span>
+                  <input value={form.referral_source} onChange={(e) => sf("referral_source", e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
                 </label>
                 <label className="block">
-                  <span className="mb-1 block text-xs text-gray-500">狀態</span>
+                  <span className="mb-1 block text-xs text-ink-3">會談地點</span>
+                  <input value={form.session_location} onChange={(e) => sf("session_location", e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
+                </label>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="mb-1 block text-xs text-ink-3">初談日期</span>
+                  <input type="date" value={form.initial_visit_date} onChange={(e) => sf("initial_visit_date", e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs text-ink-3">狀態</span>
                   {editingCase!.status === "closed" ? (
-                    <div className="flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-400">已結案（可由右下「復案」變更）</div>
+                    <div className="flex items-center rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm text-ink-3">已結案（可由右下「復案」變更）</div>
                   ) : (
-                    <select value={form.status} onChange={(e) => sf("status", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                    <select value={form.status} onChange={(e) => sf("status", e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm">
                       {Object.entries(statusLabels).filter(([k]) => k !== "initial" && k !== "closed").map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                     </select>
                   )}
@@ -270,36 +270,36 @@ export function CaseForm({
             </>
           )}
           <label className="block">
-            <span className="mb-1 block text-xs text-gray-500">備註</span>
-            <textarea value={form.notes} onChange={(e) => sf("notes", e.target.value)} rows={2} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+            <span className="mb-1 block text-xs text-ink-3">備註</span>
+            <textarea value={form.notes} onChange={(e) => sf("notes", e.target.value)} rows={2} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
           </label>
 
           {/* === 結案操作區（選「結案」時出現）=== */}
           {isClosing && (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-3 space-y-2">
-              <p className="text-xs font-semibold text-red-700">⚠️ 結案後將執行：</p>
-              <ul className="list-disc pl-4 text-xs text-red-600 space-y-0.5">
+            <div className="rounded-lg border border-st-danger/30 bg-st-danger-bg p-3 space-y-2">
+              <p className="text-xs font-semibold text-st-danger">⚠️ 結案後將執行：</p>
+              <ul className="list-disc pl-4 text-xs text-st-danger space-y-0.5">
                 <li>個案標記為結案，從預約／個案名單預設隱藏</li>
                 <li>取消所有未來預約</li>
                 <li>機構額度歸零（保留歷史用量紀錄）</li>
               </ul>
-              <p className="text-xs text-red-600">所有過往資料完整保留，可隨時復案恢復。</p>
+              <p className="text-xs text-st-danger">所有過往資料完整保留，可隨時復案恢復。</p>
               <label className="block">
-                <span className="mb-1 block text-xs text-gray-600">結案原因（選填）</span>
+                <span className="mb-1 block text-xs text-ink-2">結案原因（選填）</span>
                 <input
                   value={closureReason}
                   onChange={(e) => setClosureReason(e.target.value)}
                   placeholder="例：流失、長期未派案"
-                  className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm"
+                  className="w-full rounded border border-line-2 px-3 py-1.5 text-sm"
                 />
               </label>
               <label className="block">
-                <span className="mb-1 block text-xs text-gray-600">您的登入密碼 <span className="text-red-500">*</span></span>
+                <span className="mb-1 block text-xs text-ink-2">您的登入密碼 <span className="text-st-danger">*</span></span>
                 <input
                   type="password"
                   value={closurePassword}
                   onChange={(e) => setClosurePassword(e.target.value)}
-                  className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm"
+                  className="w-full rounded border border-line-2 px-3 py-1.5 text-sm"
                 />
               </label>
             </div>
@@ -307,24 +307,24 @@ export function CaseForm({
 
           {/* === 復案操作區（已結案個案更改狀態時出現）=== */}
           {isReopening && (
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2">
-              <p className="text-xs font-semibold text-emerald-700">復案後個案恢復為「進行中」，可重新編輯與建立新預約。</p>
-              <p className="text-xs text-emerald-600">已取消的舊預約與已歸零的額度不會自動還原。</p>
+            <div className="rounded-lg border border-st-done/30 bg-st-done-bg p-3 space-y-2">
+              <p className="text-xs font-semibold text-st-done">復案後個案恢復為「進行中」，可重新編輯與建立新預約。</p>
+              <p className="text-xs text-st-done">已取消的舊預約與已歸零的額度不會自動還原。</p>
               <label className="block">
-                <span className="mb-1 block text-xs text-gray-600">您的登入密碼 <span className="text-red-500">*</span></span>
+                <span className="mb-1 block text-xs text-ink-2">您的登入密碼 <span className="text-st-danger">*</span></span>
                 <input
                   type="password"
                   value={closurePassword}
                   onChange={(e) => setClosurePassword(e.target.value)}
-                  className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm"
+                  className="w-full rounded border border-line-2 px-3 py-1.5 text-sm"
                 />
               </label>
             </div>
           )}
 
           <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">取消</button>
-            <button type="submit" disabled={saving} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">
+            <button type="button" onClick={onClose} className="rounded-lg border border-line-2 px-4 py-2 text-sm hover:bg-surface-2">取消</button>
+            <button type="submit" disabled={saving} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-st-active disabled:opacity-50">
               {saving && !showClosure ? "儲存中..." : "儲存"}
             </button>
             {isEditing && editingCase!.status !== "closed" && (
@@ -332,7 +332,7 @@ export function CaseForm({
                 type="button"
                 disabled={saving}
                 onClick={handleClosure}
-                className={`rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 ${showClosure ? "bg-red-600 text-white hover:bg-red-700" : "border border-red-300 text-red-600 hover:bg-red-50"}`}
+                className={`rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 ${showClosure ? "bg-red-600 text-white hover:bg-red-700" : "border border-st-danger/30 text-st-danger hover:bg-st-danger-bg"}`}
               >
                 {saving && showClosure ? "處理中..." : showClosure ? "確認結案" : "結案"}
               </button>
@@ -342,7 +342,7 @@ export function CaseForm({
                 type="button"
                 disabled={saving}
                 onClick={handleClosure}
-                className={`rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 ${showClosure ? "bg-emerald-600 text-white hover:bg-emerald-700" : "border border-emerald-300 text-emerald-600 hover:bg-emerald-50"}`}
+                className={`rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 ${showClosure ? "bg-emerald-600 text-white hover:bg-emerald-700" : "border border-st-done/30 text-st-done hover:bg-st-done-bg"}`}
               >
                 {saving && showClosure ? "處理中..." : showClosure ? "確認復案" : "復案"}
               </button>
