@@ -198,14 +198,19 @@ tr.flash{background:var(--p50)!important;animation:flashHi 2.4s ease-out}
 <p>規劃之前先量。以下全部來自開發資料庫實測，不是估計。</p>
 
 <h3>2.1 最關鍵的一個數字：日曆密度</h3>
+<p>診間日曆是 <b>08:00–22:00、12 個診間</b>，也就是每天 <b>168 個房時</b>。空間利用率＝當日現場場次 ÷ 168：</p>
 <div class="tw"><table>
-<thead><tr><th style="width:140px">日期</th><th class="n" style="width:100px">當日預約</th><th class="n" style="width:100px">可用格數</th><th>使用率</th></tr></thead>
+<thead><tr><th style="width:130px">日期</th><th class="n" style="width:96px">當日預約</th><th class="n" style="width:96px">房時容量</th><th>空間利用率</th></tr></thead>
 <tbody>
-<tr><td>2026-09-28</td><td class="n">11</td><td class="n">≈264</td><td><span class="tag t-r">4%</span></td></tr>
-<tr><td>2026-09-24</td><td class="n">12</td><td class="n">≈264</td><td><span class="tag t-r">5%</span></td></tr>
-<tr><td>2026-09-23</td><td class="n">2</td><td class="n">≈264</td><td><span class="tag t-r">1%</span></td></tr>
-<tr><td>2026-09-22</td><td class="n">4</td><td class="n">≈264</td><td><span class="tag t-r">2%</span></td></tr>
+<tr><td>2026-09-28</td><td class="n">11</td><td class="n">168</td><td><span class="tag t-r">約 5%</span></td></tr>
+<tr><td>2026-09-24</td><td class="n">12</td><td class="n">168</td><td><span class="tag t-r">約 6%</span></td></tr>
+<tr><td>2026-09-23</td><td class="n">2</td><td class="n">168</td><td><span class="tag t-r">約 1%</span></td></tr>
+<tr><td>2026-09-22</td><td class="n">4</td><td class="n">168</td><td><span class="tag t-r">約 2%</span></td></tr>
 </tbody></table></div>
+<div class="note amber"><span class="t">實際營運目標（2026-09-11 你補充）</span>
+<b>每日利用率應該落在三成到五成</b>，現在只有 1–3%。換算成房時就是每天
+<b>50–84 個現場場次</b>，加上不佔診間的視訊／外展，<b>每日總預約約 65–105 筆</b>——
+比原本規劃的 30–45 還要再高一倍多。下面 §4.1 的規模已依此重算。</div>
 <div class="note red"><span class="t">這一條決定了整個展示的成敗</span>
 12 個診間、每天約 22 個時段，容量約 <b>264 格</b>；實際只有 <b>2–12 筆</b>。
 打開診間日曆看到的是一片空白加零星幾格。<b>所有為密度做的設計在空白畫面上完全看不出價值</b>——
@@ -273,14 +278,15 @@ tr.flash{background:var(--p50)!important;animation:flashHi 2.4s ease-out}
 <div class="tw"><table>
 <thead><tr><th style="width:130px">項目</th><th class="n" style="width:88px">現況</th><th class="n" style="width:88px">目標</th><th>理由</th></tr></thead>
 <tbody>
-<tr><td>個案</td><td class="n">85</td><td class="n">≈260</td><td>撐得起每天 30–45 場的排程</td></tr>
-<tr><td>預約</td><td class="n">1,254</td><td class="n">≈11,000</td><td>13 個月 × 每月約 850 場</td></tr>
-<tr><td>場次</td><td class="n">1,034</td><td class="n">≈9,000</td><td>扣掉未到／取消／未來</td></tr>
-<tr><td><b>每日預約</b></td><td class="n">2–12</td><td class="n"><b>30–45</b></td><td><b>日曆使用率 1–5% → 12–17%</b>。含尖峰日拉到 55 筆，讓密度設計真的被壓測</td></tr>
-<tr><td>行政提醒</td><td class="n">48</td><td class="n">≈2,500</td><td>機構場次每筆 2–5 項；<b>刻意留 8% 未勾且落在過去</b>，讓轉灰閘門驗得到</td></tr>
-<tr><td>通知</td><td class="n">9</td><td class="n">≈300</td><td>通知中心要有東西</td></tr>
+<tr><td>個案</td><td class="n">85</td><td class="n">≈420</td><td>撐得起每天 65–105 場的排程（17 位心理師，每人每天 4–6 場）</td></tr>
+<tr><td>預約</td><td class="n">1,254</td><td class="n">≈23,000</td><td>13 個月 × 每月約 1,800 筆</td></tr>
+<tr><td>場次</td><td class="n">1,034</td><td class="n">≈18,000</td><td>扣掉未到／取消／未來未報到</td></tr>
+<tr><td><b>每日預約</b></td><td class="n">2–12</td><td class="n"><b>65–105</b></td><td><b>空間利用率 1–3% → 30–50%</b>（依你補充的實際營運目標）。平日平均 75、尖峰 100、週六約 40</td></tr>
+<tr><td><b>未來預約</b></td><td class="n">99</td><td class="n"><b>≈1,800</b></td><td>往後 8 週，愈遠愈稀疏（近兩週滿、第 7–8 週約三成）。<b>「待報到」與排班檢視要有東西可看</b></td></tr>
+<tr><td>行政提醒</td><td class="n">48</td><td class="n">≈6,000</td><td>機構場次每筆 2–5 項；<b>刻意留 8% 未勾且落在過去</b>，讓轉灰閘門驗得到</td></tr>
+<tr><td>通知</td><td class="n">9</td><td class="n">≈600</td><td>通知中心要有東西</td></tr>
 </tbody></table></div>
-<div class="note amber"><span class="t">數量放大 10 倍是刻意的</span>
+<div class="note amber"><span class="t">數量放大近 20 倍是刻意的</span>
 你說「數量盡量多一點都可以」，而這正好帶來第二個好處：<b>效能問題只會在量夠的時候浮現</b>。
 個案清單上限 500、報表聚合查詢、診間日曆一次撈四張表——這些在 1,000 筆時都看不出來。
 生成器加 <code>--scale</code> 參數，平常開發用小的，展示與壓測用大的。</div>
@@ -348,7 +354,7 @@ Coverage(
 <tbody>
 <tr><td class="c"><b>1</b></td><td><b>⑧ 日報表二期</b></td><td class="c"><span class="tag t-a">中</span></td><td><b>從「等診所裁示」改為「做一版讓他們改」。</b>照 v7 原型做可操作版本，欄位與分類先用我們的理解填，讓診所指著說「這欄不要、那欄要加」</td></tr>
 <tr><td class="c"><b>2</b></td><td><b>收據編號樣張</b></td><td class="c"><span class="tag t-g">小</span></td><td>同上。產生器本來就可切換，印一張 v7 格式的實際樣張給他們看，比描述格式快</td></tr>
-<tr><td class="c"><b>3</b></td><td><code>/reports</code> 拆檔</td><td class="c"><span class="tag t-a">中</span></td><td>1,635 行，最後一個沒被規劃到的大檔。<b>改排在試用前</b>——資料量放大 10 倍之後，這頁的聚合查詢是最可能出效能問題的地方</td></tr>
+<tr><td class="c"><b>3</b></td><td><code>/reports</code> 拆檔</td><td class="c"><span class="tag t-a">中</span></td><td>1,635 行，最後一個沒被規劃到的大檔。<b>改排在試用前</b>——資料量放大近 20 倍之後，這頁的聚合查詢是最可能出效能問題的地方</td></tr>
 <tr><td class="c"><b>4</b></td><td>刪 <code>/claims</code> <code>/finance</code></td><td class="c"><span class="tag t-g">小</span></td><td>2,575 行。同時解決 §2.4 的新舊雙軌問題——demo 時同一件事不該有兩個地方看</td></tr>
 <tr><td class="c"><b>5</b></td><td>四個區塊抽成元件</td><td class="c"><span class="tag t-x">緩</span></td><td><b>維持 12 §4.2 的判斷：先不抽。</b>那是缺抽象不缺功能，診所看不出差別，等第二份合約面板需要時再抽</td></tr>
 </tbody></table></div>
