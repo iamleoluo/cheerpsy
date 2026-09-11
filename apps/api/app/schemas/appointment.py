@@ -116,6 +116,10 @@ class AppointmentResponse(BaseModel):
     appointment_number: str
     case_id: int
     case_name: str | None = None
+    # 診間格第一行要印「個案｜性別 · 病歷號」（v7 樣本）。兩者與姓名一樣可識別
+    # 個人，所以跟 case_name 走**同一道**隱私閘門 can_see_name，不另開一條路。
+    case_number: str | None = None
+    gender: str | None = None
     case_type: str = "individual"
     couple_case_id: int | None = None
     couple_name: str | None = None

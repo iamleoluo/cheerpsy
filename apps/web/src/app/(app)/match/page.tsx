@@ -11,6 +11,8 @@ import { clientFetch } from "@/lib/client-api";
  */
 
 const MODE_LABEL: Record<string, string> = { in_person: "現場", online: "線上", outdoor: "外展" };
+/** 資料庫存 male/female，直接印會變成「· female」。 */
+const GENDER_LABEL: Record<string, string> = { male: "男", female: "女" };
 const STATUS_LABEL: Record<string, string> = {
   new: "新增",
   matching: "媒合中",
@@ -177,7 +179,7 @@ export default function MatchPage() {
                 <span className="text-xs text-ink-3">{expanded === r.id ? "▾" : "▸"}</span>
                 <span className="font-mono text-xs text-ink-3">{r.referral_code}</span>
                 <span className="font-medium">{r.name}</span>
-                <span className="text-xs text-ink-3">{r.age ? `${r.age}歲` : ""}{r.gender ? ` · ${r.gender}` : ""}</span>
+                <span className="text-xs text-ink-3">{r.age ? `${r.age}歲` : ""}{r.gender ? ` · ${GENDER_LABEL[r.gender] ?? r.gender}` : ""}</span>
                 <span className="rounded bg-surface-2 px-1.5 py-0.5 text-xs text-ink-3">{MODE_LABEL[r.mode] ?? r.mode}</span>
                 {r.designated_therapist_name && (
                   <span className="rounded bg-surface-3 text-ink-2 px-1.5 py-0.5 text-xs">指定：{r.designated_therapist_name}</span>

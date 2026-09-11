@@ -16,13 +16,17 @@ import { MoneySplit } from "./domain";
  * 每格四行固定：個案 · 心理師｜地點 · 方案／金額 · 操作列。位置固定，眼睛
  * 才能沿著同一條線往下掃。
  *
- * 已知後端缺口：AppointmentResponse 目前沒有 gender 與 case_number，所以
- * v7 樣本裡的「個案｜性別」與病歷號還印不出來。欄位補上後這裡直接接。
+ * 第一行照 v7 樣本印「個案｜性別 · 病歷號」。gender 與 case_number 兩個欄位
+ * 2026-09-11 才補進 AppointmentResponse，並與姓名共用同一道隱私閘門——會計等
+ * 看不到姓名的角色，這兩欄一樣拿不到，所以這裡不必再判一次權限。
  */
 
 export interface RoomCellAppointment {
   id: number;
   case_name: string | null;
+  /** 病歷號。個案還在 initial（未啟用）階段時沒有號碼。 */
+  case_number?: string | null;
+  gender?: string | null;
   couple_name?: string | null;
   is_couple?: boolean;
   therapist_name: string | null;
@@ -102,6 +106,9 @@ const SESSION_LABEL: Record<string, string> = {
   outdoor: "外展",
 };
 
+/** 資料庫存的是 male/female。沒有對照表就會在格子上印出「· female」。 */
+const GENDER_LABEL: Record<string, string> = { male: "男", female: "女" };
+
 const hhmm = (iso: string | null) => (iso ? iso.slice(11, 16) : "");
 
 export function RoomCell({
@@ -172,7 +179,16 @@ export function RoomCell({
         <span className="truncate">
           {appt.is_couple && "👫 "}
           {name ?? "—"}
+          {appt.gender && (
+            <span className="font-normal text-ink-3">｜{GENDER_LABEL[appt.gender] ?? appt.gender}</span>
+          )}
         </span>
+        {/* 病歷號：伴侶案沒有號碼，初診也還沒配到，兩種都不印 */}
+        {appt.case_number && (
+          <span className={cn("ident shrink-0 text-[9px] font-normal", phase === "done" ? "text-st-muted" : "text-ink-3")}>
+            {appt.case_number}
+          </span>
+        )}
       </div>
 
       {/* 2 · 心理師｜地點 */}

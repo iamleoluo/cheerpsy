@@ -121,6 +121,8 @@ def _to_response(
         appointment_number=a.appointment_number,
         case_id=a.case_id,
         case_name=(a.case.name if a.case else None) if can_see_name else None,
+        case_number=(a.case.case_number if a.case else None) if can_see_name else None,
+        gender=(a.case.gender if a.case else None) if can_see_name else None,
         case_type=(a.case.case_type if a.case else "individual"),
         couple_case_id=a.couple_case_id,
         couple_name=couple_name,
