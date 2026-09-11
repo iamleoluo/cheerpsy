@@ -284,11 +284,17 @@ if command -v timedatectl >/dev/null 2>&1; then
   else
     warn "RTC 被當成 UTC 讀（LocalRTC=${local_rtc:-?}）" "雙系統從 Windows 切回來會快 8 小時，服務在錯的時間下啟動。修法：sudo timedatectl set-local-rtc 1"
   fi
+  uptime_sec=$(cut -d. -f1 /proc/uptime)
   if [ "$ntp_synced" = "yes" ]; then
     log "✅ PASS - 系統時間已與 NTP 同步"
     PASS=$((PASS+1))
+  elif [ "$local_rtc" = "yes" ] && [ "$uptime_sec" -lt 600 ]; then
+    # 開機頭幾分鐘 timesyncd 通常還沒完成第一次同步；RTC 已經是正確模式，
+    # 時間本身可信，只是還沒被 NTP「確認」。等超過 10 分鐘還沒同步才值得警告。
+    log "✅ PASS - 系統時間尚未與 NTP 同步，但開機才 ${uptime_sec}s 且 RTC 正確（正常等待中）"
+    PASS=$((PASS+1))
   else
-    warn "系統時間尚未與 NTP 同步（NTPSynchronized=${ntp_synced:-?}）" "現在的時間可能是錯的，timestamps／JWT 到期判斷都會受影響"
+    warn "系統時間尚未與 NTP 同步（NTPSynchronized=${ntp_synced:-?}，開機 ${uptime_sec}s）" "現在的時間可能是錯的，timestamps／JWT 到期判斷都會受影響"
   fi
 fi
 
@@ -318,9 +324,11 @@ log "── 服務 log 異常掃描（即使 service 顯示 active）──"
 for svc in "${SERVICES[@]}"; do
   # 只掃「這個 service 目前這次啟動以來」的 log，不然重開機後 journald
   # 如果有保留舊 log，幾個月前的舊錯誤會一直重複出現在每次的報告裡，失去意義。
-  started_at=$(systemctl --user show "$svc" -p ActiveEnterTimestamp --value 2>/dev/null)
-  if [ -n "$started_at" ] && [ "$started_at" != "n/a" ]; then
-    err_lines=$(journalctl --user -u "$svc" --since "$started_at" --no-pager 2>/dev/null \
+  # 用 InvocationID 而不是 --since 時間：時鐘跳動（雙系統 RTC 錯 8 小時）時，
+  # 上一次開機的 log 時間戳會落在「未來」，--since 會把它們一起撈進來。
+  inv_id=$(systemctl --user show "$svc" -p InvocationID --value 2>/dev/null)
+  if [ -n "$inv_id" ]; then
+    err_lines=$(journalctl --user -u "$svc" _SYSTEMD_INVOCATION_ID="$inv_id" --no-pager 2>/dev/null \
       | grep -iE "error|exception|traceback|fatal" \
       | grep -viE "error_description|errorpage|ping_group_range|ICMP proxy feature is disabled" \
       | tail -5)
