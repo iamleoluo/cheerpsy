@@ -404,15 +404,23 @@ export function RateRuleEditor({
  * 沒有「其餘情況」是合法的，但值得提醒：條件都沒中就報不出價。
  */
 function RuleSummary({ rules }: { rules: DraftRule[] }) {
-  const hasCatchAll = useMemo(() => rules.some((r) => r.conds.length === 0), [rules]);
+  // 「有沒有保底」與「保底在不在最後」是兩件事。第一版只問了前者，於是把
+  // 其餘情況往上移之後，這行還在說「最後一條沒有條件」——它描述的狀態已經
+  // 不存在了。摘要說錯比沒有摘要更糟，因為它看起來像是在確認。
+  const catchAllAt = useMemo(() => rules.findIndex((r) => r.conds.length === 0), [rules]);
+  const isLast = catchAllAt === rules.length - 1;
   return (
     <p className="text-[10.5px] text-ink-3">
       共 {rules.length} 條，由上而下比對。
-      {hasCatchAll ? (
-        <>最後一條沒有條件，所以任何情況都報得出價。</>
-      ) : (
+      {catchAllAt === -1 ? (
         <span className="text-st-warn">
           沒有「其餘情況」規則——條件都沒命中時這個方案報不出價。可加一條不設條件的放在最後。
+        </span>
+      ) : isLast ? (
+        <>最後一條沒有條件，所以任何情況都報得出價。</>
+      ) : (
+        <span className="text-st-danger">
+          第 {catchAllAt + 1} 條沒有條件，卻不是最後一條——它後面的 {rules.length - catchAllAt - 1} 條永遠輪不到。
         </span>
       )}
     </p>
