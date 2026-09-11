@@ -19,14 +19,35 @@ from decimal import Decimal
 
 import pytest
 
-import app.models  # noqa: F401 — 註冊全部 mapper，否則 relationship 解析不到 Institution
-from app.institution.models.rate_rule import InstRateRule
-from app.institution.rules.pricing import RateRuleContext, resolve_rate, rule_matches
+from fastapi.testclient import TestClient
 
-# 與 pricing.rule_matches() 的 field_map 對齊。新增維度時兩邊要一起改，
-# 這份清單就是那道提醒。
-KNOWN_KEYS = {"session_type", "consult_type", "visit_seq", "duration_min",
-              "location_kind", "time_band", "sub_unit"}
+import app.models  # noqa: F401 — 註冊全部 mapper，否則 relationship 解析不到 Institution
+from app.auth.jwt import create_access_token
+from app.auth.password import hash_password
+from app.institution.models.rate_rule import InstRateRule
+from app.main import app as fastapi_app
+from app.models.user import User
+from app.institution.rules.pricing import (
+    CONDITION_KEYS,
+    RateRuleContext,
+    resolve_rate,
+    rule_matches,
+    unknown_condition_keys,
+)
+
+# 直接用 pricing 匯出的那一份，不再在這裡手抄一遍——手抄的版本會跟著漂移，
+# 而這支測試的全部價值就在於它跟得上真正的 field_map。
+KNOWN_KEYS = CONDITION_KEYS
+
+client = TestClient(fastapi_app)
+
+
+def _admin_headers(db, code):
+    u = User(email=f"rr_{code}@test.local", password_hash=hash_password("x"),
+             name="費率編輯測試管理員", role="admin", user_code=code)
+    db.add(u)
+    db.flush()
+    return {"Authorization": "Bearer " + create_access_token({"sub": str(u.id), "role": "admin", "name": u.name})}
 
 
 class TestFieldMapCoverage:
@@ -145,3 +166,111 @@ class TestSeededPlansQuoteNonZero:
             duration_min=60, location_kind="clinic",
         ))
         assert matched.unit_price == Decimal(str(expected))
+
+
+class TestRateRuleEditorGuards:
+    """費率規則編輯器的寫入閘門（09 §3.5）。
+
+    編輯器是唯一會讓「人」直接寫費率規則的地方，而 rule_matches 的寬容跳過
+    讓一個打錯的條件鍵變成一條命中全部的規則。所以寫入端必須把讀取端刻意
+    放掉的那些錯誤全部擋回來——否則這個編輯器就是一台靜默改錯價的機器。
+    """
+
+    def _plan(self, db, code):
+        from app.institution.models.contract import InstContract
+        from app.institution.models.plan import InstPlan
+        from app.models.institution import Institution
+
+        inst = Institution(name=f"費率編輯測試{code}", code=code)
+        db.add(inst)
+        db.flush()
+        c = InstContract(institution_id=inst.id, name="測試合約", is_active=True)
+        db.add(c)
+        db.flush()
+        p = InstPlan(contract_id=c.id, name="測試方案", quota_unit="count")
+        db.add(p)
+        db.flush()
+        db.add(InstRateRule(plan_id=p.id, sort_order=1, when_json="{}", unit_price=1600, case_payable=0, label="原本的"))
+        db.commit()
+        return p.id
+
+    def _put(self, headers, plan_id, rules):
+        return client.put(f"/institution/plans/{plan_id}/rate-rules", headers=headers, json={"rules": rules})
+
+    def test_unknown_condition_key_is_rejected(self, db, http_db):
+        """少一個 s 的 sesion_type——讀取端會放過，寫入端必須擋。"""
+        headers = _admin_headers(db, "ARE01")
+        pid = self._plan(db, "RE01")
+        r = self._put(headers, pid, [
+            {"sort_order": 1, "when": {"sesion_type": "online"}, "unit_price": 999, "case_payable": 0},
+        ])
+        assert r.status_code == 400, r.text
+        assert "sesion_type" in r.json()["detail"]
+        # 原本的規則要原封不動
+        db.expire_all()
+        rules = db.query(InstRateRule).filter(InstRateRule.plan_id == pid).all()
+        assert len(rules) == 1 and rules[0].label == "原本的"
+
+    def test_catch_all_before_others_is_rejected(self, db, http_db):
+        """先匹配先贏：空條件排在前面，後面的規則永遠輪不到。"""
+        headers = _admin_headers(db, "ARE02")
+        pid = self._plan(db, "RE02")
+        r = self._put(headers, pid, [
+            {"sort_order": 1, "when": {}, "unit_price": 1600, "case_payable": 0, "label": "其餘情況"},
+            {"sort_order": 2, "when": {"consult_type": "family"}, "unit_price": 2400, "case_payable": 0},
+        ])
+        assert r.status_code == 400, r.text
+        assert "其餘情況" in r.json()["detail"]
+
+    def test_fixed_price_without_amount_is_rejected(self, db, http_db):
+        """fixed 沒填金額 → resolve_rate 回 unit_price=None，報價會變 0。"""
+        headers = _admin_headers(db, "ARE03")
+        pid = self._plan(db, "RE03")
+        r = self._put(headers, pid, [
+            {"sort_order": 1, "when": {}, "price_source": "fixed", "unit_price": None, "case_payable": 0},
+        ])
+        assert r.status_code == 400, r.text
+        assert "鐘點費" in r.json()["detail"]
+
+    def test_empty_rule_list_is_rejected(self, db, http_db):
+        headers = _admin_headers(db, "ARE04")
+        pid = self._plan(db, "RE04")
+        assert self._put(headers, pid, []).status_code == 400
+
+    def test_valid_replace_swaps_the_whole_list(self, db, http_db):
+        headers = _admin_headers(db, "ARE05")
+        pid = self._plan(db, "RE05")
+        r = self._put(headers, pid, [
+            {"sort_order": 1, "when": {"visit_seq": 1}, "unit_price": 1600, "case_payable": 0, "label": "第一次"},
+            {"sort_order": 2, "when": {"visit_seq": {"gte": 2}}, "unit_price": 1400, "case_payable": 200, "label": "第二次起"},
+            {"sort_order": 99, "when": {}, "unit_price": 1400, "case_payable": 200, "label": "其餘情況"},
+        ])
+        assert r.status_code == 200, r.text
+        db.expire_all()
+        rules = sorted(db.query(InstRateRule).filter(InstRateRule.plan_id == pid).all(), key=lambda x: x.sort_order)
+        assert [x.label for x in rules] == ["第一次", "第二次起", "其餘情況"]
+        # 整份取代：原本那條不該還留著
+        assert "原本的" not in [x.label for x in rules]
+
+        # 存進去的規則真的會被報價引擎照這個順序讀出來
+        payload = [
+            {"id": x.id, "sort_order": x.sort_order, "when_json": x.when_json,
+             "unit_price": x.unit_price, "case_payable": x.case_payable, "price_source": x.price_source}
+            for x in rules
+        ]
+        assert resolve_rate(payload, RateRuleContext(visit_seq=1)).unit_price == Decimal("1600")
+        assert resolve_rate(payload, RateRuleContext(visit_seq=5)).unit_price == Decimal("1400")
+
+    def test_therapist_rate_needs_no_amount(self, db, http_db):
+        """聊心茶室那種直接採心理師鐘點費的方案，本來就不填 unit_price。"""
+        headers = _admin_headers(db, "ARE06")
+        pid = self._plan(db, "RE06")
+        r = self._put(headers, pid, [
+            {"sort_order": 1, "when": {}, "price_source": "therapist_rate", "unit_price": None, "case_payable": 0},
+        ])
+        assert r.status_code == 200, r.text
+
+    def test_unknown_condition_keys_helper(self):
+        assert unknown_condition_keys({"session_type": "online"}) == []
+        assert unknown_condition_keys({"sesion_type": "x", "zzz": 1}) == ["sesion_type", "zzz"]
+        assert unknown_condition_keys({}) == []

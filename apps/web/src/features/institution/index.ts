@@ -5,3 +5,4 @@ export { QuotaGroupedTable } from "./QuotaGroupedTable";
 export { QuotaFormModal } from "./QuotaFormModal";
 export { TemplatesSection, TemplateFormModal, ApplyTemplateModal } from "./Templates";
 export { InstitutionReceivable } from "./InstitutionReceivable";
+export { RateRuleEditor, newRule, toDraft, toPayload, validate as validateRateRules, type DraftRule } from "./RateRuleEditor";

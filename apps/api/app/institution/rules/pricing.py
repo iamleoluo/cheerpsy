@@ -56,11 +56,8 @@ def _cmp(value: Any, cond: Any) -> bool:
     return value == cond
 
 
-def rule_matches(when: dict, ctx: RateRuleContext) -> bool:
-    """空字典永遠命中（預設規則）。其餘每個 key 都要通過才算命中。"""
-    if not when:
-        return True
-    field_map = {
+def _context_fields(ctx: RateRuleContext) -> dict[str, Any]:
+    return {
         "session_type": ctx.session_type,
         "consult_type": ctx.consult_type,
         "visit_seq": ctx.visit_seq,
@@ -69,9 +66,34 @@ def rule_matches(when: dict, ctx: RateRuleContext) -> bool:
         "time_band": ctx.time_band,
         "sub_unit": ctx.sub_unit,
     }
+
+
+#: 條件字典允許出現的 key。**寫入端必須拿這個驗**（見 rule_matches 的警告）。
+CONDITION_KEYS: frozenset[str] = frozenset(_context_fields(RateRuleContext()))
+
+
+def unknown_condition_keys(when: dict) -> list[str]:
+    """條件字典裡不認得的 key。空清單代表這條規則的條件都看得懂。"""
+    return sorted(k for k in (when or {}) if k not in CONDITION_KEYS)
+
+
+def rule_matches(when: dict, ctx: RateRuleContext) -> bool:
+    """空字典永遠命中（預設規則）。其餘每個 key 都要通過才算命中。
+
+    ⚠️ 不認得的 key 會被**跳過**而不是判失敗。這是刻意的：報價是線上流程，
+    一個打錯字的條件鍵不應該讓整個方案報不出價。但代價很陡——
+    `{"sesion_type": "online"}`（少一個 s）會變成一條**命中全部**的規則，
+    而且悄悄地，只有在有人核對帳目時才會發現金額不對。
+
+    所以「寬容」只能存在於讀取端。任何寫入費率規則的路徑都必須先用
+    `unknown_condition_keys()` 擋下來，讓打錯字在存檔當下就變成紅字。
+    """
+    if not when:
+        return True
+    field_map = _context_fields(ctx)
     for key, cond in when.items():
         if key not in field_map:
-            continue  # 未知條件鍵，寬容跳過而非直接判失敗，避免資料打字錯誤癱瘓報價
+            continue  # 理由見 docstring：寬容只在讀取端，寫入端必須擋
         if not _cmp(field_map[key], cond):
             return False
     return True

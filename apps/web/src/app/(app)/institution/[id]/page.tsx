@@ -4,6 +4,14 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
+import {
+  RateRuleEditor,
+  newRule,
+  toDraft,
+  toPayload,
+  validate as validateRules,
+  type DraftRule,
+} from "@/features/institution/RateRuleEditor";
 import { Badge, claimTone } from "@/components/ui";
 
 /**
@@ -27,7 +35,7 @@ interface EnrollmentRow {
 }
 interface ClaimUncollectedRow { id: number; session_date: string; case_id: number; amount: number }
 interface ClaimCandidateRow { case_id: number; session_record_ids: number[]; count: number; ready: boolean; total_amount: number }
-interface RateRuleRow { id: number; sort_order: number; when_json: string; unit_price: number; case_payable: number; label: string | null }
+interface RateRuleRow { id: number; sort_order: number; when_json: string; price_source?: string; unit_price: number | null; case_payable: number; label: string | null }
 interface PlanPanel {
   plan: {
     id: number; name: string; quota_unit: string; default_quota_limit_numeric: number | null;
@@ -109,6 +117,7 @@ export default function ContractPanelPage() {
   const [tab, setTab] = useState<"quota" | "claims" | "docs" | "settings">("quota");
   const [busy, setBusy] = useState(false);
   const [showCreatePlan, setShowCreatePlan] = useState(false);
+  const [editRatesFor, setEditRatesFor] = useState<PlanPanel | null>(null);
   const [enrollForPlan, setEnrollForPlan] = useState<PlanPanel | null>(null);
   const [extendTarget, setExtendTarget] = useState<EnrollmentRow | null>(null);
   const [voidTarget, setVoidTarget] = useState<ClaimCaseRow | null>(null);
@@ -504,7 +513,15 @@ export default function ContractPanelPage() {
                 <div><dt className="text-ink-3">外部代號</dt><dd>{p.plan.requires_external_code ? "需要" : "不需要"}</dd></div>
               </dl>
 
-              <h4 className="mb-2 text-xs font-medium text-ink-3">費率規則（依序先匹配先贏）</h4>
+              <div className="mb-2 flex items-center gap-2">
+                <h4 className="text-xs font-medium text-ink-3">費率規則（依序先匹配先贏）</h4>
+                <button
+                  onClick={() => setEditRatesFor(p)}
+                  className="ml-auto rounded border border-line-2 px-2 py-0.5 text-xs text-ink-2 hover:bg-surface-2"
+                >
+                  編輯費率
+                </button>
+              </div>
               <table className="w-full text-xs">
                 <thead className="bg-surface-2 text-ink-3">
                   <tr>
@@ -520,14 +537,16 @@ export default function ContractPanelPage() {
                     <tr key={rr.id} className="border-t border-line">
                       <td className="px-2 py-1.5">{rr.sort_order}</td>
                       <td className="px-2 py-1.5 font-mono">{rr.when_json === "{}" ? "（無條件・保底）" : rr.when_json}</td>
-                      <td className="px-2 py-1.5 text-right">${rr.unit_price.toLocaleString()}</td>
+                      <td className="px-2 py-1.5 text-right">{rr.price_source === "therapist_rate" ? <span className="text-ink-3">心理師鐘點費</span> : `$${(rr.unit_price ?? 0).toLocaleString()}`}</td>
                       <td className="px-2 py-1.5 text-right">${rr.case_payable.toLocaleString()}</td>
                       <td className="px-2 py-1.5">{rr.label ?? "—"}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <p className="mt-2 text-xs text-ink-3">既有方案的費率規則編輯功能尚未上線，目前僅供檢視；建立新方案時可以直接設定。</p>
+              <p className="mt-2 text-xs text-ink-3">
+                改費率只影響之後的報價。已建立的預約存的是當時的報價快照，不會被回頭改動。
+              </p>
 
               {(p.admin_checklist.length > 0 || p.therapist_checklist.length > 0) && (
                 <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
@@ -550,6 +569,14 @@ export default function ContractPanelPage() {
           contractId={contract.id}
           onClose={() => setShowCreatePlan(false)}
           onCreated={() => { setShowCreatePlan(false); fetchPanel(); }}
+        />
+      )}
+      {editRatesFor && (
+        <EditRatesModal
+          token={token}
+          plan={editRatesFor}
+          onClose={() => setEditRatesFor(null)}
+          onSaved={() => { setEditRatesFor(null); fetchPanel(); }}
         />
       )}
       {enrollForPlan && (
@@ -850,15 +877,6 @@ function EnrollCaseModal({
    ＋ 新增方案（含費率規則編輯器，09 §3.5）
    ═══════════════════════════════════════════════ */
 
-interface RateRuleDraft {
-  condition: "none" | "visit_seq";
-  operator: "eq" | "gte";
-  value: string;
-  unit_price: string;
-  case_payable: string;
-  label: string;
-}
-
 function CreatePlanModal({
   token, contractId, onClose, onCreated,
 }: { token: string; contractId: number; onClose: () => void; onCreated: () => void }) {
@@ -874,35 +892,27 @@ function CreatePlanModal({
   const [requiresExternalCode, setRequiresExternalCode] = useState(false);
   const [noShowFee, setNoShowFee] = useState("");
   const [caseReceiptItemName, setCaseReceiptItemName] = useState("場地費");
-  const [rules, setRules] = useState<RateRuleDraft[]>([
-    { condition: "none", operator: "eq", value: "", unit_price: "", case_payable: "0", label: "固定價" },
-  ]);
+  // 改用共用的費率規則編輯器（11 §5.6）。舊的版本只讓選一個 visit_seq 條件，
+  // 於是家防中心那種「個別$2000／親職$1000／家族$2400」根本填不進去——
+  // consult_type 這個維度在 UI 上不存在，方案只能先建好再進資料庫改。
+  const [rules, setRules] = useState<DraftRule[]>([newRule()]);
+  const [ruleErrors, setRuleErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-
-  function updateRule(i: number, patch: Partial<RateRuleDraft>) {
-    setRules((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
-  }
-  function addRule() {
-    setRules((rs) => [...rs, { condition: "none", operator: "eq", value: "", unit_price: "", case_payable: "0", label: "" }]);
-  }
-  function removeRule(i: number) {
-    setRules((rs) => rs.filter((_, idx) => idx !== i));
-  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     setError("");
     try {
-      const rate_rules = rules.map((r, i) => ({
-        sort_order: i + 1,
-        when: r.condition === "visit_seq" && r.value ? { visit_seq: r.operator === "eq" ? Number(r.value) : { gte: Number(r.value) } } : {},
-        price_source: "fixed",
-        unit_price: r.unit_price ? Number(r.unit_price) : null,
-        case_payable: r.case_payable ? Number(r.case_payable) : 0,
-        label: r.label || null,
-      }));
+      const errs = validateRules(rules);
+      if (Object.keys(errs).length > 0) {
+        setRuleErrors(errs);
+        setSaving(false);
+        return;
+      }
+      setRuleErrors({});
+      const rate_rules = toPayload(rules);
       await clientFetch("/institution/plans", token, {
         method: "POST",
         body: JSON.stringify({
@@ -1019,49 +1029,7 @@ function CreatePlanModal({
           </div>
 
           <div className="border-t border-line pt-3">
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-xs font-medium text-ink-3">費率規則（依序先匹配先贏）</span>
-              <button type="button" onClick={addRule} className="text-xs text-accent hover:underline">＋ 新增規則</button>
-            </div>
-            <div className="space-y-2">
-              {rules.map((r, i) => (
-                <div key={i} className="rounded-lg border border-line p-2">
-                  <div className="mb-2 flex items-center gap-1 text-xs">
-                    <span>當</span>
-                    <select value={r.condition} onChange={(e) => updateRule(i, { condition: e.target.value as any })} className="rounded border border-line-2 px-1 py-0.5">
-                      <option value="none">（無條件・保底）</option>
-                      <option value="visit_seq">次數</option>
-                    </select>
-                    {r.condition === "visit_seq" && (
-                      <>
-                        <select value={r.operator} onChange={(e) => updateRule(i, { operator: e.target.value as any })} className="rounded border border-line-2 px-1 py-0.5">
-                          <option value="eq">＝</option>
-                          <option value="gte">≥</option>
-                        </select>
-                        <input type="number" value={r.value} onChange={(e) => updateRule(i, { value: e.target.value })} className="w-14 rounded border border-line-2 px-1 py-0.5" />
-                      </>
-                    )}
-                    {rules.length > 1 && (
-                      <button type="button" onClick={() => removeRule(i)} className="ml-auto text-st-danger hover:underline">刪除</button>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <label className="block">
-                      <span className="mb-0.5 block text-[10px] text-ink-3">單價</span>
-                      <input type="number" required value={r.unit_price} onChange={(e) => updateRule(i, { unit_price: e.target.value })} className="w-full rounded border border-line-2 px-1.5 py-1 text-xs" />
-                    </label>
-                    <label className="block">
-                      <span className="mb-0.5 block text-[10px] text-ink-3">個案自付</span>
-                      <input type="number" value={r.case_payable} onChange={(e) => updateRule(i, { case_payable: e.target.value })} className="w-full rounded border border-line-2 px-1.5 py-1 text-xs" />
-                    </label>
-                    <label className="block">
-                      <span className="mb-0.5 block text-[10px] text-ink-3">標籤</span>
-                      <input value={r.label} onChange={(e) => updateRule(i, { label: e.target.value })} className="w-full rounded border border-line-2 px-1.5 py-1 text-xs" />
-                    </label>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <RateRuleEditor rules={rules} onChange={setRules} errors={ruleErrors} />
           </div>
 
           <div className="flex gap-2 pt-2">
@@ -1318,5 +1286,94 @@ function ExternalCodeCell({
         <span className="text-st-muted group-hover:text-accent">—</span>
       )}
     </button>
+  );
+}
+
+/* ═══════════════════════════════════════════════
+   編輯既有方案的費率規則（09 §3.5）
+
+   之前這一區只能看不能改，畫面上寫著「編輯功能尚未上線，建立新方案時可以
+   直接設定」——實際的意思是：費率填錯的方案只能進資料庫改，或整個方案重建。
+
+   整份取代而不是逐條增刪，理由跟後端端點一樣：費率規則是一份有序、先匹配
+   先贏的清單，「有沒有保底規則」「條件會不會互相遮蔽」是整份清單的性質，
+   逐條編輯會讓中間狀態合法但整體錯誤，而那種錯誤看不出來。
+   ═══════════════════════════════════════════════ */
+
+function EditRatesModal({
+  token, plan, onClose, onSaved,
+}: { token: string; plan: PlanPanel; onClose: () => void; onSaved: () => void }) {
+  const [rules, setRules] = useState<DraftRule[]>(() =>
+    plan.rate_rules.length > 0
+      ? [...plan.rate_rules]
+          .sort((a, b) => a.sort_order - b.sort_order)
+          .map((r) => toDraft(r.when_json, r))
+      : [newRule()],
+  );
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSave() {
+    const errs = validateRules(rules);
+    if (Object.keys(errs).length > 0) {
+      setErrors(errs);
+      return;
+    }
+    setErrors({});
+    setSaving(true);
+    setError("");
+    try {
+      await clientFetch(`/institution/plans/${plan.plan.id}/rate-rules`, token, {
+        method: "PUT",
+        body: JSON.stringify({ rules: toPayload(rules) }),
+      });
+      onSaved();
+    } catch (e: any) {
+      setError(e.message ?? "儲存失敗");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
+      <div
+        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-5 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-3 flex items-start justify-between">
+          <div>
+            <h3 className="font-semibold">編輯費率規則</h3>
+            <p className="mt-0.5 text-xs text-ink-3">{plan.plan.name}</p>
+          </div>
+          <button onClick={onClose} className="text-ink-3 hover:text-ink-2">✕</button>
+        </div>
+
+        <p className="mb-3 rounded-lg bg-accent-soft px-3 py-2 text-xs text-accent">
+          改費率只影響<b>之後</b>的報價。已建立的預約存的是當時的報價快照，
+          不會被回頭改動——歷史金額是事實，不是重算出來的。
+        </p>
+
+        {error && (
+          <p className="mb-3 rounded-lg bg-st-danger-bg px-3 py-2 text-xs text-st-danger">{error}</p>
+        )}
+
+        <RateRuleEditor rules={rules} onChange={setRules} errors={errors} />
+
+        <div className="mt-4 flex gap-2">
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex-1 rounded-lg bg-accent py-2 text-sm font-medium text-white hover:bg-st-active disabled:opacity-50"
+          >
+            {saving ? "儲存中…" : "儲存費率"}
+          </button>
+          <button onClick={onClose} className="rounded-lg border border-line px-4 py-2 text-sm text-ink-3 hover:bg-surface-2">
+            取消
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

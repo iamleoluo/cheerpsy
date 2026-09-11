@@ -28,10 +28,12 @@ from app.institution.models.contract import InstContract
 from app.institution.models.enrollment import InstEnrollment
 from app.institution.models.plan import InstPlan
 from app.institution.models.rate_rule import InstRateRule
+from app.institution.rules.pricing import CONDITION_KEYS, unknown_condition_keys
 from app.models.institution import Institution
 from app.models.audit_log import AuditLog
 from app.models.session_record import SessionRecord
 from app.models.user import User
+from app.services.audit import write_audit
 
 router = APIRouter(prefix="/institution", tags=["institution-subsystem"])
 
@@ -391,6 +393,118 @@ def create_plan(
                 label=rr.label,
             )
         )
+    db.commit()
+    db.refresh(plan)
+    return _plan_to_response(plan)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# 費率規則編輯（09 §3.5 的最後一個共用區塊）
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def _validate_rate_rules(rules: list[RateRuleIn]) -> None:
+    """存檔前擋下三種會**靜靜算錯錢**的寫法。
+
+    這支存在的理由，是 pricing.rule_matches 對不認得的條件鍵採「寬容跳過」：
+    `{"sesion_type": "online"}`（少一個 s）不會報錯，而是變成一條命中全部的
+    規則。線上報價需要那份寬容，但寫入端不需要——打錯字要在存檔當下就變紅字，
+    不是等到有人核對帳目才發現收錯錢。
+    """
+    if not rules:
+        raise HTTPException(status_code=400, detail="至少要有一條規則，否則這個方案報不出價")
+
+    for i, r in enumerate(rules):
+        where = f"第 {i + 1} 條"
+        unknown = unknown_condition_keys(r.when)
+        if unknown:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"{where}的條件用了不認得的欄位：{'、'.join(unknown)}。"
+                    f"可用欄位：{'、'.join(sorted(CONDITION_KEYS))}"
+                ),
+            )
+        if r.price_source not in ("fixed", "therapist_rate"):
+            raise HTTPException(status_code=400, detail=f"{where}的計價方式必須是 fixed 或 therapist_rate")
+        # fixed 沒填金額 → resolve_rate 會回 unit_price=None，報價直接變 0
+        if r.price_source == "fixed" and r.unit_price is None:
+            raise HTTPException(status_code=400, detail=f"{where}採固定價，必須填鐘點費")
+        if r.unit_price is not None and r.unit_price < 0:
+            raise HTTPException(status_code=400, detail=f"{where}的鐘點費不可為負數")
+        if r.case_payable < 0:
+            raise HTTPException(status_code=400, detail=f"{where}的個案自付不可為負數")
+
+    # 先匹配先贏：空條件之後的規則永遠輪不到，那是編輯時最容易犯的錯
+    order = sorted(range(len(rules)), key=lambda i: rules[i].sort_order)
+    for pos, i in enumerate(order):
+        if not rules[i].when and pos != len(order) - 1:
+            nxt = order[pos + 1]
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"第 {i + 1} 條沒有任何條件（代表「其餘情況」），但它的順序排在"
+                    f"第 {nxt + 1} 條前面。先匹配先贏，後面那些規則永遠輪不到——"
+                    "請把「其餘情況」放到最後。"
+                ),
+            )
+
+
+class RateRulesReplace(BaseModel):
+    """整份取代，不做逐條增刪。
+
+    費率規則是一份**有序、先匹配先贏**的清單，安全性質（有沒有預設規則、
+    條件有沒有互相遮蔽）是整份清單的性質，不是單一條的性質。逐條編輯的 API
+    會讓中間狀態合法但整體錯誤，而那種錯誤看不出來。
+    """
+
+    rules: list[RateRuleIn]
+
+
+@router.put("/plans/{plan_id}/rate-rules", response_model=PlanResponse)
+def replace_rate_rules(
+    plan_id: int,
+    body: RateRulesReplace,
+    user: User = Depends(RequireRole(WRITE_ROLES)),
+    db: Session = Depends(get_db),
+):
+    """整份取代某方案的費率規則。
+
+    **不動歷史**：已建立的預約存的是報價快照（07 §2.1「存的是當時的答案」），
+    改費率只影響之後的報價，不會回頭改任何一筆已經算好的金額。
+    """
+    plan = db.query(InstPlan).filter(InstPlan.id == plan_id).first()
+    if not plan:
+        raise HTTPException(status_code=404, detail="方案不存在")
+
+    _validate_rate_rules(body.rules)
+
+    before = [
+        {"sort_order": r.sort_order, "when": r.when_json, "unit_price": str(r.unit_price),
+         "case_payable": str(r.case_payable), "price_source": r.price_source, "label": r.label}
+        for r in sorted(plan.rate_rules, key=lambda x: x.sort_order)
+    ]
+
+    db.query(InstRateRule).filter(InstRateRule.plan_id == plan_id).delete(synchronize_session=False)
+    for rr in body.rules:
+        db.add(
+            InstRateRule(
+                plan_id=plan_id,
+                sort_order=rr.sort_order,
+                when_json=json.dumps(rr.when, ensure_ascii=False),
+                price_source=rr.price_source,
+                unit_price=rr.unit_price,
+                case_payable=rr.case_payable,
+                label=rr.label,
+            )
+        )
+    after = [
+        {"sort_order": r.sort_order, "when": r.when, "unit_price": str(r.unit_price),
+         "case_payable": str(r.case_payable), "price_source": r.price_source, "label": r.label}
+        for r in body.rules
+    ]
+    # 改費率是會影響收多少錢的事，留軌跡
+    write_audit(db, "inst_rate_rules", plan_id, "REPLACE", user.id, {"rules": before}, {"rules": after})
     db.commit()
     db.refresh(plan)
     return _plan_to_response(plan)
