@@ -199,6 +199,68 @@ else
   warn "找不到 standalone build" "$BUILD_FILE 不存在"
 fi
 
+# package.json 宣告的依賴是否都真的裝進 node_modules。
+# 2026-09-12 踩過：git pull 帶進兩個新依賴（@radix-ui/*）但沒跑 npm install，
+# build 直接失敗、frontend 進入 restart loop。上面的 mtime 比對抓不到這種情況
+# （checkout 會把 mtime 改成當下，npm install 沒跑也不會留下比 build 新的檔案）。
+# 這裡不看時間，直接逐一確認每個依賴的 package.json 存在。
+WEB_DIR="$PROJECT_DIR/apps/web"
+if [ -f "$WEB_DIR/package.json" ] && command -v node >/dev/null 2>&1; then
+  missing_deps=$(cd "$WEB_DIR" && node -e '
+    const fs = require("fs");
+    const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+    const deps = Object.keys({ ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) });
+    const missing = deps.filter(d => !fs.existsSync(`node_modules/${d}/package.json`));
+    process.stdout.write(missing.join(" "));
+  ' 2>/dev/null)
+  if [ -n "$missing_deps" ]; then
+    log "❌ FAIL - 前端依賴沒裝齊（package.json 有、node_modules 沒有）"
+    log "     └─ 缺：${missing_deps}。需要 cd apps/web && npm install && npm run build"
+    FAIL=$((FAIL+1))
+    FAILED_CHECK_NAMES+=("前端依賴")
+  else
+    log "✅ PASS - 前端依賴齊全（package.json 宣告的套件都在 node_modules）"
+    PASS=$((PASS+1))
+  fi
+fi
+
+# standalone build 不會自動帶 .next/static，要手動 cp；漏掉的話頁面會 200 但 JS/CSS 全 404。
+STATIC_DIR="$WEB_DIR/.next/standalone/.next/static"
+if [ -f "$BUILD_FILE" ]; then
+  if [ -d "$STATIC_DIR" ] && [ -n "$(ls -A "$STATIC_DIR" 2>/dev/null)" ]; then
+    log "✅ PASS - standalone build 已帶 .next/static"
+    PASS=$((PASS+1))
+  else
+    log "❌ FAIL - standalone build 缺 .next/static（頁面會開但沒有 JS/CSS）"
+    log "     └─ 需要 cp -r apps/web/.next/static apps/web/.next/standalone/.next/static"
+    FAIL=$((FAIL+1))
+    FAILED_CHECK_NAMES+=("standalone static")
+  fi
+fi
+
+log ""
+log "── 系統時鐘 ──"
+# 這台是 Windows/Linux 雙系統。Windows 把 RTC 存成本地時間，Linux 預設當 UTC 讀，
+# 所以每次從 Windows 切回來開機都會快 8 小時，等 NTP 校正時服務早已在錯的時間下啟動
+# （2026-09-12 踩到：cloudflared 開機 log 一堆 ERR、報告檔的 mtime 在未來、ls -t 排序全錯）。
+# 修法是一次性的 `sudo timedatectl set-local-rtc 1`；這裡只負責確認它還在。
+if command -v timedatectl >/dev/null 2>&1; then
+  local_rtc=$(timedatectl show -p LocalRTC --value 2>/dev/null)
+  ntp_synced=$(timedatectl show -p NTPSynchronized --value 2>/dev/null)
+  if [ "$local_rtc" = "yes" ]; then
+    log "✅ PASS - RTC 以本地時間解讀（雙系統不會開機快 8 小時）"
+    PASS=$((PASS+1))
+  else
+    warn "RTC 被當成 UTC 讀（LocalRTC=${local_rtc:-?}）" "雙系統從 Windows 切回來會快 8 小時，服務在錯的時間下啟動。修法：sudo timedatectl set-local-rtc 1"
+  fi
+  if [ "$ntp_synced" = "yes" ]; then
+    log "✅ PASS - 系統時間已與 NTP 同步"
+    PASS=$((PASS+1))
+  else
+    warn "系統時間尚未與 NTP 同步（NTPSynchronized=${ntp_synced:-?}）" "現在的時間可能是錯的，timestamps／JWT 到期判斷都會受影響"
+  fi
+fi
+
 log ""
 log "── 磁碟空間 ──"
 # 用「剩餘空間實際大小 (GB)」判斷，不用百分比——小容量的碟很容易一直卡在
