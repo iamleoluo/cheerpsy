@@ -320,7 +320,15 @@ def build_referrals(gen) -> None:
     for status, n in REFERRAL_PLAN:
         for _ in range(n * k):
             p = fp.person(rng)
-            created = gen.today - timedelta(days=rng.randint(2, min(span, 200)))
+            # 「媒合中」與「新增」是**本質上短暫**的狀態：派案超過 RETURN_DAYS
+            # （3 天）沒人回覆，系統就自動轉成「不成功」。把它們的建立日跟其他
+            # 狀態一樣撒在 2–200 天前的話，幾乎全部會在生成完的隔天就逾時消失
+            # ——實測「媒合中」從 20 筆掉到 0，而中間根本沒重跑生成器。
+            # 一個等了 100 天的案子不叫「等待中」，它就是逾時了。
+            if status in ("new", "matching"):
+                created = gen.today - timedelta(days=rng.randint(0, 2))
+            else:
+                created = gen.today - timedelta(days=rng.randint(2, min(span, 200)))
             designated = rng.choice(gen.active_therapists) if rng.random() < 0.3 else None
             ref = Referral(
                 referral_code=numbering.next_referral_code(db, on_date=created),
@@ -352,7 +360,9 @@ def _referral_history(gen, ref: Referral, status: str, created: date) -> None:
     if status == "new":
         return
 
-    sent = datetime.combine(created + timedelta(days=1), datetime.min.time())
+    # 派案日不能晚於今天：「媒合中」的建立日現在可能就是今天（見上方說明），
+    # 直接加一天會派到明天去
+    sent = datetime.combine(min(created + timedelta(days=1), gen.today), datetime.min.time())
     invited = rng.sample(gen.active_therapists, rng.randint(1, 3))
     batch = ReferralBatch(referral_id=ref.id, batch_seq=1, is_open=True,
                           sent_at=sent, created_by=gen.staff.id)
