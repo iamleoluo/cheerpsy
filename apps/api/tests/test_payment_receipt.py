@@ -189,6 +189,21 @@ class TestPaymentStepInstitution:
         assert "免收" in r.json()["detail"]
 
 
+def _fee_item(db) -> FeeItem:
+    """取得（必要時建立）收費名目「心理治療」。
+
+    原本直接 query 既有資料，於是這兩個測試只有在資料庫**剛好被 seed 過**的
+    時候才會過——清過一次庫（例如跑完假資料生成器的 --reset）就會 AttributeError
+    在 `fee_item.id`，而錯誤訊息完全看不出是環境問題。測試要自己備妥前提。
+    """
+    item = db.query(FeeItem).filter(FeeItem.name == "心理治療").first()
+    if item is None:
+        item = FeeItem(name="心理治療", is_default=True, is_active=True, sort_order=1)
+        db.add(item)
+        db.flush()
+    return item
+
+
 class TestReceipt:
     def test_full_three_step_flow(self, db, http_db):
         """完整走一次：報到 → 收款 → 開立收據。"""
@@ -198,7 +213,7 @@ class TestReceipt:
 
         client.post(f"/appointments/{appt_id}/payment-step", headers=headers, json={"payment_method": "cash"})
 
-        fee_item = db.query(FeeItem).filter(FeeItem.name == "心理治療").first()
+        fee_item = _fee_item(db)
         r = client.post(f"/appointments/{appt_id}/receipt", headers=headers, json={"fee_item_id": fee_item.id})
         assert r.status_code == 201, r.text
         body = r.json()
@@ -237,7 +252,7 @@ class TestReceipt:
         appt_id = _checked_in_self_pay_appt(db, ctx)
         headers = {"Authorization": f"Bearer {ctx['admin_token']}"}
         client.post(f"/appointments/{appt_id}/payment-step", headers=headers, json={"payment_method": "cash"})
-        fee_item = db.query(FeeItem).filter(FeeItem.name == "心理治療").first()
+        fee_item = _fee_item(db)
         r1 = client.post(f"/appointments/{appt_id}/receipt", headers=headers, json={"fee_item_id": fee_item.id})
         assert r1.status_code == 201
         r2 = client.post(f"/appointments/{appt_id}/receipt", headers=headers, json={"fee_item_id": fee_item.id})

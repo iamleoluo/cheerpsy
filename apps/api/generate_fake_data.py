@@ -40,7 +40,7 @@ from decimal import Decimal
 os.environ.setdefault("DATABASE_URL", "postgresql://cheerpsy:cheerpsy@localhost:5432/cheerpsy")
 
 from psycopg2.extras import DateTimeTZRange  # noqa: E402
-from sqlalchemy import text  # noqa: E402
+from sqlalchemy import func, text  # noqa: E402
 
 from app.auth.password import hash_password  # noqa: E402
 from app.database import SessionLocal  # noqa: E402
@@ -98,9 +98,16 @@ INSTITUTION_MIX = [
     ("南家扶", 2, "諮商型態計價 + 需評估"),
     ("台南地院", 3, "登記時數轉換（1 實際小時 → 登記 2 小時 @$800）"),
     ("脆弱家庭", 2, "核銷容器 per_case_count=8"),
+    # compensation_mode="none"：借場地沒有心理師勞務，酬勞單上是「不計酬場次」
+    # 那一區。這個方案原本是 11 個裡唯一零使用的，所以那一區永遠不會出現。
+    ("鉅微/借場地", 2, "不計酬（compensation_mode=none）"),
 ]
 SELF_PAY_MIX = [("once", 16), ("monthly", 9), ("multiple", 5)]
 COUPLE_CASES = 6
+#: 機構合療伴侶案。07 的重要設計：機構核銷以人為單位，伴侶案沒有真人身分
+#: 不能當核銷對象，所以合療預約要選付款方。原本一筆都沒有，那個分流在畫面上
+#: 完全看不到。
+COUPLE_INSTITUTION_CASES = 3
 
 # 生命週期分佈（在上面的付款分類之上疊加）
 LIFECYCLE = {
@@ -109,6 +116,9 @@ LIFECYCLE = {
     "churn_risk": 7,     # ≥45 天沒有預約，仍未結案（流失預警）
     "quota_exhausted": 6,
     "extended": 4,       # 額度延長過（家防中心「6+3」那種）
+    # 兩段式編號的第一段：已建檔、還沒補身分證、還沒有病歷號。原本一筆都沒有，
+    # 於是「暫存 → 轉正式 → 產生病歷號」整條流程在畫面上看不到。
+    "initial": 4,
 }
 
 BUSINESS_HOURS = list(range(8, 21))   # 08:00–21:00 起始，最晚 21:00–22:00 結束
@@ -117,10 +127,11 @@ COUPLE_MINUTES = 90
 
 
 class Generator:
-    def __init__(self, db, rng: random.Random, today: date, months: int, n_cases: int):
+    def __init__(self, db, rng: random.Random, today: date, months: int, n_cases: int, scale: int = 1):
         self.db = db
         self.rng = rng
         self.today = today
+        self.scale = scale
         self.start = (today.replace(day=1) - timedelta(days=31 * (months - 1))).replace(day=1)
         self.n_cases = n_cases
         # 佔用表：避免撞到 excl_room_time_overlap，也避免心理師同時段被排兩場。
@@ -233,8 +244,9 @@ class Generator:
         # 個案的初診日平均分佈在整個期間，但前段多一些（才有足夠長的歷程）
         span = (self.today - self.start).days
 
+        k = self.scale
         for cycle, n in SELF_PAY_MIX:
-            for _ in range(n):
+            for _ in range(n * k):
                 self._make_case(funding="self_pay", billing_cycle=cycle, span=span)
 
         for plan_name, n, _desc in INSTITUTION_MIX:
@@ -242,10 +254,13 @@ class Generator:
             if plan is None:
                 self.log(f"⚠ 找不到方案「{plan_name}」，略過")
                 continue
-            for _ in range(n):
+            for _ in range(n * k):
                 self._make_case(funding="institution", billing_cycle="once", span=span, plan=plan)
 
         self._make_couples()
+        self._assign_outreach_cases()
+        self._assign_online_cases()
+        self._assign_consult_types()
         db.commit()
 
         by_kind = defaultdict(int)
@@ -293,6 +308,7 @@ class Generator:
             "case": case, "therapist": therapist, "intake": intake, "plan": plan,
             "kind": plan.name if plan else f"自費-{billing_cycle}",
             "funding": funding, "billing_cycle": billing_cycle,
+            "modality": self._case_modality(therapist, plan),
         }
         if plan is not None:
             get_funding_provider().enroll(
@@ -314,18 +330,28 @@ class Generator:
         """伴侶案：自己是一列 cases（收費單位），兩位成員各自仍是獨立個案。"""
         db = self.db
         span = (self.today - self.start).days
-        for i in range(COUPLE_CASES):
+        # 機構合療排在前面幾筆：機構核銷以人為單位，伴侶案沒有真人身分不能當
+        # 核銷對象，所以合療預約要選付款方（07 的設計）。原本一筆都沒有。
+        inst_plan = self.plans.get("家防中心")
+        total = (COUPLE_CASES + COUPLE_INSTITUTION_CASES) * self.scale
+        n_inst = COUPLE_INSTITUTION_CASES * self.scale if inst_plan else 0
+        for i in range(total):
+            as_institution = i < n_inst
             members = []
             therapist = self.rng.choice(self.active_therapists)
             intake = self.start + timedelta(days=int(self.rng.triangular(0, span, span * 0.6)))
             for _ in range(2):
-                m = self._make_case(funding="self_pay", billing_cycle="once", span=span)
+                # 機構合療：成員各自掛在機構方案上（核銷對象是成員本人）
+                m = (self._make_case(funding="institution", billing_cycle="once", span=span, plan=inst_plan)
+                     if as_institution
+                     else self._make_case(funding="self_pay", billing_cycle="once", span=span))
                 m["case"].therapist_id = therapist.id  # 伴侶的共同心理師
                 m["kind"] = "伴侶成員"
                 members.append(m["case"])
             couple = Case(
                 name=f"{members[0].name}＆{members[1].name}（伴侶）",
-                case_type="couple", status="ongoing", funding_source="self_pay",
+                case_type="couple", status="ongoing",
+                funding_source="institution" if as_institution else "self_pay",
                 therapist_id=therapist.id, billing_cycle="once",
                 initial_visit_date=intake,
                 case_number=numbering.next_couple_number(db, on_date=intake),
@@ -338,7 +364,9 @@ class Generator:
             db.flush()
             self.cases.append({
                 "case": couple, "therapist": therapist, "intake": intake, "plan": None,
-                "kind": "伴侶案", "funding": "self_pay", "billing_cycle": "once",
+                "kind": "機構伴侶案" if as_institution else "伴侶案",
+                "funding": "institution" if as_institution else "self_pay",
+                "billing_cycle": "once", "modality": "in_person",
                 "couple_members": members,
             })
 
@@ -403,8 +431,8 @@ class Generator:
                 continue
             start, end, room = slot
 
-            session_type, location_kind = self._pick_modality(plan)
-            consult_type = "couple" if is_couple else self._pick_consult_type(plan)
+            session_type, location_kind = self._pick_modality(entry)
+            consult_type = "couple" if is_couple else self._pick_consult_type(entry)
             room_id = room.id if session_type == "in_person" else None
             if session_type != "in_person":
                 room = None
@@ -417,19 +445,139 @@ class Generator:
             self.stats["appointments"] += 1
             self._resolve_attendance(appt, entry, start)
 
-    def _pick_modality(self, plan: InstPlan | None) -> tuple[str, str]:
-        r = self.rng.random()
-        if r < 0.82:
-            return "in_person", "clinic"
-        if r < 0.94:
-            return "online", "clinic"
-        return "outdoor", self.rng.choice(["home", "onsite", "offsite"])
+    def _case_modality(self, therapist: User, plan: InstPlan | None) -> str:
+        """這個個案主要用哪一種型式。
 
-    def _pick_consult_type(self, plan: InstPlan | None) -> str:
-        # 有諮商型態分級的方案才需要多樣性，其餘一律個別
-        if plan is not None and plan.name in ("家防中心", "南家扶"):
-            return self.rng.choice(["individual", "individual", "family", "parenting"])
-        return "individual"
+        外展**不是隨機撒的**：診所裡只有少數幾位心理師接外展的機構案，
+        跟著機構走。所以先挑出「外展心理師」與「外展機構」，兩者都對上
+        才有可能是外展個案——這樣資料看起來才像真的分工，而不是每個人
+        每種型式都做一點。
+        """
+        # 外展與視訊都不在這裡決定——見 _assign_outreach_cases / _assign_online_cases。
+        # 原本是層層擲骰（方案對 ∧ 心理師對 ∧ 55%），三個條件連乘之後 scale=1
+        # 實測產出 0 筆外展，於是外展的四種型態組合、外出保底、外展計額度
+        # 全部沒有樣本。**綁定要用挑的，不是用擲的。**
+        # 視訊不在這裡擲骰——見 build_cases 末尾的 _assign_online_cases()。
+        # 「每週 3–5 次」是一個**總量**，用每案 3.5% 的機率去湊，在個案數少的
+        # 時候會整個擲空（scale=1 實測擲出 0 個，於是視訊連結、待轉發提醒
+        # 那一整條全部消失）。總量要用算的，不是用擲的。
+        return "in_person"
+
+    def _assign_outreach_cases(self) -> None:
+        """外展個案：先挑出「外展心理師 × 外展機構」，再從交集裡指定。
+
+        外展**不是隨機撒的**（你的說法：綁在某幾位心理師接的某些機構上）。
+        但「綁定」要用挑的不是用擲的——三個條件連乘的機率版本實測產出 0 筆。
+
+        外展不佔診間、金流與一般場次相同，所以量少沒關係；重點是每種諮商型態
+        都要有樣本，否則那幾格的費率規則寫錯了驗不出來。
+        """
+        actives = self.active_therapists
+        self._outreach_therapists = {t.id for t in self.rng.sample(actives, min(3, len(actives)))}
+        self._outreach_plans = {"家防中心", "脆弱家庭", "南家扶", "市政府人事處"}
+
+        eligible = [
+            c for c in self.cases
+            if c["case"].case_type != "couple"
+            and c["plan"] is not None and c["plan"].name in self._outreach_plans
+        ]
+        # 先取「心理師也對得上」的，不夠再從同方案的其他案補（機構不變、
+        # 改成另一位心理師接，這在真實診所也會發生）
+        matched = [c for c in eligible if c["therapist"].id in self._outreach_therapists]
+        rest = [c for c in eligible if c not in matched]
+        self.rng.shuffle(rest)
+        n = max(8, 3 * self.scale)
+        chosen = (matched + rest)[:n]
+        for c in chosen:
+            c["modality"] = "outdoor"
+        self.log(f"外展個案 {len(chosen)} 案（{len(self._outreach_therapists)} 位心理師 × "
+                 f"{len(self._outreach_plans)} 個機構）")
+
+    def _assign_online_cases(self) -> None:
+        """視訊個案：由「每週幾次」回推張數，再指定給個案。
+
+        診所的實際規模是**整間每週 3–5 次視訊**（不是每天都有）。一個視訊
+        個案在期間內大約談 `weeks/interval` 次，所以需要的個案數＝
+        目標總場次 ÷ 每案場次。
+        """
+        weeks = max(1, (self.today - self.start).days // 7)
+        target_sessions = int(weeks * 4)          # 每週 4 次（3–5 的中位）
+        per_case = 12                             # 一個視訊個案平均談幾次
+        n = max(2, round(target_sessions / per_case))
+        pool = [c for c in self.cases
+                if c["case"].case_type != "couple" and c.get("modality") == "in_person"]
+        for entry in self.rng.sample(pool, min(n, len(pool))):
+            entry["modality"] = "online"
+        self.log(f"視訊個案 {min(n, len(pool))} 案（目標每週 4 次、期間 {weeks} 週）")
+
+    def _pick_modality(self, entry: dict) -> tuple[str, str]:
+        """型式由**個案**決定，不是逐筆擲骰。
+
+        原本每一筆預約各自擲骰（82% 現場 / 12% 視訊 / 6% 外展），結果是每個
+        個案的療程東跳西跳：這次現場、下次視訊、再下次外展。真實的樣子是
+        **一個個案通常固定一種型式**，而且——
+
+          · 視訊是補充，整間診所每週 3–5 次，不是每天都有
+          · 外展綁在「某幾位心理師接的某些機構」上，跟著機構走，不是隨機撒
+
+        所以型式在建個案時就定下來（entry["modality"]），這裡只負責把它
+        翻成 (session_type, location_kind)，並留一點點偶發的例外。
+        """
+        m = entry.get("modality", "in_person")
+        if m == "outdoor":
+            # 外展個案偶爾也會回所內談
+            if self.rng.random() < 0.15:
+                return "in_person", "clinic"
+            return "outdoor", self.rng.choice(["home", "onsite", "offsite"])
+        if m == "online":
+            if self.rng.random() < 0.2:
+                return "in_person", "clinic"
+            return "online", "clinic"
+        return "in_person", "clinic"
+
+    def _pick_consult_type(self, entry: dict) -> str:
+        """諮商型態也是**個案層級**的屬性，不是逐筆擲骰。
+
+        一個來談親職議題的個案不會這次親職、下次家族。原本只有家防中心與
+        南家扶兩個方案會變化，其餘一律個別，結果是費率規則的第二條計價軸
+        幾乎沒有樣本——而那正是南家扶／家防中心曾經永遠報價 $0 的地方。
+
+        更麻煩的是交叉組合：視訊與外展本來量就少，再乘上型態就更稀疏。
+        所以型態在建個案時就配好（見 _assign_consult_types），這裡只讀。
+        """
+        return entry.get("consult_type", "individual")
+
+    def _assign_consult_types(self) -> None:
+        """把諮商型態配到個案上，並**刻意確保每個「型式 × 型態」組合都有樣本**。
+
+        放著讓機率去撒的話，視訊 × 家族、外展 × 親職這種格子會只有兩三筆——
+        費率規則在那些格子上寫錯了也驗不出來。所以先每個組合硬塞一批，
+        剩下的才按分佈隨機配。
+        """
+        NON_INDIVIDUAL = ["family", "parenting", "couple"]
+        by_modality: dict[str, list[dict]] = {"in_person": [], "online": [], "outdoor": []}
+        for c in self.cases:
+            if c["case"].case_type == "couple":
+                c["consult_type"] = "couple"
+                continue
+            c["consult_type"] = "individual"
+            by_modality.setdefault(c.get("modality", "in_person"), []).append(c)
+
+        # 每個組合至少配到 quota 個案（覆蓋率檢查門檻是每格 12 筆預約，
+        # 一個個案通常談十幾次，所以 2 個案就夠撐起一格）
+        quota = max(2, self.scale // 3)
+        for modality, pool in by_modality.items():
+            self.rng.shuffle(pool)
+            i = 0
+            for ct in NON_INDIVIDUAL:
+                for entry in pool[i:i + quota]:
+                    entry["consult_type"] = ct
+                i += quota
+            # 剩下的個案：少數仍是非個別，其餘個別
+            for entry in pool[i:]:
+                if self.rng.random() < 0.12:
+                    entry["consult_type"] = self.rng.choice(NON_INDIVIDUAL)
+        self.log("諮商型態已配到個案（每個「型式 × 型態」組合都保證有樣本）")
 
     def _create_one(self, entry, therapist, room_id, start, end,
                     session_type, consult_type, location_kind) -> Appointment | None:
@@ -557,6 +705,16 @@ class Generator:
         db.flush()
 
     def _collect(self, sr: SessionRecord, payable: Decimal, start: datetime) -> None:
+        # 部分收款：個案付了一部分。徽章的 warn 態只有這裡會產生，原本全站 0 筆，
+        # 等於那個狀態從來沒在畫面上出現過。
+        if payable > 0 and self.rng.random() < 0.03:
+            sr.payment_status = "partial"
+            sr.copay_collected_at = start + timedelta(minutes=65)
+            sr.copay_payment_method = "cash"
+            sr.copay_payment_note = f"先付 {int(payable) // 2}，餘額下次補"
+            self.stats["partial"] += 1
+            return
+
         method = "cash" if self.rng.random() < 0.7 else "transfer"
         sr.copay_collected_at = start + timedelta(minutes=65)
         sr.copay_payment_method = method
@@ -620,7 +778,7 @@ class Generator:
         self.rng.shuffle(pool)
 
         with_plan = [c for c in pool if c["plan"] is not None]
-        for entry in with_plan[:LIFECYCLE["extended"]]:
+        for entry in with_plan[:(LIFECYCLE["extended"] * self.scale)]:
             e = db.query(InstEnrollment).filter(
                 InstEnrollment.case_id == entry["case"].id).first()
             if e:
@@ -635,7 +793,7 @@ class Generator:
         pool.sort(key=lambda c: 0 if c.get("ending") == "completed" else 1)
         closed = 0
         for entry in pool:
-            if closed >= LIFECYCLE["closed"]:
+            if closed >= (LIFECYCLE["closed"] * self.scale):
                 break
             case = entry["case"]
             if case.status != "ongoing":
@@ -651,15 +809,36 @@ class Generator:
             closed += 1
 
         # 復案：從剛結案的裡面挑幾個
-        reopened = [c for c in pool if c["case"].status == "closed"][:LIFECYCLE["reopened"]]
+        reopened = [c for c in pool if c["case"].status == "closed"][:(LIFECYCLE["reopened"] * self.scale)]
         for entry in reopened:
             case = entry["case"]
             case.status = "ongoing"
             case.reopened_at = case.closed_at + timedelta(days=self.rng.randint(30, 120))
             case.reopened_by = self.admin.id
             self.stats["reopened"] += 1
+        # ── 暫存案（尚未轉正式）────────────────────────────────────────
+        # 兩段式編號的第一段：已建檔、還沒補身分證、還沒有病歷號。
+        # **刻意挑還沒有任何預約的個案**——已經談過的人不可能還停在暫存。
+        # 這些個案在畫面上撐起「暫存 → 補個資 → 產生病歷號」那條流程，
+        # 也是初診報到唯一能被 demo 到的地方。
+        untouched = [
+            c for c in pool
+            if c["case"].status == "ongoing"
+            and not db.query(Appointment).filter(Appointment.case_id == c["case"].id).first()
+        ]
+        for entry in untouched[:(LIFECYCLE["initial"] * self.scale)]:
+            case = entry["case"]
+            case.status = "initial"
+            case.case_number = None
+            case.national_id_encrypted = None
+            case.national_id_hmac = None
+            # temp_seq 沒有 numbering 函式，cases.py:134 是直接 max+1
+            case.temp_seq = (db.query(func.coalesce(func.max(Case.temp_seq), 0)).scalar() or 0) + 1
+            self.stats["initial"] += 1
+
         db.commit()
-        self.log(f"結案 {closed}、復案 {self.stats['reopened']}、額度延長 {self.stats['extended']}")
+        self.log(f"結案 {closed}、復案 {self.stats['reopened']}、額度延長 {self.stats['extended']}"
+                 f"、暫存案 {self.stats['initial']}")
 
     def _close_case(self, case: Case, closed_at: datetime) -> None:
         db = self.db
@@ -701,6 +880,12 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=20260908, help="亂數種子（同種子＝同資料）")
     ap.add_argument("--months", type=int, default=12)
     ap.add_argument("--cases", type=int, default=70)
+    # 密度是這份資料集能不能展示價值的關鍵（13 §2.1）：診間日曆一天只有幾筆
+    # 的話，所有為密度做的設計——四行結構、整格轉灰、最後一次標黃、跨格
+    # rowSpan——在一片空白上完全看不出在解決什麼問題。
+    # scale 直接乘在組成矩陣上；開發時用 1 跑得快，展示與壓測用大的。
+    ap.add_argument("--scale", type=int, default=1,
+                    help="組成矩陣的倍率。1=快速開發用；12 約當平日每天 50–60 場現場")
     ap.add_argument("--no-check", action="store_true", help="跳過不變量檢查")
     args = ap.parse_args()
 
@@ -717,7 +902,7 @@ def main() -> int:
             print("清空既有資料…")
             truncate_all(db)
 
-        gen = Generator(db, rng, today, args.months, args.cases)
+        gen = Generator(db, rng, today, args.months, args.cases, scale=max(1, args.scale))
         print(f"期間 {gen.start} ~ {today}（{args.months} 個月），種子 {args.seed}")
         gen.reference_data()
         gen.build_cases()

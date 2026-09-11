@@ -131,7 +131,14 @@ class TestGenericPanel:
         assert body["module"] == "generic"
 
     def test_missing_contract_404(self, db, http_db):
-        headers = {"Authorization": f"Bearer {create_access_token({'sub': '1', 'role': 'admin', 'name': 'x'})}"}
+        # 建一個真的 admin，不要寫死 sub='1'：那假設了「資料庫裡剛好有 id=1 的
+        # 使用者」，清過庫（例如跑完假資料生成器的 --reset，會 RESTART IDENTITY）
+        # 之後就會變成 401，而錯誤訊息完全看不出是環境問題而不是路由問題。
+        admin = User(email="panel_404@test.local", password_hash=hash_password("x"),
+                     name="面板 404 測試", role="admin", user_code="A951")
+        db.add(admin)
+        db.flush()
+        headers = {"Authorization": f"Bearer {create_access_token({'sub': str(admin.id), 'role': 'admin', 'name': admin.name})}"}
         r = client.get("/institution/contracts/999999/panel", headers=headers)
         assert r.status_code == 404
 

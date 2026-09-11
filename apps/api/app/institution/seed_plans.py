@@ -126,6 +126,8 @@ def seed_plans(db=None, force: bool = False):
         default_quota_limit_numeric=3, compensation_mode="commission",
         case_receipt_required=True, case_receipt_item_name="場地費", institution_receipt_required=False,
         claim_group_key="15-45青壯", claim_timing="monthly", claim_deadline_day=15,
+        admin_checklist=json.dumps(['方案申請表', '簽到表', '服務紀錄表'], ensure_ascii=False),
+        therapist_checklist=json.dumps(['簽到表', '服務紀錄表', '結案摘要(最後一次)'], ensure_ascii=False),
         created_by=created_by,
     )
     db.add(p2)
@@ -144,7 +146,7 @@ def seed_plans(db=None, force: bool = False):
         contract_id=c3.id, name="國軍-個別", quota_pool_id=pool3.id, quota_unit="count",
         default_quota_limit_numeric=6, requires_external_code=True, compensation_mode="commission",
         case_receipt_required=True, case_receipt_item_name="行政規費", institution_receipt_required=False,
-        claim_group_key="國軍", claim_timing="monthly", claim_deadline_day=5, created_by=created_by,
+        claim_group_key="國軍", claim_timing="monthly", claim_deadline_day=5, admin_checklist=json.dumps(['官兵晤談同意書', '個案代號對照確認', '簽到表', '月報表彙整'], ensure_ascii=False), therapist_checklist=json.dumps(['晤談紀錄表', '簽到表', '轉介回覆單(如有)'], ensure_ascii=False), created_by=created_by,
     )
     db.add(p3)
     db.flush()
@@ -166,7 +168,7 @@ def seed_plans(db=None, force: bool = False):
         contract_id=c4.id, name="南家扶", quota_unit="count", default_quota_limit=None,  # 需評估
         requires_assessment=True, requires_external_code=True, compensation_mode="commission",
         case_receipt_required=False, institution_receipt_required=False,
-        claim_group_key="南家扶", claim_timing="monthly", claim_deadline_day=5, created_by=created_by,
+        claim_group_key="南家扶", claim_timing="monthly", claim_deadline_day=5, admin_checklist=json.dumps(['家扶轉介單', '評估同意書', '簽到表'], ensure_ascii=False), therapist_checklist=json.dumps(['初評報告(第一次)', '晤談紀錄表', '結案報告'], ensure_ascii=False), created_by=created_by,
     )
     db.add(p4)
     db.flush()
@@ -188,7 +190,7 @@ def seed_plans(db=None, force: bool = False):
         contract_id=c5.id, name="家防中心", quota_unit="count", default_quota_limit_numeric=12,
         requires_external_code=True, compensation_mode="commission",
         case_receipt_required=False, institution_receipt_required=False,
-        claim_group_key="家防中心", claim_timing="monthly", claim_deadline_day=15, created_by=created_by,
+        claim_group_key="家防中心", claim_timing="monthly", claim_deadline_day=15, admin_checklist=json.dumps(['保護令影本或通報單', '家防中心轉介單', '簽到表'], ensure_ascii=False), therapist_checklist=json.dumps(['晤談紀錄表', '危險評估量表', '結案摘要'], ensure_ascii=False), created_by=created_by,
     )
     db.add(p5)
     db.flush()
@@ -208,7 +210,7 @@ def seed_plans(db=None, force: bool = False):
         requires_external_code=True, compensation_mode="commission",
         case_receipt_required=False, institution_receipt_required=True, institution_receipt_item_name="諮商鐘點費",
         claim_group_key="人事處_市政府", claim_timing="threshold", claim_grouping_mode="per_case_count",
-        claim_capacity=4, created_by=created_by,
+        claim_capacity=4, admin_checklist=json.dumps(['員工協助方案申請表', '簽到表', '滿四次結案通知'], ensure_ascii=False), therapist_checklist=json.dumps(['晤談紀錄表', '簽到表'], ensure_ascii=False), created_by=created_by,
     )
     db.add(p6)
     db.flush()
@@ -225,7 +227,7 @@ def seed_plans(db=None, force: bool = False):
         contract_id=c7.id, name="脆弱家庭", quota_unit="count", default_quota_limit_numeric=8,
         compensation_mode="commission", case_receipt_required=False, institution_receipt_required=False,
         claim_group_key="脆弱家庭", claim_timing="threshold", claim_grouping_mode="per_case_count",
-        claim_capacity=8, created_by=created_by,
+        claim_capacity=8, admin_checklist=json.dumps(['社會局轉介單', '家庭風險評估表', '簽到表'], ensure_ascii=False), therapist_checklist=json.dumps(['晤談紀錄表', '家訪紀錄(如有)', '結案報告'], ensure_ascii=False), created_by=created_by,
     )
     db.add(p7)
     db.flush()
@@ -240,7 +242,7 @@ def seed_plans(db=None, force: bool = False):
         contract_id=c8.id, name="教支中心", quota_unit="count", default_quota_limit_numeric=6,
         requires_external_code=True, compensation_mode="kickback",
         case_receipt_required=False, institution_receipt_required=False,
-        claim_group_key="教支中心", claim_timing="monthly", claim_deadline_day=15, created_by=created_by,
+        claim_group_key="教支中心", claim_timing="monthly", claim_deadline_day=15, admin_checklist=json.dumps(['教支中心派案單', '鐘點費領據', '簽到表'], ensure_ascii=False), therapist_checklist=json.dumps(['晤談紀錄表', '簽到表'], ensure_ascii=False), created_by=created_by,
     )
     db.add(p8)
     db.flush()
@@ -261,6 +263,8 @@ def seed_plans(db=None, force: bool = False):
         # 科目的單價是固定的，只能用時數湊出實收金額）。
         # 原本這欄是自由文字備忘，行政得自己心算再手動填申請金額。
         registered_hours_rule='{"multiplier": 2, "registered_unit_price": 800, "note": "實際1小時$1600 → 登記2小時@$800"}',
+        admin_checklist=json.dumps(["法院裁定書影本", "登記時數對照表", "簽到表"], ensure_ascii=False),
+        therapist_checklist=json.dumps(["晤談紀錄表", "時數確認單"], ensure_ascii=False),
         created_by=created_by,
     )
     db.add(p9)
@@ -275,7 +279,7 @@ def seed_plans(db=None, force: bool = False):
     p10 = InstPlan(
         contract_id=c10.id, name="聊心茶室", quota_unit="count", default_quota_limit=None,
         compensation_mode="commission", case_receipt_required=False, institution_receipt_required=False,
-        claim_group_key="聊心茶室", claim_timing="monthly", created_by=created_by,
+        claim_group_key="聊心茶室", claim_timing="monthly", admin_checklist=json.dumps(['合作備忘錄', '鐘點費結算單'], ensure_ascii=False), therapist_checklist=json.dumps(['晤談紀錄表'], ensure_ascii=False), created_by=created_by,
     )
     db.add(p10)
     db.flush()
@@ -290,7 +294,7 @@ def seed_plans(db=None, force: bool = False):
         contract_id=c11.id, name="鉅微/借場地", quota_unit="count", counts_toward_quota=False,
         compensation_mode="none", case_receipt_required=False,
         institution_receipt_required=True, institution_receipt_item_name="場地費",
-        claim_group_key="鉅微借場地", claim_timing="monthly", created_by=created_by,
+        claim_group_key="鉅微借場地", claim_timing="monthly", admin_checklist=json.dumps(['場地借用單', '費用結算單'], ensure_ascii=False), therapist_checklist=json.dumps([], ensure_ascii=False), created_by=created_by,
     )
     db.add(p11)
     db.flush()

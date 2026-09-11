@@ -56,9 +56,16 @@ CHECKS: list[Cov] = [
         "兩段式編號的第一段。沒有樣本的話，「暫存 → 補身分證 → 產生病歷號」整條流程"
         "在畫面上完全看不到——包括剛做好的初診報到。",
         8, "SELECT count(*) FROM cases WHERE status='initial'"),
-    Cov("case_churn", "個案", "流失預警",
-        "/reports 的流失預警分頁直接讀這個狀態。沒有資料那一頁就是空的。",
-        12, "SELECT count(*) FROM cases WHERE status='churn_risk'"),
+    Cov("case_churn", "個案", "流失預警（≥45 天無預約）",
+        "第一版查的是 status='churn_risk'——但那個值**後端從來不寫**，"
+        "/churn 是拿「最後一次預約距今幾天」即時算出來的。查錯欄位的檢查會"
+        "永遠紅、而且逼著去補一個假的狀態值。這裡改成量真正被算出來的那件事。",
+        12, """
+        SELECT count(*) FROM cases c
+         WHERE c.status IN ('initial','ongoing')
+           AND COALESCE((SELECT max(lower(a.time_range)) FROM appointments a
+                          WHERE a.case_id = c.id AND a.status IN ('booked','executed')),
+                        now() - interval '999 days') < now() - interval '45 days'"""),
     Cov("case_closed", "個案", "已結案",
         "結案要連帶關閉機構方案（P1 修過的 bug）。沒有已結案個案就驗不到那條路徑。",
         20, "SELECT count(*) FROM cases WHERE status='closed'"),
@@ -106,8 +113,10 @@ CHECKS: list[Cov] = [
         "P4 的加時功能：回寫 time_range、撞到鄰場要擋（01 §C1）。",
         40, "SELECT count(*) FROM appointments WHERE actual_start IS NOT NULL"),
     Cov("appt_video_pending", "預約", "視訊連結待轉發",
-        "待轉發與已轉發是兩個不同畫面狀態。只有已轉發的話，「該寄連結了」那個提醒看不到。",
-        15, "SELECT count(*) FROM appointments WHERE video_link IS NOT NULL AND video_forwarded_at IS NULL"),
+        "待轉發與已轉發是兩個不同畫面狀態。只有已轉發的話，「該寄連結了」那個提醒看不到。"
+        "門檻只要 10——視訊本來就是補充（整間診所每週 3–5 次），未來區間裡的"
+        "視訊預約本來就沒幾筆。訂得比真實營運量還高，只會逼著造一批假的出來。",
+        10, "SELECT count(*) FROM appointments WHERE video_link IS NOT NULL AND video_forwarded_at IS NULL"),
     Cov("appt_leave", "預約", "個案請假",
         "P4 的請假流程，與「未到」是不同的東西。",
         20, "SELECT count(*) FROM appointments WHERE leave_at IS NOT NULL"),
@@ -124,7 +133,10 @@ CHECKS: list[Cov] = [
             "費率規則依 session_type 與 consult_type 兩軸計價（D1 新增的維度）。"
             "組合樣本太少就驗不出錯價——南家扶／家防中心原本永遠報價 $0 就是這樣沒被發現的。"
             "視訊與外展量本來就少，這幾格要**刻意配**而不是等機率撒到。",
-            12, f"SELECT count(*) FROM appointments WHERE session_type='{st}' AND consult_type='{ct}'")
+            # 現場是主體，門檻高一些；視訊與外展本來就是補充（每週數次），
+            # 要求同樣的量會變成逼生成器造假——8 筆已經夠讓錯價露出來
+            12 if st == "in_person" else 8,
+            f"SELECT count(*) FROM appointments WHERE session_type='{st}' AND consult_type='{ct}'")
         for st, label_st in [("in_person", "現場"), ("online", "視訊"), ("outdoor", "外展")]
         for ct, label_ct in [("individual", "個別"), ("couple", "伴侶"),
                              ("family", "家族"), ("parenting", "親職")]
@@ -309,8 +321,11 @@ CHECKS: list[Cov] = [
     ],
 
     # ══ 零星 ══════════════════════════════════════════════════════════
-    Cov("notifications", "其他", "通知", "通知中心目前幾乎是空的。", 150,
-        "SELECT count(*) FROM notifications"),
+    Cov("notifications", "其他", "通知",
+        "通知不是生成出來的，是 service 層的**副作用**（退回補件會發通知、"
+        "額度見底會發通知）。所以門檻不能訂得比真實事件量還高——那只會逼著"
+        "去偽造一批沒有來源的通知。訂在「通知中心打開來有東西」的水準就好。",
+        80, "SELECT count(*) FROM notifications"),
     Cov("petty_cash", "其他", "零用金", "財務分頁之一。", 60,
         "SELECT count(*) FROM petty_cash"),
     Cov("product_sales", "其他", "商品販售", "零星帳務。", 40,

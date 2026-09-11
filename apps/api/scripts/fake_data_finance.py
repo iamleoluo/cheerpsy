@@ -34,7 +34,7 @@ from app.models.therapist_payout import PayoutDetail, TherapistPayout
 from app.models.user import User
 from app.referral.models.batch import ReferralBatch, ReferralBatchMember
 from app.referral.models.referral import Referral
-from app.routers.payouts import payout_line_amount
+from app.routers.payouts import payout_line_amount, venue_deduction_total
 from app.services import numbering
 from scripts import fake_people as fp
 
@@ -271,7 +271,12 @@ def build_payouts(gen) -> None:
             by_t[sr.therapist_id].append(sr)
 
         for tid, recs in by_t.items():
-            total = sum(payout_line_amount(sr) for sr in recs)
+            # 場地費扣回必須跟著算——不是只在明細上列出來而已。
+            # 這一行漏掉的時候，不變量 payout_total 會抓到（實測 2 筆）：
+            # 生成器自己抄了一份酬勞計算，而抄的那份少了場地費那一項。
+            # 用的是 payouts.py 匯出的同一支函式，不再抄第三份。
+            total = (sum(payout_line_amount(sr) for sr in recs)
+                     - venue_deduction_total(db, tid, y, m))
             payout = TherapistPayout(
                 therapist_id=tid, payout_month=f"{y}-{m:02d}",
                 total_amount=float(total), status="pending", created_by=gen.admin.id,
@@ -308,8 +313,11 @@ def build_referrals(gen) -> None:
     db, rng = gen.db, gen.rng
     span = (gen.today - gen.start).days
 
+    # 媒合量跟著規模走，但不用全倍率：媒合案是「還沒成案」的人，數量本來就
+    # 遠少於在談的個案。scale=12 時約每種狀態 20 筆。
+    k = 1 + gen.scale // 4
     for status, n in REFERRAL_PLAN:
-        for _ in range(n):
+        for _ in range(n * k):
             p = fp.person(rng)
             created = gen.today - timedelta(days=rng.randint(2, min(span, 200)))
             designated = rng.choice(gen.active_therapists) if rng.random() < 0.3 else None
@@ -706,7 +714,10 @@ def _video_links(gen) -> None:
             continue                                  # 有些心理師還沒貼
         appt.video_link = f"https://meet.cheerpsy.tw/{rng.randint(100000, 999999)}"
         # 未來的預約有一部分還沒轉發 → 行政端的「待轉發」待辦才有東西
-        if appt.time_range and appt.time_range.lower.date() <= gen.today or rng.random() < 0.7:
+        # 過去的一定寄過了；未來的留一半沒寄——行政端「待轉發」那個待辦
+        # 才有東西。原本未來的也有 70% 標成已轉發，於是待轉發只剩 1 筆。
+        is_past = bool(appt.time_range and appt.time_range.lower.date() <= gen.today)
+        if is_past or rng.random() < 0.5:
             appt.video_forwarded_at = appt.time_range.lower - timedelta(days=1)
             appt.video_forwarded_by = gen.staff.id
         gen.stats["video_links"] += 1
