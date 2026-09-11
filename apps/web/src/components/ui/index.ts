@@ -35,3 +35,4 @@ export {
   Skeleton,
   TableSkeleton,
 } from "./feedback";
+export { RichText } from "./rich-text";

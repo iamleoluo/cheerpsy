@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { RichText } from "@/components/ui";
 import { guideModules, type DocSection } from "@/lib/guide-content";
 
 // Legacy type kept for backward compat (pages still pass content= for now)
@@ -39,7 +40,7 @@ function SectionBlock({ section }: { section: DocSection | HelpSection }) {
                 <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent-soft text-xs font-bold text-accent">
                   {ii + 1}
                 </span>
-                <p className="text-sm text-ink-2">{text}</p>
+                <p className="text-sm text-ink-2"><RichText>{text}</RichText></p>
               </li>
             );
           })}

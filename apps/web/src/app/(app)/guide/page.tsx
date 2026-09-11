@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { guideModules, type DocSection, type DocModule } from "@/lib/guide-content";
+import { RichText } from "@/components/ui";
 
 /* ───── helpers ───── */
 function SectionBlock({ section }: { section: DocSection }) {
@@ -13,7 +14,7 @@ function SectionBlock({ section }: { section: DocSection }) {
           {section.items.map((item, i) => (
             <div key={i} className="flex items-center gap-2">
               <div className="rounded-lg border border-line bg-surface-2 px-3 py-1.5 text-sm text-ink-2 shadow-sm">
-                {item}
+                <RichText>{item}</RichText>
               </div>
               {i < section.items.length - 1 && <span className="text-st-muted">→</span>}
             </div>
@@ -35,7 +36,7 @@ function SectionBlock({ section }: { section: DocSection }) {
               <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent-soft text-xs font-bold text-accent">
                 {i + 1}
               </span>
-              <span className="text-sm text-ink-2">{item}</span>
+              <span className="text-sm text-ink-2"><RichText>{item}</RichText></span>
             </li>
           ))}
         </ol>
@@ -52,7 +53,7 @@ function SectionBlock({ section }: { section: DocSection }) {
         <ul className="space-y-2">
           {section.items.map((item, i) => (
             <li key={i} className="rounded-lg bg-st-warn-bg border border-st-warn/30 px-3 py-2 text-sm text-st-warn">
-              {item}
+              <RichText>{item}</RichText>
             </li>
           ))}
         </ul>
@@ -69,7 +70,7 @@ function SectionBlock({ section }: { section: DocSection }) {
         <ul className="space-y-2">
           {section.items.map((item, i) => (
             <li key={i} className="rounded-lg bg-accent-soft text-accent border border-accent/25 px-3 py-2 text-sm">
-              {item}
+              <RichText>{item}</RichText>
             </li>
           ))}
         </ul>
@@ -84,7 +85,7 @@ function SectionBlock({ section }: { section: DocSection }) {
         {section.items.map((item, i) => (
           <li key={i} className="flex items-start gap-2 text-sm text-ink-2">
             <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-line-2" />
-            {item}
+            <RichText>{item}</RichText>
           </li>
         ))}
       </ul>
