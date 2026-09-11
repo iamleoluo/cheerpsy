@@ -362,15 +362,15 @@ tr.flash{background:var(--p50)!important;animation:flashHi 2.4s ease-out}
 </tbody></table></div>
 
 <h3>3.1 合約面板還缺的共用區塊（09 §3.5）</h3>
-<p>09 §3.5 列了合約面板四分頁裡會出現的區塊。對照現有元件庫，還缺這幾個：</p>
+<p>09 §3.5 列了合約面板四分頁裡會出現的區塊。<b>六個功能上都已經做出來了</b>，但其中四個是直接寫在 <code>/institution/[id]</code> 這支檔案裡，沒有進元件庫——所以不能被別的畫面重用。這不是「缺功能」而是<b>缺抽象</b>，兩者的處理順序完全不一樣；標成「缺」會讓人去重做一次已經能用的東西。等第二份合約面板需要同一個區塊時才會真正痛。</p>
 <div class="tw"><table>
 <thead><tr><th style="width:170px">區塊</th><th style="width:90px" class="c">現況</th><th>說明</th></tr></thead>
 <tbody>
 <tr><td><code>quota_per_case</code></td><td class="c"><span class="ok">✓</span></td><td><code>QuotaBar</code> 三態長條已建</td></tr>
-<tr><td><code>quota_pool</code></td><td class="c"><span class="no">缺</span></td><td>池子進度條（國軍 $149,000 型）——與 QuotaBar 不同，扣的是錢</td></tr>
-<tr><td><code>period_sublimit</code></td><td class="c"><span class="no">缺</span></td><td>「本月 3/4」附加行</td></tr>
-<tr><td><code>claim_list</code> / <code>claim_uncollected</code></td><td class="c"><span class="no">缺</span></td><td>核銷案清單與漏單提醒</td></tr>
-<tr><td><code>doc_gate</code></td><td class="c"><span class="no">缺</span></td><td>文件雙閘門：提交／核對／豁免／退回補件</td></tr>
+<tr><td><code>quota_pool</code></td><td class="c"><span class="tag t-a">已有</span></td><td>池子進度條（國軍 $149,000 型）。<b>寫在合約專頁裡，未抽成元件</b></td></tr>
+<tr><td><code>period_sublimit</code></td><td class="c"><span class="tag t-a">已有</span></td><td>「每月上限 N 次」附加行。<b>同上，未抽成元件</b></td></tr>
+<tr><td><code>claim_list</code> / <code>claim_uncollected</code></td><td class="c"><span class="tag t-a">已有</span></td><td>核銷案清單與待核銷提醒。<b>同上，未抽成元件</b></td></tr>
+<tr><td><code>doc_gate</code></td><td class="c"><span class="tag t-a">已有</span></td><td>文件雙閘門（<code>DocGateSection</code>）：提交／核對／豁免／退回補件。<b>同上，未抽成元件</b></td></tr>
 <tr><td><code>rate_table</code></td><td class="c"><span class="ok">✓</span></td><td><b>費率規則編輯器</b>（2026-09-11）——09 §3.5 明說這是唯一沒有參考畫面的元件，所以形狀從規則引擎的語意倒推。重點在寫入閘門，見 §5.10</td></tr>
 </tbody></table></div>
 </section>
