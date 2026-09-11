@@ -20,7 +20,6 @@ import {
 } from "@/features/shared/labels";
 import { caseDisplayId, fmtDate, fmtTime, visitId } from "@/features/shared/format";
 
-/* @token-guard legacy — P3 從舊路由原樣搬入，尚未換語意 token（11 §2.2） */
 /**
  * 伴侶案建立 — 從 cases/page.tsx 搬出（11 §4.2）。
  *
@@ -142,7 +141,7 @@ export function CoupleForm({
           </label>
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="rounded-lg border border-line-2 px-4 py-2 text-sm hover:bg-surface-2">取消</button>
-            <button type="submit" disabled={saving} className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-50">
+            <button type="submit" disabled={saving} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-st-active disabled:opacity-50">
               {saving ? "建立中..." : "建立伴侶案"}
             </button>
           </div>

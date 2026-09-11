@@ -6,7 +6,6 @@ import { Button } from "@/components/ui";
 import type { Appointment, VenueRental, HallBooking, FeeItem, Room } from "./types";
 import { NO_SHOW_REASONS, PAYER_LABEL, sessionTypeLabel, toLocalDateString } from "./types";
 
-/* @token-guard legacy — P3 從舊路由原樣搬入，尚未換語意 token（11 §2.2） */
 /**
  * 報到三步驟：已到/未到 → 收款 → 開立收據 —— 從 rooms/page.tsx 搬出（11 §4.2）。
  *
@@ -221,7 +220,7 @@ export function CheckInPanel({
 
         {/* 機構全額免收 */}
         {appt.check_in_status === "arrived" && !appt.copay_collected_at && payable <= 0 && (
-          <div className="rounded-lg bg-sky-50 p-3 text-xs text-sky-700">此筆機構全額補助，個案免收款，無需開立收據。</div>
+          <div className="rounded-lg bg-accent-soft text-accent p-3 text-xs">此筆機構全額補助，個案免收款，無需開立收據。</div>
         )}
 
         {/* ── 步驟 3：開立收據 ── */}

@@ -115,7 +115,7 @@ export default function PoolPage() {
             </div>
 
             <div className="mb-2 flex flex-wrap gap-2 text-xs text-ink-3">
-              <span className="rounded bg-indigo-50 px-2 py-0.5 text-indigo-600">{inv.designated_label}</span>
+              <span className="rounded bg-surface-3 text-ink-2 px-2 py-0.5">{inv.designated_label}</span>
               {tab === "pending" && inv.other_pending_count > 0 && (
                 <span className="rounded bg-st-warn-bg px-2 py-0.5 text-st-warn">另有 {inv.other_pending_count} 位心理師評估中</span>
               )}
@@ -249,7 +249,7 @@ function DeclineModal({ token, invite, onClose, onDone }: { token: string; invit
         </select>
       </label>
       <div className="flex gap-2 pt-4">
-        <button onClick={handleSubmit} disabled={saving} className="flex-1 rounded-lg bg-rose-600 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-50">
+        <button onClick={handleSubmit} disabled={saving} className="flex-1 rounded-lg border border-st-danger/40 py-2 text-sm font-medium text-st-danger hover:bg-st-danger hover:text-surface disabled:opacity-50">
           {saving ? "送出中…" : "確認婉拒"}
         </button>
         <button onClick={onClose} className="rounded-lg border border-line px-4 py-2 text-sm text-ink-3 hover:bg-surface-2">返回</button>

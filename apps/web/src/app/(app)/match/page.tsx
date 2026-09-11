@@ -25,8 +25,8 @@ const STATUS_COLOR: Record<string, string> = {
   new: "bg-surface-3 text-ink-2",
   matching: "bg-st-warn-bg text-st-warn",
   unmatched: "bg-st-danger-bg text-st-danger",
-  accepted: "bg-blue-100 text-blue-700",
-  booked: "bg-accent-soft text-accent",
+  accepted: "bg-st-active-bg text-st-active",
+  booked: "bg-st-active-bg text-st-active",
   converted: "bg-st-done-bg text-st-done",
   cancelled: "bg-surface-3 text-ink-3",
   closed: "bg-surface-3 text-ink-3",
@@ -173,7 +173,7 @@ export default function MatchPage() {
                 <span className="text-xs text-ink-3">{r.age ? `${r.age}歲` : ""}{r.gender ? ` · ${r.gender}` : ""}</span>
                 <span className="rounded bg-surface-2 px-1.5 py-0.5 text-xs text-ink-3">{MODE_LABEL[r.mode] ?? r.mode}</span>
                 {r.designated_therapist_name && (
-                  <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-xs text-indigo-600">指定：{r.designated_therapist_name}</span>
+                  <span className="rounded bg-surface-3 text-ink-2 px-1.5 py-0.5 text-xs">指定：{r.designated_therapist_name}</span>
                 )}
               </div>
               <div className="flex items-center gap-2">
@@ -252,7 +252,7 @@ export default function MatchPage() {
                     </button>
                   )}
                   {r.status === "booked" && (
-                    <button onClick={() => setModal({ type: "arrival", referral: r })} className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-600">
+                    <button onClick={() => setModal({ type: "arrival", referral: r })} className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-st-active">
                       初診報到 ▸
                     </button>
                   )}
@@ -487,7 +487,7 @@ function AssignModal({
           <label key={t.id} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm ${selected.includes(t.id) ? "border-accent bg-accent-soft" : "border-line"}`}>
             <input type="checkbox" checked={selected.includes(t.id)} onChange={() => toggle(t.id)} />
             {t.name}
-            {referral.designated_therapist_id === t.id && <span className="text-xs text-indigo-500">（指定）</span>}
+            {referral.designated_therapist_id === t.id && <span className="text-xs font-bold text-ink">（指定）</span>}
           </label>
         ))}
       </div>
@@ -528,7 +528,7 @@ function CancelModal({ token, referral, onClose, onDone }: { token: string; refe
         <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
       </label>
       <div className="flex gap-2 pt-4">
-        <button onClick={handleSubmit} disabled={saving} className="flex-1 rounded-lg bg-rose-600 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-50">
+        <button onClick={handleSubmit} disabled={saving} className="flex-1 rounded-lg border border-st-danger/40 py-2 text-sm font-medium text-st-danger hover:bg-st-danger hover:text-surface disabled:opacity-50">
           {saving ? "送出中…" : "確認取消"}
         </button>
         <button onClick={onClose} className="rounded-lg border border-line px-4 py-2 text-sm text-ink-3 hover:bg-surface-2">返回</button>
@@ -584,7 +584,7 @@ function ConvertModal({
     <ModalShell title={`轉預約（${referral.name}）`} onClose={onClose}>
       {error && <div className="mb-3 rounded-lg bg-st-danger-bg px-3 py-2 text-xs text-st-danger">{error}</div>}
       {acceptedMember?.proposed_slots && (
-        <div className="mb-3 rounded bg-blue-50 px-3 py-2 text-xs text-blue-700">
+        <div className="mb-3 rounded bg-accent-soft text-accent px-3 py-2 text-xs">
           {acceptedMember.therapist_name} 提供的時段：{acceptedMember.proposed_slots.map((s) => new Date(s).toLocaleString("zh-TW")).join("、")}
         </div>
       )}
@@ -690,8 +690,10 @@ function ArrivalModal({ token, referral, onClose, onDone }: { token: string; ref
       {error && <div className="mb-3 rounded-lg bg-st-danger-bg px-3 py-2 text-xs text-st-danger">{error}</div>}
       {mode === null && (
         <div className="flex gap-2">
-          <button onClick={() => setMode("arrived")} className="flex-1 rounded-lg bg-emerald-600 py-3 text-sm font-medium text-white hover:bg-emerald-700">初診有到</button>
-          <button onClick={() => setMode("no_show")} className="flex-1 rounded-lg bg-rose-600 py-3 text-sm font-medium text-white hover:bg-rose-700">初診未到</button>
+          {/* v7 定案 ③：已到／未到一律中性黑白，不用綠紅實心——顏色留給狀態。
+              跟診間日曆的報到面板同一個寫法，行政在兩個地方看到的是同一組鍵 */}
+          <button onClick={() => setMode("arrived")} className="flex-1 rounded-lg bg-accent py-3 text-sm font-medium text-white hover:bg-st-active">初診有到</button>
+          <button onClick={() => setMode("no_show")} className="flex-1 rounded-lg border border-line-2 py-3 text-sm text-ink-2 hover:bg-surface-2">初診未到</button>
         </div>
       )}
       {mode === "arrived" && (
@@ -712,7 +714,7 @@ function ArrivalModal({ token, referral, onClose, onDone }: { token: string; ref
             </label>
           </div>
           <div className="flex gap-2 pt-2">
-            <button onClick={submitArrived} disabled={saving} className="flex-1 rounded-lg bg-emerald-600 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
+            <button onClick={submitArrived} disabled={saving} className="flex-1 rounded-lg bg-accent py-2 text-sm font-medium text-white hover:bg-st-active disabled:opacity-50">
               {saving ? "處理中…" : "產生病歷號並轉為個案"}
             </button>
             <button onClick={() => setMode(null)} className="rounded-lg border border-line px-4 py-2 text-sm text-ink-3 hover:bg-surface-2">返回</button>
@@ -739,7 +741,7 @@ function ArrivalModal({ token, referral, onClose, onDone }: { token: string; ref
             </select>
           </label>
           <div className="flex gap-2 pt-2">
-            <button onClick={submitNoShow} disabled={saving} className="flex-1 rounded-lg bg-rose-600 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-50">
+            <button onClick={submitNoShow} disabled={saving} className="flex-1 rounded-lg bg-ink py-2 text-sm font-medium text-surface hover:bg-ink-2 disabled:opacity-50">
               {saving ? "處理中…" : "確認"}
             </button>
             <button onClick={() => setMode(null)} className="rounded-lg border border-line px-4 py-2 text-sm text-ink-3 hover:bg-surface-2">返回</button>

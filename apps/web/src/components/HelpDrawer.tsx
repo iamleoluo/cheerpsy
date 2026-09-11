@@ -25,7 +25,7 @@ function SectionBlock({ section }: { section: DocSection | HelpSection }) {
       <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-ink-3">
         {type === "steps" && <span className="text-accent">▶</span>}
         {type === "tips" && <span className="text-st-warn">⚠</span>}
-        {type === "notes" && <span className="text-blue-500">💡</span>}
+        {type === "notes" && <span className="text-accent">💡</span>}
         {(type === "text" || type === "flow") && <span className="text-ink-3">•</span>}
         {section.heading}
       </h3>
@@ -60,7 +60,7 @@ function SectionBlock({ section }: { section: DocSection | HelpSection }) {
       {type === "notes" && (
         <ul className="space-y-1.5">
           {items.map((item, ii) => (
-            <li key={ii} className="flex items-start gap-2 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">
+            <li key={ii} className="flex items-start gap-2 rounded-lg bg-accent-soft text-accent px-3 py-2 text-sm">
               <span className="mt-0.5 shrink-0">💡</span>
               {typeof item === "string" ? item : (item as HelpStep).text}
             </li>

@@ -5,7 +5,6 @@ import { clientFetch } from "@/lib/client-api";
 import type { CaseItem, InstitutionItem, QuotaRow, QuotaTemplate } from "@/features/shared/types";
 import { caseDisplayId } from "@/features/shared/format";
 
-/* @token-guard legacy — P3 從舊路由原樣搬入，尚未換語意 token（11 §2.2） */
 /** 額度清單（依機構分組）— 從 cases/page.tsx 搬出（11 §4.2）。 */
 
 export function QuotaGroupedTable({
@@ -123,7 +122,7 @@ export function QuotaGroupedTable({
                       <td className="px-3 py-2">
                         {active && <span className="rounded-full bg-st-done-bg px-2 py-0.5 text-xs text-st-done">有效</span>}
                         {expired && <span className="rounded-full bg-surface-3 px-2 py-0.5 text-xs text-ink-3">已過期</span>}
-                        {!expired && exhausted && r.reserved_count > 0 && <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs text-blue-700">預約鎖定</span>}
+                        {!expired && exhausted && r.reserved_count > 0 && <span className="rounded-full bg-st-active-bg px-2 py-0.5 text-xs text-st-active">預約鎖定</span>}
                         {!expired && exhausted && !r.reserved_count && <span className="rounded-full bg-st-warn-bg px-2 py-0.5 text-xs text-st-warn">已用罄</span>}
                       </td>
                       {canWrite && (

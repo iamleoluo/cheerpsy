@@ -6,7 +6,6 @@ import { Button } from "@/components/ui";
 import type { Appointment, VenueRental, HallBooking, FeeItem, Room } from "./types";
 import { NO_SHOW_REASONS, PAYER_LABEL, sessionTypeLabel, toLocalDateString } from "./types";
 
-/* @token-guard legacy — P3 從舊路由原樣搬入，尚未換語意 token（11 §2.2） */
 /**
  * 場地租借與 5F 雲燈教室分頁 — 從 rooms/page.tsx 搬出（11 §4.2）。
  *
@@ -96,7 +95,7 @@ export function RentalsTab({ token, date }: { token: string; date: Date }) {
                   <td className="px-3 py-2">
                     {v.renter_name}
                     {v.supervision_fee_mode && (
-                      <span className="ml-1 rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-600">
+                      <span className="ml-1 rounded bg-surface-3 text-ink-2 px-1.5 py-0.5 text-[10px]">
                         督導模式 {v.supervision_fee_mode}
                       </span>
                     )}
@@ -347,7 +346,7 @@ export function HallTab({ token, date }: { token: string; date: Date }) {
               <div>借用：{h.borrower ?? "—"}{h.attendee_count ? ` · ${h.attendee_count} 人` : ""}</div>
               <div className="col-span-2">
                 講師費：{h.lecturer_fee != null ? `$${h.lecturer_fee.toLocaleString()}` : "—"}
-                <span className={`ml-1 rounded px-1.5 py-0.5 text-[10px] ${h.fee_to_clinic_account ? "bg-sky-50 text-sky-600" : "bg-surface-3 text-ink-3"}`}>
+                <span className={`ml-1 rounded px-1.5 py-0.5 text-[10px] ${h.fee_to_clinic_account ? "bg-accent-soft text-accent" : "bg-surface-3 text-ink-3"}`}>
                   {h.fee_to_clinic_account ? "入慈恩帳戶" : "主辦方直付講師"}
                 </span>
               </div>

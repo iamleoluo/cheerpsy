@@ -650,22 +650,22 @@ function IntakeStatsTab({ token }: { token: string }) {
               <IntakeSummaryCard
                 label="機構成人"
                 value={data.summary.institution_adult}
-                color="blue"
+                group="institution"
               />
               <IntakeSummaryCard
                 label="機構兒青"
                 value={data.summary.institution_child}
-                color="blue"
+                group="institution"
               />
               <IntakeSummaryCard
                 label="自費成人"
                 value={data.summary.self_pay_adult}
-                color="emerald"
+                group="self_pay"
               />
               <IntakeSummaryCard
                 label="自費兒青"
                 value={data.summary.self_pay_child}
-                color="emerald"
+                group="self_pay"
               />
             </div>
           </div>
@@ -706,10 +706,10 @@ function IntakeStatsTab({ token }: { token: string }) {
                         <td className="px-2 py-2 text-center">{row.institution_child || "—"}</td>
                         <td className="px-2 py-2 text-center">{row.self_pay_adult || "—"}</td>
                         <td className="px-2 py-2 text-center">{row.self_pay_child || "—"}</td>
-                        <td className="px-2 py-2 text-center text-violet-600">{row.designated_institution_adult || "—"}</td>
-                        <td className="px-2 py-2 text-center text-violet-600">{row.designated_institution_child || "—"}</td>
-                        <td className="px-2 py-2 text-center text-violet-600">{row.designated_self_pay_adult || "—"}</td>
-                        <td className="px-2 py-2 text-center text-violet-600">{row.designated_self_pay_child || "—"}</td>
+                        <td className="bg-surface-2 px-2 py-2 text-center">{row.designated_institution_adult || "—"}</td>
+                        <td className="bg-surface-2 px-2 py-2 text-center">{row.designated_institution_child || "—"}</td>
+                        <td className="bg-surface-2 px-2 py-2 text-center">{row.designated_self_pay_adult || "—"}</td>
+                        <td className="bg-surface-2 px-2 py-2 text-center">{row.designated_self_pay_child || "—"}</td>
                         <td className="px-3 py-2 text-right font-bold">{row.total}</td>
                       </tr>
                     ))}
@@ -772,19 +772,19 @@ function IntakeStatsTab({ token }: { token: string }) {
                         <td className="px-3 py-2 font-mono text-xs text-ink-3">{c.case_number ?? "—"}</td>
                         <td className="px-3 py-2 font-medium">{c.name}</td>
                         <td className="px-3 py-2 text-xs">
-                          <span className={`rounded px-1.5 py-0.5 ${c.funding_source === "institution" ? "bg-blue-100 text-blue-700" : "bg-st-done-bg text-st-done"}`}>
+                          <span className={`rounded px-1.5 py-0.5 ${"bg-surface-3 text-ink-2"}`}>
                             {c.funding_source === "institution" ? "機構" : "自費"}
                           </span>
                         </td>
                         <td className="px-3 py-2 text-xs">
-                          <span className={`rounded px-1.5 py-0.5 ${c.age_group === "child" ? "bg-st-warn-bg text-st-warn" : "bg-surface-3 text-ink-2"}`}>
+                          <span className={`rounded px-1.5 py-0.5 ${"bg-surface-3 text-ink-2"}`}>
                             {c.age_group === "child" ? "兒青" : "成人"}
                           </span>
                         </td>
                         <td className="px-3 py-2 text-sm">{c.therapist_name}</td>
                         <td className="px-3 py-2 text-sm text-ink-3">{c.institution_name ?? "—"}</td>
                         <td className="px-3 py-2 text-center">
-                          {c.is_designated ? <span className="text-violet-600" title="指定心理師">●</span> : <span className="text-st-muted">●</span>}
+                          {c.is_designated ? <span className="text-ink" title="指定心理師">●</span> : <span className="text-st-muted">●</span>}
                         </td>
                         <td className="px-3 py-2 text-xs text-ink-3">{c.first_session_date ?? "—"}</td>
                       </tr>
@@ -800,13 +800,18 @@ function IntakeStatsTab({ token }: { token: string }) {
   );
 }
 
-function IntakeSummaryCard({ label, value, color }: { label: string; value: number; color: "blue" | "emerald" }) {
-  const colors = {
-    blue: "bg-blue-50 border-blue-200 text-blue-700",
-    emerald: "bg-st-done-bg border-st-done/30 text-st-done",
+/**
+ * 進案統計的四張數字卡。原本用藍／綠兩種色階分「機構」與「自費」——但那是
+ * **付費別**，不是狀態，綠色會被讀成「已完成」。改成用底色深淺把兩張一組
+ * 連起來：機構那兩張填底、自費那兩張留白，分組還在，顏色不再說錯話。
+ */
+function IntakeSummaryCard({ label, value, group }: { label: string; value: number; group: "institution" | "self_pay" }) {
+  const skin = {
+    institution: "border-accent/30 bg-accent-soft text-accent",
+    self_pay: "border-line bg-surface text-ink",
   };
   return (
-    <div className={`rounded-lg border p-4 ${colors[color]}`}>
+    <div className={`rounded-lg border p-4 ${skin[group]}`}>
       <div className="text-xs font-medium opacity-75">{label}</div>
       <div className="mt-1 text-3xl font-bold">{value}</div>
       <div className="text-xs opacity-60">案</div>
@@ -1139,7 +1144,7 @@ function TherapistLoadTab({ token }: { token: string }) {
                         <div className="flex items-center gap-2">
                           <div className="h-2 flex-1 rounded-full bg-surface-3">
                             <div
-                              className="h-2 rounded-full bg-emerald-400"
+                              className="h-2 rounded-full bg-st-done"
                               style={{ width: `${Math.round((t.active_cases / maxCases) * 100)}%` }}
                             />
                           </div>
@@ -1149,7 +1154,7 @@ function TherapistLoadTab({ token }: { token: string }) {
                       <td className="px-4 py-2.5 text-right">${t.revenue_this_month.toLocaleString()}</td>
                       <td className="px-4 py-2.5 text-right">
                         {t.upcoming_appointments > 0 ? (
-                          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+                          <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent">
                             {t.upcoming_appointments}
                           </span>
                         ) : (

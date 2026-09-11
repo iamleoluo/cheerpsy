@@ -12,11 +12,12 @@
  * 為什麼不是 ESLint：專案目前沒裝 ESLint，而導入後既有 19,558 行會噴出大量
  * 與本規則無關的既有問題，真正該擋的那條會被淹掉。這支零相依、只做一件事。
  *
- * 範圍刻意只涵蓋「新寫的」目錄。既有 33 頁不在守備範圍內——P0 的紀律是純新增、
- * 不回頭改舊頁；那些頁面會在 P2–P5 各自被重寫時自然進入範圍。
+ * **守備範圍現在是整個 src**（2026-09-11）。原本只涵蓋新寫的目錄，因為 P0 的
+ * 紀律是純新增、不回頭改舊頁。色階債務清理做完之後全站 2,178 處都換成 token
+ * 了，這條線就沒有理由再留著——留著只會讓債務靜靜長回來。
  *
  *   node scripts/check-tokens.mjs          檢查
- *   node scripts/check-tokens.mjs --stats  另外報告既有頁面的色階使用量
+ *   node scripts/check-tokens.mjs --stats  另外報告色階使用量
  */
 
 import { readdirSync, readFileSync, statSync, existsSync } from "node:fs";
@@ -24,10 +25,10 @@ import { join, relative } from "node:path";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 
-/** 新程式碼：必須走 token。 */
-const GUARDED = ["src/components/ui", "src/features"];
-/** 既有程式碼：只統計，不擋。 */
-const LEGACY = ["src/app", "src/components"];
+/** 全部都必須走 token。 */
+const GUARDED = ["src"];
+/** 已經沒有「只統計不擋」的區域了。 */
+const LEGACY = [];
 
 const PALETTES = [
   "slate", "gray", "zinc", "neutral", "stone",

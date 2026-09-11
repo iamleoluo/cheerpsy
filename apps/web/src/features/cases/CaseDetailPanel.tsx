@@ -27,7 +27,6 @@ import {
   BatchForm,
 } from "@/features/booking";
 
-/* @token-guard legacy — P3 從舊路由原樣搬入，尚未換語意 token（11 §2.2） */
 /** 個案詳情四分頁 — 從 cases/page.tsx 搬出（11 §4.2）。 */
 
 export function CaseDetailPanel({
@@ -158,7 +157,7 @@ export function CaseDetailPanel({
                       <td className="px-3 py-2">
                         {a.status === "booked" && (
                           <div className="flex gap-2">
-                            <button onClick={() => setEditApptPanel(a)} className="text-xs text-blue-600 hover:underline">編輯</button>
+                            <button onClick={() => setEditApptPanel(a)} className="text-xs text-accent hover:underline">編輯</button>
                             <button
                               onClick={() => setPaymentModal(a)}
                               className="text-xs text-accent hover:underline"

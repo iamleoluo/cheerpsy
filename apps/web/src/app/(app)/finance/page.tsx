@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, Fragment } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch, exportCsv } from "@/lib/client-api";
 import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
+import { Badge, claimTone } from "@/components/ui";
 
 const helpContent: HelpContent = {
   title: "財務管理",
@@ -143,13 +144,6 @@ const TRACK_STATUS_LABELS: Record<string, string> = {
   submitted: "已提交",
   received: "款項到帳",
 };
-const TRACK_STATUS_COLORS: Record<string, string> = {
-  collecting: "bg-blue-100 text-blue-700",
-  ready: "bg-cyan-100 text-cyan-700",
-  submitted: "bg-st-warn-bg text-st-warn",
-  received: "bg-st-done-bg text-st-done",
-};
-
 function fmtTs(iso: string | null) {
   if (!iso) return null;
   const d = new Date(iso);
@@ -182,7 +176,7 @@ function ProgressBar({ steps, timestamps }: { steps: readonly string[]; timestam
             <div className="flex flex-col items-center">
               <div
                 className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
-                  done ? "bg-green-500 text-white" : "bg-surface-3 text-ink-3"
+                  done ? "bg-st-done text-surface" : "bg-surface-3 text-ink-3"
                 }`}
               >
                 {done ? "✓" : i + 1}
@@ -195,7 +189,7 @@ function ProgressBar({ steps, timestamps }: { steps: readonly string[]; timestam
               )}
             </div>
             {!isLast && (
-              <div className={`mx-0.5 h-0.5 w-6 ${done && timestamps[i + 1] ? "bg-green-400" : "bg-surface-3"}`} />
+              <div className={`mx-0.5 h-0.5 w-6 ${done && timestamps[i + 1] ? "bg-st-done" : "bg-surface-3"}`} />
             )}
           </div>
         );
@@ -284,9 +278,9 @@ function InstitutionTrackingContent({ token, reconDate }: { token: string; recon
                     {b.payment_note && <span className="ml-1 text-ink-3">({b.payment_note})</span>}
                   </td>
                   <td className="px-3 py-3">
-                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${TRACK_STATUS_COLORS[b.status] ?? "bg-surface-3"}`}>
+                    <Badge tone={claimTone[b.status] ?? "muted"} size="md">
                       {TRACK_STATUS_LABELS[b.status] ?? b.status}
-                    </span>
+                    </Badge>
                   </td>
                   <td className="px-3 py-3">
                     <ProgressBar steps={INST_STEPS} timestamps={timestamps} />
@@ -319,7 +313,7 @@ const PAY_METHOD_LABEL = (m: string | null) =>
   m === "cash" ? "現金" : m === "transfer" ? "匯款" : "—";
 const PAY_STATUS_BADGE = (s: string) =>
   s === "paid" ? <span className="rounded-full bg-st-done-bg px-2 py-0.5 text-xs text-st-done">已付款</span>
-  : s === "claimed" ? <span className="rounded-full bg-cyan-100 px-2 py-0.5 text-xs text-cyan-700">已核銷</span>
+  : s === "claimed" ? <span className="rounded-full bg-st-done-bg px-2 py-0.5 text-xs text-st-done">已核銷</span>
   : <span className="rounded-full bg-st-warn-bg px-2 py-0.5 text-xs text-st-warn">待付款</span>;
 
 function SelfPayTrackingContent({ records, loading, reconDate }: { records: SelfPayRecord[]; loading: boolean; reconDate: string }) {
@@ -366,13 +360,13 @@ function SelfPayTrackingContent({ records, loading, reconDate }: { records: Self
         <div className="flex items-center gap-3 text-xs text-ink-3">
           <span className="font-medium text-ink-2">療程付款進度：每個點代表一次療程</span>
           <span className="flex items-center gap-1">
-            <span className="h-3 w-3 rounded-full border border-st-done bg-green-500" /> 已付款
+            <span className="h-3 w-3 rounded-full border border-st-done bg-st-done" /> 已付款
           </span>
           <span className="flex items-center gap-1">
             <span className="h-3 w-3 rounded-full border border-line-2 bg-surface-3" /> 待付款
           </span>
           <span className="flex items-center gap-1">
-            <span className="h-3 w-3 rounded-full border border-blue-500 bg-blue-400" /> 當日入帳（付款日 = 對帳日）
+            <span className="h-3 w-3 rounded-full border border-accent bg-accent" /> 當日入帳（付款日 = 對帳日）
           </span>
         </div>
       </div>
@@ -402,7 +396,7 @@ function SelfPayTrackingContent({ records, loading, reconDate }: { records: Self
                     <td className="px-4 py-3 font-medium text-ink">{caseName}</td>
                     <td className="px-4 py-3">
                       {therapistName
-                        ? <span className="inline-block rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">{therapistName}</span>
+                        ? <span className="inline-block rounded-full bg-surface-3 text-ink-2 px-2 py-0.5 text-xs">{therapistName}</span>
                         : <span className="text-xs text-ink-3">—</span>
                       }
                     </td>
@@ -417,9 +411,9 @@ function SelfPayTrackingContent({ records, loading, reconDate }: { records: Self
                               title={`療程 ${r.session_date}${r.paid_at ? ` · 付款 ${r.paid_at.slice(0, 10)}` : ""} · ${isPaid ? "已付款" : "待付款"} $${r.effective_amount.toLocaleString()}`}
                               className={`h-3 w-3 rounded-full border ${
                                 isToday
-                                  ? "bg-blue-400 border-blue-500"
+                                  ? "bg-accent border-accent"
                                   : isPaid
-                                    ? "bg-green-500 border-st-done"
+                                    ? "bg-st-done border-st-done"
                                     : "bg-surface-3 border-line-2"
                               }`}
                             />
@@ -653,7 +647,7 @@ function PaymentTrackingTab({ token }: { token: string }) {
               {/* Institution items */}
               {reconInstItems.length > 0 && (
                 <div className="mb-2">
-                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-indigo-500">機構撥款</p>
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-ink-3">機構撥款</p>
                   <div className="space-y-1.5">
                     {reconInstItems.map((b) => (
                       <div key={b.id} className="rounded border border-line bg-surface-2 px-3 py-2">
@@ -676,7 +670,7 @@ function PaymentTrackingTab({ token }: { token: string }) {
               {/* Self-pay items */}
               {reconSpItems.length > 0 && (
                 <div className="mb-2">
-                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-purple-500">自費到款</p>
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-ink-3">自費到款</p>
                   <div className="space-y-1.5">
                     {reconSpItems.map((r) => (
                       <div key={r.id} className="rounded border border-line bg-surface-2 px-3 py-2">

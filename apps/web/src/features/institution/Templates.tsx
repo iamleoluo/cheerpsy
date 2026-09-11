@@ -5,7 +5,6 @@ import { clientFetch } from "@/lib/client-api";
 import type { CaseItem, InstitutionItem, QuotaRow, QuotaTemplate } from "@/features/shared/types";
 import { caseDisplayId } from "@/features/shared/format";
 
-/* @token-guard legacy — P3 從舊路由原樣搬入，尚未換語意 token（11 §2.2） */
 /**
  * 額度範本 — 從 cases/page.tsx 搬出（11 §4.2）。
  *
@@ -404,7 +403,7 @@ export function ApplyTemplateModal({
         {error && <div className="mb-3 rounded bg-st-danger-bg px-3 py-2 text-sm text-st-danger">{error}</div>}
 
         {(template.default_valid_from || template.default_valid_until) && (
-          <div className="mb-2 rounded bg-blue-50 px-3 py-2 text-xs text-blue-700">
+          <div className="mb-2 rounded bg-accent-soft text-accent px-3 py-2 text-xs">
             已帶入範本預設期間：{template.default_valid_from ?? "—"} ~ {template.default_valid_until ?? "永久"}（可改）
           </div>
         )}

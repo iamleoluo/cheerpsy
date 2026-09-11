@@ -109,7 +109,7 @@ export default function StatsPage() {
           <h3 className="mb-3 text-sm font-medium text-ink-2">收款狀態</h3>
           <div className="flex items-center gap-2">
             <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-3">
-              <div className="h-full rounded-full bg-emerald-400" style={{ width: records.length ? `${(paidCount / records.length) * 100}%` : "0%" }} />
+              <div className="h-full rounded-full bg-st-done" style={{ width: records.length ? `${(paidCount / records.length) * 100}%` : "0%" }} />
             </div>
             <span className="text-xs text-ink-3">{paidCount} / {records.length}</span>
           </div>

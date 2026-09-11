@@ -92,10 +92,12 @@ const roleCodePrefix: Record<string, string> = {
 };
 
 const roleBadgeClass: Record<string, string> = {
-  admin: "bg-st-done-bg text-st-done",
-  accountant: "bg-st-warn-bg text-st-warn",
-  staff: "bg-purple-100 text-purple-700",
-  therapist: "bg-blue-100 text-blue-700",
+  // 角色是屬性不是狀態：綠色的「管理員」會被讀成已完成、琥珀色的「會計」
+  // 會被讀成要注意。四種角色一律中性，字面已經寫著是哪一種了
+  admin: "bg-surface-3 text-ink font-bold",
+  accountant: "bg-surface-3 text-ink-2",
+  staff: "bg-surface-3 text-ink-2",
+  therapist: "bg-surface-3 text-ink-2",
 };
 
 function computeNextCode(users: UserItem[], role: string): string {
@@ -340,7 +342,7 @@ export default function AdminUsersPage() {
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
                     <button onClick={() => openEdit(u)} className="text-xs text-accent hover:underline">編輯</button>
-                    <button onClick={() => handleResetPassword(u.id, u.name)} className="text-xs text-blue-600 hover:underline">重設密碼</button>
+                    <button onClick={() => handleResetPassword(u.id, u.name)} className="text-xs text-accent hover:underline">重設密碼</button>
                     <button onClick={() => handleToggle(u.id)} className="text-xs text-ink-3 hover:underline">
                       {u.is_active ? "停用" : "啟用"}
                     </button>

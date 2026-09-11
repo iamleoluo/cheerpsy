@@ -280,7 +280,7 @@ function CasesTab({ token, userRole }: { token: string; userRole: string }) {
                   </td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-2">
-                      <button onClick={() => { setEditingCase(c); setShowForm(true); }} className="text-xs text-blue-600 hover:underline">編輯</button>
+                      <button onClick={() => { setEditingCase(c); setShowForm(true); }} className="text-xs text-accent hover:underline">編輯</button>
                       {c.status === "initial" && (
                         <button onClick={() => handleActivate(c)} className="text-xs text-st-done hover:underline">轉正式</button>
                       )}
@@ -457,7 +457,7 @@ function AppointmentsTab({ token, userRole }: { token: string; userRole: string 
                   <td className="px-4 py-3">
                     {a.status === "booked" && (
                       <div className="flex gap-2">
-                        <button onClick={() => setEditAppt(a)} className="text-xs text-blue-600 hover:underline">編輯</button>
+                        <button onClick={() => setEditAppt(a)} className="text-xs text-accent hover:underline">編輯</button>
                         <button onClick={() => handleCancel(a.id)} className="text-xs text-st-danger hover:underline">取消</button>
                       </div>
                     )}

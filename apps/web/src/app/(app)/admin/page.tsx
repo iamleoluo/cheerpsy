@@ -59,10 +59,12 @@ const roleLabels: Record<string, string> = {
 };
 
 const roleBadge: Record<string, string> = {
-  admin: "bg-st-done-bg text-st-done",
-  accountant: "bg-st-warn-bg text-st-warn",
-  staff: "bg-purple-100 text-purple-700",
-  therapist: "bg-blue-100 text-blue-700",
+  // 角色是屬性不是狀態：綠色的「管理員」會被讀成已完成、琥珀色的「會計」
+  // 會被讀成要注意。四種角色一律中性，字面已經寫著是哪一種了
+  admin: "bg-surface-3 text-ink font-bold",
+  accountant: "bg-surface-3 text-ink-2",
+  staff: "bg-surface-3 text-ink-2",
+  therapist: "bg-surface-3 text-ink-2",
 };
 
 /* ───── main page ───── */
@@ -376,7 +378,7 @@ function UsersTab({ token }: { token: string }) {
                             setEditingRate(u.id);
                             setEditRateValue(String(u.commission_rate ?? 0.7));
                           }}
-                          className="rounded px-2 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-50"
+                          className="rounded px-2 py-0.5 text-xs font-medium text-accent hover:bg-accent-soft"
                           title="點擊編輯"
                         >
                           {Math.round((u.commission_rate ?? 0.7) * 100)}%
@@ -421,7 +423,7 @@ function UsersTab({ token }: { token: string }) {
                             setEditingBase(u.id);
                             setEditBaseValue(String(u.base_price ?? 2000));
                           }}
-                          className="rounded px-2 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-50"
+                          className="rounded px-2 py-0.5 text-xs font-medium text-accent hover:bg-accent-soft"
                           title="點擊編輯"
                         >
                           {u.base_price != null ? `$${Number(u.base_price).toLocaleString()}` : "未設定"}
@@ -438,7 +440,7 @@ function UsersTab({ token }: { token: string }) {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-2">
-                      <button onClick={() => handleResetPassword(u.id, u.name)} className="text-xs text-blue-600 hover:underline">
+                      <button onClick={() => handleResetPassword(u.id, u.name)} className="text-xs text-accent hover:underline">
                         重設密碼
                       </button>
                       <button onClick={() => handleToggle(u.id)} className="text-xs text-ink-3 hover:underline">
@@ -908,7 +910,7 @@ function InstitutionsTab({ token }: { token: string }) {
                               setEditCode(inst.code ?? "");
                               setEditRequiresDocs(inst.requires_therapist_docs);
                             }}
-                            className="text-xs text-blue-600 hover:underline"
+                            className="text-xs text-accent hover:underline"
                           >
                             編輯
                           </button>
@@ -1200,7 +1202,7 @@ function DataTab({ token }: { token: string }) {
             <label className="mb-2 block text-xs font-semibold text-ink-2">② 匯入模式</label>
             <div className="flex flex-col gap-2">
               {[
-                { value: "dry_run", icon: "🔍", label: "除錯模式（只驗證，不寫入資料庫）", desc: "安全，無副作用", cls: "border-blue-200 bg-blue-50" },
+                { value: "dry_run", icon: "🔍", label: "除錯模式（只驗證，不寫入資料庫）", desc: "安全，無副作用", cls: "border-accent/40 bg-accent-soft text-accent" },
                 { value: "supplement", icon: "➕", label: "補登（只新增不存在的記錄）", desc: "跳過 ID 已存在的列", cls: "border-st-done/30 bg-st-done-bg" },
                 { value: "clean", icon: "⚠️", label: "清洗覆蓋（更新現有 + 新增）", desc: "高風險，需輸入管理員密碼", cls: "border-st-warn/30 bg-st-warn-bg" },
               ].map((m) => (
@@ -1257,7 +1259,7 @@ function DataTab({ token }: { token: string }) {
             <button
               onClick={handlePreview}
               disabled={!impFile || impLoading}
-              className="rounded-lg border border-blue-300 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+              className="rounded-lg border border-accent/40 bg-accent-soft px-4 py-2 text-sm font-medium text-accent hover:bg-accent/15 disabled:opacity-50"
             >
               {impLoading ? "處理中..." : "🔍 執行預覽（Dry Run）"}
             </button>
@@ -1265,7 +1267,7 @@ function DataTab({ token }: { token: string }) {
               <button
                 onClick={handleImport}
                 disabled={impLoading}
-                className={`rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50 ${impMode === "clean" ? "bg-orange-500 hover:bg-orange-600" : "bg-green-600 hover:bg-green-700"}`}
+                className={`rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50 ${impMode === "clean" ? "bg-st-danger hover:bg-st-danger/90" : "bg-accent hover:bg-st-active"}`}
               >
                 {impLoading ? "匯入中..." : `確認匯入（${impMode === "supplement" ? "補登" : "清洗覆蓋"}）`}
               </button>
@@ -1290,12 +1292,12 @@ function DataTab({ token }: { token: string }) {
                   {!impResult.committed && <span className="font-semibold text-ink-2">預覽結果</span>}
                   <span className="text-ink-2">共 <strong>{impResult.total_rows}</strong> 列</span>
                   {impResult.would_insert > 0 && <span className="text-st-done">新增 <strong>{impResult.would_insert}</strong></span>}
-                  {impResult.would_update > 0 && <span className="text-blue-600">更新 <strong>{impResult.would_update}</strong></span>}
+                  {impResult.would_update > 0 && <span className="text-accent">更新 <strong>{impResult.would_update}</strong></span>}
                   {impResult.would_skip > 0 && <span className="text-ink-3">跳過 <strong>{impResult.would_skip}</strong></span>}
                   {impResult.errors.length > 0 && <span className="text-st-danger font-semibold">❌ {impResult.errors.length} 個錯誤</span>}
                   {impResult.warnings.length > 0 && <span className="text-st-warn">⚠️ {impResult.warnings.length} 個警告</span>}
                   {impResult.errors.length === 0 && impResult.mode === "dry_run" && (
-                    <span className="text-blue-600">✅ 驗證通過，可切換至補登或清洗模式執行匯入</span>
+                    <span className="text-accent">✅ 驗證通過，可切換至補登或清洗模式執行匯入</span>
                   )}
                 </div>
               </div>
@@ -1376,11 +1378,11 @@ function DataTab({ token }: { token: string }) {
         </div>
 
         {/* Usage note */}
-        <div className="mt-4 rounded-lg bg-blue-50 p-4 text-xs text-blue-700">
+        <div className="mt-4 rounded-lg bg-accent-soft text-accent p-4 text-xs">
           <p className="font-semibold mb-1">💡 使用說明</p>
           <ul className="list-disc pl-4 space-y-1">
             <li>CSV 格式需與匯出格式相符（可先匯出後修改再匯入）</li>
-            <li>CSV 必須含 <code className="bg-blue-100 px-1 rounded">id</code> 欄位；<strong>除錯模式</strong>可先驗證格式與資料正確性</li>
+            <li>CSV 必須含 <code className="bg-accent/15 px-1 rounded">id</code> 欄位；<strong>除錯模式</strong>可先驗證格式與資料正確性</li>
             <li><strong>補登</strong>：只新增 id 不存在的記錄，已存在的記錄不動</li>
             <li><strong>清洗覆蓋</strong>：依 id 更新現有記錄 + 新增不存在的記錄，所有更新會記錄到稽核日誌</li>
             <li>有驗證錯誤的列一律跳過（不寫入），警告不影響匯入</li>

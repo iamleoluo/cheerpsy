@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
 import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
 import ReceiptModal from "@/components/ReceiptModal";
+import { Badge, claimTone } from "@/components/ui";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -225,20 +226,10 @@ const STATUS_LABELS: Record<string, string> = {
   received: "已收款",
   closed: "已結案",
 };
-const STATUS_COLORS: Record<string, string> = {
-  collecting: "bg-st-warn-bg text-st-warn",
-  ready: "bg-blue-100 text-blue-800",
-  submitted: "bg-purple-100 text-purple-800",
-  received: "bg-st-done-bg text-st-done",
-  closed: "bg-surface-3 text-ink-2",
-};
 
 function StatusBadge({ status }: { status: string }) {
-  return (
-    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[status] ?? "bg-surface-3 text-ink-2"}`}>
-      {STATUS_LABELS[status] ?? status}
-    </span>
-  );
+  // 顏色來自 badge.tsx 的 claimTone，四頁共用同一張表（見那裡的說明）
+  return <Badge tone={claimTone[status] ?? "muted"} size="md">{STATUS_LABELS[status] ?? status}</Badge>;
 }
 
 function downloadPdf(path: string, token: string, filename: string) {
@@ -383,7 +374,7 @@ function SelfPayPaymentModal({
           <button
             onClick={submit}
             disabled={saving}
-            className="rounded bg-green-600 px-4 py-1.5 text-sm text-white hover:bg-green-700 disabled:opacity-50"
+            className="rounded bg-accent px-4 py-1.5 text-sm text-white hover:bg-st-active disabled:opacity-50"
           >
             {saving ? "處理中…" : "確認付款"}
           </button>
@@ -595,7 +586,7 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
                               {canEdit && !paid && (
                                 <button
                                   onClick={() => setPayIds([r.id])}
-                                  className="rounded bg-green-600 px-2 py-0.5 text-xs text-white hover:bg-green-700"
+                                  className="rounded bg-accent px-2 py-0.5 text-xs text-white hover:bg-st-active"
                                 >
                                   付款
                                 </button>
@@ -630,7 +621,7 @@ function SelfPayTab({ token, userRole }: { token: string; userRole: string }) {
                         </span>
                         <button
                           onClick={() => setPayIds(caseSelected.map((r) => r.id))}
-                          className="rounded bg-green-600 px-3 py-1.5 text-xs text-white hover:bg-green-700"
+                          className="rounded bg-accent px-3 py-1.5 text-xs text-white hover:bg-st-active"
                         >
                           批次付款
                         </button>
@@ -888,12 +879,12 @@ function BatchRow({
               )
             )}
             {canEdit && (b.status === "collecting" || b.status === "ready") && (
-              <button onClick={submitWithWarning} className="rounded bg-blue-600 px-2 py-0.5 text-xs text-white hover:bg-blue-700">
+              <button onClick={submitWithWarning} className="rounded bg-accent px-2 py-0.5 text-xs text-white hover:bg-st-active">
                 提交請款
               </button>
             )}
             {canEdit && b.status === "submitted" && (
-              <button onClick={() => transition("receive")} className="rounded bg-green-600 px-2 py-0.5 text-xs text-white hover:bg-green-700">
+              <button onClick={() => transition("receive")} className="rounded bg-accent px-2 py-0.5 text-xs text-white hover:bg-st-active">
                 確認收款
               </button>
             )}
@@ -1295,7 +1286,7 @@ function DocConfirmTab({ token, userRole }: { token: string; userRole: string })
                   <td className="px-3 py-2">
                     <button
                       onClick={() => confirmDoc(r.id)}
-                      className="rounded bg-green-600 px-3 py-1 text-xs text-white hover:bg-green-700"
+                      className="rounded bg-accent px-3 py-1 text-xs text-white hover:bg-st-active"
                     >
                       確認文件
                     </button>

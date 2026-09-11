@@ -17,7 +17,6 @@ import {
   isoDate,
 } from "./recurrence";
 
-/* @token-guard legacy — P3 從舊路由原樣搬入，尚未換語意 token（11 §2.2） */
 /** 批次預約（週期性建約）— 從 cases/page.tsx 搬出（11 §4.2）。 */
 
 export function BatchForm({

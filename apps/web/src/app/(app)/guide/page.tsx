@@ -68,7 +68,7 @@ function SectionBlock({ section }: { section: DocSection }) {
         </h4>
         <ul className="space-y-2">
           {section.items.map((item, i) => (
-            <li key={i} className="rounded-lg bg-blue-50 border border-blue-100 px-3 py-2 text-sm text-blue-800">
+            <li key={i} className="rounded-lg bg-accent-soft text-accent border border-accent/25 px-3 py-2 text-sm">
               {item}
             </li>
           ))}

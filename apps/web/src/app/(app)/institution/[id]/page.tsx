@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
+import { Badge, claimTone } from "@/components/ui";
 
 /**
  * 合約專頁（09 §3.5 四分頁骨架）。這是分層架構裡「讀專屬、寫共用」的
@@ -93,10 +94,6 @@ interface DocRow {
 
 const compensationLabel: Record<string, string> = { commission: "抽成", kickback: "回饋", none: "無心理師勞務" };
 const statusLabel: Record<string, string> = { collecting: "收集中", submitted: "已送出", closed: "已結案", void: "已作廢" };
-const statusTagClass: Record<string, string> = {
-  collecting: "bg-st-warn-bg text-st-warn", submitted: "bg-sky-100 text-sky-700",
-  closed: "bg-st-done-bg text-st-done", void: "bg-surface-3 text-ink-3",
-};
 
 export default function ContractPanelPage() {
   const params = useParams();
@@ -307,7 +304,7 @@ export default function ContractPanelPage() {
                   {p.quota_pool.total_limit != null && (
                     <div className="h-2 overflow-hidden rounded-full bg-surface-3">
                       <div
-                        className={`h-full ${(p.quota_pool.remaining ?? 0) <= 0 ? "bg-rose-500" : "bg-accent"}`}
+                        className={`h-full ${(p.quota_pool.remaining ?? 0) <= 0 ? "bg-st-danger" : "bg-accent"}`}
                         style={{ width: `${Math.min(100, (p.quota_pool.consumed_total / p.quota_pool.total_limit) * 100)}%` }}
                       />
                     </div>
@@ -350,9 +347,9 @@ export default function ContractPanelPage() {
                             {p.blocks.includes("quota_per_case") && (
                               <td className="px-2 py-1.5">
                                 <div className="flex h-2 w-24 overflow-hidden rounded-full bg-surface-3">
-                                  <div className="bg-rose-400" style={{ width: `${(e.used / total) * 100}%` }} />
-                                  <div className="bg-amber-400" style={{ width: `${(e.booked / total) * 100}%` }} />
-                                  <div className="bg-sky-300" style={{ width: `${(e.reserved / total) * 100}%` }} />
+                                  <div className="bg-st-danger" style={{ width: `${(e.used / total) * 100}%` }} />
+                                  <div className="bg-st-warn" style={{ width: `${(e.booked / total) * 100}%` }} />
+                                  <div className="bg-st-active" style={{ width: `${(e.reserved / total) * 100}%` }} />
                                 </div>
                               </td>
                             )}
@@ -447,10 +444,10 @@ export default function ContractPanelPage() {
                       <td className="px-2 py-1.5 font-mono">{c.claim_no}</td>
                       <td className="px-2 py-1.5 text-right">{c.record_count}</td>
                       <td className="px-2 py-1.5 text-right">{c.applied_amount != null ? `$${c.applied_amount.toLocaleString()}` : "—"}</td>
-                      <td className="px-2 py-1.5"><span className={`rounded px-1.5 py-0.5 ${statusTagClass[c.status] ?? ""}`}>{statusLabel[c.status] ?? c.status}</span></td>
+                      <td className="px-2 py-1.5"><Badge tone={claimTone[c.status] ?? "muted"}>{statusLabel[c.status] ?? c.status}</Badge></td>
                       <td className="px-2 py-1.5">
                         {c.docs_waived_at ? (
-                          <span className="rounded bg-sky-100 px-1.5 py-0.5 text-sky-700">已豁免</span>
+                          <span className="rounded border border-st-muted/50 px-1.5 py-0.5 text-st-muted">已豁免</span>
                         ) : (
                           <span className="text-st-muted">—</span>
                         )}
@@ -630,7 +627,7 @@ function GuidanceBanner({ guidance }: { guidance: GuidanceData }) {
       )}
 
       {guidance.venue_summary && (
-        <div className="rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-700">
+        <div className="rounded-lg bg-accent-soft text-accent px-3 py-2 text-sm">
           本期待核銷 {guidance.venue_summary.pending_sessions} 場，場地費合計 ${guidance.venue_summary.pending_amount.toLocaleString()}
         </div>
       )}
@@ -701,7 +698,7 @@ function DocGateSection({
           </ul>
         </div>
         <div>
-          <h4 className="mb-2 text-xs font-medium text-sky-600">待行政核對（{confirmed.length}）</h4>
+          <h4 className="mb-2 text-xs font-medium text-ink-2">待行政核對（{confirmed.length}）</h4>
           <ul className="space-y-1 text-xs text-ink-3">
             {confirmed.map((r) => (
               <li key={r.id} className="flex items-center justify-between border-b border-line py-1">
@@ -744,7 +741,7 @@ function DocGateSection({
               <button
                 disabled={busy || !returnReason.trim()}
                 onClick={returnForCorrection}
-                className="flex-1 rounded-lg bg-rose-600 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-40"
+                className="flex-1 rounded-lg border border-st-danger/40 py-2 text-sm font-medium text-st-danger hover:bg-st-danger hover:text-surface disabled:opacity-40"
               >
                 {busy ? "處理中…" : "確認退回"}
               </button>
@@ -1137,7 +1134,7 @@ function VoidClaimCaseModal({
           <input value={reason} onChange={(e) => setReason(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" autoFocus />
         </label>
         <div className="flex gap-2">
-          <button disabled={busy} onClick={() => onConfirm(reason)} className="flex-1 rounded-lg bg-rose-600 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-50">確認作廢</button>
+          <button disabled={busy} onClick={() => onConfirm(reason)} className="flex-1 rounded-lg border border-st-danger/40 py-2 text-sm font-medium text-st-danger hover:bg-st-danger hover:text-surface disabled:opacity-50">確認作廢</button>
           <button onClick={onClose} className="rounded-lg border border-line px-4 py-2 text-sm text-ink-3 hover:bg-surface-2">取消</button>
         </div>
       </div>

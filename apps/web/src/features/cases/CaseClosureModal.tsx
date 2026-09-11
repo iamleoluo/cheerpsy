@@ -20,7 +20,6 @@ import {
 } from "@/features/shared/labels";
 import { caseDisplayId, fmtDate, fmtTime, visitId } from "@/features/shared/format";
 
-/* @token-guard legacy — P3 從舊路由原樣搬入，尚未換語意 token（11 §2.2） */
 /**
  * 結案 — 從 cases/page.tsx 搬出（11 §4.2）。
  *
@@ -126,7 +125,7 @@ export function CaseClosureModal({
             disabled={submitting}
             className={
               "rounded px-4 py-2 text-sm text-white disabled:opacity-50 " +
-              (isClose ? "bg-red-600 hover:bg-red-700" : "bg-emerald-600 hover:bg-emerald-700")
+              (isClose ? "bg-st-danger hover:bg-st-danger/90" : "bg-st-done hover:bg-st-done/90")
             }
           >
             {submitting ? "處理中..." : isClose ? "確認結案" : "確認復案"}

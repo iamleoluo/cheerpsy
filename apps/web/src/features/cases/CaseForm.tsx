@@ -20,7 +20,6 @@ import {
 } from "@/features/shared/labels";
 import { caseDisplayId, fmtDate, fmtTime, visitId } from "@/features/shared/format";
 
-/* @token-guard legacy — P3 從舊路由原樣搬入，尚未換語意 token（11 §2.2） */
 /** 個案建檔／編輯表單 — 從 cases/page.tsx 搬出（11 §4.2）。 */
 
 export function CaseForm({
@@ -130,7 +129,7 @@ export function CaseForm({
       <div className={`w-full rounded-xl bg-white p-6 shadow-xl ${isEditing ? "max-w-2xl" : "max-w-lg"} max-h-[90vh] overflow-y-auto`}>
         <h2 className="mb-4 text-lg font-bold">{isEditing ? "編輯個案" : "新增個案（已預約未初談）"}</h2>
         {!isEditing && (
-          <p className="mb-3 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">
+          <p className="mb-3 rounded-lg bg-accent-soft text-accent px-3 py-2 text-xs">
             Stage 1：僅需填寫基本資料。初診到場後再補填完整資料並轉為正式個案。
           </p>
         )}
@@ -332,7 +331,7 @@ export function CaseForm({
                 type="button"
                 disabled={saving}
                 onClick={handleClosure}
-                className={`rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 ${showClosure ? "bg-red-600 text-white hover:bg-red-700" : "border border-st-danger/30 text-st-danger hover:bg-st-danger-bg"}`}
+                className={`rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 ${showClosure ? "bg-st-danger text-surface hover:bg-st-danger/90" : "border border-st-danger/30 text-st-danger hover:bg-st-danger-bg"}`}
               >
                 {saving && showClosure ? "處理中..." : showClosure ? "確認結案" : "結案"}
               </button>
@@ -342,7 +341,7 @@ export function CaseForm({
                 type="button"
                 disabled={saving}
                 onClick={handleClosure}
-                className={`rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 ${showClosure ? "bg-emerald-600 text-white hover:bg-emerald-700" : "border border-st-done/30 text-st-done hover:bg-st-done-bg"}`}
+                className={`rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50 ${showClosure ? "bg-st-done text-surface hover:bg-st-done/90" : "border border-st-done/30 text-st-done hover:bg-st-done-bg"}`}
               >
                 {saving && showClosure ? "處理中..." : showClosure ? "確認復案" : "復案"}
               </button>

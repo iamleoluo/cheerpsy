@@ -105,7 +105,7 @@ export function NotificationBar() {
   ];
 
   const severityColor = {
-    info: "bg-blue-50 border-blue-200 text-blue-700",
+    info: "bg-accent-soft border-accent/25 text-accent",
     warning: "bg-st-warn-bg border-st-warn/30 text-st-warn",
     error: "bg-st-danger-bg border-st-danger/30 text-st-danger",
   };
@@ -118,7 +118,7 @@ export function NotificationBar() {
       >
         <span className="text-lg">🔔</span>
         {totalUnread > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-st-danger px-1 text-[10px] font-bold text-white">
             {totalUnread > 99 ? "99+" : totalUnread}
           </span>
         )}
@@ -155,7 +155,7 @@ export function NotificationBar() {
                     setOpen(false);
                   }}
                   className={`block border-b border-line px-4 py-3 transition-colors hover:bg-surface-2 ${
-                    !item.is_read ? "bg-blue-50/30" : ""
+                    !item.is_read ? "bg-accent-soft/40" : ""
                   }`}
                 >
                   <div className="flex items-start gap-2">
@@ -166,7 +166,7 @@ export function NotificationBar() {
                             ? "bg-st-warn-bg text-st-warn"
                             : item.severity === "error"
                             ? "bg-st-danger-bg text-st-danger"
-                            : "bg-blue-100 text-blue-700"
+                            : "bg-accent-soft text-accent"
                         }`}
                       >
                         即時
@@ -188,7 +188,7 @@ export function NotificationBar() {
                       )}
                     </div>
                     {!item.is_read && (
-                      <span className="mt-1 h-2 w-2 rounded-full bg-blue-500" />
+                      <span className="mt-1 h-2 w-2 rounded-full bg-accent" />
                     )}
                   </div>
                 </a>

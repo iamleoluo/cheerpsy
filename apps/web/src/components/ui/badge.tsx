@@ -70,7 +70,13 @@ export const paymentTone: Record<string, BadgeTone> = {
   void: "muted",
 };
 
-/** 核銷案狀態（inst_claim_cases.status ／ claim_batches.status）。 */
+/**
+ * 核銷案狀態（inst_claim_cases.status ／ claim_batches.status）。
+ *
+ * 這張表原本在四頁各寫了一份，而且**四份互相矛盾**：同一個 submitted，
+ * /finance 是琥珀、/claims 是紫、機構合約專頁是天藍。行政一天要在這幾頁
+ * 之間來回，同一個狀態每頁換一種顏色等於顏色沒有在傳遞資訊。
+ */
 export const claimTone: Record<string, BadgeTone> = {
   collecting: "active",
   ready: "active",
@@ -78,6 +84,7 @@ export const claimTone: Record<string, BadgeTone> = {
   received: "done",
   paid: "done",
   returned: "warn",
+  closed: "muted",
   void: "muted",
 };
 

@@ -288,7 +288,7 @@ export default function BookingPage() {
 
               {quoteError && <div className="rounded-lg bg-st-danger-bg px-3 py-2 text-xs text-st-danger">{quoteError}</div>}
               {quote && (
-                <div className={`rounded-lg p-3 text-xs ${quote.quota.blocking ? "bg-st-danger-bg text-st-danger" : "bg-sky-50 text-sky-800"}`}>
+                <div className={`rounded-lg p-3 text-xs ${quote.quota.blocking ? "bg-st-danger-bg text-st-danger" : "bg-accent-soft text-accent"}`}>
                   <div className="flex justify-between"><span>總鐘點費</span><span>${Number(quote.pricing.unit_price).toLocaleString()}</span></div>
                   <div className="flex justify-between"><span>個案自付</span><span>${Number(quote.pricing.case_payable).toLocaleString()}</span></div>
                   <div className="flex justify-between"><span>機構請款</span><span>${Number(quote.pricing.institution_payable).toLocaleString()}</span></div>
