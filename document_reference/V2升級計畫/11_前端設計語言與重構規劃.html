@@ -447,6 +447,37 @@ tr.flash{background:var(--p50)!important;animation:flashHi 2.4s ease-out}
 一眼看完所有合約的狀況，不必逐份點入。</li>
 </ul>
 
+<h3>5.9 初診報到搬到診間日曆（2026-09-11 交辦）</h3>
+<div class="note amber"><span class="t">你的交辦：「本來是會跳出『初診已到』，並從那裡輸入身分證字號。我希望把它改成在診間日曆處理」</span>
+行政人員在診間日曆會多看到這個個案是<b>初診</b>，點「已到」時再填身分證等資料。
+你的說法是「原本做的都是對的，只是把位置移過來，整個流程上會比較順」。</div>
+
+<p><b>查證後發現這不只是搬位置，它同時補掉一個真的洞。</b>初診預約就是一筆普通的
+<code>appointments</code> 列，本來就會出現在診間日曆上，而 <code>perform_check_in()</code>
+（<code>appointments.py:424</code>）<b>完全不知道媒合案的存在</b>。所以今天行政如果直接在日曆上按「已到」：</p>
+<ul>
+<li>預約變 <code>arrived</code>、<code>session_record</code> 照常建立 —— 看起來一切正常</li>
+<li>但媒合案永遠卡在 <code>booked</code>，不會轉 <code>converted</code>、不會離開媒合列表</li>
+<li>個案永遠停在 <code>initial</code>：<b>沒有身分證、沒有病歷號</b>，而 <code>activate_case</code> 要身分證才給號</li>
+</ul>
+<p>也就是說，現況是「有一條走得通、但會把資料走壞的路」，而那條路正好是行政最自然會走的那條
+（人在櫃檯、日曆開著）。搬過去之後，自然的那條路就是對的那條路。</p>
+
+<h4>做法</h4>
+<ul>
+<li><b>後端 ①</b>：<code>perform_check_in()</code> 加閘門——預約若屬於某個 <code>booked</code> 媒合案，
+一律拒絕直接報到，回訊息指向初診流程。<b>只讀 <code>referrals</code> 模型，不 import 媒合服務</b>，
+避免與 <code>referral/service.py → appointments.perform_check_in</code> 形成循環。
+媒合服務自己呼叫時用 keyword-only 的旁路參數放行（同 <code>now</code> 的手法：不放在端點簽名上，HTTP 永遠拿不到）。</li>
+<li><b>後端 ②</b>：<code>GET /room-calendar</code> 每格補 <code>first_visit</code>（<code>referral_id</code>、<code>referral_code</code>、
+是否還缺身分證）。沿用既有的一次撈完、不逐格查。</li>
+<li><b>前端</b>：診間格加「初診」標記；<code>CheckInPanel</code> 的第一步在初診時換成身分證表單，
+送 <code>PUT /referrals/{id}/arrived</code>（<b>既有端點，不改</b>）。</li>
+<li><b>別漏了未到</b>：初診未到帶著 <code>next_action</code>（轉預約／派案／結案）的分流，
+日曆上的「未到」表單也要有，否則媒合案一樣會斷在半路。你只提了已到，但這半邊不補就等於換一個洞。</li>
+<li><b>/match</b>：報到彈窗移除，該列改顯示「等待初診報到（於診間日曆）」。</li>
+</ul>
+
 <h3>5.8 色階債務清理（2026-09-11 完成）</h3>
 <p>實測全站 <b>2,178 處</b>寫死的 Tailwind 色階、122 種，分布在 42 個檔案。
 比守門員回報的 1,725 多，因為那支不掃已標記 <code>@token-guard legacy</code> 的檔案。

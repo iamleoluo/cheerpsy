@@ -13,6 +13,7 @@ from app.models.appointment import Appointment
 from app.models.case import Case
 from app.models.room import Room
 from app.models.user import User
+from app.utils.tz import to_local_date
 from app.referral.models.batch import ReferralBatch, ReferralBatchMember
 from app.referral.models.referral import Referral
 
@@ -346,3 +347,106 @@ class TestPoolViews:
         history2 = client.get("/referrals/pool/history", headers=_headers(t2)).json()
         assert len(history2) == 1
         assert history2[0]["reply_status"] == "superseded"
+
+
+class TestFirstVisitGate:
+    """初診報到搬到診間日曆（11 §5.9）。
+
+    初診預約就是一筆普通的 appointments 列，本來就會出現在診間日曆上。在補這道
+    閘門之前，行政直接在日曆按「已到」是**走得通的**：預約變 arrived、場次照常
+    建立、畫面一切正常——但媒合案永遠卡在 booked，個案永遠停在 initial，也就
+    永遠拿不到病歷號。那條會把資料走壞的路，正好是行政最自然會走的那條。
+    """
+
+    def _booked(self, db, admin, therapist, room_code, start=None):
+        r = client.post("/referrals", headers=_headers(admin), json={
+            "name": "初診閘門測試", "age": 31, "gender": "female", "phone": "0900111222", "mode": "in_person",
+        })
+        rid = r.json()["id"]
+        client.put(f"/referrals/{rid}/assign", headers=_headers(admin), json={"therapist_ids": [therapist.id]})
+        detail = client.get(f"/referrals/{rid}", headers=_headers(admin)).json()
+        member = detail["batches"][0]["members"][0]
+        client.put(f"/referrals/pool/{member['id']}/accept", headers=_headers(therapist),
+                   json={"slots": [datetime.now(timezone.utc).isoformat()]})
+
+        room = Room(name=f"gate {room_code}", floor=1, room_code=room_code, use_type="general", size="normal")
+        db.add(room)
+        db.flush()
+        start = start or (datetime.now(timezone.utc) - timedelta(hours=1))
+        body = client.put(f"/referrals/{rid}/convert", headers=_headers(admin), json={
+            "room_id": room.id, "session_type": "in_person",
+            "start_time": start.isoformat(), "end_time": (start + timedelta(hours=1)).isoformat(),
+            "amount": 1600, "funding_source": "self_pay",
+        }).json()
+        return rid, body["appointment_id"], body["converted_case_id"], room
+
+    def test_plain_check_in_on_first_visit_is_refused(self, db, http_db):
+        admin = _admin(db, "A9A1")
+        therapist = _therapist(db, "T9A1")
+        rid, appt_id, case_id, _ = self._booked(db, admin, therapist, "GATE-1A")
+
+        r = client.put(f"/appointments/{appt_id}/check-in", headers=_headers(admin), json={"status": "arrived"})
+        assert r.status_code == 400, r.text
+        assert "初診" in r.json()["detail"]
+
+        # 而且什麼都沒被改到——這才是重點，不是「有沒有回錯誤」
+        db.expire_all()
+        assert db.query(Appointment).filter(Appointment.id == appt_id).first().check_in_status == "pending"
+        assert db.query(Referral).filter(Referral.id == rid).first().status == "booked"
+        case = db.query(Case).filter(Case.id == case_id).first()
+        assert case.status == "initial"
+        assert case.case_number is None
+
+    def test_plain_no_show_on_first_visit_is_refused(self, db, http_db):
+        """未到這半邊不補，媒合案一樣會斷在半路——初診未到帶著轉預約／派案／
+        結案的分流，那是普通 no_show 不會做的事。"""
+        admin = _admin(db, "A9A2")
+        therapist = _therapist(db, "T9A2")
+        rid, appt_id, _, _ = self._booked(db, admin, therapist, "GATE-1B")
+
+        r = client.put(f"/appointments/{appt_id}/check-in", headers=_headers(admin),
+                       json={"status": "no_show", "no_show_reason": "case_leave"})
+        assert r.status_code == 400, r.text
+        db.expire_all()
+        assert db.query(Appointment).filter(Appointment.id == appt_id).first().check_in_status == "pending"
+        assert db.query(Referral).filter(Referral.id == rid).first().status == "booked"
+
+    def test_room_calendar_marks_the_cell_as_first_visit(self, db, http_db):
+        admin = _admin(db, "A9A3")
+        therapist = _therapist(db, "T9A3")
+        rid, appt_id, _, _ = self._booked(db, admin, therapist, "GATE-1C")
+
+        day = to_local_date(datetime.now(timezone.utc) - timedelta(hours=1))
+        cells = client.get(f"/room-calendar?q={day}", headers=_headers(admin)).json()["cells"]
+        cell = next(c for c in cells if c["appointment_id"] == appt_id)
+        assert cell["first_visit"] is not None
+        assert cell["first_visit"]["referral_id"] == rid
+        assert cell["first_visit"]["needs_national_id"] is True
+
+    def test_referral_flow_still_works_and_then_gate_lifts(self, db, http_db):
+        """閘門只擋「還沒報到的初診」。走完初診流程後，同一個個案的下一次
+        預約要能正常報到，否則等於把人鎖在外面。"""
+        admin = _admin(db, "A9A4")
+        therapist = _therapist(db, "T9A4")
+        rid, appt_id, case_id, room = self._booked(db, admin, therapist, "GATE-1D")
+
+        r = client.put(f"/referrals/{rid}/arrived", headers=_headers(admin),
+                       json={"national_id": "A123456780", "birth_date": "1994-03-03", "phone": "0922333444"})
+        assert r.status_code == 200, r.text
+        db.expire_all()
+        assert db.query(Appointment).filter(Appointment.id == appt_id).first().check_in_status == "arrived"
+        case = db.query(Case).filter(Case.id == case_id).first()
+        assert case.status == "ongoing"
+        assert case.case_number is not None
+
+        # 第二次晤談：普通預約、普通報到，不該再被擋
+        # 初診佔的是 now-1h~now，第二次要錯開，否則撞的是診間衝突不是閘門
+        start2 = datetime.now(timezone.utc) + timedelta(hours=2)
+        appt2 = client.post("/appointments", headers=_headers(admin), json={
+            "case_id": case_id, "room_id": room.id, "session_type": "in_person",
+            "start_time": start2.isoformat(), "end_time": (start2 + timedelta(hours=1)).isoformat(),
+            "amount": 1600, "funding_source": "self_pay",
+        })
+        assert appt2.status_code == 201, appt2.text
+        r2 = client.put(f"/appointments/{appt2.json()['id']}/check-in", headers=_headers(admin), json={"status": "arrived"})
+        assert r2.status_code == 200, r2.text

@@ -85,6 +85,7 @@ interface Referral {
   accepted_therapist_name: string | null;
   converted_case_id: number | null;
   appointment_id: number | null;
+  appointment_start: string | null;
   close_reason: string | null;
   closed_at: string | null;
   created_at: string | null;
@@ -97,6 +98,12 @@ interface RoomOption { id: number; name: string; room_code: string; }
 const ISSUE_OPTIONS = ["情緒困擾", "人際關係", "家庭議題", "婚姻/伴侶", "職涯壓力", "創傷", "親職教養", "其他"];
 const SOURCE_OPTIONS = ["自行來電", "機構轉介", "親友介紹", "網路查詢", "其他"];
 
+/** 初診那一天，給媒合列表指路用（11 §5.9）。 */
+function fmtApptDay(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
 export default function MatchPage() {
   const { data: session } = useSession();
   const token = (session?.user as any)?.accessToken;
@@ -108,7 +115,7 @@ export default function MatchPage() {
   const [therapists, setTherapists] = useState<TherapistOption[]>([]);
   const [institutions, setInstitutions] = useState<InstitutionOption[]>([]);
   const [rooms, setRooms] = useState<RoomOption[]>([]);
-  const [modal, setModal] = useState<{ type: "assign" | "cancel" | "convert" | "arrival"; referral: Referral } | null>(null);
+  const [modal, setModal] = useState<{ type: "assign" | "cancel" | "convert"; referral: Referral } | null>(null);
 
   const fetchList = () => {
     if (!token) return;
@@ -229,7 +236,11 @@ export default function MatchPage() {
 
                 {r.status === "booked" && (
                   <div className="mb-3 rounded border border-accent/40 bg-accent-soft px-3 py-2 text-xs text-accent">
-                    已建立初診預約（appointment #{r.appointment_id}），心理師：{r.accepted_therapist_name}
+                    <b>等待初診報到</b> · 心理師：{r.accepted_therapist_name}
+                    {r.appointment_start && ` · ${fmtApptDay(r.appointment_start)}`}
+                    <div className="mt-0.5">
+                      報到在<b>診間日曆</b>完成：那一格會標「初診」，點「已到」時一併登記身分證、產生病歷號。
+                    </div>
                   </div>
                 )}
                 {(r.status === "converted" || r.status === "cancelled" || r.status === "closed") && (
@@ -252,9 +263,12 @@ export default function MatchPage() {
                     </button>
                   )}
                   {r.status === "booked" && (
-                    <button onClick={() => setModal({ type: "arrival", referral: r })} className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-st-active">
-                      初診報到 ▸
-                    </button>
+                    <a
+                      href={`/rooms${r.appointment_start ? `?date=${r.appointment_start.slice(0, 10)}` : ""}`}
+                      className="rounded-lg border border-line-2 px-3 py-1.5 text-xs font-medium text-ink-2 hover:bg-surface-2"
+                    >
+                      到診間日曆報到 ▸
+                    </a>
                   )}
                   {["new", "matching", "unmatched", "accepted", "booked"].includes(r.status) && (
                     <button onClick={() => setModal({ type: "cancel", referral: r })} className="rounded-lg border border-line px-3 py-1.5 text-xs text-ink-3 hover:bg-surface-2">
@@ -285,9 +299,6 @@ export default function MatchPage() {
       )}
       {modal?.type === "convert" && (
         <ConvertModal token={token} referral={modal.referral} rooms={rooms} institutions={institutions} onClose={() => setModal(null)} onDone={() => { setModal(null); fetchList(); }} />
-      )}
-      {modal?.type === "arrival" && (
-        <ArrivalModal token={token} referral={modal.referral} onClose={() => setModal(null)} onDone={() => { setModal(null); fetchList(); }} />
       )}
     </div>
   );
@@ -639,115 +650,6 @@ function ConvertModal({
         </button>
         <button onClick={onClose} className="rounded-lg border border-line px-4 py-2 text-sm text-ink-3 hover:bg-surface-2">取消</button>
       </div>
-    </ModalShell>
-  );
-}
-
-function ArrivalModal({ token, referral, onClose, onDone }: { token: string; referral: Referral; onClose: () => void; onDone: () => void }) {
-  const [mode, setMode] = useState<"arrived" | "no_show" | null>(null);
-  const [nationalId, setNationalId] = useState("");
-  const [birthDate, setBirthDate] = useState("");
-  const [phone, setPhone] = useState(referral.phone ?? "");
-  const [noShowReason, setNoShowReason] = useState("unreachable");
-  const [nextAction, setNextAction] = useState<"rebook" | "reassign" | "close">("rebook");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-
-  async function submitArrived() {
-    setSaving(true);
-    setError("");
-    try {
-      await clientFetch(`/referrals/${referral.id}/arrived`, token, {
-        method: "PUT",
-        body: JSON.stringify({ national_id: nationalId || null, birth_date: birthDate || null, phone: phone || null }),
-      });
-      onDone();
-    } catch (e: any) {
-      setError(e.message ?? "報到失敗");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function submitNoShow() {
-    setSaving(true);
-    setError("");
-    try {
-      await clientFetch(`/referrals/${referral.id}/no-show`, token, {
-        method: "PUT",
-        body: JSON.stringify({ reason: noShowReason, next_action: nextAction }),
-      });
-      onDone();
-    } catch (e: any) {
-      setError(e.message ?? "操作失敗");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <ModalShell title={`初診報到（${referral.name}）`} onClose={onClose}>
-      {error && <div className="mb-3 rounded-lg bg-st-danger-bg px-3 py-2 text-xs text-st-danger">{error}</div>}
-      {mode === null && (
-        <div className="flex gap-2">
-          {/* v7 定案 ③：已到／未到一律中性黑白，不用綠紅實心——顏色留給狀態。
-              跟診間日曆的報到面板同一個寫法，行政在兩個地方看到的是同一組鍵 */}
-          <button onClick={() => setMode("arrived")} className="flex-1 rounded-lg bg-accent py-3 text-sm font-medium text-white hover:bg-st-active">初診有到</button>
-          <button onClick={() => setMode("no_show")} className="flex-1 rounded-lg border border-line-2 py-3 text-sm text-ink-2 hover:bg-surface-2">初診未到</button>
-        </div>
-      )}
-      {mode === "arrived" && (
-        <div className="space-y-3">
-          <p className="text-xs text-ink-3">需求表資料已自動帶入，只需補身分證等個資以產生病歷號</p>
-          <label className="block">
-            <span className="mb-1 block text-xs text-ink-3">身分證字號</span>
-            <input value={nationalId} onChange={(e) => setNationalId(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
-          </label>
-          <div className="grid grid-cols-2 gap-2">
-            <label className="block">
-              <span className="mb-1 block text-xs text-ink-3">出生日期</span>
-              <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-xs text-ink-3">電話</span>
-              <input value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm" />
-            </label>
-          </div>
-          <div className="flex gap-2 pt-2">
-            <button onClick={submitArrived} disabled={saving} className="flex-1 rounded-lg bg-accent py-2 text-sm font-medium text-white hover:bg-st-active disabled:opacity-50">
-              {saving ? "處理中…" : "產生病歷號並轉為個案"}
-            </button>
-            <button onClick={() => setMode(null)} className="rounded-lg border border-line px-4 py-2 text-sm text-ink-3 hover:bg-surface-2">返回</button>
-          </div>
-        </div>
-      )}
-      {mode === "no_show" && (
-        <div className="space-y-3">
-          <label className="block">
-            <span className="mb-1 block text-xs text-ink-3">未到原因</span>
-            <select value={noShowReason} onChange={(e) => setNoShowReason(e.target.value)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm">
-              <option value="case_leave">個案來電請假</option>
-              <option value="last_minute_cancel">臨時取消</option>
-              <option value="unreachable">未聯繫上</option>
-              <option value="other">其他</option>
-            </select>
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-xs text-ink-3">後續處理</span>
-            <select value={nextAction} onChange={(e) => setNextAction(e.target.value as any)} className="w-full rounded-lg border border-line-2 px-3 py-2 text-sm">
-              <option value="rebook">轉預約（同一心理師重排時間）</option>
-              <option value="reassign">派案（改派其他心理師）</option>
-              <option value="close">轉媒合結案</option>
-            </select>
-          </label>
-          <div className="flex gap-2 pt-2">
-            <button onClick={submitNoShow} disabled={saving} className="flex-1 rounded-lg bg-ink py-2 text-sm font-medium text-surface hover:bg-ink-2 disabled:opacity-50">
-              {saving ? "處理中…" : "確認"}
-            </button>
-            <button onClick={() => setMode(null)} className="rounded-lg border border-line px-4 py-2 text-sm text-ink-3 hover:bg-surface-2">返回</button>
-          </div>
-        </div>
-      )}
     </ModalShell>
   );
 }

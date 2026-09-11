@@ -53,6 +53,9 @@ class Referral(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     institution = relationship("Institution", lazy="joined")
+    # 初診預約。媒合列表要顯示「在哪一天的診間日曆報到」，所以連日期一起帶出來
+    # （11 §5.9）。只有一條 FK 指向 appointments，不會有 foreign_keys 歧義。
+    appointment = relationship("Appointment", lazy="joined")
     designated_therapist = relationship("User", foreign_keys=[designated_therapist_id])
     accepted_therapist = relationship("User", foreign_keys=[accepted_therapist_id])
     batches = relationship("ReferralBatch", back_populates="referral", order_by="ReferralBatch.id")

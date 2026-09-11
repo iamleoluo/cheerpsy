@@ -26,6 +26,7 @@ type Summary = {
   pending: number; collected: number; due: number;
 };
 import { toLocalDateString } from "@/features/rooms/types";
+import { useQueryParams, parseLocalDate } from "@/features/shared/useQueryParams";
 import {
   Button,
   RoomCell,
@@ -65,6 +66,13 @@ export default function RoomsPage() {
     d.setHours(0, 0, 0, 0);
     return d;
   });
+  // 從媒合列表「到診間日曆報到」點過來時會帶 ?date=（11 §5.9）。
+  // 掛載後才讀，避免伺服器與瀏覽器算出不同初值。
+  const query = useQueryParams();
+  useEffect(() => {
+    const d = parseLocalDate(query?.get("date"));
+    if (d) setSelectedDate(d);
+  }, [query]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [appts, setAppts] = useState<Cell[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -117,11 +125,19 @@ export default function RoomsPage() {
 
   /** 直接執行、不需要填任何欄位的動作只有「已到」（v7 定案：按已到就轉已執行）。
    *  未到要填原因、收款要選付款方式、開據要選收費名目，那三步仍走 CheckInPanel，
-   *  避免把同一份 API 邏輯抄成兩份。 */
+   *  避免把同一份 API 邏輯抄成兩份。
+   *
+   *  **初診是第四種要填欄位的**（11 §5.9）：要一併登記身分證才產得出病歷號，
+   *  所以同樣開面板。後端也擋著——直接打 check-in 會回 400，這裡只是別讓
+   *  櫃檯先看到一則錯誤訊息才知道。 */
   const [busyId, setBusyId] = useState<number | null>(null);
   const quickCheckIn = useCallback(
     async (a: Cell) => {
       if (!token) return;
+      if (a.first_visit) {
+        setSelected(a);
+        return;
+      }
       setBusyId(a.appointment_id);
       try {
         await clientFetch(`/appointments/${a.appointment_id}/check-in`, token, {

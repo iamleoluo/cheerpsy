@@ -316,7 +316,7 @@ def mark_arrived(db: Session, user: User, referral: Referral, national_id: str |
     if case.status == "initial":
         _activate_case(case.id, user, db)
 
-    _check_in(db, referral.appointment_id, CheckInRequest(status="arrived"), user)
+    _check_in(db, referral.appointment_id, CheckInRequest(status="arrived"), user, first_visit_ok=True)
 
     referral.status = "converted"
     referral.closed_at = datetime.now(timezone.utc)
@@ -334,7 +334,13 @@ def mark_no_show(db: Session, user: User, referral: Referral, reason: str, next_
     if next_action not in ("rebook", "reassign", "close"):
         raise HTTPException(status_code=400, detail="next_action 必須是 rebook / reassign / close")
 
-    _check_in(db, referral.appointment_id, CheckInRequest(status="no_show", no_show_reason=reason), user)
+    _check_in(
+        db,
+        referral.appointment_id,
+        CheckInRequest(status="no_show", no_show_reason=reason),
+        user,
+        first_visit_ok=True,
+    )
 
     if next_action == "rebook":
         referral.status = "accepted"

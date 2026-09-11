@@ -44,6 +44,12 @@ export interface Appointment {
   copay_collected_at: string | null;
   copay_payment_method: string | null;
   receipt_no: string | null;
+  /** 初診（11 §5.9）。非 null 代表這筆屬於還沒報到的媒合案，報到要走初診流程。 */
+  first_visit?: {
+    referral_id: number;
+    referral_code: string;
+    needs_national_id: boolean;
+  } | null;
 }
 
 export interface VenueRental {

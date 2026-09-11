@@ -421,21 +421,57 @@ def check_in(
     return perform_check_in(db, appointment_id, body, user)
 
 
+def _booked_referral_for(db: Session, appointment_id: int):
+    """這筆預約是不是某個媒合案還沒報到的初診？是的話回傳那個媒合案。
+
+    只 import 模型、不 import `app.referral.service`——那支反過來會呼叫
+    `perform_check_in()`，互相 import 會成環。這裡要的也只是「有沒有」。
+    """
+    from app.referral.models.referral import Referral  # 區域 import，避免載入順序成環
+
+    return (
+        db.query(Referral)
+        .filter(Referral.appointment_id == appointment_id, Referral.status == "booked")
+        .first()
+    )
+
+
 def perform_check_in(
     db: Session,
     appointment_id: int,
     body: CheckInRequest,
     user: User,
     now: datetime | None = None,
+    *,
+    first_visit_ok: bool = False,
 ):
     """check-in 的實作本體。抽出來是為了讓 in-process 呼叫端（媒合子系統的
     referral/service.py、以及灌歷史資料的 generate_fake_data.py）能傳入
     `now`——報到時間戳要跟著那場諮商當時的時間，不是灌資料當下的時間。
 
-    `now` 刻意不放在端點簽名上：FastAPI 會把多出來的參數當成 query string，
-    等於開一個「從 HTTP 就能偽造報到時間」的洞。留在這一層，HTTP 永遠拿不到。
+    `now` 與 `first_visit_ok` 刻意不放在端點簽名上：FastAPI 會把多出來的參數
+    當成 query string，等於開一個「從 HTTP 就能偽造報到時間／繞過初診閘門」的
+    洞。留在這一層，HTTP 永遠拿不到。
+
+    **初診閘門**（11 §5.9）：初診預約就是一筆普通的 appointments 列，本來就
+    會出現在診間日曆上，而這支函式原本完全不知道媒合案的存在。行政若直接按
+    「已到」，預約會變 arrived、場次照常建立——看起來一切正常，但媒合案永遠
+    卡在 booked，個案永遠停在 initial：**沒有身分證、也就永遠拿不到病歷號**。
+    那條走得通卻會把資料走壞的路，正好是行政最自然會走的那條。所以擋下來，
+    指向初診流程；媒合服務自己準備好之後再帶 `first_visit_ok=True` 進來。
     """
     now = now or datetime.now(timezone.utc)
+
+    if not first_visit_ok:
+        referral = _booked_referral_for(db, appointment_id)
+        if referral:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"這是媒合案 {referral.referral_code} 的初診，需要一併登記身分證以產生病歷號。"
+                    "請在診間日曆點「已到」，由初診報到表單完成。"
+                ),
+            )
     if body.status not in ("arrived", "no_show"):
         raise HTTPException(status_code=400, detail="status 必須是 arrived 或 no_show")
 

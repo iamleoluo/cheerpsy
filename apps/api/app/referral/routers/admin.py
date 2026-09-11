@@ -143,6 +143,8 @@ class ReferralResponse(BaseModel):
     accepted_therapist_name: str | None = None
     converted_case_id: int | None = None
     appointment_id: int | None = None
+    # 初診預約的開始時間 —— 媒合列表要指出「去哪一天的診間日曆報到」（11 §5.9）
+    appointment_start: datetime | None = None
     close_reason: str | None = None
     closed_at: datetime | None = None
     created_at: datetime | None = None
@@ -192,6 +194,11 @@ def _to_response(r: Referral) -> ReferralResponse:
         accepted_therapist_name=r.accepted_therapist.name if r.accepted_therapist else None,
         converted_case_id=r.converted_case_id,
         appointment_id=r.appointment_id,
+        appointment_start=(
+            r.appointment.time_range.lower
+            if r.appointment is not None and r.appointment.time_range is not None
+            else None
+        ),
         close_reason=r.close_reason,
         closed_at=r.closed_at,
         created_at=r.created_at,

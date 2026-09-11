@@ -142,8 +142,15 @@ export function CheckInPanel({
           <StepDot done={!!appt.receipt_no} active={appt.check_in_status === "arrived" && !!appt.copay_collected_at && !appt.receipt_no} label="開據" />
         </div>
 
-        {/* ── 步驟 1：報到 ── */}
-        {appt.check_in_status === "pending" && !showNoShowForm && (
+        {/* ── 步驟 1：報到。初診走另一張表單（11 §5.9）── */}
+        {appt.check_in_status === "pending" && appt.first_visit && (
+          <FirstVisitStep
+            firstVisit={appt.first_visit}
+            token={token}
+            onChanged={onChanged}
+          />
+        )}
+        {appt.check_in_status === "pending" && !appt.first_visit && !showNoShowForm && (
           <div className="flex gap-2">
             <button disabled={busy} onClick={() => doCheckIn("arrived")} className="flex-1 rounded-lg bg-accent py-2.5 text-sm font-medium text-white hover:bg-st-active disabled:opacity-50">
               ✓ 已到
@@ -153,7 +160,7 @@ export function CheckInPanel({
             </button>
           </div>
         )}
-        {appt.check_in_status === "pending" && showNoShowForm && (
+        {appt.check_in_status === "pending" && !appt.first_visit && showNoShowForm && (
           <div className="space-y-3">
             <div>
               <label className="mb-1 block text-xs text-ink-3">未到原因</label>
@@ -552,5 +559,162 @@ function StepDot({ done, active, label }: { done: boolean; active: boolean; labe
     <span className={`flex items-center gap-1 rounded px-1.5 py-0.5 ${done ? "bg-st-done-bg text-st-done" : active ? "bg-st-warn-bg text-st-warn" : "bg-surface-3 text-ink-3"}`}>
       {done ? "✓" : "·"} {label}
     </span>
+  );
+}
+
+/**
+ * 初診報到 — V2升級計畫 11 §5.9。
+ *
+ * 這一步本來長在媒合管理裡：行政要記得回到 /match、找到那一列、點開報到彈窗。
+ * 但人在櫃檯、日曆開著，自然會直接在格子上按「已到」——而那條路會把資料走壞：
+ * 預約變已到、場次照常建立，媒合案卻永遠卡在 booked，個案永遠停在 initial，
+ * 也就永遠拿不到病歷號。所以把表單搬到這裡，讓自然的那條路變成對的那條路。
+ *
+ * 後端仍是既有的 `PUT /referrals/{id}/arrived` 與 `/no-show`，**一行沒改**——
+ * 媒合狀態機只有那一份實作。這裡只是換了入口。
+ *
+ * 未到這半邊不能省：初診未到帶著「轉預約／派案／結案」的分流，是普通 no_show
+ * 不會做的事。少了它，媒合案一樣會斷在半路。
+ */
+function FirstVisitStep({
+  firstVisit,
+  token,
+  onChanged,
+}: {
+  firstVisit: NonNullable<Appointment["first_visit"]>;
+  token: string;
+  onChanged: () => void;
+}) {
+  const [mode, setMode] = useState<null | "arrived" | "no_show">(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [nationalId, setNationalId] = useState("");
+  const [birthDate, setBirthDate] = useState("");
+  const [phone, setPhone] = useState("");
+
+  const [reason, setReason] = useState("case_leave");
+  const [nextAction, setNextAction] = useState<"rebook" | "reassign" | "close">("rebook");
+
+  async function submit(path: string, body: unknown) {
+    setBusy(true);
+    setError(null);
+    try {
+      await clientFetch(`/referrals/${firstVisit.referral_id}/${path}`, token, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      });
+      onChanged();
+    } catch (e: any) {
+      setError(e.message ?? "操作失敗");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-lg bg-accent-soft px-3 py-2 text-xs text-accent">
+        <b>初診</b> · 派案碼 <span className="ident">{firstVisit.referral_code}</span>
+        <div className="mt-0.5">
+          {firstVisit.needs_national_id
+            ? "報到時一併登記身分證，系統會產生病歷號並轉為正式個案。"
+            : "個資已登記過，按「已到」即完成報到並轉為正式個案。"}
+        </div>
+      </div>
+
+      {error && <div className="rounded-lg bg-st-danger-bg px-3 py-2 text-xs text-st-danger">{error}</div>}
+
+      {mode === null && (
+        <div className="flex gap-2">
+          <button
+            onClick={() => setMode("arrived")}
+            className="flex-1 rounded-lg bg-accent py-2.5 text-sm font-medium text-white hover:bg-st-active"
+          >
+            ✓ 已到
+          </button>
+          <button
+            onClick={() => setMode("no_show")}
+            className="flex-1 rounded-lg border border-line-2 py-2.5 text-sm text-ink-2 hover:bg-surface-2"
+          >
+            未到
+          </button>
+        </div>
+      )}
+
+      {mode === "arrived" && (
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1 block text-xs text-ink-3">
+              身分證字號{firstVisit.needs_national_id && <span className="text-st-danger"> *</span>}
+            </label>
+            <input
+              value={nationalId}
+              onChange={(e) => setNationalId(e.target.value.toUpperCase())}
+              placeholder="A123456789"
+              className="w-full rounded-lg border border-line-2 px-2 py-1.5 font-mono text-sm"
+            />
+            <p className="mt-1 text-[10px] text-ink-3">病歷號會取用身分證末兩碼，之後不可更改</p>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="mb-1 block text-xs text-ink-3">出生日期</label>
+              <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)}
+                className="w-full rounded-lg border border-line-2 px-2 py-1.5 text-sm" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-ink-3">電話</label>
+              <input value={phone} onChange={(e) => setPhone(e.target.value)}
+                className="w-full rounded-lg border border-line-2 px-2 py-1.5 text-sm" />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              disabled={busy || (firstVisit.needs_national_id && !nationalId.trim())}
+              onClick={() => submit("arrived", {
+                national_id: nationalId.trim() || null,
+                birth_date: birthDate || null,
+                phone: phone || null,
+              })}
+              className="flex-1 rounded-lg bg-accent py-2 text-sm font-medium text-white hover:bg-st-active disabled:opacity-50"
+            >
+              {busy ? "處理中…" : "產生病歷號並完成報到"}
+            </button>
+            <button onClick={() => setMode(null)}
+              className="rounded-lg border border-line px-3 py-2 text-sm text-ink-3 hover:bg-surface-2">返回</button>
+          </div>
+        </div>
+      )}
+
+      {mode === "no_show" && (
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1 block text-xs text-ink-3">未到原因</label>
+            <select value={reason} onChange={(e) => setReason(e.target.value)}
+              className="w-full rounded-lg border border-line px-2 py-1.5 text-sm">
+              {NO_SHOW_REASONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+            </select>
+          </div>
+          <div>
+            {/* 這一欄是初診未到才有的：媒合案要知道接下來往哪走 */}
+            <label className="mb-1 block text-xs text-ink-3">後續處理</label>
+            <select value={nextAction} onChange={(e) => setNextAction(e.target.value as any)}
+              className="w-full rounded-lg border border-line px-2 py-1.5 text-sm">
+              <option value="rebook">轉預約（同一心理師重排時間）</option>
+              <option value="reassign">派案（改派其他心理師）</option>
+              <option value="close">轉媒合結案</option>
+            </select>
+          </div>
+          <div className="flex gap-2">
+            <button disabled={busy} onClick={() => submit("no-show", { reason, next_action: nextAction })}
+              className="flex-1 rounded-lg bg-ink py-2 text-sm font-medium text-surface hover:bg-ink-2 disabled:opacity-50">
+              {busy ? "處理中…" : "確認未到"}
+            </button>
+            <button onClick={() => setMode(null)}
+              className="rounded-lg border border-line px-3 py-2 text-sm text-ink-3 hover:bg-surface-2">返回</button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

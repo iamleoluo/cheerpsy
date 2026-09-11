@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
+import { useQueryParams } from "@/features/shared/useQueryParams";
 
 /**
  * 預約作業（行政端）— 第一版把「機構方案報價」這條真正缺的線接上：
@@ -87,6 +88,22 @@ export default function BookingPage() {
   const [date, setDate] = useState(toLocalDateString(new Date()));
   const [startTime, setStartTime] = useState("10:00");
   const [durationMin, setDurationMin] = useState(60);
+
+  /**
+   * 診間日曆點空白格會帶著 ?date=&time=&room= 過來（rooms/page.tsx 組的網址）。
+   * 在補這段之前這三個參數**沒有任何人讀**——點了哪一格就丟了哪一格，一律
+   * 落回今天 10:00，等於那個「空白格可點直接新增預約」的定案只做了一半。
+   */
+  const query = useQueryParams();
+  useEffect(() => {
+    if (!query) return;
+    const d = query.get("date");
+    if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) setDate(d);
+    const t = query.get("time");
+    if (t && /^\d{2}:\d{2}$/.test(t)) setStartTime(t);
+    const r = query.get("room");
+    if (r && /^\d+$/.test(r)) setRoomId(r);
+  }, [query]);
 
   const [payWith, setPayWith] = useState<"self_pay" | "plan">("self_pay");
   const [selfPayAmount, setSelfPayAmount] = useState("2000");

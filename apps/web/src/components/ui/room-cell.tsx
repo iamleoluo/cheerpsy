@@ -56,6 +56,19 @@ export interface RoomCellAppointment {
   quota_label?: string | null;
   /** once / monthly / multiple。決定轉灰後那一行要說什麼。 */
   billing_cycle?: string | null;
+  /**
+   * 初診（11 §5.9）—— 這格屬於某個還沒報到的媒合案。
+   *
+   * 櫃檯要在**按下去之前**就看到，因為初診報到需要對方的身分證在手邊：
+   * 按「已到」會跳出補個資的表單，填完才會產生病歷號並把媒合案轉成正式個案。
+   * 不是初診就是 null。
+   */
+  first_visit?: {
+    referral_id: number;
+    referral_code: string;
+    /** 改期後的初診可能上次就補過身分證了，那一次就不必再問。 */
+    needs_national_id: boolean;
+  } | null;
 }
 
 type Phase = "pending" | "arrived" | "collected" | "done" | "no_show";
@@ -144,15 +157,22 @@ export function RoomCell({
         {appt.is_last_quota && phase === "pending" ? "最後一次" : label}
       </Badge>
 
-      {/* 1 · 個案 */}
+      {/* 1 · 個案。初診標記走中性——那是個案的屬性不是狀態，右上角徽章才是狀態。 */}
       <div
         className={cn(
-          "truncate pr-14 text-[11.5px] font-bold",
+          "flex items-center gap-1 truncate pr-14 text-[11.5px] font-bold",
           phase === "done" ? "text-st-muted" : "text-ink",
         )}
       >
-        {appt.is_couple && "👫 "}
-        {name ?? "—"}
+        {appt.first_visit && phase === "pending" && (
+          <span className="shrink-0 rounded-badge border border-ink px-1 py-px text-[8.5px] leading-none text-ink">
+            初診
+          </span>
+        )}
+        <span className="truncate">
+          {appt.is_couple && "👫 "}
+          {name ?? "—"}
+        </span>
       </div>
 
       {/* 2 · 心理師｜地點 */}
@@ -194,7 +214,9 @@ export function RoomCell({
           <>
             {onCheckIn && (
               <Button size="mini" variant="solid" onClick={() => onCheckIn(appt)}>
-                已到
+                {/* 初診按下去會要身分證，先在鍵上講出來，櫃檯才不會按了才發現
+                    要請對方翻皮夾（11 §5.9） */}
+                {appt.first_visit?.needs_national_id ? "已到 · 登記身分證" : "已到"}
               </Button>
             )}
             {onNoShow && (

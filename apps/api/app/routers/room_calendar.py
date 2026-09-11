@@ -30,6 +30,7 @@ from app.models.appointment_admin_task import AppointmentAdminTask
 from app.models.receipt import Receipt
 from app.models.session_record import SessionRecord
 from app.models.user import User
+from app.referral.models.referral import Referral
 from app.utils.tz import day_range_utc
 
 router = APIRouter(prefix="/room-calendar", tags=["room-calendar"])
@@ -64,6 +65,22 @@ def _settled(
 
     # 自費需收款（次結／多次結）：收款＋開據都完成。
     return bool(sr and sr.copay_collected_at) and has_receipt
+
+
+def _first_visit(referral: Referral | None, case) -> dict | None:
+    """初診格子要帶的東西（11 §5.9）。不是初診就回 None，前端據此決定按「已到」
+    時開哪一張表單。
+
+    `needs_national_id` 分開回，是因為「初診」與「還缺身分證」不是同一件事：
+    初診未到改期後個案已經存在、身分證可能上次就補過了，那一次就不必再問。
+    """
+    if not referral:
+        return None
+    return {
+        "referral_id": referral.id,
+        "referral_code": referral.referral_code,
+        "needs_national_id": not (case and case.national_id_encrypted),
+    }
 
 
 @router.get("")
@@ -125,6 +142,15 @@ def room_calendar(
         .group_by(AppointmentAdminTask.appointment_id)
         .all()
     )
+    # 初診（11 §5.9）：媒合案還停在 booked 的那一筆預約。行政要在格子上先看見
+    # 「這是初診」，按已到時才會走到需要身分證的那張表單，而不是按下去就過。
+    first_visit_by_appt: dict[int, Referral] = {
+        r.appointment_id: r
+        for r in db.query(Referral)
+        .filter(Referral.appointment_id.in_(ids), Referral.status == "booked")
+        .all()
+        if r.appointment_id
+    }
 
     cells = []
     for a in appts:
@@ -195,6 +221,8 @@ def room_calendar(
                 "quota_label": quota_label,
                 # 機構額度剩最後一次 → 整格標黃，避免收錯金額（v7 定案 ⑤）
                 "is_last_quota": bool(quota.get("is_last")),
+                # 初診：按「已到」要走身分證表單，不能直接報到（11 §5.9）
+                "first_visit": _first_visit(first_visit_by_appt.get(a.id), case),
             }
         )
 
