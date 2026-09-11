@@ -3,12 +3,13 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import extract
+from sqlalchemy import extract, func
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import RequireRole, get_current_user
 from app.database import get_db
 from app.models.session_record import SessionRecord
+from app.models.venue_rental import VenueRental
 from app.models.therapist_payout import PayoutDetail, TherapistPayout
 from app.models.user import User
 from app.services.audit import write_audit
@@ -70,6 +71,42 @@ class PayoutResponse(BaseModel):
     session_count: int = 0
     status: str
     paid_at: str | None = None
+
+
+def venue_deductions(db: Session, therapist_id: int, year: int, month: int) -> list[VenueRental]:
+    """該心理師當月要從酬勞扣回的場地費 —— 07 §8.2 / 06 P6 的督導模式 A/B。
+
+        模式 A  櫃台代收督導費、開立收據，**場地費自動 $0**（診所收的是督導費）
+                → 沒有東西要扣
+        模式 B  心理師自收督導費，**場地費照收並由酬勞回扣**
+                → 這筆要從當月酬勞扣下來
+
+    判準是 `payer`，不是 `supervision_fee_mode`：未到時付款方會改成「借用人
+    自付」（場地已經被佔住了，成本不會因為人沒來就消失），那種就不從酬勞扣。
+
+    10 §7.1 把這件事標成「部分完成：計算與場地租借的連結已建，酬勞單上的
+    扣回明細列尚未呈現」——實際查證後更嚴重：`generate_payouts` 完全沒有
+    引用 VenueRental，所以**不是明細沒顯示，是錢根本沒扣**。
+    """
+    return (
+        db.query(VenueRental)
+        .filter(
+            VenueRental.renter_therapist_id == therapist_id,
+            VenueRental.renter_kind == "private",
+            VenueRental.payer == "therapist",
+            VenueRental.status != "cancelled",
+            extract("year", func.lower(VenueRental.time_range)) == year,
+            extract("month", func.lower(VenueRental.time_range)) == month,
+        )
+        .all()
+    )
+
+
+def venue_deduction_total(db: Session, therapist_id: int, year: int, month: int) -> Decimal:
+    return sum(
+        (Decimal(str(v.amount or 0)) for v in venue_deductions(db, therapist_id, year, month)),
+        Decimal("0"),
+    )
 
 
 @router.get("", response_model=list[PayoutResponse])
@@ -137,7 +174,45 @@ def payout_details(
                 "fee_category": sr.fee_category,
                 "session_type": sr.session_type,
             })
-    return {"payout_id": payout_id, "sessions": sessions}
+    # 依 09 §4.3，酬勞單分三區呈現。前端不重新分類——這裡就分好。
+    y, m = (int(x) for x in payout.payout_month.split("-"))
+    rentals = venue_deductions(db, payout.therapist_id, y, m)
+    deductions = [
+        {
+            "rental_id": v.id,
+            "rental_no": v.rental_no,
+            "date": v.time_range.lower.date().isoformat() if v.time_range else None,
+            "purpose": v.purpose,
+            "supervision_fee_mode": v.supervision_fee_mode,
+            "amount": float(v.amount or 0),
+        }
+        for v in rentals
+    ]
+
+    commission = [s for s in sessions if s["compensation_mode"] == "commission"]
+    kickback = [s for s in sessions if s["compensation_mode"] == "kickback"]
+    other = [s for s in sessions if s["compensation_mode"] not in ("commission", "kickback")]
+
+    return {
+        "payout_id": payout_id,
+        "payout_month": payout.payout_month,
+        "status": payout.status,
+        "total_amount": float(payout.total_amount or 0),
+        # 保留原欄位給既有呼叫端；下面三區是 09 §4.3 要求的分區呈現
+        "sessions": sessions,
+        "commission_sessions": commission,
+        "kickback_sessions": kickback,
+        "other_sessions": other,
+        "venue_deductions": deductions,
+        "subtotals": {
+            "commission": round(sum(s["therapist_share"] for s in commission), 2),
+            # 回饋制是**扣項**：心理師先向機構收到全額，診所抽的那份要回繳。
+            # 混在同一張表會讓心理師誤讀成收入（09 §1.6）。
+            "kickback": round(sum(s["therapist_share"] for s in kickback), 2),
+            "other": round(sum(s["therapist_share"] for s in other), 2),
+            "venue": round(sum(d["amount"] for d in deductions), 2),
+        },
+    }
 
 
 class GeneratePayoutRequest(BaseModel):
@@ -170,8 +245,28 @@ def generate_payouts(
         by_therapist.setdefault(r.therapist_id, []).append(r)
 
     created = updated = 0
-    for tid, recs in by_therapist.items():
-        total = float(sum(payout_line_amount(r) for r in recs))
+    # 每位心理師都要算，即使當月沒有場次——只有場地費要扣的情況也得產生酬勞單
+    all_tids = set(by_therapist) | {
+        v.renter_therapist_id
+        for v in db.query(VenueRental)
+        .filter(
+            VenueRental.renter_kind == "private",
+            VenueRental.payer == "therapist",
+            VenueRental.status != "cancelled",
+            extract("year", func.lower(VenueRental.time_range)) == year,
+            extract("month", func.lower(VenueRental.time_range)) == month,
+        )
+        .all()
+        if v.renter_therapist_id
+    }
+    for tid in all_tids:
+        recs = by_therapist.get(tid, [])
+        # 場次酬勞 −（該心理師當月自付的場地費）。原本完全沒扣這一段，
+        # 等於心理師被多發了他們該付的場地費（見 venue_deductions）。
+        total = float(
+            sum(payout_line_amount(r) for r in recs)
+            - venue_deduction_total(db, tid, year, month)
+        )
 
         existing = db.query(TherapistPayout).filter(
             TherapistPayout.therapist_id == tid,

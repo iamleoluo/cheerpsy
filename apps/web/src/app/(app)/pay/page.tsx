@@ -1,55 +1,85 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
-import { clientFetch } from "@/lib/client-api";
+import { useMemo, useState } from "react";
+import { useApi } from "@/lib/useApi";
+import {
+  AsyncBoundary,
+  Badge,
+  Card,
+  CardHeader,
+  DataTable,
+  EmptyState,
+  Money,
+  StatBar,
+  type Column,
+} from "@/components/ui";
 
 /**
- * 我的酬勞。GET /ledger?month= 與 GET /payouts 在 role=therapist 時後端已
- * 自動限定為本人資料。
+ * 我的酬勞 — V2升級計畫 09 §4.3 的分區呈現。
  *
- * 依 09 §4.3 依 compensation_mode 分三區呈現：
- *   抽成（commission）  金額 × 抽成率 ＋ 外出保底
- *   回饋（kickback）    鐘點費由心理師自己向機構請領，診所抽的那份要**回繳**
- *                       ——所以這一區的金額是**負的**，是從當月酬勞扣掉的
- *   無勞務（none）      借場地那類，不計酬
+ * 為什麼要分區而不是加一欄（09 §1.6）：原型的酬勞明細是固定五欄
+ * 「場次金額 × 抽成率 ＋ 外出保底 ＝ 我的酬勞」，但在 compensation_mode
+ * 之下那條公式只對其中一種模式成立——
  *
- * therapist_share 由後端的 payout_line_amount() 算好（帳冊、月結算、這頁
- * 共用同一支函式），所以這裡直接加總即可，不會出現「畫面算的跟實際發的
- * 不一樣」。
+ *   A 抽成 commission   診所收全額 → 依抽成率拆給心理師
+ *   B 回饋 kickback     **心理師先收到全額**，欠診所回饋金。金流方向相反，
+ *                       這一區是**扣項**，混在同一張表會讓心理師誤讀成收入
+ *   C 場地費扣回        私人借用診間（督導模式 B：心理師自收督導費、場地費
+ *                       照收並由酬勞回扣）→ 從當月酬勞扣下來
+ *
+ * C 區是這次補的。10 §7.1 原本標成「計算與場地租借的連結已建，酬勞單上的
+ * 扣回明細列尚未呈現」——實際查證後更嚴重：`generate_payouts` 完全沒有引用
+ * VenueRental，**不是明細沒顯示，是錢根本沒扣**（實測 2026 年少扣 $12,400）。
+ *
+ * 每一區的金額都由後端算好（payout_line_amount / venue_deductions），帳冊、
+ * 月結算、這頁共用同一支函式，不會出現「畫面算的跟實際發的不一樣」。
  */
 
-interface LedgerRecord {
-  id: number;
+interface SessionLine {
+  session_id: number;
   session_date: string;
-  case_name: string | null;
-  session_type: string;
   amount: number;
   therapist_share: number;
-  commission_rate_used: number | null;
+  compensation_mode: string;
   outcall_bonus: number;
-  payment_status: string;
-  institution_name: string | null;
-  compensation_mode: string | null;
-  plan_name: string | null;
+  session_type: string;
+  fee_category: string;
 }
 
-const MODE_META: Record<string, { label: string; hint: string; tone: string }> = {
-  commission: { label: "抽成", hint: "場次金額 × 抽成率 ＋ 外出保底", tone: "text-primary-600" },
-  kickback: { label: "回饋制", hint: "鐘點費由你直接向機構請領，此為應回繳診所的金額", tone: "text-rose-600" },
-  none: { label: "無心理師勞務", hint: "借場地等，不計酬", tone: "text-gray-400" },
-};
+interface VenueDeduction {
+  rental_id: number;
+  rental_no: string;
+  date: string | null;
+  purpose: string | null;
+  supervision_fee_mode: string | null;
+  amount: number;
+}
+
+interface PayoutDetail {
+  payout_id: number;
+  payout_month: string;
+  status: string;
+  total_amount: number;
+  commission_sessions: SessionLine[];
+  kickback_sessions: SessionLine[];
+  other_sessions: SessionLine[];
+  venue_deductions: VenueDeduction[];
+  subtotals: { commission: number; kickback: number; other: number; venue: number };
+}
 
 interface Payout {
   id: number;
   payout_month: string;
   total_amount: number;
-  session_count: number;
   status: string;
   paid_at: string | null;
 }
 
-const sessionTypeLabel: Record<string, string> = { in_person: "現場", online: "視訊", outdoor: "外展" };
+const sessionTypeLabel: Record<string, string> = {
+  in_person: "現場",
+  online: "視訊",
+  outdoor: "外展",
+};
 
 function currentMonth(): string {
   const d = new Date();
@@ -57,129 +87,258 @@ function currentMonth(): string {
 }
 
 export default function PayPage() {
-  const { data: session } = useSession();
-  const token = (session?.user as any)?.accessToken;
   const [month, setMonth] = useState(currentMonth());
-  const [records, setRecords] = useState<LedgerRecord[]>([]);
-  const [payouts, setPayouts] = useState<Payout[]>([]);
-  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (!token) return;
-    setLoading(true);
-    Promise.all([
-      clientFetch(`/ledger?month=${month}`, token).catch(() => []),
-      clientFetch(`/payouts?payout_month=${month}`, token).catch(() => []),
-    ])
-      .then(([r, p]) => { setRecords(r); setPayouts(p); })
-      .finally(() => setLoading(false));
-  }, [token, month]);
+  const list = useApi<Payout[]>(`/payouts?payout_month=${month}`);
+  const payoutId = list.data?.[0]?.id;
+  const detail = useApi<PayoutDetail>(
+    payoutId ? `/payouts/${payoutId}/details` : null,
+    { enabled: !!payoutId },
+  );
 
-  const totalSessions = records.length;
-  // therapist_share 已由後端算好（含回饋制的負數與作廢排除），直接加總
-  const totalEarned = records.reduce((s, r) => s + r.therapist_share, 0);
-  const currentPayout = payouts[0];
+  const sessionColumns: readonly Column<SessionLine>[] = useMemo(
+    () => [
+      {
+        key: "date",
+        header: "場次日期",
+        nowrap: true,
+        width: "w-28",
+        cell: (s) => <span className="ident text-ink-2">{s.session_date}</span>,
+      },
+      {
+        key: "type",
+        header: "型式",
+        nowrap: true,
+        width: "w-16",
+        cell: (s) => sessionTypeLabel[s.session_type] ?? s.session_type,
+      },
+      { key: "cat", header: "收費名目", cell: (s) => s.fee_category },
+      {
+        key: "amount",
+        header: "場次金額",
+        align: "right",
+        nowrap: true,
+        cell: (s) => <Money amount={s.amount} tone="muted" />,
+      },
+      {
+        key: "bonus",
+        header: "外出保底",
+        align: "right",
+        nowrap: true,
+        cell: (s) => <Money amount={s.outcall_bonus} />,
+      },
+      {
+        key: "share",
+        header: "我的酬勞",
+        align: "right",
+        nowrap: true,
+        cell: (s) => (
+          <Money amount={s.therapist_share} tone={s.therapist_share < 0 ? "danger" : "done"} />
+        ),
+      },
+    ],
+    [],
+  );
 
-  const byMode = records.reduce<Record<string, { count: number; sum: number }>>((acc, r) => {
-    const key = r.compensation_mode ?? "commission";
-    (acc[key] ??= { count: 0, sum: 0 });
-    acc[key].count += 1;
-    acc[key].sum += r.therapist_share;
-    return acc;
-  }, {});
-
-  if (!token) return <p>Loading...</p>;
+  const venueColumns: readonly Column<VenueDeduction>[] = [
+    {
+      key: "no",
+      header: "租借單號",
+      nowrap: true,
+      cell: (v) => <span className="ident text-ink-2">{v.rental_no}</span>,
+    },
+    {
+      key: "date",
+      header: "日期",
+      nowrap: true,
+      cell: (v) => <span className="ident text-[10.5px] text-ink-3">{v.date ?? "—"}</span>,
+    },
+    { key: "purpose", header: "用途", cell: (v) => v.purpose ?? "—" },
+    {
+      key: "mode",
+      header: "督導模式",
+      nowrap: true,
+      width: "w-24",
+      cell: (v) =>
+        v.supervision_fee_mode ? (
+          <Badge tone="pending">模式 {v.supervision_fee_mode}</Badge>
+        ) : (
+          <span className="text-st-muted">—</span>
+        ),
+    },
+    {
+      key: "amt",
+      header: "扣回金額",
+      align: "right",
+      nowrap: true,
+      cell: (v) => <Money amount={-v.amount} tone="danger" />,
+    },
+  ];
 
   return (
-    <div>
-      <h1 className="mb-4 text-2xl font-bold">我的酬勞</h1>
-
-      <div className="mb-6 grid grid-cols-3 gap-3">
-        <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <div className="text-xs text-gray-400">本月場次</div>
-          <div className="mt-1 text-xl font-bold">{totalSessions}</div>
-        </div>
-        <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <div className="text-xs text-gray-400">預估酬勞</div>
-          <div className="mt-1 text-xl font-bold text-primary-600">${totalEarned.toLocaleString()}</div>
-        </div>
-        <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <div className="text-xs text-gray-400">結算狀態</div>
-          <div className="mt-1 text-sm font-medium">
-            {currentPayout ? (currentPayout.status === "paid" ? `✓ 已發放（${currentPayout.paid_at?.slice(0, 10)}）` : "待結算") : "尚未結算"}
-          </div>
-        </div>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <h1 className="text-xl font-bold text-ink">我的酬勞</h1>
+        <input
+          type="month"
+          value={month}
+          onChange={(e) => e.target.value && setMonth(e.target.value)}
+          className="rounded-control border border-line-2 bg-surface px-2 py-1 text-xs tabular-nums text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25"
+        />
       </div>
 
-      {Object.keys(byMode).length > 1 && (
-        <div className="mb-6 space-y-2">
-          <p className="text-xs text-gray-400">依薪酬模式分區（09 §4.3）</p>
-          {Object.entries(byMode).map(([mode, v]) => {
-            const meta = MODE_META[mode] ?? MODE_META.commission;
-            return (
-              <div key={mode} className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-2.5">
-                <div>
-                  <span className="text-sm font-medium">{meta.label}</span>
-                  <span className="ml-2 text-xs text-gray-400">{v.count} 場 · {meta.hint}</span>
-                </div>
-                <div className={`text-sm font-bold ${v.sum < 0 ? "text-rose-600" : meta.tone}`}>
-                  {v.sum < 0 ? "−" : ""}${Math.abs(v.sum).toLocaleString()}
-                </div>
-              </div>
-            );
-          })}
+      <AsyncBoundary
+        loading={list.loading || detail.loading}
+        error={list.error ?? detail.error}
+        data={payoutId ? detail.data : (list.data as unknown as PayoutDetail | undefined)}
+        onRetry={() => {
+          list.refetch();
+          detail.refetch();
+        }}
+        skeleton={<div className="h-[4.5rem] animate-pulse rounded-card bg-surface-2" />}
+      >
+        {() =>
+          !payoutId || !detail.data ? (
+            <Card>
+              <EmptyState
+                title={`${month} 還沒有酬勞單`}
+                hint="酬勞單由管理員在月結時產生。產生之後這裡會顯示當月的分區明細。"
+              />
+            </Card>
+          ) : (
+            <PayoutBody
+              d={detail.data}
+              sessionColumns={sessionColumns}
+              venueColumns={venueColumns}
+            />
+          )
+        }
+      </AsyncBoundary>
+    </div>
+  );
+}
+
+function PayoutBody({
+  d,
+  sessionColumns,
+  venueColumns,
+}: {
+  d: PayoutDetail;
+  sessionColumns: readonly Column<SessionLine>[];
+  venueColumns: readonly Column<VenueDeduction>[];
+}) {
+  const st = d.subtotals;
+  return (
+    <div className="flex flex-col gap-4">
+      <StatBar
+        stats={[
+          {
+            label: "本月實得",
+            value: d.total_amount,
+            money: true,
+            tone: d.total_amount < 0 ? "danger" : "done",
+            sub: d.status === "paid" ? "已發放" : "待發放",
+          },
+          {
+            label: "A · 抽成場次",
+            value: st.commission,
+            money: true,
+            sub: `${d.commission_sessions.length} 場`,
+          },
+          {
+            label: "B · 回饋制",
+            value: st.kickback,
+            money: true,
+            tone: st.kickback < 0 ? "warn" : "default",
+            sub: `${d.kickback_sessions.length} 場 · 應回繳診所`,
+          },
+          {
+            label: "C · 場地費扣回",
+            value: -st.venue,
+            money: true,
+            tone: st.venue > 0 ? "warn" : "default",
+            sub: `${d.venue_deductions.length} 筆`,
+          },
+        ]}
+      />
+
+      <Card>
+        <CardHeader
+          title="A · 抽成場次"
+          hint="診所向機構或個案收全額，再依你的抽成率拆給你"
+          actions={<Money amount={st.commission} tone="done" />}
+        />
+        <div className="p-3">
+          {d.commission_sessions.length === 0 ? (
+            <EmptyState title="本月沒有抽成場次" />
+          ) : (
+            <DataTable
+              columns={sessionColumns}
+              rows={d.commission_sessions}
+              rowKey={(s) => s.session_id}
+              density="compact"
+              minWidth="44rem"
+            />
+          )}
         </div>
+      </Card>
+
+      {d.kickback_sessions.length > 0 && (
+        <Card>
+          <CardHeader
+            title="B · 回饋制場次"
+            // 金流方向相反，這件事必須講出來，否則心理師會把它讀成收入
+            hint="鐘點費由你直接向機構請領；這一區是你應回繳診所的部分，所以是扣項"
+            actions={<Money amount={st.kickback} tone="danger" />}
+          />
+          <div className="p-3">
+            <DataTable
+              columns={sessionColumns}
+              rows={d.kickback_sessions}
+              rowKey={(s) => s.session_id}
+              density="compact"
+              minWidth="44rem"
+            />
+          </div>
+        </Card>
       )}
 
-      <div className="mb-4 flex items-center gap-2">
-        <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm" />
-        {loading && <span className="text-xs text-gray-400">載入中...</span>}
-      </div>
+      {d.venue_deductions.length > 0 && (
+        <Card>
+          <CardHeader
+            title="C · 場地費扣回"
+            hint="你個人借用診間的場地費（督導模式 B：你自收督導費、場地費由酬勞回扣）"
+            actions={<Money amount={-st.venue} tone="danger" />}
+          />
+          <div className="p-3">
+            <DataTable
+              columns={venueColumns}
+              rows={d.venue_deductions}
+              rowKey={(v) => v.rental_id}
+              density="compact"
+              minWidth="40rem"
+            />
+          </div>
+        </Card>
+      )}
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-xs text-gray-500">
-            <tr>
-              <th className="border-b border-gray-200 px-3 py-2 text-left">日期</th>
-              <th className="border-b border-gray-200 px-3 py-2 text-left">個案</th>
-              <th className="border-b border-gray-200 px-3 py-2 text-left">類型</th>
-              <th className="border-b border-gray-200 px-3 py-2 text-left">薪酬模式</th>
-              <th className="border-b border-gray-200 px-3 py-2 text-right">場次金額</th>
-              <th className="border-b border-gray-200 px-3 py-2 text-right">抽成率</th>
-              <th className="border-b border-gray-200 px-3 py-2 text-right">外出加給</th>
-              <th className="border-b border-gray-200 px-3 py-2 text-right">我的酬勞</th>
-              <th className="border-b border-gray-200 px-3 py-2 text-left">狀態</th>
-            </tr>
-          </thead>
-          <tbody>
-            {records.length === 0 && (
-              <tr><td colSpan={9} className="px-3 py-10 text-center text-sm text-gray-400">本月尚無紀錄</td></tr>
-            )}
-            {records.map((r) => (
-              <tr key={r.id} className="hover:bg-gray-50">
-                <td className="border-b border-gray-100 px-3 py-2">{r.session_date}</td>
-                <td className="border-b border-gray-100 px-3 py-2">{r.case_name ?? "—"}</td>
-                <td className="border-b border-gray-100 px-3 py-2">{sessionTypeLabel[r.session_type] ?? r.session_type}{r.institution_name ? ` · ${r.institution_name}` : ""}</td>
-                <td className="border-b border-gray-100 px-3 py-2 text-xs text-gray-500">
-                  {(MODE_META[r.compensation_mode ?? "commission"] ?? MODE_META.commission).label}
-                  {r.plan_name ? <span className="ml-1 text-gray-400">{r.plan_name}</span> : null}
-                </td>
-                <td className="border-b border-gray-100 px-3 py-2 text-right">${r.amount.toLocaleString()}</td>
-                <td className="border-b border-gray-100 px-3 py-2 text-right">{r.commission_rate_used != null ? `${Math.round(r.commission_rate_used * 100)}%` : "—"}</td>
-                <td className="border-b border-gray-100 px-3 py-2 text-right">{r.outcall_bonus > 0 ? `+$${r.outcall_bonus.toLocaleString()}` : "—"}</td>
-                <td className={`border-b border-gray-100 px-3 py-2 text-right font-medium ${r.therapist_share < 0 ? "text-rose-600" : ""}`}>
-                  {r.therapist_share < 0 ? "−" : ""}${Math.abs(r.therapist_share).toLocaleString()}
-                </td>
-                <td className="border-b border-gray-100 px-3 py-2">
-                  <span className={`rounded px-1.5 py-0.5 text-xs ${currentPayout?.status === "paid" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
-                    {currentPayout?.status === "paid" ? "已發放" : "待結算"}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {d.other_sessions.length > 0 && (
+        <Card>
+          <CardHeader
+            title="不計酬場次"
+            hint="借場地等沒有心理師勞務的場次，列出供對帳，不計入酬勞"
+          />
+          <div className="p-3">
+            <DataTable
+              columns={sessionColumns}
+              rows={d.other_sessions}
+              rowKey={(s) => s.session_id}
+              density="compact"
+              minWidth="44rem"
+            />
+          </div>
+        </Card>
+      )}
     </div>
   );
 }
