@@ -120,6 +120,14 @@ CHECKS: list[Cov] = [
     Cov("appt_leave", "預約", "個案請假",
         "P4 的請假流程，與「未到」是不同的東西。",
         20, "SELECT count(*) FROM appointments WHERE leave_at IS NOT NULL"),
+    Cov("appt_today_pending", "預約", "今天還沒報到的格子",
+        "櫃檯三步驟（已到 → 收款 → 開據）是整個系統最核心的操作，而它只能在"
+        "**今天、還沒報到**的格子上示範。生成器原本把今天整天都處理完，於是"
+        "打開日曆 59 格全是已完成——最核心的流程沒有任何一格可以點。",
+        5, f"""
+        SELECT count(*) FROM appointments a
+         WHERE a.status='booked' AND a.check_in_status='pending'
+           AND (lower(a.time_range) {TPE})::date = (now() {TPE})::date"""),
     Cov("appt_first_visit_pending", "預約", "待報到的初診",
         "媒合案停在 booked、預約還沒報到。**demo 初診報到時要點得到格子**，"
         "現在是 0 —— 那個剛做好的「已到·補個資」按鈕在畫面上根本找不到。",

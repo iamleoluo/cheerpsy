@@ -121,6 +121,15 @@ LIFECYCLE = {
     "initial": 4,
 }
 
+#: 今天的資料以這個鐘點為界：之前的已經處理完，之後的維持待報到。
+#:
+#: 用固定鐘點而不是真實時鐘，是因為**展示可能在任何時間發生**。照真實時鐘跑的話，
+#: 生成器在晚上跑就會把今天整天都處理完（實測 20:48 跑 → 今天 64 格全部已完成、
+#: 0 筆待報到），櫃檯三步驟在最重要的那一頁上一格都點不到。
+#: 14:00 對應的是「行政在下午打開日曆」——上午做完了、下午還沒到，
+#: 那正是這個畫面最常被使用的時刻。
+TODAY_CUTOFF_HOUR = 14
+
 BUSINESS_HOURS = list(range(8, 21))   # 08:00–21:00 起始，最晚 21:00–22:00 結束
 SESSION_MINUTES = 60
 COUPLE_MINUTES = 90
@@ -628,8 +637,17 @@ class Generator:
         return int(entry["therapist"].base_price or 1800)
 
     def _resolve_attendance(self, appt: Appointment, entry: dict, start: datetime) -> None:
-        """過去的預約要有結果；未來的維持待報到。"""
+        """過去的預約要有結果；未來的維持待報到。
+
+        **今天以「現在」為界，不是整天一次處理完。** 原本只看日期，於是今天的
+        59 格全部是已完成／已到，一筆待報到都沒有——櫃檯三步驟（已到 → 收款
+        → 開據）在今天的畫面上沒有任何一格可以點，等於最核心的操作沒辦法示範。
+        真實的診所在中午打開日曆，看到的是「上午做完了、下午還沒到」。
+        """
         if start.date() > self.today:
+            self.stats["pending"] += 1
+            return
+        if start.date() == self.today and start.astimezone(TAIPEI).hour >= TODAY_CUTOFF_HOUR:
             self.stats["pending"] += 1
             return
 
