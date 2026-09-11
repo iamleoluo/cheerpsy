@@ -461,6 +461,31 @@ class InstitutionFundingProvider:
                     pool.consumed_total = (pool.consumed_total or 0) + 1
         db.flush()
 
+    def resync_consumed(self, db: Session, appointment_id: int, previous_payable) -> None:
+        """加時／縮短改了金額之後，把差額補進合約層級額度池。
+
+        只處理**金額型**的池子：次數型扣的是「一次」，時長變了還是一次。
+        也只處理**已經報到**的預約——沒 consume 過就沒有舊值要修正，
+        報到時自然會按新金額扣。
+        """
+        appt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+        if not appt or appt.check_in_status != "arrived" or not appt.plan_id:
+            return
+        plan = db.query(InstPlan).filter(InstPlan.id == appt.plan_id).first()
+        if plan is None or plan.quota_pool_id is None:
+            return
+        pool = db.query(InstQuotaPool).filter(InstQuotaPool.id == plan.quota_pool_id).first()
+        if pool is None or pool.unit != "amount":
+            return
+
+        delta = Decimal(str(appt.institution_payable or 0)) - Decimal(str(previous_payable or 0))
+        if delta == 0:
+            return
+        pool.consumed_total = max(
+            Decimal("0"), Decimal(str(pool.consumed_total or 0)) + delta
+        )
+        db.flush()
+
     def unconsume(self, db: Session, appointment_id: int) -> None:
         """consume() 的反向操作：帳冊紀錄作廢時呼叫。已使用 → 已預留。
 

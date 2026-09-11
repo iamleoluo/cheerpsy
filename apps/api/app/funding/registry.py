@@ -50,6 +50,9 @@ class NullProvider:
     def unconsume(self, db: Session, appointment_id: int) -> None:
         raise LookupError("No FundingPlanProvider registered.")
 
+    def resync_consumed(self, db: Session, appointment_id: int, previous_payable) -> None:
+        raise LookupError("No FundingPlanProvider registered.")
+
     def close_case_enrollments(self, db: Session, case_id: int) -> None:
         return None
 

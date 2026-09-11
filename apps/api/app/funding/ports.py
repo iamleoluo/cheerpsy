@@ -74,6 +74,23 @@ class FundingPlanProvider(Protocol):
         """
         ...
 
+    def resync_consumed(self, db: Session, appointment_id: int, previous_payable) -> None:
+        """機構應付金額**事後變了**時，把差額補進／退出合約層級額度池。
+
+        會走到這裡的只有加時／縮短（01 §C1）：時間變了、金額跟著重算，
+        但額度池在報到當下就已經按舊金額扣過了。不補這一刀的話，池子會
+        永遠少扣（或多扣）那個差額，而且**金額型的池子看不出來**——
+        它只有一個 consumed_total，偏差就這樣累積下去。
+
+        實測：國軍金額池上限 $149,000，一筆 60 分鐘加時成 75 分鐘的場次
+        把應付從 $1,200 改成 $1,600，池子仍記著 $1,200，於是池子以為還有
+        額度、實際上已經超支 $200。資料量小的時候完全看不到。
+
+        `previous_payable` 由呼叫端在改動**之前**讀下來——provider 這一側
+        已經看不到舊值了。尚未報到（還沒 consume）的預約不需要處理。
+        """
+        ...
+
     def unconsume(self, db: Session, appointment_id: int) -> None:
         """帳冊紀錄作廢時呼叫。已使用 → 已預留，並退回合約層級額度池。
 

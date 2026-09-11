@@ -1137,6 +1137,9 @@ def adjust_duration(
         "time_range": str(appt.time_range), "amount": float(appt.amount),
         "actual_start": appt.actual_start, "actual_end": appt.actual_end,
     }
+    # 改動前先記下機構應付：額度池在報到當下就按這個金額扣過了，等一下
+    # 重算完要把差額補回去（見下方 resync_consumed）。provider 那一側看不到舊值。
+    payable_before = appt.institution_payable
     old_minutes = 60
     if appt.time_range and appt.time_range.upper and appt.time_range.lower:
         old_minutes = max(1, int((appt.time_range.upper - appt.time_range.lower).total_seconds() // 60))
@@ -1166,6 +1169,13 @@ def adjust_duration(
             appt.commissionable_base = (base_per_min * Decimal(minutes)).quantize(Decimal("0.01"))
 
     _flush_with_conflict_guard(db)
+
+    # 金額變了 → 合約層級額度池要跟著調整。漏掉這一刀的話，金額型的池子會
+    # 永遠少扣（或多扣）那個差額，而且它只有一個 consumed_total，看不出來。
+    # 實測：國軍池上限 $149,000，一筆 60→75 分鐘的加時把應付從 $1,200 改成
+    # $1,600，池子仍記著 $1,200，於是池子以為還有額度、實際上已超支 $200。
+    if appt.plan_id and appt.institution_payable != payable_before:
+        get_funding_provider().resync_consumed(db, appt.id, payable_before)
 
     # 帳冊已存在（已報到）就同步金額與日期，否則日報表會跟預約對不起來
     if sr:

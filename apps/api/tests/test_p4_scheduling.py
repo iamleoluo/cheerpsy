@@ -152,6 +152,48 @@ class TestAdjustDuration:
         db.refresh(sr)
         assert float(sr.amount) == 900.0, "帳冊金額要跟著改，否則日報表跟預約對不起來"
 
+    def test_amount_pool_follows_the_adjusted_amount(self, db, http_db):
+        """加時改了金額，**合約層級的金額池要跟著調整**。
+
+        這是資料量放大之後才露出來的：國軍金額池上限 $149,000，一筆
+        60 → 75 分鐘的加時把機構應付從 $1,200 改成 $1,600，但池子仍記著
+        $1,200——於是池子以為還有額度、實際上已經超支 $200。
+
+        金額型的池子只有一個 consumed_total，這種偏差**在畫面上完全看不出來**，
+        只有在池子接近上限時才會以「超收」的形式浮現。小資料集永遠碰不到。
+        """
+        from app.institution.models.quota_pool import InstQuotaPool
+
+        ctx = _seed(db)
+        pool = InstQuotaPool(contract_id=ctx["plan"].contract_id, name="加時測試金額池",
+                             unit="amount", total_limit=Decimal("100000"))
+        db.add(pool)
+        db.flush()
+        ctx["plan"].quota_pool_id = pool.id
+        db.commit()
+
+        appt, start, _ = _book(ctx, hours_from_now=-3)
+        client.put(f"/appointments/{appt['id']}/check-in", headers=ctx["admin_h"], json={"status": "arrived"})
+        db.refresh(pool)
+        consumed_before = Decimal(str(pool.consumed_total or 0))
+        assert consumed_before > 0, "報到時就該扣池子，否則這條測不到東西"
+
+        # 60 → 90 分鐘：金額變 1.5 倍，個案自付固定，差額由機構吸收
+        r = client.put(f"/appointments/{appt['id']}/adjust-duration", headers=ctx["admin_h"], json={
+            "actual_start": start.isoformat(),
+            "actual_end": (start + timedelta(minutes=90)).isoformat(),
+        })
+        assert r.status_code == 200, r.text
+
+        appt_row = db.query(Appointment).filter(Appointment.id == appt["id"]).first()
+        db.refresh(appt_row)
+        db.refresh(pool)
+        assert Decimal(str(pool.consumed_total)) == Decimal(str(appt_row.institution_payable)), (
+            "池子扣的金額必須等於調整後的機構應付；"
+            f"池子 {pool.consumed_total} vs 應付 {appt_row.institution_payable}"
+        )
+        assert Decimal(str(pool.consumed_total)) > consumed_before, "加時之後池子應該扣更多"
+
 
 class TestVideoLink:
     def test_therapist_sets_link_admin_forwards(self, db, http_db):
