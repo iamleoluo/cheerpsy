@@ -1,0 +1,530 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>15 AI 開發與驗證的工作流程回顧 — CheerPsy V2</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+ --bg:#f6f7f9; --panel:#fff; --ink:#111827; --ink2:#374151; --mut:#6b7280; --mut2:#9ca3af;
+ --line:#e5e7eb; --line2:#d1d5db;
+ --p50:#f5f3ff; --p100:#ede9fe; --p200:#ddd6fe; --p500:#8b5cf6; --p600:#7c3aed; --p700:#6d28d9;
+ --blue:#2563eb; --blue-bg:#eff6ff; --green:#16a34a; --green-bg:#f0fdf4;
+ --amber:#d97706; --amber-bg:#fffbeb; --red:#dc2626; --red-bg:#fef2f2;
+ --sky:#0891b2; --sky-bg:#ecfeff; --rose:#e11d48; --rose-bg:#fff1f2;
+ --code:#f3f4f6;
+}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);
+ font:14px/1.75 "Noto Sans TC","PingFang TC","Microsoft JhengHei",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+ -webkit-font-smoothing:antialiased}
+.wrap{max-width:1220px;margin:0 auto;padding:0 20px 90px}
+
+/* ---- header ---- */
+.hd{background:linear-gradient(135deg,#4c1d95,#6d28d9 55%,#7c3aed);color:#fff;padding:30px 0 26px;margin-bottom:26px}
+.hd .wrap{padding-bottom:0}
+.hd .kick{font-size:12px;letter-spacing:.16em;text-transform:uppercase;opacity:.72;font-weight:700}
+.hd h1{font-size:27px;font-weight:800;margin:7px 0 8px;letter-spacing:-.01em}
+.hd p{opacity:.9;font-size:13.5px;max-width:860px}
+.hd .meta{margin-top:14px;display:flex;flex-wrap:wrap;gap:8px}
+.hd .meta span{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.22);
+ border-radius:999px;padding:3px 11px;font-size:11.5px;font-weight:600}
+
+/* ---- layout ---- */
+.cols{display:grid;grid-template-columns:220px 1fr;gap:28px;align-items:start}
+@media(max-width:1000px){.cols{grid-template-columns:1fr}.toc{position:static!important;max-height:none!important}}
+.toc{position:sticky;top:18px;background:var(--panel);border:1px solid var(--line);border-radius:12px;
+ padding:14px 12px;max-height:calc(100vh - 40px);overflow:auto;font-size:12.5px}
+.toc b{display:block;font-size:11px;letter-spacing:.1em;color:var(--mut2);margin:0 0 8px 6px;text-transform:uppercase}
+.toc a{display:block;color:var(--ink2);text-decoration:none;padding:5px 8px;border-radius:7px;line-height:1.45}
+.toc a:hover{background:var(--p50);color:var(--p700)}
+.toc a.sub{padding-left:20px;font-size:12px;color:var(--mut)}
+
+/* ---- sections ---- */
+section{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px 26px;margin-bottom:20px;
+ scroll-margin-top:16px}
+h2{font-size:19px;font-weight:800;letter-spacing:-.01em;padding-bottom:11px;margin-bottom:16px;
+ border-bottom:2px solid var(--p100);display:flex;align-items:center;gap:9px}
+h2 .num{background:var(--p600);color:#fff;font-size:12px;width:26px;height:26px;border-radius:8px;
+ display:inline-flex;align-items:center;justify-content:center;font-weight:800;flex:none}
+h3{font-size:15px;font-weight:700;margin:24px 0 10px;color:var(--p700);
+ padding-left:10px;border-left:3px solid var(--p500)}
+h4{font-size:13.5px;font-weight:700;margin:16px 0 7px;color:var(--ink2)}
+p{margin:9px 0;color:var(--ink2)}
+ul,ol{margin:9px 0 9px 22px;color:var(--ink2)}
+li{margin:4px 0}
+a{color:var(--p700)}
+
+/* ---- tables ---- */
+.tw{overflow-x:auto;margin:13px 0;border:1px solid var(--line);border-radius:10px}
+table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:560px;background:#fff}
+th{background:#fafafa;text-align:left;font-weight:700;color:var(--mut);font-size:11px;
+ letter-spacing:.05em;padding:9px 11px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 11px;border-bottom:1px solid #f1f2f4;vertical-align:top;line-height:1.65}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:#fcfcfd}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+td.c,th.c{text-align:center}
+td.w{white-space:nowrap}
+
+/* ---- code / mono ---- */
+code,.mono{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:11.8px}
+code{background:var(--code);padding:1.5px 5px;border-radius:4px;color:#9333ea;word-break:break-word}
+pre{background:#1e1b2e;color:#e8e5f5;padding:14px 16px;border-radius:10px;overflow-x:auto;
+ font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:11.8px;line-height:1.7;margin:12px 0}
+pre .c{color:#8b83a8}
+pre .k{color:#c4b5fd}
+pre .s{color:#86efac}
+
+/* ---- callouts ---- */
+.note{border-radius:9px;padding:11px 14px;margin:12px 0;font-size:12.8px;line-height:1.7;
+ border:1px solid var(--line);background:#fafafa;color:var(--ink2)}
+.note b{color:var(--ink)}
+.note.blue{background:var(--blue-bg);border-color:#bfdbfe;color:#1e40af}
+.note.green{background:var(--green-bg);border-color:#bbf7d0;color:#15803d}
+.note.amber{background:var(--amber-bg);border-color:#fde68a;color:#92400e}
+.note.red{background:var(--red-bg);border-color:#fecaca;color:#991b1b}
+.note.purple{background:var(--p50);border-color:var(--p200);color:var(--p700)}
+.note .t{font-weight:800;display:block;margin-bottom:3px}
+
+/* ---- tags ---- */
+.tag{display:inline-block;font-size:10.5px;font-weight:700;padding:1.5px 7px;border-radius:5px;
+ border:1px solid transparent;white-space:nowrap;line-height:1.6}
+.t-p{background:var(--p100);color:var(--p700);border-color:var(--p200)}
+.t-b{background:var(--blue-bg);color:var(--blue);border-color:#bfdbfe}
+.t-g{background:var(--green-bg);color:var(--green);border-color:#bbf7d0}
+.t-a{background:var(--amber-bg);color:var(--amber);border-color:#fde68a}
+.t-r{background:var(--red-bg);color:var(--red);border-color:#fecaca}
+.t-s{background:var(--sky-bg);color:var(--sky);border-color:#a5f3fc}
+.t-x{background:#f3f4f6;color:var(--mut);border-color:var(--line2)}
+
+/* ---- checklist ---- */
+.ck{list-style:none;margin:10px 0;padding:0}
+.ck li{display:flex;gap:10px;align-items:flex-start;padding:8px 11px;border:1px solid var(--line);
+ border-radius:8px;margin-bottom:6px;background:#fff;cursor:pointer;transition:.12s;font-size:12.8px}
+.ck li:hover{border-color:var(--p200);background:var(--p50)}
+.ck li .box{width:16px;height:16px;border:2px solid var(--line2);border-radius:4px;flex:none;margin-top:3px;
+ display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;transition:.12s}
+.ck li.on{background:#fafafa;border-color:var(--line)}
+.ck li.on .box{background:var(--green);border-color:var(--green)}
+.ck li.on .box:after{content:"✓"}
+.ck li.on .txt{color:var(--mut2);text-decoration:line-through}
+.ck .txt{flex:1;color:var(--ink2);line-height:1.65}
+.ck .src{font-size:10.5px;color:var(--mut2);white-space:nowrap;margin-left:auto;padding-left:8px}
+
+/* ---- misc ---- */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media(max-width:820px){.grid2,.grid3{grid-template-columns:1fr}}
+.card{border:1px solid var(--line);border-radius:11px;padding:14px 16px;background:#fff}
+.card .h{font-weight:800;font-size:13px;margin-bottom:6px;display:flex;align-items:center;gap:7px}
+.kpi{border:1px solid var(--line);border-radius:11px;padding:13px 15px;background:#fff}
+.kpi .l{font-size:11px;color:var(--mut);font-weight:700;letter-spacing:.04em}
+.kpi .v{font-size:24px;font-weight:800;margin:2px 0;letter-spacing:-.02em}
+.kpi .s{font-size:11.5px;color:var(--mut2)}
+hr{border:none;border-top:1px solid var(--line);margin:22px 0}
+.foot{text-align:center;color:var(--mut2);font-size:11.5px;padding:26px 0 0}
+.arrow{color:var(--p600);font-weight:800}
+.del{color:var(--mut2);text-decoration:line-through}
+.new{color:var(--green);font-weight:700}
+@media print{
+ body{background:#fff}.toc{display:none}.cols{grid-template-columns:1fr}
+ section{break-inside:avoid;border:none;padding:0 0 18px}
+ .hd{background:#4c1d95!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+
+/* ---- interactive prototype (04/05 Part 2) ---- */
+@keyframes flashHi{0%{box-shadow:0 0 0 3px var(--p500)}100%{box-shadow:0 0 0 3px transparent}}
+tr.flash td:first-child{position:relative}
+tr.flash{background:var(--p50)!important;animation:flashHi 2.4s ease-out}
+.proto{background:#fbfbfc;border:1px solid var(--line);border-radius:12px;padding:16px;margin:14px 0}
+.proto .pt{font-size:11px;font-weight:800;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;margin-bottom:10px}
+.pgrid{display:grid;border:1px solid var(--line2);border-radius:8px;overflow:hidden;font-size:10.5px;background:#fff}
+.pgrid .prow{display:grid;grid-template-columns:52px repeat(var(--cols,5),1fr);border-top:1px solid #eee}
+.pgrid .prow:first-child{border-top:none}
+.pgrid .ph{background:#fafafa;font-weight:700;color:var(--mut);padding:6px 4px;text-align:center;border-right:1px solid #eee}
+.pgrid .pt0{padding:5px 4px;color:var(--mut2);text-align:center;border-right:1px solid #eee;font-variant-numeric:tabular-nums}
+.pgrid .pc{border-right:1px solid #f2f2f2;min-height:34px;padding:2px}
+.pgrid .pc:last-child{border-right:none}
+.hotspot{display:block;height:100%;border-radius:5px;padding:3px 5px;cursor:pointer;transition:.12s;font-size:9.5px;line-height:1.3;border:1px solid transparent}
+.hotspot:hover{outline:2px solid var(--p500);outline-offset:-1px;filter:brightness(.97)}
+.hotspot b{display:block;font-size:10px}
+.hs-self{background:var(--blue-bg);border-color:#bfdbfe;color:#1e3a8a}
+.hs-inst{background:var(--amber-bg);border-color:#fde68a;color:#78350f}
+.hs-no{background:var(--red-bg);border-color:#fecaca;color:#7f1d1d}
+.hs-first{background:#fef9c3;border-color:#fde047;color:#713f12}
+.hs-couple{background:var(--p50);border-color:var(--p200);color:var(--p700)}
+.hs-done{background:#f3f4f6;border-color:#e5e7eb;color:var(--mut2)}
+.hs-empty{border:1px dashed #e5e7eb;color:var(--mut2);display:flex;align-items:center;justify-content:center;font-size:14px}
+.hs-empty:hover{background:var(--p50);border-color:var(--p300,var(--p500))}
+.phint{font-size:11px;color:var(--mut);margin-top:9px;padding-top:9px;border-top:1px dashed var(--line)}
+.mockform{display:grid;gap:8px;font-size:11.5px}
+.mockform label{display:block}
+.mockform .lb{font-size:10.5px;color:var(--mut);font-weight:700;margin-bottom:2px;display:block}
+.mockform .fake{border:1px solid var(--line2);border-radius:6px;padding:6px 9px;background:#fff;cursor:pointer;color:var(--ink2)}
+.mockform .fake:hover{border-color:var(--p500);background:var(--p50)}
+.pbadge{display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;margin-bottom:2px}
+</style>
+</head>
+<body data-doc="15_AI開發與驗證的工作流程回顧">
+<header class="hd"><div class="wrap">
+  <div class="kick">CheerPsy V2 · 慈恩心理治療所</div>
+  <h1>AI 開發與驗證的工作流程回顧</h1>
+  <p>這份不是在講系統做了什麼，是在講<b>這套系統是怎麼被做出來、怎麼被驗證的</b>——從修改計劃書、開發、初步驗證、生成假資料、到用假資料反過頭來抓 bug，這一整個迴圈是怎麼一步一步建構起來的。重點放在兩件事：<b>人是怎麼替 AI 佈置 context 的</b>，以及 <b>Claude Code 與 Opus 5 的哪些能力真的被用上了</b>。不談技術細節。</p>
+  <div class="meta"><span>2026-09-08 → 09-12</span><span>50 個 commit</span><span>測試 92 → 251</span><span>不變量 18 → 25</span><span>覆蓋 0 → 76 條</span></div>
+</div></header>
+<div class="wrap">
+<div class="cols">
+<nav class="toc" id="toc"></nav>
+<main>
+
+<section id="loop">
+<h2><span class="num">0</span>一張圖：資料迭代迴圈</h2>
+
+<p>整個工作流程最後長成一個迴圈。先把它畫出來，後面每一節都是在講這個迴圈的某一段是怎麼長出來的。</p>
+
+<div class="tw"><table>
+<thead><tr><th style="width:44px" class="c">#</th><th style="width:170px">環節</th><th style="width:200px">產出物</th><th>回答的問題</th></tr></thead>
+<tbody>
+<tr><td class="c">①</td><td><b>計劃書</b></td><td>doc 00–13</td><td>系統應該是什麼樣子？哪些事已經裁示過？</td></tr>
+<tr><td class="c">②</td><td><b>程式碼</b></td><td>後端 17.6k 行、前端 21.7k 行</td><td>照計劃書做出來</td></tr>
+<tr><td class="c">③</td><td><b>單元／整合測試</b></td><td>251 條 pytest</td><td>每一支函式、每一條端點的行為對不對？</td></tr>
+<tr><td class="c">④</td><td><b>跨表不變量</b></td><td>25 條 SQL 集合斷言</td><td>整個資料集加起來<b>對不對得起來</b>？（額度恆等式、酬勞加總、收據對應）</td></tr>
+<tr><td class="c">⑤</td><td><b>假資料生成器</b></td><td>1,140 個案、19,279 筆預約、一整年</td><td>把系統填滿到像一間真的診所</td></tr>
+<tr><td class="c">⑥</td><td><b>覆蓋率檢查器</b></td><td>76 條分支門檻</td><td>假資料<b>有沒有把每條規則都走到</b>？</td></tr>
+<tr><td class="c">⑦</td><td><b>瀏覽器實機走查</b></td><td>逐頁點、逐格點</td><td>真的有資料的畫面長什麼樣、操作順不順？</td></tr>
+<tr><td class="c">⑧</td><td><b>回頭修</b></td><td>修程式、修文件、修生成器、修檢查器本身</td><td>抓到的問題是哪一層的錯？</td></tr>
+</tbody></table></div>
+
+<div class="note purple"><span class="t">迴圈的核心一句話</span>
+③ 檢查<b>函式</b>對不對、④ 檢查<b>資料</b>對不對、⑥ 檢查<b>規則有沒有被走到</b>。
+三個問的問題完全不同，缺任何一個都會漏掉一整類 bug。這三層是<b>依序長出來的</b>，
+每一層都是因為前一層抓不到某種問題才被加上去的。</div>
+</section>
+
+<section id="timeline">
+<h2><span class="num">1</span>時間軸總覽</h2>
+
+<div class="tw"><table>
+<thead><tr><th style="width:90px">日期</th><th style="width:140px">階段</th><th>做了什麼</th><th style="width:210px">關鍵轉折</th></tr></thead>
+<tbody>
+<tr><td>09-08 以前</td><td><span class="tag t-x">前置</span></td><td>計劃書 00–10 已完成；後端 P0–P6 已實作；92 條測試、18 條不變量、第一版假資料生成器</td><td>這是起點的 context</td></tr>
+<tr><td>09-10</td><td><span class="tag t-p">規劃</span></td><td>使用者要求重新架構前端。寫出 doc 11 第一版</td><td>——</td></tr>
+<tr><td>09-10</td><td><span class="tag t-b">開發</span></td><td>P0 設計 token → P1 元件庫與資料層 → P2 三頁改寫</td><td>邊做邊抓到 2 個 bug（帳冊 GET 寫資料、收據號印錯）</td></tr>
+<tr><td>09-11 上午</td><td><span class="tag t-r">修正規劃</span></td><td>使用者問「你讀過 07–10 嗎？」→ 沒有 → doc 11 <b>整份重寫</b></td><td><b>轉折 ①</b>：文件早就寫了、動手前沒讀</td></tr>
+<tr><td>09-11</td><td><span class="tag t-b">開發</span></td><td>依 09 §6 九步驟逐步完成；色階債務 2,178 → 0；初診報到搬到診間日曆；費率規則編輯器</td><td>再抓到 4 個 bug（場地費沒扣、代號補不了、初診閘門、表單欄位對不齊）</td></tr>
+<tr><td>09-11</td><td><span class="tag t-p">盤點</span></td><td>doc 12 進度盤點與回顧；建立 CLAUDE.md</td><td><b>轉折 ②</b>：使用者要求文件進資料夾，不要 artifact</td></tr>
+<tr><td>09-11</td><td><span class="tag t-r">重新定序</span></td><td>使用者：「診所要看到實際功能才給得出意見」→ doc 13 假資料改版規劃</td><td><b>轉折 ③</b>：先做出來、再讓人指著改</td></tr>
+<tr><td>09-11</td><td><span class="tag t-g">資料迴圈</span></td><td>D1 覆蓋率檢查器（先寫判準）→ D2 刪舊頁 → D3 生成器改版、全量重跑 → D4 效能</td><td>覆蓋 37 條不足 → 全綠；再抓到 <b>5 個 bug</b></td></tr>
+<tr><td>09-11 晚</td><td><span class="tag t-p">交付</span></td><td>doc 14 給診所的手冊；網頁操作說明整份重寫</td><td>發現舊說明在教一個已移除、且曾算錯錢的模型</td></tr>
+<tr><td>09-12</td><td><span class="tag t-g">收尾</span></td><td>build 驗證；覆蓋率抓到一個<b>只有時間過去才顯現</b>的錯；推送分支</td><td>最後一個 bug 靠的是「隔天再跑一次」</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="context">
+<h2><span class="num">2</span>起點：人替 AI 佈置的 context</h2>
+
+<p>這一節要講清楚，因為<b>後面所有成果都建立在這個基礎上</b>。AI 開始動手之前，使用者已經把三層東西準備好了。</p>
+
+<h3>2.1 十份計劃書，而不是一段需求描述</h3>
+<p>doc 00–10 不是「請幫我做一個診所系統」，而是十份互相引用章節編號的文件：可行性與風險、架構變更規格、168 項操作體驗細節、行政與心理師各一份操作腳本（35 步＋31 步）、實作分期、機構合約子系統架構、實作現況、前端重構規劃、資料流與假資料規格。</p>
+<div class="note blue"><span class="t">這件事的效果</span>
+文件之間可以互相引用（「依 09 §6」「07 §2.1 報價快照」），所以 AI 寫出的每一個判斷都<b>有出處可以核對</b>。
+後來抓到的 bug 裡，有三個是「文件早就寫了、AI 動手前沒讀」——這意味著<b>文件本身是對的</b>，
+錯的是沒有讀。如果一開始只有一段需求描述，這三個 bug 根本不會被發現是 bug。</div>
+
+<h3>2.2 診所自己調整過的原型</h3>
+<p>使用者給了一份 V7 的 HTML 原型，是診所依範本自己修改過、覺得適合的樣子。它定了幾條後來成為鐵律的東西：「顏色只表達狀態，不表達操作」「已到／未到按鈕改成中性黑白」「整格轉灰代表今天不用再碰」。</p>
+<p>這些不是 AI 想出來的設計原則，是<b>使用者從實際使用者那邊帶回來的裁示</b>。AI 的工作是把它們落實成 token、元件、守門員，而不是重新發明。</p>
+
+<h3>2.3 已經跑過一輪的程式碼與驗證</h3>
+<p>後端 P0–P6 已經實作、92 條測試、18 條不變量、一版假資料生成器。AI 不是從零開始，是<b>接手一個已經有骨架、有驗證機制的系統</b>。這讓「動手前先跑一次測試看現況」變成可能。</p>
+
+<h3>2.4 使用者在過程中持續注入的領域知識</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:230px">使用者說的話</th><th>改變了什麼</th></tr></thead>
+<tbody>
+<tr><td>「你閱讀過 V2 升級計畫 07–10 的文件嗎？」</td><td>doc 11 整份重寫；建立「動筆前先讀文件」的規則</td></tr>
+<tr><td>「什麼意思，如果是問題就要修復」</td><td>AI 原本把發現的 bug 記成待辦；改成當場修。之後所有 bug 都是當場修</td></tr>
+<tr><td>「現在全部都沒有任何的正式資料…都不用去管資料的問題」</td><td>解除資料遷移的顧慮，可以自由重建</td></tr>
+<tr><td>「診所還是需要看到實際的功能或應用，才有辦法…提意見」</td><td><b>整個排序反轉</b>：原本「先試用再決定要做什麼」改成「先做出來再讓人指著改」。連帶解掉兩項卡在「等診所裁示」的死結</td></tr>
+<tr><td>「每日的利用率大概在三成到五成…視訊跟外展是作為補充」</td><td>假資料密度目標從 30–45 筆改成 50–60；型式配比從隨機撒改成綁定特定心理師×機構</td></tr>
+<tr><td>「如果是真的問題就繼續解決到一個階段，但請不要鑽牛角尖」</td><td>停止為了讓一個次要的覆蓋數字變綠而反覆調模型</td></tr>
+<tr><td>「把這規則寫進去你的 CLAUDE.md 裡面，不然你永遠學不會」</td><td>建立 CLAUDE.md，把犯過的錯寫成規則</td></tr>
+</tbody></table></div>
+<p>這些話的共同點：<b>每一句都是 AI 自己推不出來的</b>。利用率三到五成、視訊每週 3–5 次、診所需要看到東西才給得出意見——這些是營運現場的知識，不在任何程式碼或文件裡。</p>
+</section>
+
+<section id="plan">
+<h2><span class="num">3</span>規劃：第一次失敗與修正</h2>
+
+<p>doc 11 第一版是 AI 在只讀過 09／10 片段、<b>完全沒讀 07／08</b>的情況下寫的。結果三處與既有裁示牴觸：把 07 早就裁示過的「廢止舊額度路徑」當成待決問題；把「換成唯讀分頁」讀成「刪掉」；自立了一套分期編號，與既有的兩套並存。</p>
+
+<p>使用者一句「你閱讀過 07–10 嗎？」之後，AI 讀完四份文件，doc 11 整份重寫，改成<b>完全依附 09 §6 的九步驟編號</b>，不再另立。</p>
+
+<div class="note amber"><span class="t">這一段的教訓被寫進了三個地方</span>
+① doc 11 §0.1「這一版修正了什麼」，把三處錯誤逐條列出；
+② CLAUDE.md 第 2 條「事實要查過再寫，動筆前先把相關文件讀完」；
+③ 後來的 doc 12 §6.1 回顧「文件早就寫了，動手前沒讀」是三種反覆錯誤之首。
+<br><br>
+同一個錯誤在 09-11 又差點發生一次：doc 11 §3.1 把六個合約面板區塊標成「缺」，實際上四個早就做好了、只是沒抽成元件。
+這次是 AI 自己查證抓到的——因為規則已經在 CLAUDE.md 裡了。</div>
+</section>
+
+<section id="dev">
+<h2><span class="num">4</span>開發：三層驗證是同時長的</h2>
+
+<p>開發階段不是「寫完再測」，是每一步都同時推進三層驗證。以診間日曆這一頁為例：</p>
+
+<div class="tw"><table>
+<thead><tr><th style="width:150px">動作</th><th>同時做了什麼驗證</th></tr></thead>
+<tbody>
+<tr><td>寫 GET /room-calendar 聚合端點</td><td>寫測試（每格的 is_settled 三條規則各一個案例）；加不變量（已報到必有帳冊紀錄）</td></tr>
+<tr><td>改寫前端格子</td><td>瀏覽器實機看四行結構、五種狀態各找一格</td></tr>
+<tr><td>發現「整格轉灰只做了 1/3」</td><td>是實機走查時看到月結案顯示成待處理才發現的——測試沒抓到，因為<b>測試資料裡沒有月結案</b></td></tr>
+</tbody></table></div>
+
+<p>最後那一列是關鍵。它是第一次露出「<b>測試通過不代表規則被走到</b>」這個洞，也是後來覆蓋率檢查器的種子。</p>
+
+<h3>4.1 開發階段抓到的六個真 bug</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:230px">問題</th><th style="width:130px">怎麼抓到的</th><th>文件早就寫了嗎</th></tr></thead>
+<tbody>
+<tr><td>帳冊的五個 GET 端點會消耗機構額度</td><td>讀程式碼</td><td><b>是</b>——01 §A1／02 §4.1「不再有背景排程或懶惰執行」</td></tr>
+<tr><td>還欠錢的紀錄顯示收據編號（81 筆）</td><td>實機看日報表</td><td>否，但 10 §2 有同類陷阱的警告</td></tr>
+<tr><td>整格轉灰只實作 1/3 條規則</td><td>實機看日曆</td><td><b>是</b>——02 §4.3／03 寫了三條</td></tr>
+<tr><td>場地費從來沒從酬勞扣回（假資料裡 $14,000）</td><td>讀酬勞計算</td><td>文件標成「明細沒顯示」，實際是<b>錢根本沒扣</b></td></tr>
+<tr><td>機構個案代號漏填就永久補不了</td><td>走核銷流程</td><td>否</td></tr>
+<tr><td>初診在日曆按已到會把媒合案卡死</td><td>使用者交辦搬功能時查證</td><td>否——交辦是「搬位置」，查證發現是個洞</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="pivot">
+<h2><span class="num">5</span>轉折：從「等診所」到「做給診所看」</h2>
+
+<p>doc 12 盤點時，AI 把「讓診所試用」排在第一位、把剩下的功能排在後面，理由是「試用可能改變頁面該長什麼樣」。使用者的回應改變了整個方向：</p>
+
+<div class="note purple"><span class="t">「診所還是需要看到實際的功能或應用，才有辦法大概知道要怎麼修改或提意見，所以我認為東西都還是要做出來。」</span></div>
+
+<p>這句話的推論是：<b>沒有東西可以指，回饋就只會停在「看起來還好」</b>。而當時標成「等診所裁示」的兩項（日報表二期、收據編號格式），正是這個誤解造成的死結——我們在等對方先描述，對方在等我們先做出來。</p>
+
+<p>更進一步：功能做了但<b>假資料沒踩到</b>，在展示時等於不存在。所以下一步不是繼續做功能，是<b>先量假資料到底覆蓋了系統的哪些設計</b>。</p>
+
+<h3>5.1 量出來的第一個數字</h3>
+<div class="note red"><span class="t">診間日曆一天只有 2–12 筆預約，容量 168 房時，空間利用率 1–3%</span>
+所有為密度做的設計——四行結構、整格轉灰、最後一次標黃、跨格 rowSpan——
+在一片空白的日曆上完全看不出在解決什麼問題。診所看到這個畫面，給不出意見是正常的。</div>
+
+<p>這個數字直接決定了 doc 13 的形狀：不是「再多灌一點資料」，而是<b>每條規則的每個分支都要被走到</b>。</p>
+</section>
+
+<section id="dataloop">
+<h2><span class="num">6</span>資料迴圈的建構：D1 → D4</h2>
+
+<h3>6.1 D1：先寫判準，再改資料</h3>
+<p>順序是刻意的。如果先改生成器再寫檢查，生成器會被調成「剛好通過」而不是「真的覆蓋」。所以第一步是寫一支<b>覆蓋率檢查器</b>——75 條 SQL，每一條是一個業務分支加一個門檻，任何一條低於門檻就非零離開。</p>
+
+<div class="tw"><table>
+<thead><tr><th style="width:150px"></th><th style="width:240px">不變量檢查器（已有）</th><th>覆蓋率檢查器（新增）</th></tr></thead>
+<tbody>
+<tr><td><b>問什麼</b></td><td>資料<b>有沒有壞</b></td><td>規則<b>有沒有被走到</b></td></tr>
+<tr><td><b>失敗條件</b></td><td>查到違規列</td><td>某分支樣本數 &lt; 門檻</td></tr>
+<tr><td><b>抓得到的</b></td><td>額度加總不對、酬勞對不上</td><td>「三條規則只實作一條」——因為另外兩條<b>從來沒有資料經過</b></td></tr>
+</tbody></table></div>
+
+<p>第一次跑：<b>37/75 不足</b>。這份清單就是 D3 的規格——不用再猜要補什麼。</p>
+
+<h3>6.2 D2：先刪再灌</h3>
+<p>刪掉兩個舊頁面之前，先逐項查證它們有沒有還沒搬走的功能。結果三項沒搬（請款單 PDF、零用金、批次核對），先移植再刪。不先刪的話，D3 會白灌一批舊路徑的資料。</p>
+
+<h3>6.3 D3：生成器改版與全量重跑</h3>
+<p>依 D1 的清單補分支、依使用者給的營運數字調密度。跑了六次才全綠——<b>每一次不綠都抓到一個真問題</b>（見 §7）。生成一次約 7 分鐘，用 Claude Code 的背景任務跑，跑完自動通知。</p>
+
+<h3>6.4 D4：資料放大之後才看得到的瓶頸</h3>
+<p>資料放大 15 倍之後量八個端點，七個在 0.01–0.09 秒，一個 0.56 秒。追進去是 N+1，順帶發現它在用字串解析時間範圍、解析失敗就靜靜略過——個案會無聲無息從流失名單上消失。改寫後 0.019 秒。</p>
+</section>
+
+<section id="found">
+<h2><span class="num">7</span>假資料反過頭來抓到的問題</h2>
+
+<p>這是整份報告的核心證據：<b>下面每一個問題，靠讀程式碼都看不到</b>，全部是資料迴圈的某一層抓出來的。</p>
+
+<div class="tw"><table>
+<thead><tr><th style="width:44px" class="c">#</th><th style="width:240px">問題</th><th style="width:110px">抓到它的層</th><th>為什麼讀程式碼看不到</th></tr></thead>
+<tbody>
+<tr><td class="c">1</td><td>11 個方案只有 1 個有確認清單</td><td>覆蓋率</td><td>方案主檔的資料問題，不在程式碼裡。行政提醒全站只有 48 項的根因</td></tr>
+<tr><td class="c">2</td><td>外展 0 筆、視訊 0 筆</td><td>覆蓋率</td><td>生成器用機率連乘決定型式，實測擲出 0。「每週 3–5 次」是總量，不是機率</td></tr>
+<tr><td class="c">3</td><td>流失預警的檢查查錯欄位</td><td>覆蓋率</td><td>檢查器自己錯了：查 <code>status='churn_risk'</code>，但後端從來不寫那個值。<b>修的是檢查，不是資料</b></td></tr>
+<tr><td class="c">4</td><td>生成器的酬勞計算漏扣場地費</td><td>不變量</td><td>生成器複製了端點的計算，副本少一項。<b>同一份知識抄成多份</b></td></tr>
+<tr><td class="c">5</td><td>加時改了金額，額度池沒跟著調</td><td>不變量 ＋ 大資料</td><td>金額池只有一個總數，$400 的偏差<b>只在池子快見底時才浮現</b>。小資料集永遠碰不到</td></tr>
+<tr><td class="c">6</td><td>生成器的加時邏輯也漏了池子調整</td><td>不變量</td><td>修了端點之後還是紅——因為生成器有第二份副本。同一個模式第二次</td></tr>
+<tr><td class="c">7</td><td>今天 59 格全部已完成、0 筆待報到</td><td>覆蓋率 ＋ 實機</td><td>生成器只看日期不看時間。最核心的報到流程在今天的畫面上<b>一格都點不到</b></td></tr>
+<tr><td class="c">8</td><td>/churn 的 N+1 與字串解析</td><td>效能量測</td><td>資料量小的時候 0.05 秒，看不出來</td></tr>
+<tr><td class="c">9</td><td>「媒合中」隔天全部變 0</td><td>覆蓋率（隔天重跑）</td><td>建模錯誤：等了 100 天的案子不叫「等待中」。<b>只有時間過去才顯現</b></td></tr>
+</tbody></table></div>
+
+<div class="note green"><span class="t">三種不同的「看不到」</span>
+第 1–3 是<b>資料不存在</b>（規則沒被走到）；第 4–6 是<b>資料存在但錯了</b>（加總對不上）；
+第 7–9 是<b>當下看不到、換個條件才看到</b>（量放大、時間過去）。
+三層驗證各抓一種，缺哪一層就漏哪一種。</div>
+</section>
+
+<section id="ce">
+<h2><span class="num">8</span>Context engineering：人做的事 vs AI 做的事</h2>
+
+<h3>8.1 人做的：佈置與校正</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:200px">做法</th><th>效果</th></tr></thead>
+<tbody>
+<tr><td><b>把規格寫成互相引用的文件</b>，不是對話裡的描述</td><td>AI 的每個判斷都有出處；錯了可以指出「07 §7.1 早就裁示過」</td></tr>
+<tr><td><b>提供真實使用者調整過的原型</b></td><td>設計原則不是 AI 發明的，是從現場帶回來的</td></tr>
+<tr><td><b>在 AI 跳過文件時當場指出</b></td><td>doc 11 重寫；規則進 CLAUDE.md；之後同類錯誤被 AI 自己抓到</td></tr>
+<tr><td><b>把犯過的錯寫成規則</b>（CLAUDE.md）</td><td>「同一份知識抄成多份」在同一天撞第三次時，AI 主動把具體模式補進去</td></tr>
+<tr><td><b>注入營運數字</b>（利用率、視訊頻率）</td><td>假資料從「像資料」變成「像這間診所」</td></tr>
+<tr><td><b>反轉排序</b>（先做出來再讓人改）</td><td>解掉兩項卡在「等對方」的死結</td></tr>
+<tr><td><b>喊停</b>（「不要鑽牛角尖」）</td><td>停止為次要指標反覆調參；換成正確模型後反而兩邊都解決</td></tr>
+<tr><td><b>堅持交付形式</b>（文件進資料夾）</td><td>產出跟程式碼一起進版控，可被引用、可被下一個人讀到</td></tr>
+</tbody></table></div>
+
+<h3>8.2 AI 做的：執行與自我驗證</h3>
+<div class="tw"><table>
+<thead><tr><th style="width:200px">做法</th><th>效果</th></tr></thead>
+<tbody>
+<tr><td><b>動手前先量現況</b></td><td>色階債務先數出 2,178 處再改；假資料先量覆蓋率再改生成器</td></tr>
+<tr><td><b>每個修正都反向驗證</b></td><td>把修正拿掉、確認測試會紅，再放回去。證明測試真的咬得住，不是恰好綠</td></tr>
+<tr><td><b>改寫前後跑同一組測試</b></td><td>/churn 改寫：舊版跑新測試 7 條過、新版也 7 條過——證明只改了查詢方式，語意沒動</td></tr>
+<tr><td><b>把「為什麼」寫進程式碼與 commit</b></td><td>每條不變量、每條覆蓋檢查都寫「違反時代表哪個流程漏了」，半年後看的人才知道</td></tr>
+<tr><td><b>分辨「檢查錯」與「資料錯」</b></td><td>流失預警那條，改的是檢查器；不是逼生成器造一個假的狀態值讓它變綠</td></tr>
+<tr><td><b>發現偏離時自己回頭</b></td><td>doc 11 §3.1 標錯、doc 12 說「功能已被取代」是偷懶——查證後自己改掉並記錄</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="tools">
+<h2><span class="num">9</span>Claude Code 與 Opus 5 用到的能力</h2>
+
+<div class="tw"><table>
+<thead><tr><th style="width:190px">能力</th><th>在這個流程裡怎麼用</th></tr></thead>
+<tbody>
+<tr><td><b>長 context</b></td><td>十份計劃書、既有程式碼、對話歷史同時在 context 裡。「你讀過 07–10 嗎」之後能一次讀完四份再重寫，靠的是這個</td></tr>
+<tr><td><b>瀏覽器面板</b></td><td>不只截圖，是<b>真的點過去</b>：在診間日曆挑一格按已到、填身分證、看病歷號產生。「整格轉灰只做了 1/3」「今天 0 筆待報到」「表單欄位對不齊」三個 bug 都是這樣抓到的，測試沒抓到</td></tr>
+<tr><td><b>背景任務</b></td><td>生成器一次 7 分鐘，跑六次。丟到背景、跑完通知，中間繼續做別的（D4 的效能量測就是在等生成時做的）</td></tr>
+<tr><td><b>Worktree 隔離</b></td><td>整輪在獨立的 worktree 上，主分支不受影響。最後推送時遠端有別人的 4 個 commit，rebase 零衝突</td></tr>
+<tr><td><b>CLAUDE.md</b></td><td>專案規則跟著程式碼進版控。同一個錯誤第二次出現時，AI 自己抓到——因為規則已經在 context 裡</td></tr>
+<tr><td><b>把驗證寫成可執行的東西</b></td><td>不變量與覆蓋率都是「跑一下就知道」的 SQL，違規時可以直接貼進 psql 追。這不是 Claude Code 的功能，但 Opus 5 傾向於把判準做成可執行的而不是文字描述的</td></tr>
+<tr><td><b>自我校正</b></td><td>「這是我在 doc 12 寫錯的判斷」「這是我的檢查條目寫錯了」——能分辨自己哪一層錯，才不會修錯地方</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="lessons">
+<h2><span class="num">10</span>回顧：什麼有效、什麼沒效</h2>
+
+<h3>10.1 有效的</h3>
+<ul>
+<li><b>先寫判準再改資料。</b> D1 排在 D3 之前，讓「假資料能不能驗證到問題」從感覺變成可執行的數字。六次重跑每次不綠都是真問題。</li>
+<li><b>三層驗證各抓一種看不到。</b> 測試抓函式、不變量抓資料、覆蓋率抓「有沒有被走到」。§7 的九個問題沒有一個能被單一層抓全。</li>
+<li><b>使用者的營運知識直接變成門檻。</b> 「三到五成」變成 <code>appt_density_weekday ≥ 150 天</code>；「視訊每週 3–5 次」變成 <code>online 個案數 = 週數 × 4 ÷ 12</code>。</li>
+<li><b>把錯寫成規則。</b> CLAUDE.md 第 5 條的三種反覆錯誤，在寫下來之後同類錯誤開始被 AI 自己抓到。</li>
+</ul>
+
+<h3>10.2 沒效或走了彎路的</h3>
+<ul>
+<li><b>沒讀完文件就動筆。</b> doc 11 整份重寫，是這輪最貴的一次。</li>
+<li><b>用行數判斷進度。</b> 「/admin 1,394 行」看起來是整理工作，實際上是發現有兩份重複實作。看行數會誤判該做什麼。</li>
+<li><b>用機率模擬總量。</b> 「每週 3–5 次視訊」寫成每案 3.5% 機率，在個案數少時整個擲空。總量要用算的。</li>
+<li><b>生成器複製端點邏輯。</b> 同一天撞三次，每次都是端點加了規則、副本沒跟上——而且兩次是會算錯錢的。</li>
+<li><b>為次要指標鑽牛角尖。</b> 視訊待轉發那條門檻調了兩次模型，使用者喊停之後換成正確的規則（前一天才寄連結）反而兩邊都解決。</li>
+<li><b>來回量太多次、改一點跑一點。</b> 使用者兩次說「太久」。這段本來可以一口氣改完再跑。</li>
+</ul>
+
+<div class="note blue"><span class="t">一句話總結這個流程</span>
+<b>人負責佈置 context 與校正方向，AI 負責執行與自我驗證；而假資料是讓兩者對話的媒介</b>——
+資料夠真、夠密、夠覆蓋，人才看得出哪裡不對，AI 才有東西可以反過頭來抓。</div>
+
+<div class="foot">CheerPsy V2 升級計畫 · 15 AI 開發與驗證的工作流程回顧 · 2026-09-16</div>
+</section>
+
+</main>
+</div>
+</div>
+
+<script>
+/* TOC auto-build from h2/h3 */
+(function(){
+  var toc=document.getElementById('toc'); if(!toc) return;
+  var out='<b>目錄</b>';
+  document.querySelectorAll('main section').forEach(function(s){
+    var h2=s.querySelector('h2'); if(!h2) return;
+    if(!s.id) s.id='s'+Math.random().toString(36).slice(2,7);
+    var t=h2.textContent.replace(/^\s*\d+\s*/,'').trim();
+    out+='<a href="#'+s.id+'">'+t+'</a>';
+    s.querySelectorAll('h3').forEach(function(h3,i){
+      if(!h3.id) h3.id=s.id+'-h'+i;
+      out+='<a class="sub" href="#'+h3.id+'">'+h3.textContent.trim()+'</a>';
+    });
+  });
+  toc.innerHTML=out;
+})();
+/* checklist toggle + persistence + progress */
+(function(){
+  var KEY='cheerpsy-v2-'+(document.body.dataset.doc||'doc');
+  var saved={}; try{saved=JSON.parse(localStorage.getItem(KEY)||'{}');}catch(e){}
+  var items=[].slice.call(document.querySelectorAll('.ck li'));
+  items.forEach(function(li,i){
+    var k=li.dataset.k||('i'+i); li.dataset.k=k;
+    if(!li.querySelector('.box')){var b=document.createElement('span');b.className='box';li.insertBefore(b,li.firstChild);}
+    if(saved[k]) li.classList.add('on');
+    li.addEventListener('click',function(){
+      li.classList.toggle('on');
+      saved[k]=li.classList.contains('on');
+      try{localStorage.setItem(KEY,JSON.stringify(saved));}catch(e){}
+      paint();
+    });
+  });
+  function paint(){
+    document.querySelectorAll('[data-prog]').forEach(function(el){
+      var scope=el.dataset.prog==='all'?document:document.getElementById(el.dataset.prog);
+      if(!scope) return;
+      var all=scope.querySelectorAll('.ck li'), done=scope.querySelectorAll('.ck li.on');
+      el.textContent=done.length+' / '+all.length;
+    });
+  }
+  paint();
+  var rst=document.getElementById('ckReset');
+  if(rst) rst.onclick=function(){ if(!confirm('清除本頁所有勾選狀態？'))return;
+    try{localStorage.removeItem(KEY);}catch(e){} items.forEach(function(li){li.classList.remove('on');}); paint(); };
+})();
+
+/* hotspot -> highlight target row (Part 2 interactive prototype) */
+(function(){
+  document.querySelectorAll('.hotspot[data-goto]').forEach(function(h){
+    h.addEventListener('click', function(){
+      var id=h.dataset.goto, el=document.getElementById(id);
+      if(!el) return;
+      document.querySelectorAll('.flash').forEach(function(x){x.classList.remove('flash');});
+      el.classList.add('flash');
+      el.scrollIntoView({behavior:'smooth', block:'center'});
+      setTimeout(function(){el.classList.remove('flash');}, 2600);
+    });
+  });
+})();
+
+/* tab panels: .tabs span[data-tab] -> #tab-{id} */
+(function(){
+  document.querySelectorAll('.tabs').forEach(function(bar){
+    bar.querySelectorAll('span[data-tab]').forEach(function(t){
+      t.onclick=function(){
+        bar.querySelectorAll('span[data-tab]').forEach(function(x){
+          x.classList.remove('on');
+          var p=document.getElementById('tab-'+x.dataset.tab); if(p)p.style.display='none';
+        });
+        t.classList.add('on');
+        var p=document.getElementById('tab-'+t.dataset.tab); if(p)p.style.display='block';
+      };
+    });
+    var first=bar.querySelector('span[data-tab]'); if(first) first.click();
+  });
+})();
+</script>
+</body>
+</html>
