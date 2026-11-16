@@ -8,12 +8,12 @@ Railway 上需要建立 **4 個 service**：
 ┌─────────────────────────────────────────────┐
 │  Railway Project: cheerpsy                   │
 │                                              │
-│  ┌──────────┐  ┌──────────┐                 │
-│  │ PostgreSQL│  │  Redis   │                 │
-│  │  (plugin) │  │ (plugin) │                 │
-│  └────┬─────┘  └────┬─────┘                 │
-│       │              │                       │
-│  ┌────┴──────────────┴─────┐                │
+│  ┌───────────┐                              │
+│  │ PostgreSQL│                              │
+│  │  (plugin) │                              │
+│  └─────┬─────┘                              │
+│        │                                     │
+│  ┌─────┴───────────────────┐                │
 │  │      API Service        │                 │
 │  │   FastAPI (Python 3.11) │                 │
 │  │   apps/api/Dockerfile   │                 │
@@ -46,10 +46,9 @@ Railway 上需要建立 **4 個 service**：
 
 ---
 
-## Step 3: 新增 Redis
+## Step 3: （已取消）
 
-1. 點選 **+ New** → **Database** → **Redis**
-2. 建立完成（目前系統尚未使用 Redis，但預留）
+系統不使用 Redis，不需要建立 Redis database。
 
 ---
 
@@ -256,7 +255,7 @@ NEXTAUTH_URL=https://<web-domain>.up.railway.app
 
 - [ ] 1. 建立 Railway Project
 - [ ] 2. 新增 PostgreSQL database
-- [ ] 3. 新增 Redis database
+- [x] 3. （已取消，不使用 Redis）
 - [ ] 4. 建立 API service（GitHub repo, root: `apps/api`）
 - [ ] 5. 設定 API 環境變數（DATABASE_URL, JWT_SECRET, CORS_ORIGINS, ID_ENCRYPTION_KEY）
 - [ ] 6. 設定 API public domain
