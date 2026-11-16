@@ -78,9 +78,6 @@ def _settings_snapshot(r: ClinicSettings) -> dict:
         "ical_follow_title_format": r.ical_follow_title_format,
         "resync_lookback_days": r.resync_lookback_days,
         "resync_lookahead_days": r.resync_lookahead_days,
-        "no_show_fee_advance_notice": float(r.no_show_fee_advance_notice),
-        "no_show_fee_late_cancel": float(r.no_show_fee_late_cancel),
-        "no_show_fee_no_notice": float(r.no_show_fee_no_notice),
     }
 
 
@@ -108,9 +105,6 @@ class ClinicSettingsOut(BaseModel):
     ical_follow_title_format: bool
     resync_lookback_days: int
     resync_lookahead_days: int
-    no_show_fee_advance_notice: float
-    no_show_fee_late_cancel: float
-    no_show_fee_no_notice: float
     updated_at: datetime | None = None
     connection: ConnectionOut
     can_edit: bool
@@ -164,24 +158,6 @@ class ClinicSettingsPatch(BaseModel):
     ical_follow_title_format: bool | None = None
     resync_lookback_days: int | None = Field(None, ge=0, le=365)
     resync_lookahead_days: int | None = Field(None, ge=1, le=730)
-    no_show_fee_advance_notice: float | None = Field(None, ge=0, le=99999)
-    no_show_fee_late_cancel: float | None = Field(None, ge=0, le=99999)
-    no_show_fee_no_notice: float | None = Field(None, ge=0, le=99999)
-
-
-@router.get("/no-show-fees")
-def get_no_show_fees(
-    user: User = Depends(RequireRole(["admin", "staff", "accountant", "therapist"])),
-    db: Session = Depends(get_db),
-):
-    """未到類型的建議失約費（應收提示）。各角色皆可讀，供未到視窗帶出建議金額。"""
-    r = _settings_row(db)
-    db.commit()
-    return {
-        "advance_notice": float(r.no_show_fee_advance_notice),
-        "late_cancel": float(r.no_show_fee_late_cancel),
-        "no_notice": float(r.no_show_fee_no_notice),
-    }
 
 
 @router.patch("/clinic", response_model=ClinicSettingsOut)

@@ -23,10 +23,13 @@ def test_migrations_are_chained_and_only_add_columns():
     assert revs[0][1] == "zm3c7d8e9f0a" and revs[1][1] == revs[0][0] and revs[2][1] == revs[1][0]
 
 
-def test_finance_info_endpoints_exist():
+def test_finance_info_endpoints_exist_and_collection_features_are_off(client, auth, make_user):
     paths = {getattr(r, "path", "") for r in app.routes}
-    # 金流資訊的端點存在
-    for kept in ("/institution-plans", "/institution-contracts", "/cases/{case_id}/billing-options",
-                 "/appointments/{appointment_id}/collection", "/appointments/{appointment_id}/no-show-fee",
-                 "/settings/no-show-fees"):
+    for kept in ("/institution-plans", "/institution-contracts", "/cases/{case_id}/billing-options"):
         assert kept in paths, kept
+    # 收款記錄、失約費設定：端點停用（410），欄位保留
+    staff = make_user("staff")
+    h = auth(staff)
+    assert client.put("/appointments/1/collection", headers=h, json={"payment_status": "paid"}).status_code == 410
+    assert client.put("/appointments/1/no-show-fee", headers=h, json={"no_show_fee": 1}).status_code == 410
+    assert client.get("/settings/no-show-fees", headers=h).status_code in (404, 405, 422)

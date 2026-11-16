@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
 import { money } from "@/lib/format";
-import { CollectionModal, PaymentBadge } from "@/components/collection-modal";
 import {
   DAY_END_MIN,
   DAY_START_MIN,
@@ -56,12 +55,7 @@ interface Appt {
   amount?: number;
   self_pay_amount?: number;
   transport_fee?: number;
-  no_show_fee?: number;
   no_show_type?: string | null;
-  payment_status?: string;
-  payment_method?: string | null;
-  paid_at?: string | null;
-  paid_by_name?: string | null;
 }
 
 const BADGE: Record<string, { label: string; cls: string }> = {
@@ -75,8 +69,6 @@ export default function CalendarPage() {
   const router = useRouter();
   const token = (session?.user as any)?.accessToken;
   const canBook = (session?.user as any)?.role !== "therapist";
-  const canRecord = ["admin", "staff"].includes((session?.user as any)?.role);
-  const [collectFor, setCollectFor] = useState<Appt | null>(null);
   const [day, setDay] = useState(todayISO());
   const [rooms, setRooms] = useState<Room[]>([]);
   const [appts, setAppts] = useState<Appt[]>([]);
@@ -275,7 +267,6 @@ export default function CalendarPage() {
                           a={a}
                           onArrive={() => arrive(a)}
                           onAbsent={() => setAbsentFor(a)}
-                          onCollect={() => setCollectFor(a)}
                         />
                       </td>
                     );
@@ -311,7 +302,6 @@ export default function CalendarPage() {
                   a={a}
                   onArrive={() => arrive(a)}
                   onAbsent={() => setAbsentFor(a)}
-                  onCollect={() => setCollectFor(a)}
                 />
               </div>
             ))}
@@ -320,19 +310,6 @@ export default function CalendarPage() {
             這兩類個案不會到櫃檯報到，狀態不會自動變更；請在事後由行政標記已到或未到。
           </p>
         </div>
-      )}
-
-      {collectFor && (
-        <CollectionModal
-          token={token}
-          appt={collectFor}
-          canRecord={canRecord}
-          onClose={() => setCollectFor(null)}
-          onDone={() => {
-            setCollectFor(null);
-            load();
-          }}
-        />
       )}
 
       {absentFor && (
@@ -363,12 +340,10 @@ function ApptCell({
   a,
   onArrive,
   onAbsent,
-  onCollect,
 }: {
   a: Appt;
   onArrive: () => void;
   onAbsent: () => void;
-  onCollect: () => void;
 }) {
   const badge = BADGE[a.checkin_status] ?? BADGE.pending;
   const offsite = !a.room_id;
@@ -389,18 +364,6 @@ function ApptCell({
         <div className={`truncate text-[10px] ${a.quota_is_last_session ? "font-medium text-red-600" : "text-violet-700"}`}>
           {a.quota_total != null ? `機構 ${a.quota_used}/${a.quota_total}・剩 ${a.quota_remaining}${a.quota_is_last_session ? "（最後一次）" : ""}` : "機構（未佔額度）"}
         </div>
-      )}
-
-      {a.status !== "cancelled" && (
-        <button onClick={onCollect} className="mt-0.5 flex w-full items-center justify-between gap-1 rounded border border-transparent px-0.5 text-left text-[10px] text-gray-600 hover:border-gray-300 hover:bg-white">
-          <span className="truncate">
-            {a.funding_source === "institution" ? (a.plan_name ?? "機構") : "自費"}
-            {a.amount ? `・應收 ${money(a.amount)}` : ""}
-            {a.funding_source === "institution" ? `・自付 ${money(a.self_pay_amount)}` : ""}
-            {a.transport_fee ? `・車馬 ${money(a.transport_fee)}` : ""}
-          </span>
-          <PaymentBadge a={{ ...a, case_name: a.case_name }} />
-        </button>
       )}
 
       {a.status !== "cancelled" && a.checkin_status === "pending" && !offsite && (
@@ -433,19 +396,11 @@ function AbsentModal({
 }) {
   const [type, setType] = useState("late_cancel");
   const [err, setErr] = useState<string | null>(null);
-  const [fees, setFees] = useState<Record<string, number>>({});
-  const [fee, setFee] = useState<string>(""); // 空白＝用建議金額
-  const { data: sess } = useSession();
-  const canEditFee = ["admin", "staff"].includes((sess?.user as any)?.role);
-  useEffect(() => {
-    clientFetch("/settings/no-show-fees", token).then(setFees).catch(() => setFees({}));
-  }, [token]);
-  const suggested = fees[type] ?? 0;
   async function go() {
     try {
       await clientFetch(`/appointments/${appt.id}/absent`, token, {
         method: "PUT",
-        body: JSON.stringify({ no_show_type: type, ...(canEditFee && fee !== "" ? { no_show_fee: Number(fee) } : {}) }),
+        body: JSON.stringify({ no_show_type: type }),
       });
       onDone();
     } catch (e: any) {
@@ -457,7 +412,7 @@ function AbsentModal({
       <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
         <h2 className="mb-1 text-lg font-bold">未到原因 — {appt.case_name}</h2>
         <p className="mb-4 text-sm text-gray-500">
-          記錄未到類型並帶出建議失約費（只是應收提示，不產生流水或核銷）；該診間時段會立即釋出，可再預約。
+          只記錄未到類型；該診間時段會立即釋出，可再預約。
         </p>
         {err && <div className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>}
         <div className="space-y-2">
@@ -467,16 +422,6 @@ function AbsentModal({
               {label}
             </label>
           ))}
-        </div>
-        <div className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          建議失約費 <b>{money(suggested)}</b>
-          {canEditFee && (
-            <label className="mt-2 block text-xs">
-              改金額或免收（填 0）
-              <input type="number" min={0} step="any" value={fee} onChange={(e) => setFee(e.target.value)}
-                placeholder={String(suggested)} className="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm" />
-            </label>
-          )}
         </div>
         <div className="mt-6 flex justify-end gap-2">
           <button onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm">

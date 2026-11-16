@@ -1737,9 +1737,6 @@ interface GcalConnection {
 }
 
 interface ClinicSettingsData {
-  no_show_fee_advance_notice?: number;
-  no_show_fee_late_cancel?: number;
-  no_show_fee_no_notice?: number;
   event_title_format: "type_room" | "type_room_code" | "type_room_abbrev" | "type_room_name";
   connection: GcalConnection;
   can_edit: boolean;
@@ -1822,18 +1819,6 @@ function CalendarTab({ token, gcalResult }: { token: string; gcalResult: string 
     try {
       setData(await clientFetch("/settings/clinic", token, { method: "PATCH", body: JSON.stringify({ event_title_format: value }) }));
       setNotice("標題格式已儲存。");
-    } catch (e: any) {
-      setError(e.message);
-    }
-  }
-
-  async function saveFee(key: "no_show_fee_advance_notice" | "no_show_fee_late_cancel" | "no_show_fee_no_notice", raw: string) {
-    setError(null);
-    const n = Number(raw);
-    if (raw === "" || !Number.isFinite(n) || n < 0) { setError("失約費請填 0 以上的數字"); return; }
-    try {
-      setData(await clientFetch("/settings/clinic", token, { method: "PATCH", body: JSON.stringify({ [key]: n }) }));
-      setNotice("失約費設定已儲存。");
     } catch (e: any) {
       setError(e.message);
     }
@@ -1930,29 +1915,6 @@ function CalendarTab({ token, gcalResult }: { token: string; gcalResult: string 
           </Link>
           。行政人員也可以在那裡操作（行政分享名單只有管理員能改）。
         </p>
-      </section>
-
-      <section className="rounded-xl border border-gray-200 bg-white p-5">
-        <h2 className="mb-1 text-base font-semibold">失約費（應收提示）</h2>
-        <p className="mb-3 text-xs text-gray-500">個案未到時，系統依類型帶出建議金額；行政可改或免收。只是提示，不產生流水、核銷或對帳。</p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          {([
-            ["no_show_fee_advance_notice", "24 小時前請假"],
-            ["no_show_fee_late_cancel", "臨時取消"],
-            ["no_show_fee_no_notice", "無故未到"],
-          ] as const).map(([k, label]) => (
-            <label key={k} className="block text-sm">
-              <span className="mb-1 block text-xs font-medium text-gray-700">{label}</span>
-              <input
-                type="number" min={0} step="any" key={`${k}-${data?.[k]}`} defaultValue={data?.[k] ?? 0}
-                disabled={!data?.can_edit}
-                onBlur={(e) => { if (Number(e.target.value) !== (data?.[k] ?? 0)) saveFee(k, e.target.value); }}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50"
-              />
-            </label>
-          ))}
-        </div>
-        {!data?.can_edit && <p className="mt-2 text-xs text-gray-400">只有管理員能修改。</p>}
       </section>
 
       <section className="rounded-xl border border-gray-200 bg-white p-5">

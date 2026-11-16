@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from psycopg2.extras import DateTimeTZRange
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session, joinedload
@@ -12,7 +12,6 @@ from app.auth.dependencies import RequireRole, get_current_user
 from app.database import get_db
 from app.models.appointment import Appointment
 from app.models.case import Case
-from app.models.gcal import ClinicSettings
 from app.models.room import Room
 from app.models.session_record import SessionRecord
 from app.models.user import User
@@ -23,8 +22,6 @@ from app.services.audit import write_audit
 from app.services.slot_check import assert_room_active, assert_room_free, flush_or_409
 from app.schemas.appointment import (
     AppointmentBatchCreate,
-    PAYMENT_METHODS,
-    AppointmentCollectionUpdate,
     AppointmentCreate,
     AppointmentPaymentUpdate,
     AppointmentResponse,
@@ -105,10 +102,6 @@ def _to_response(
         rate_item_id=a.rate_item_id if can_see_amount else None,
         rate_item_label=(rate.label if rate else None) if can_see_amount else None,
         self_pay_amount=float(a.self_pay_amount or 0) if can_see_amount else 0,
-        payment_status=(a.payment_status or "unpaid") if can_see_amount else "unpaid",
-        payment_method=a.payment_method if can_see_amount else None,
-        paid_at=a.paid_at if can_see_amount else None,
-        paid_by_name=(db.get(User, a.paid_by).name if (db is not None and a.paid_by and can_see_amount and db.get(User, a.paid_by)) else None),
         transport_fee_option_id=a.transport_fee_option_id if can_see_amount else None,
         transport_fee_label=(tfee.label if tfee else None) if can_see_amount else None,
         transport_fee=float(a.transport_fee or 0) if can_see_amount else 0,
@@ -136,7 +129,6 @@ def _to_response(
         checkin_status=a.checkin_status,
         checked_in_at=a.checked_in_at,
         no_show_type=a.no_show_type,
-        no_show_fee=float(a.no_show_fee or 0) if can_see_amount else 0,
         video_link=a.video_link,
         notify_admin_to_forward=a.notify_admin_to_forward,
         forwarded_at=a.forwarded_at,
@@ -566,40 +558,10 @@ def update_appointment_payment(
     return _to_response(a, therapist, db, viewer=user, warnings=warnings)
 
 
-@router.put("/{appointment_id}/collection", response_model=AppointmentResponse)
-def record_collection(
-    appointment_id: int,
-    body: AppointmentCollectionUpdate,
-    user: User = Depends(RequireRole(["admin", "staff"])),
-    db: Session = Depends(get_db),
-):
-    """行政記錄收款：已收／未收／免收與收款方式。只是預約上的幾個欄位，
-    不產生 session_records、流水、核銷或對帳。心理師看得到自己預約的收款狀態，但不能改。"""
-    a = _appointment_or_404(db, user, appointment_id)
-    if body.payment_status not in ("unpaid", "paid", "waived"):
-        raise HTTPException(status_code=400, detail="payment_status 需為 unpaid、paid 或 waived")
-    if a.status == "cancelled":
-        raise HTTPException(status_code=400, detail="已取消的預約不能記錄收款")
-    method = body.payment_method
-    if body.payment_status == "paid":
-        if method not in PAYMENT_METHODS:
-            raise HTTPException(status_code=400, detail=f"已收請選收款方式：{list(PAYMENT_METHODS)}")
-    else:
-        method = None  # 未收、免收沒有收款方式
-
-    before = {"payment_status": a.payment_status, "payment_method": a.payment_method}
-    a.payment_status = body.payment_status
-    a.payment_method = method
-    if body.payment_status == "unpaid":
-        a.paid_at, a.paid_by = None, None
-    else:
-        a.paid_at, a.paid_by = datetime.now(timezone.utc), user.id
-    write_audit(db, "appointments", a.id, "UPDATE", user.id, before,
-                {"payment_status": a.payment_status, "payment_method": a.payment_method})
-    db.commit()
-    db.refresh(a)
-    therapist = db.query(User).filter(User.id == a.therapist_id).first()
-    return _to_response(a, therapist, db, viewer=user)
+@router.put("/{appointment_id}/collection", status_code=status.HTTP_410_GONE)
+def record_collection(user: User = Depends(get_current_user)):
+    """收款在行政另一套系統處理；本系統不記收款。欄位（payment_*）保留不刪，端點停用。"""
+    raise HTTPException(status_code=status.HTTP_410_GONE, detail="收款記錄已停用（收款在行政另一套系統）")
 
 
 class BatchDeleteRequest(BaseModel):
@@ -703,8 +665,6 @@ class CheckInBody(BaseModel):
 
     no_show_type: str | None = None
     note: str | None = None
-    # 失約費（應收提示）：不填＝用設定的建議金額；admin／staff 可改，0＝免收。心理師送了會被忽略
-    no_show_fee: float | None = Field(None, ge=0, le=99999)
 
 
 # 24 小時前請假／臨時取消／無故未到（僅分類，不再有金額）
@@ -738,36 +698,10 @@ def mark_arrived(
     return _to_response(a, therapist, db, viewer=user)
 
 
-def _suggested_no_show_fee(db: Session, no_show_type: str) -> float:
-    r = db.get(ClinicSettings, 1)
-    if r is None:
-        return {"advance_notice": 0.0, "late_cancel": 200.0, "no_notice": 500.0}[no_show_type]
-    return float({"advance_notice": r.no_show_fee_advance_notice, "late_cancel": r.no_show_fee_late_cancel,
-                  "no_notice": r.no_show_fee_no_notice}[no_show_type])
-
-
-class NoShowFeeBody(BaseModel):
-    no_show_fee: float = Field(ge=0, le=99999)  # 0＝免收
-
-
-@router.put("/{appointment_id}/no-show-fee", response_model=AppointmentResponse)
-def set_no_show_fee(
-    appointment_id: int,
-    body: NoShowFeeBody,
-    user: User = Depends(RequireRole(["admin", "staff"])),
-    db: Session = Depends(get_db),
-):
-    """行政事後調整或免收失約費（只是應收提示，不產生流水或核銷）。"""
-    a = _appointment_or_404(db, user, appointment_id)
-    if a.status != "no_show":
-        raise HTTPException(status_code=400, detail="只有未到的預約有失約費")
-    before = float(a.no_show_fee or 0)
-    a.no_show_fee = body.no_show_fee
-    write_audit(db, "appointments", a.id, "UPDATE", user.id, {"no_show_fee": before}, {"no_show_fee": body.no_show_fee})
-    db.commit()
-    db.refresh(a)
-    therapist = db.query(User).filter(User.id == a.therapist_id).first()
-    return _to_response(a, therapist, db, viewer=user)
+@router.put("/{appointment_id}/no-show-fee", status_code=status.HTTP_410_GONE)
+def set_no_show_fee(user: User = Depends(get_current_user)):
+    """失約費建議金額已停用（欄位 no_show_fee 保留不刪，一律為 0）。"""
+    raise HTTPException(status_code=status.HTTP_410_GONE, detail="失約費功能已停用")
 
 
 @router.put("/{appointment_id}/absent", response_model=AppointmentResponse)
@@ -793,12 +727,9 @@ def mark_absent(
     a.status = "no_show"
     a.no_show_type = body.no_show_type
     appt_billing.release_quota(db, a.quota_id)  # 未到：已預約 → 退回已預留
-    a.no_show_fee = _suggested_no_show_fee(db, body.no_show_type)
-    if body.no_show_fee is not None and user.role in ("admin", "staff"):
-        a.no_show_fee = body.no_show_fee
     write_audit(db, "appointments", a.id, "UPDATE", user.id,
                 {"checkin_status": "pending"},
-                {"checkin_status": "absent", "no_show_type": body.no_show_type, "no_show_fee": float(a.no_show_fee)})
+                {"checkin_status": "absent", "no_show_type": body.no_show_type})
     db.commit()
     db.refresh(a)
     therapist = db.query(User).filter(User.id == a.therapist_id).first()

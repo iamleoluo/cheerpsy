@@ -145,7 +145,7 @@ def test_arrive_does_not_create_session_record(client, auth, db, w):
     assert db.query(SessionRecord).count() == 0
 
 
-def test_absent_marks_no_show_with_suggested_fee_and_no_record(client, auth, db, w):
+def test_absent_marks_no_show_without_fee_or_record(client, auth, db, w):
     s, e = _slot()
     a = _create(client, auth, w["staff"], w["case"], w["room"], s, e).json()
     r = client.put(f"/appointments/{a['id']}/absent", headers=auth(w["staff"]),
@@ -153,8 +153,8 @@ def test_absent_marks_no_show_with_suggested_fee_and_no_record(client, auth, db,
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["status"] == "no_show" and body["no_show_type"] == "no_notice"
-    assert body["no_show_fee"] == 500  # 失約費只是應收提示（設定預設 無故未到 500）
-    assert db.execute(text("SELECT no_show_fee FROM appointments WHERE id=:i"), {"i": a["id"]}).scalar() == 500
+    assert "no_show_fee" not in body  # 失約費功能已停用（欄位保留，一律 0）
+    assert db.execute(text("SELECT no_show_fee FROM appointments WHERE id=:i"), {"i": a["id"]}).scalar() == 0
     assert _sr_count(db) == 0
 
 
