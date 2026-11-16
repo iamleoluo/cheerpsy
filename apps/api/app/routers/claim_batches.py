@@ -1,7 +1,5 @@
-import io
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import RequireRole, get_current_user, accounting_gone
@@ -29,11 +27,6 @@ from app.services.claim_batch import (
     recalculate_total,
     revert_doc_waiver,
 )
-from app.services.pdf_generator import (
-    generate_institution_claim_form,
-    generate_self_pay_receipt,
-)
-from app.services.pdf import generate_pdf, render_multi
 
 router = APIRouter(prefix="/claim-batches", tags=["claim-batches"])
 
@@ -606,125 +599,3 @@ def unwaive_docs(
     db.commit()
     db.refresh(batch)
     return _to_response(db, batch)
-
-
-# ── Attendance sheet PDF preview (no DB required) ──
-
-@router.get("/attendance-sheet/preview")
-def preview_attendance_sheet(
-    template: str = Query("jiafuzongxin_attendance", description="jiafuzongxin_attendance | jiafangzhongxin_attendance"),
-    pages: int = Query(2, ge=1, le=5, description="How many fake case pages to generate"),
-    user: User = Depends(RequireRole(READ_ROLES)),
-):
-    """Generate a sample attendance sheet PDF with fake data — for layout testing."""
-    from datetime import date
-    from app.services.pdf.templates import TEMPLATES
-
-    if template not in ("jiafuzongxin_attendance", "jiafangzhongxin_attendance"):
-        raise HTTPException(status_code=400, detail=f"Unknown template: {template!r}. Use jiafuzongxin_attendance or jiafangzhongxin_attendance")
-
-    builder = TEMPLATES[template]
-
-    fake_cases = [
-        {"case_name": "王小明", "case_number": "26000101", "therapist_name": "陳怡君 心理師",
-         "social_worker": "林美惠社工", "referral_unit": "南台南家扶中心"},
-        {"case_name": "李小花", "case_number": "26000102", "therapist_name": "張文雄 心理師",
-         "social_worker": "", "referral_unit": ""},
-        {"case_name": "黃大偉", "case_number": "26000103", "therapist_name": "陳怡君 心理師",
-         "social_worker": "劉志明社工", "referral_unit": ""},
-        {"case_name": "林小芳", "case_number": "26000104", "therapist_name": "周麗華 心理師",
-         "social_worker": "", "referral_unit": ""},
-        {"case_name": "吳建國", "case_number": "26000105", "therapist_name": "張文雄 心理師",
-         "social_worker": "陳美玲社工", "referral_unit": ""},
-    ]
-
-    fake_sessions = [
-        {"session_date": date(2026, 3, 5), "time_str": "14:00"},
-        {"session_date": date(2026, 3, 12), "time_str": "14:00"},
-        {"session_date": date(2026, 3, 19), "time_str": "14:00"},
-        {"session_date": date(2026, 4, 2),  "time_str": "14:00"},
-        {"session_date": date(2026, 4, 9),  "time_str": "15:30"},
-    ]
-
-    specs = []
-    for i in range(min(pages, len(fake_cases))):
-        c = fake_cases[i]
-        data = {
-            "case_name": c["case_name"],
-            "case_number": c["case_number"],
-            "therapist_name": c["therapist_name"],
-            "social_worker": c.get("social_worker", ""),
-            "referral_unit": c.get("referral_unit", ""),
-            "records": fake_sessions[:3 + i],  # vary session count per case
-        }
-        specs.append(builder(data))
-
-    pdf_bytes = render_multi(specs)
-    return StreamingResponse(
-        io.BytesIO(pdf_bytes),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="attendance-preview-{template}.pdf"'},
-    )
-
-
-# ── PDF download ──
-
-def _build_record_dicts(db: Session, batch_id: int, item_name: str | None = None) -> list[dict]:
-    """Build records list for PDF generation.
-
-    `item_name` overrides every row's 服務項目 column. Falls back to «心理治療» when None.
-    """
-    records = (
-        db.query(SessionRecord)
-        .filter(SessionRecord.claim_batch_id == batch_id)
-        .order_by(SessionRecord.session_date)
-        .all()
-    )
-    service_label = (item_name or "").strip() or "心理治療"
-    result = []
-    for r in records:
-        case = db.query(Case).filter(Case.id == r.case_id).first() if r.case_id else None
-        therapist = db.query(User).filter(User.id == r.therapist_id).first()
-        result.append({
-            "session_date": r.session_date,
-            "case_name": case.name if case else "",
-            "therapist_name": therapist.name if therapist else "",
-            "session_type": service_label,  # PDF 「服務項目」欄統一帶 item_name
-            "amount": float(r.amount),
-        })
-    return result
-
-
-
-@router.get("/{batch_id}/claim-form")
-def download_claim_form(
-    batch_id: int,
-    user: User = Depends(RequireRole(READ_ROLES)),
-    db: Session = Depends(get_db),
-):
-    batch = db.query(ClaimBatch).filter(ClaimBatch.id == batch_id).first()
-    if not batch:
-        raise HTTPException(status_code=404, detail="Claim batch not found")
-    if batch.type != "institution":
-        raise HTTPException(status_code=400, detail="Claim forms are for institution batches only")
-
-    inst = db.query(Institution).filter(Institution.id == batch.institution_id).first() if batch.institution_id else None
-    records = _build_record_dicts(db, batch_id, batch.item_name)
-
-    pdf_bytes = generate_institution_claim_form(
-        batch_number=batch.batch_number,
-        institution_name=inst.name if inst else "N/A",
-        period_start=batch.period_start,
-        period_end=batch.period_end,
-        records=records,
-        total_amount=float(batch.total_amount or 0),
-        external_ref=batch.external_ref,
-    )
-
-    return StreamingResponse(
-        io.BytesIO(pdf_bytes),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="claim-{batch.batch_number}.pdf"'},
-    )
-
-
