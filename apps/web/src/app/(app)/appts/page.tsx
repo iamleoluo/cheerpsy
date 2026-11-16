@@ -19,7 +19,12 @@ interface Appt {
   status: string;
   checkin_status: string;
   is_intake: boolean;
-  amount?: number; // 只有管理員與行政看得到（0＝沒有金額）
+  amount?: number; // 0＝沒有金額
+  funding_source?: string | null;
+  quota_used?: number | null;
+  quota_total?: number | null;
+  quota_remaining?: number | null;
+  quota_is_last_session?: boolean;
 }
 
 const STATUS: Record<string, { label: string; cls: string }> = {
@@ -177,6 +182,11 @@ export default function ApptsPage() {
                   <td className="px-3 py-2.5 font-medium">
                     {r.is_intake && <span className="mr-1 text-amber-600" title="媒合初診">⭐</span>}
                     {r.case_name}
+                    {r.funding_source === "institution" && (
+                      <span className={`ml-1.5 rounded px-1.5 py-0.5 text-[11px] font-normal ${r.quota_is_last_session ? "bg-red-50 text-red-600" : "bg-violet-50 text-violet-700"}`}>
+                        機構{r.quota_total != null ? ` ${r.quota_used}/${r.quota_total}` : "（未佔額度）"}
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-2.5">{r.therapist_name}</td>
                   <td className="px-3 py-2.5 tabular-nums">{hhmm(r.start_time)}–{hhmm(r.end_time)}</td>

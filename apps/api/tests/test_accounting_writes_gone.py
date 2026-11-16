@@ -44,13 +44,6 @@ GONE = [
     ("POST", "/claim-batches/1/documents/upload"),
     ("POST", "/claim-batches/my/confirm-docs"),
     ("POST", "/claim-batches/my/withdraw-docs"),
-    # 機構合約、方案
-    ("POST", "/institution-contracts"),
-    ("PUT", "/institution-contracts/1"),
-    ("DELETE", "/institution-contracts/1"),
-    ("POST", "/institution-plans"),
-    ("PUT", "/institution-plans/1"),
-    ("PUT", "/institution-plans/1/status"),
     # 收據、發票
     ("POST", "/receipts/single-session/1"),
     ("POST", "/receipts/batch/1"),
@@ -58,14 +51,6 @@ GONE = [
     ("POST", "/receipts/self-pay-batch/1"),
     ("POST", "/invoices"),
     ("PUT", "/invoices/1/void"),
-    # 機構額度
-    ("POST", "/cases/1/quotas"),
-    ("PUT", "/quotas/1"),
-    ("DELETE", "/quotas/1"),
-    ("POST", "/quota-templates/"),
-    ("PUT", "/quota-templates/1"),
-    ("DELETE", "/quota-templates/1"),
-    ("POST", "/quota-templates/1/apply"),
     # 帳冊逐筆寫入
     ("PUT", "/ledger/1/payment"),
     ("PUT", "/ledger/1/lock"),
@@ -127,7 +112,7 @@ def test_gone_with_valid_body_too(client, auth, people, method, path):
     assert r.status_code == 410
 
 
-@pytest.mark.parametrize("method,path", [GONE[0], GONE[40], GONE[50]])
+@pytest.mark.parametrize("method,path", [GONE[0], GONE[len(GONE) // 2], GONE[-1]])
 def test_gone_requires_login(client, method, path):
     r = client.request(method, path)
     assert r.status_code in (401, 403)  # 未登入不洩漏「這個端點已停用」
@@ -150,12 +135,11 @@ def test_all_write_routes_of_retired_routers_are_gone_or_explicitly_kept():
     from app.auth.dependencies import accounting_gone
 
     retired_prefixes = ("/ledger", "/invoices", "/claim-batches", "/finance", "/payouts",
-                        "/petty-cash", "/product-sales", "/receipts", "/institution-plans",
-                        "/institution-contracts", "/quotas", "/quota-templates")
+                        "/petty-cash", "/product-sales", "/receipts")
+    # 機構合約、方案、價目、交通費、個案額度屬「金流資訊」，已恢復，不在此列（見 test_institution_plans.py）
     kept = {  # 刻意保留的寫入端點（本階段範圍之外，上線 B 再處理）
         ("DELETE", "/petty-cash/{record_id}"),
         ("PUT", "/product-sales/{sale_id}"),
-        ("DELETE", "/institution-plans/{plan_id}"),
         ("PUT", "/claim-batches/records/{record_id}/amount"),
         ("PUT", "/claim-batches/{batch_id}/mode"),
     }
@@ -188,7 +172,7 @@ def test_me_payout_still_readable_for_therapist(client, auth, people):
 def test_gone_endpoints_write_nothing(client, auth, db, people):
     """410 不可留下任何資料：打完整份清單後，帳務相關表的筆數不變。"""
     tables = ["session_records", "invoices", "claim_batches", "petty_cash", "product_sales",
-              "payouts", "case_institution_quotas", "institution_contracts", "institution_plans"]
+              "payouts"]
     existing = [t for t in tables
                 if db.execute(text("SELECT to_regclass(:t)"), {"t": t}).scalar()]
     assert "session_records" in existing and "invoices" in existing

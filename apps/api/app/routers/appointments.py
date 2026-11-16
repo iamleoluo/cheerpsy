@@ -15,11 +15,13 @@ from app.models.case import Case
 from app.models.room import Room
 from app.models.session_record import SessionRecord
 from app.models.user import User
+from app.services import appt_billing
 from app.services.audit import write_audit
 from app.services.slot_check import assert_room_active, assert_room_free, flush_or_409
 from app.schemas.appointment import (
     AppointmentBatchCreate,
     AppointmentCreate,
+    AppointmentPaymentUpdate,
     AppointmentResponse,
     AppointmentUpdate,
 )
@@ -56,6 +58,7 @@ def _to_response(
     therapist: User | None = None,
     db: Session | None = None,
     viewer: User | None = None,
+    warnings: list[str] | None = None,
 ) -> AppointmentResponse:
     start = end = None
     if a.time_range:
@@ -73,12 +76,23 @@ def _to_response(
             couple_name = a.couple_case.name
         elif a.case and a.case.case_type == "couple":
             couple_name = a.case.name
-    # 回應不帶分潤、額度、失約費、方案資料（佔位空值，上線 B 才移除）。
+    # 回應不帶分潤、心理師抽成（那些屬已移除的記帳）；付款方式、額度、方案屬金流資訊，照實回。
     # 金額只是預約上的一個數字。隔離單位是「心理師」不是欄位：行政看全部，心理師看自己的（能走到這裡的
     # 一定是自己的預約，別人的在查詢就被擋掉）。會計維持現狀（記帳已移除，一律 0）。
     can_see_amount = viewer is not None and viewer.role in ("admin", "staff", "therapist")
+    quota = appt_billing.quota_summary(db, a.quota_id) if (db is not None and can_see_amount) else None
     return AppointmentResponse(
         amount=float(a.amount or 0) if can_see_amount else 0,
+        funding_source=(a.funding_source or "self_pay") if can_see_amount else None,
+        quota_id=a.quota_id if can_see_amount else None,
+        quota_institution_name=quota["institution_name"] if quota else None,
+        quota_used=quota["used"] if quota else None,
+        quota_total=quota["total"] if quota else None,
+        quota_remaining=quota["remaining"] if quota else None,
+        quota_is_last_session=bool(quota and quota["is_last"]),
+        plan_id=a.plan_id if can_see_amount else None,
+        transport_fee=float(a.transport_fee or 0) if can_see_amount else 0,
+        warnings=warnings or [],
         id=a.id,
         appointment_number=a.appointment_number,
         case_id=a.case_id,
@@ -241,6 +255,11 @@ def create_appointment(
     number = _make_number(therapist.user_code, body.start_time, seq)
     visit_seq = _next_visit_seq(db, body.case_id)
 
+    funding = body.funding_source or case.funding_source or "self_pay"
+    quota, warnings = appt_billing.resolve_quota(
+        db, body.case_id, funding, body.quota_id, body.start_time.date()
+    )
+
     time_range = DateTimeTZRange(body.start_time, body.end_time)
     appt = Appointment(
         appointment_number=number,
@@ -250,6 +269,8 @@ def create_appointment(
         session_type=body.session_type,
         time_range=time_range,
         amount=_amount_for(body.amount),
+        funding_source=funding,
+        quota_id=quota.id if quota else None,
         visit_seq=visit_seq,
         couple_case_id=body.couple_case_id,
         status="booked",
@@ -257,9 +278,10 @@ def create_appointment(
     )
     db.add(appt)
     flush_or_409(db, body.room_id, body.start_time, body.end_time)  # 並行寫入由資料庫約束擋下
+    appt_billing.hold_quota(quota)  # 已預留 → 已預約（同一交易）
     db.commit()
     db.refresh(appt)
-    return _to_response(appt, therapist, db, viewer=user)
+    return _to_response(appt, therapist, db, viewer=user, warnings=warnings)
 
 
 @router.post("/batch", response_model=list[AppointmentResponse], status_code=status.HTTP_201_CREATED)
@@ -291,7 +313,9 @@ def create_batch(
     assert_room_active(db, body.room_id)
     batch_id = str(uuid.uuid4())[:8]
     next_vs = _next_visit_seq(db, body.case_id)
+    funding = body.funding_source or case.funding_source or "self_pay"
     results = []
+    warns: dict[int, list[str]] = {}
 
     for i, slot in enumerate(body.slots):
         assert_room_free(db, body.room_id, slot.start_time, slot.end_time)
@@ -299,6 +323,9 @@ def create_batch(
         seq = _next_seq(db, therapist.user_code, slot.start_time)
         number = _make_number(therapist.user_code, slot.start_time, seq)
         time_range = DateTimeTZRange(slot.start_time, slot.end_time)
+        quota, slot_warnings = appt_billing.resolve_quota(
+            db, body.case_id, funding, body.quota_id, slot.start_time.date()
+        )
 
         appt = Appointment(
             appointment_number=number,
@@ -308,6 +335,8 @@ def create_batch(
             session_type=body.session_type,
             time_range=time_range,
             amount=_amount_for(body.amount),
+            funding_source=funding,
+            quota_id=quota.id if quota else None,
             visit_seq=next_vs + i,
             couple_case_id=body.couple_case_id,
             status="booked",
@@ -317,12 +346,14 @@ def create_batch(
         db.add(appt)
         # flush 讓同批次後面的 slot 也能看到前面的佔用（診間衝突檢查）
         flush_or_409(db, body.room_id, slot.start_time, slot.end_time)
+        appt_billing.hold_quota(quota)  # 同批次後面的 slot 會看到前面已佔用的額度；額度用完的 slot 只警告、不佔額度
         results.append(appt)
+        warns[i] = slot_warnings
 
     db.commit()
     for a in results:
         db.refresh(a)
-    return [_to_response(a, therapist, db, viewer=user) for a in results]
+    return [_to_response(a, therapist, db, viewer=user, warnings=warns.get(i)) for i, a in enumerate(results)]
 
 
 @router.put("/{appointment_id}", response_model=AppointmentResponse)
@@ -400,6 +431,7 @@ def cancel_appointment(
 
     a.status = "cancelled"
     a.checkin_status = "pending"
+    appt_billing.release_quota(db, a.quota_id)  # 已預約 → 退回已預留
     write_audit(db, "appointments", a.id, "UPDATE", user.id,
                 {"status": "booked"}, {"status": "cancelled"})
     db.commit()
@@ -408,10 +440,31 @@ def cancel_appointment(
     return _to_response(a, therapist, db, viewer=user)
 
 
-@router.put("/{appointment_id}/payment", status_code=status.HTTP_410_GONE)
-def update_appointment_payment(user: User = Depends(get_current_user)):
-    """帳務拆除上線 A：付款方式與機構額度已停用，不再寫入。"""
-    raise HTTPException(status_code=status.HTTP_410_GONE, detail="付款方式功能已停用")
+@router.put("/{appointment_id}/payment", response_model=AppointmentResponse)
+def update_appointment_payment(
+    appointment_id: int,
+    body: AppointmentPaymentUpdate,
+    user: User = Depends(RequireRole(["admin", "staff"])),
+    db: Session = Depends(get_db),
+):
+    """改付款方式（自費／機構）與扣哪一個額度。只動額度與付款方式，不產生任何流水或核銷。"""
+    a = _appointment_or_404(db, user, appointment_id)
+    if a.status != "booked":
+        raise HTTPException(status_code=400, detail="僅尚未執行的預約可改付款方式")
+    appt_date = a.time_range.lower.date() if a.time_range else date.today()
+    before = {"funding_source": a.funding_source, "quota_id": a.quota_id}
+    appt_billing.release_quota(db, a.quota_id)  # 先把舊額度退回，再重新挑（可能挑回同一個）
+    a.quota_id = None
+    quota, warnings = appt_billing.resolve_quota(db, a.case_id, body.funding_source, body.quota_id, appt_date)
+    a.funding_source = body.funding_source
+    a.quota_id = quota.id if quota else None
+    appt_billing.hold_quota(quota)
+    write_audit(db, "appointments", a.id, "UPDATE", user.id, before,
+                {"funding_source": a.funding_source, "quota_id": a.quota_id})
+    db.commit()
+    db.refresh(a)
+    therapist = db.query(User).filter(User.id == a.therapist_id).first()
+    return _to_response(a, therapist, db, viewer=user, warnings=warnings)
 
 
 class BatchDeleteRequest(BaseModel):
@@ -538,6 +591,7 @@ def mark_arrived(
     a.checked_in_at = datetime.now(timezone.utc)
     a.checked_in_by = user.id
     a.status = "executed"
+    appt_billing.consume_quota(db, a.quota_id)  # 已預約 → 已使用
     write_audit(db, "appointments", a.id, "UPDATE", user.id,
                 {"checkin_status": "pending"},
                 {"checkin_status": "arrived"})
@@ -569,6 +623,7 @@ def mark_absent(
     a.checked_in_by = user.id
     a.status = "no_show"
     a.no_show_type = body.no_show_type
+    appt_billing.release_quota(db, a.quota_id)  # 未到：已預約 → 退回已預留
     write_audit(db, "appointments", a.id, "UPDATE", user.id,
                 {"checkin_status": "pending"},
                 {"checkin_status": "absent", "no_show_type": body.no_show_type})

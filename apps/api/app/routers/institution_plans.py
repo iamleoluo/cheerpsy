@@ -5,7 +5,7 @@ from pydantic import BaseModel, model_validator
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import RequireRole, get_current_user, accounting_gone
+from app.auth.dependencies import RequireRole, get_current_user
 from app.database import get_db
 from app.models.case_institution_quota import CaseInstitutionQuota
 from app.models.institution_contract import InstitutionContract
@@ -279,7 +279,7 @@ def list_plans(
     contract_id: int | None = Query(None),
     institution_id: int | None = Query(None),
     status_filter: str | None = Query(None, alias="status"),
-    user: User = Depends(get_current_user),
+    user: User = Depends(RequireRole(STAFF)),
     db: Session = Depends(get_db),
 ):
     q = db.query(InstitutionPlan).join(InstitutionContract)
@@ -298,7 +298,7 @@ def list_plans(
 def list_plan_quotas(
     plan_id: int,
     include_archived: bool = Query(False),
-    user: User = Depends(get_current_user),
+    user: User = Depends(RequireRole(STAFF)),
     db: Session = Depends(get_db),
 ):
     """方案子列表（個案清冊）：每個個案的額度三態。"""
@@ -333,7 +333,7 @@ def list_plan_quotas(
     return out
 
 
-@router.post("", response_model=PlanResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(accounting_gone)])
+@router.post("", response_model=PlanResponse, status_code=status.HTTP_201_CREATED)
 def create_plan(
     body: PlanCreate,
     user: User = Depends(RequireRole(STAFF)),
@@ -374,7 +374,7 @@ def create_plan(
     return _to_response(p)
 
 
-@router.put("/{plan_id}", response_model=PlanResponse, dependencies=[Depends(accounting_gone)])
+@router.put("/{plan_id}", response_model=PlanResponse)
 def update_plan(
     plan_id: int,
     body: PlanUpdate,
@@ -414,7 +414,7 @@ def update_plan(
     return _to_response(p, agg.get(p.id))
 
 
-@router.put("/{plan_id}/status", response_model=PlanResponse, dependencies=[Depends(accounting_gone)])
+@router.put("/{plan_id}/status", response_model=PlanResponse)
 def set_plan_status(
     plan_id: int,
     new_status: str = Query(..., alias="value"),

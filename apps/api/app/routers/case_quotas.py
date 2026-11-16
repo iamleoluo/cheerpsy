@@ -4,12 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import RequireRole, get_current_user, accounting_gone
+from app.auth.dependencies import RequireRole, get_current_user
 from app.database import get_db
 from app.models.appointment import Appointment
 from app.models.case import Case
 from app.models.case_institution_quota import CaseInstitutionQuota
 from app.models.institution import Institution
+from app.models.institution_plan import InstitutionPlan
 from app.models.user import User
 from app.schemas.case_quota import QuotaCreate, QuotaResponse, QuotaUpdate
 from app.services.audit import write_audit
@@ -33,6 +34,8 @@ def _to_response(q: CaseInstitutionQuota, db: Session) -> QuotaResponse:
         case_name=q.case.name if q.case else None,
         institution_id=q.institution_id,
         institution_name=q.institution.name if q.institution else None,
+        plan_id=q.plan_id,
+        plan_name=q.plan.name if q.plan else None,
         total_count=q.total_count,
         used_count=q.used_count,
         reserved_count=q.booked_count,
@@ -122,7 +125,7 @@ def list_all_quotas(
     return [_to_response(r, db) for r in rows]
 
 
-@router.post("/cases/{case_id}/quotas", response_model=QuotaResponse, status_code=201, dependencies=[Depends(accounting_gone)])
+@router.post("/cases/{case_id}/quotas", response_model=QuotaResponse, status_code=201)
 def create_quota(
     case_id: int,
     body: QuotaCreate,
@@ -133,6 +136,10 @@ def create_quota(
         raise HTTPException(status_code=404, detail="個案不存在")
     if not db.query(Institution).filter(Institution.id == body.institution_id).first():
         raise HTTPException(status_code=404, detail="機構不存在")
+    if body.plan_id is not None:
+        plan = db.query(InstitutionPlan).filter(InstitutionPlan.id == body.plan_id).first()
+        if not plan or not plan.contract or plan.contract.institution_id != body.institution_id:
+            raise HTTPException(status_code=400, detail="方案不存在，或不屬於這個機構")
     if body.total_count <= 0:
         raise HTTPException(status_code=400, detail="總次數需大於 0")
     if body.valid_from and body.valid_until and body.valid_from > body.valid_until:
@@ -141,6 +148,7 @@ def create_quota(
     q = CaseInstitutionQuota(
         case_id=case_id,
         institution_id=body.institution_id,
+        plan_id=body.plan_id,
         total_count=body.total_count,
         used_count=0,
         # 加入方案時全數進「已預留」，維持 used+booked+reserved=total 恆等式
@@ -170,7 +178,7 @@ def create_quota(
     return _to_response(q, db)
 
 
-@router.put("/quotas/{quota_id}", response_model=QuotaResponse, dependencies=[Depends(accounting_gone)])
+@router.put("/quotas/{quota_id}", response_model=QuotaResponse)
 def update_quota(
     quota_id: int,
     body: QuotaUpdate,
@@ -226,7 +234,7 @@ def update_quota(
     return _to_response(q, db)
 
 
-@router.delete("/quotas/{quota_id}", status_code=204, dependencies=[Depends(accounting_gone)])
+@router.delete("/quotas/{quota_id}", status_code=204)
 def delete_quota(
     quota_id: int,
     user: User = Depends(RequireRole(WRITE_ROLES)),

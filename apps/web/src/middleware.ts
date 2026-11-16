@@ -7,6 +7,8 @@ const STAFF_ONLY_PREFIXES = [
   "/reports",
   "/admin",
   "/gcal",
+  "/contracts",
+  "/plans",
 ];
 
 function isStaffOnly(pathname: string): boolean {

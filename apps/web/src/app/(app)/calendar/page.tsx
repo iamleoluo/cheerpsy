@@ -44,6 +44,11 @@ interface Appt {
   status: string;
   checkin_status: string;
   is_intake: boolean;
+  funding_source?: string | null;
+  quota_used?: number | null;
+  quota_total?: number | null;
+  quota_remaining?: number | null;
+  quota_is_last_session?: boolean;
 }
 
 const BADGE: Record<string, { label: string; cls: string }> = {
@@ -319,8 +324,9 @@ function cellBg(a: Appt): string {
   if (a.status === "cancelled") return "bg-gray-100 opacity-50";
   if (a.checkin_status === "absent") return "bg-red-50";
   if (a.checkin_status === "arrived") return "bg-gray-100";
+  if (a.quota_is_last_session) return "bg-violet-50 ring-1 ring-inset ring-red-400"; // 機構最後一次，下次轉自費
   if (a.is_intake) return "bg-amber-50 ring-1 ring-inset ring-amber-300";
-  return "bg-blue-50";
+  return a.funding_source === "institution" ? "bg-violet-50" : "bg-blue-50";
 }
 
 function ApptCell({
@@ -347,6 +353,11 @@ function ApptCell({
         {SESSION_TYPE[a.session_type]}
       </div>
       {a.is_intake && <div className="text-[10px] font-medium text-amber-700">⭐ 媒合初診</div>}
+      {a.funding_source === "institution" && (
+        <div className={`truncate text-[10px] ${a.quota_is_last_session ? "font-medium text-red-600" : "text-violet-700"}`}>
+          {a.quota_total != null ? `機構 ${a.quota_used}/${a.quota_total}・剩 ${a.quota_remaining}${a.quota_is_last_session ? "（最後一次）" : ""}` : "機構（未佔額度）"}
+        </div>
+      )}
 
       {a.status !== "cancelled" && a.checkin_status === "pending" && !offsite && (
         <div className="mt-1 flex gap-1">

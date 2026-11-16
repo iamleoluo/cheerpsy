@@ -35,29 +35,14 @@ def _create(client, auth, who, case, room, start, end, **extra):
 
 
 # ---- 建立：金額只是一個選填的數字（admin／staff 才存），沒有任何記帳 --------------
-def test_create_without_amount_ok_and_server_writes_zero(client, auth, db, w):
+def test_create_self_pay_defaults_and_no_accounting_fields(client, auth, db, w):
     s, e = _slot()
     r = _create(client, auth, w["staff"], w["case"], w["room"], s, e)
     assert r.status_code == 201, r.text
     body = r.json()
-    assert body["amount"] == 0 and body["funding_source"] is None
-    assert body["quota_id"] is None and body["therapist_share"] is None
-    row = db.execute(text("SELECT amount, quota_id FROM appointments WHERE id=:i"),
-                     {"i": body["id"]}).one()
-    assert float(row.amount) == 0 and row.quota_id is None
-
-
-def test_create_ignores_legacy_money_fields_but_stores_amount_for_staff(client, auth, db, w):
-    """舊前端仍送 institution／quota_id：不報錯，也不寫入。amount 是新的選填數字：staff 送的會存。"""
-    s, e = _slot()
-    r = _create(client, auth, w["staff"], w["case"], w["room"], s, e,
-                amount=2500, funding_source="institution", quota_id=999)
-    assert r.status_code == 201, r.text
-    row = db.execute(text("SELECT amount, quota_id FROM appointments WHERE id=:i"),
-                     {"i": r.json()["id"]}).one()
-    assert float(row.amount) == 2500 and row.quota_id is None
-    assert r.json()["funding_source"] is None and r.json()["amount"] == 2500
-    assert r.json()["therapist_share"] is None and r.json()["quota_id"] is None  # 沒有任何額度、分潤
+    assert body["funding_source"] == "self_pay" and body["quota_id"] is None
+    assert body["therapist_share"] is None and body["clinic_share"] is None  # 分潤屬已移除的記帳
+    assert db.execute(text("SELECT count(*) FROM session_records")).scalar() == 0
 
 
 def test_amount_stored_for_whoever_creates_and_validated(client, auth, db, w):
@@ -204,15 +189,18 @@ def test_ledger_settle_is_gone(client, auth, w):
 
 
 # ---- 410：金額與付款方式 ----------------------------------------------------
-def test_amount_and_payment_endpoints_are_gone(client, auth, db, w):
+def test_amount_endpoint_gone_payment_endpoint_restored(client, auth, db, w):
     s, e = _slot()
-    a = _create(client, auth, w["staff"], w["case"], w["room"], s, e).json()
+    a = _create(client, auth, w["staff"], w["case"], w["room"], s, e, amount=900).json()
     assert client.put(f"/appointments/{a['id']}/amount", headers=auth(w["admin"]),
-                      json={"amount": 999}).status_code == 410
-    assert client.put(f"/appointments/{a['id']}/payment", headers=auth(w["staff"]),
-                      json={"funding_source": "institution"}).status_code == 410
-    assert float(db.execute(text("SELECT amount FROM appointments WHERE id=:i"), {"i": a["id"]}).scalar()) == 0
-    # 金額只是預約上的一個數字：沒有專屬的收款／結算端點，也不產生任何帳務紀錄
+                      json={"amount": 999}).status_code == 410  # 專屬金額端點仍停用（金額走預約編輯）
+    # 付款方式（自費／機構、額度）屬金流資訊，已恢復；機構案沒有額度只警告
+    r = client.put(f"/appointments/{a['id']}/payment", headers=auth(w["staff"]),
+                   json={"funding_source": "institution"})
+    assert r.status_code == 200 and r.json()["funding_source"] == "institution" and r.json()["warnings"]
+    assert client.put(f"/appointments/{a['id']}/payment", headers=auth(w["t"]),
+                      json={"funding_source": "self_pay"}).status_code == 403  # 改付款方式限行政
+    # 不產生任何帳務紀錄
     assert db.execute(text("SELECT count(*) FROM session_records")).scalar() == 0
 
 

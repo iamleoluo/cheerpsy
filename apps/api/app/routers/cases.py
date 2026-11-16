@@ -9,6 +9,7 @@ from app.auth.password import verify_password
 from app.database import get_db
 from app.models.appointment import Appointment
 from app.models.case import Case
+from app.models.case_institution_quota import CaseInstitutionQuota
 from app.models.gcal_hooks import enqueue_appointments
 from app.models.couple_member import CoupleMember
 from app.models.user import User
@@ -21,6 +22,7 @@ from app.schemas.case import (
     CoupleCreate,
     CoupleMemberInfo,
 )
+from app.services import quota_flow
 from app.services.audit import write_audit
 from app.services.case_numbering import generate_case_number, generate_couple_number
 from app.utils.encryption import encrypt_national_id, hmac_national_id
@@ -301,7 +303,8 @@ def close_case(
       1. 驗證呼叫者密碼（防誤觸）
       2. case.status = "closed"，寫入 closed_at/by 與 closure_reason
       3. 取消所有未來預約（booked 且 lower(time_range) > now）
-      4. write_audit（帳務拆除上線 A：不再動機構額度）
+      4. 機構額度歸零：已預留＋已預約全數釋出，只保留已使用的歷史
+      5. write_audit
     """
     if not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="密碼錯誤")
@@ -329,6 +332,13 @@ def close_case(
     # 批次 UPDATE 不經過 ORM 事件，Google 日曆同步要明確入列（同一交易）
     enqueue_appointments(db.connection(), cancel_ids)
 
+    # 4-2) 額度歸零（只保留已使用的歷史）
+    quotas_zeroed = 0
+    for q in db.query(CaseInstitutionQuota).filter(CaseInstitutionQuota.case_id == case_id).all():
+        if q.total_count > q.used_count:
+            quota_flow.release_on_close(q)
+            quotas_zeroed += 1
+
     c.status = "closed"
     c.closed_at = now
     c.closed_by = user.id
@@ -341,6 +351,7 @@ def close_case(
             "status": "closed",
             "closure_reason": c.closure_reason,
             "cancelled_appointments": cancelled,
+            "quotas_zeroed": quotas_zeroed,
         },
     )
     db.commit()

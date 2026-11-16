@@ -1,7 +1,7 @@
 /**
  * 導覽設定 — 行政端與心理師端兩套。
  *
- * 帳務拆除（階段 2）之後：不再有機構、財務、核銷、酬勞相關入口。
+ * 帳務拆除（階段 2）之後：不再有財務、核銷、酬勞相關入口；機構合約與方案屬金流資訊，已恢復。
  * 行政端分 5 群組，心理師端 4 群組。
  */
 
@@ -39,6 +39,13 @@ export const ADMIN_NAV: readonly NavGroup[] = [
       { href: "/booking", label: "預約作業", icon: "➕" },
       { href: "/appts", label: "預約總表", icon: "📋" },
       { href: "/gcal", label: "日曆分享", icon: "📤", roles: ["admin", "staff"] },
+    ],
+  },
+  {
+    section: "機構",
+    items: [
+      { href: "/contracts", label: "機構合約清冊", icon: "📑", roles: ["admin", "accountant", "staff"] },
+      { href: "/plans", label: "機構方案清冊", icon: "🏢", roles: ["admin", "accountant", "staff"] },
     ],
   },
   {

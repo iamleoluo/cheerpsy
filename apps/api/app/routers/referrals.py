@@ -723,8 +723,8 @@ class ConvertBody(BaseModel):
     slot_id: int
     room_id: int | None = None
     session_type: str = "in_person"
-    amount: float | None = None  # 上線 A 起忽略，伺服器寫 0
-    fee_item: str | None = None  # 同上
+    amount: float | None = None  # 自費：應收金額；機構案由方案帶出（見預約帶方案）
+    fee_item: str | None = None  # 諮商項目
 
 
 @router.post("/{referral_id}/convert", status_code=http.HTTP_201_CREATED)
@@ -785,7 +785,10 @@ def convert_to_appointment(
         room_id=body.room_id,
         session_type=body.session_type,
         time_range=func.tstzrange(start, end),
-        amount=0,  # 上線 A：金額由伺服器填 0
+        amount=body.amount or 0,
+        funding_source=r.funding_source,
+        plan_id=r.plan_id,
+        fee_item=body.fee_item,
         is_intake=True,
         created_by=user.id,
     )
