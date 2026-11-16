@@ -15,6 +15,7 @@ from app.models.room import Room
 from app.models.session_record import SessionRecord
 from app.models.user import User
 from app.services.audit import write_audit
+from app.services.slot_check import assert_room_free, flush_or_409
 from app.schemas.appointment import (
     AppointmentBatchCreate,
     AppointmentCreate,
@@ -113,8 +114,8 @@ def _to_occupied_response(a: Appointment) -> AppointmentResponse:
         id=a.id,
         appointment_number="",
         case_id=0,
-        therapist_id=a.therapist_id,
-        therapist_name=a.therapist.name if a.therapist else None,
+        therapist_id=0,  # 診所尚未決定可否顯示心理師姓名：一律只顯示「已佔用」
+        therapist_name=None,
         room_id=a.room_id,
         room_name=a.room.name if a.room else None,
         session_type="in_person",
@@ -247,8 +248,7 @@ def create_appointment(
     if body.session_type == "in_person" and not body.room_id:
         raise HTTPException(status_code=400, detail="Room required for in-person sessions")
 
-    if body.room_id:
-        _check_room_conflict(db, body.room_id, body.start_time, body.end_time)
+    assert_room_free(db, body.room_id, body.start_time, body.end_time)
 
     seq = _next_seq(db, therapist.user_code, body.start_time)
     number = _make_number(therapist.user_code, body.start_time, seq)
@@ -269,6 +269,7 @@ def create_appointment(
         created_by=user.id,
     )
     db.add(appt)
+    flush_or_409(db, body.room_id, body.start_time, body.end_time)  # 並行寫入由資料庫約束擋下
     db.commit()
     db.refresh(appt)
     return _to_response(appt, therapist, db)
@@ -305,8 +306,7 @@ def create_batch(
     results = []
 
     for i, slot in enumerate(body.slots):
-        if body.room_id:
-            _check_room_conflict(db, body.room_id, slot.start_time, slot.end_time)
+        assert_room_free(db, body.room_id, slot.start_time, slot.end_time)
 
         seq = _next_seq(db, therapist.user_code, slot.start_time)
         number = _make_number(therapist.user_code, slot.start_time, seq)
@@ -328,7 +328,7 @@ def create_batch(
         )
         db.add(appt)
         # flush 讓同批次後面的 slot 也能看到前面的佔用（診間衝突檢查）
-        db.flush()
+        flush_or_409(db, body.room_id, slot.start_time, slot.end_time)
         results.append(appt)
 
     db.commit()
@@ -355,18 +355,21 @@ def update_appointment(
         "time_range": str(a.time_range),
     }
 
-    if body.start_time is not None or body.end_time is not None:
-        new_start = body.start_time or a.time_range.lower
-        new_end = body.end_time or a.time_range.upper
-        room_id = body.room_id if body.room_id is not None else a.room_id
-        if room_id:
-            _check_room_conflict(db, room_id, new_start, new_end, exclude_id=appointment_id)
+    # 改期或改房都要重新檢查診間（只改房、不改時間也要檢查）
+    new_start = body.start_time or a.time_range.lower
+    new_end = body.end_time or a.time_range.upper
+    new_room = body.room_id if body.room_id is not None else a.room_id
+    changed = (
+        body.start_time is not None or body.end_time is not None or body.room_id is not None
+    )
+    if changed:
+        assert_room_free(db, new_room, new_start, new_end, exclude_appointment_id=appointment_id)
         a.time_range = DateTimeTZRange(new_start, new_end)
-
     if body.room_id is not None:
         a.room_id = body.room_id
     if body.session_type is not None:
         a.session_type = body.session_type
+    flush_or_409(db, a.room_id, new_start, new_end, exclude_appointment_id=appointment_id)
     # 上線 A：amount／funding_source／quota_id 已忽略
 
     after = {
@@ -499,23 +502,6 @@ def delete_by_batch_id(
 def update_amount(user: User = Depends(get_current_user)):
     """帳務拆除上線 A：預約金額已停用，伺服器一律寫 0。"""
     raise HTTPException(status_code=status.HTTP_410_GONE, detail="預約金額功能已停用")
-
-
-def _check_room_conflict(db: Session, room_id: int, start: datetime, end: datetime, exclude_id: int | None = None):
-    sql = """
-        SELECT id FROM appointments
-        WHERE room_id = :room_id
-          AND status != 'cancelled'
-          AND time_range && tstzrange(:start, :end)
-    """
-    params: dict = {"room_id": room_id, "start": start.isoformat(), "end": end.isoformat()}
-    if exclude_id is not None:
-        sql += " AND id != :exclude_id"
-        params["exclude_id"] = exclude_id
-    sql += " LIMIT 1"
-    conflict = db.execute(text(sql), params).first()
-    if conflict:
-        raise HTTPException(status_code=409, detail="Room time slot conflict")
 
 
 # ---------------------------------------------------------------------------

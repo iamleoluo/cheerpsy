@@ -67,10 +67,26 @@ export default function BookingPage() {
   const [notifyAdmin, setNotifyAdmin] = useState(false);
   const [outreach, setOutreach] = useState("");
   const [saving, setSaving] = useState(false);
+  // 此時段空著的診間（伺服器算：沒有 booked／executed 預約，也沒有活動）
+  const [freeRooms, setFreeRooms] = useState<Room[] | null>(null);
 
   // 批次
   const [freq, setFreq] = useState<"weekly" | "biweekly" | "monthly">("weekly");
   const [count, setCount] = useState("4");
+
+  // 從診間日曆空白格點進來：?room=&date=&start=
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const r = Number(p.get("room"));
+    const d = p.get("date");
+    const s = p.get("start");
+    if (r) setRoomId(r);
+    if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) setDate(d);
+    if (s && /^\d{2}:\d{2}$/.test(s)) {
+      setStartTime(s);
+      setEndTime(addHour(s));
+    }
+  }, []);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -118,6 +134,19 @@ export default function BookingPage() {
 
   const offsite = sessionType !== "in_person";
 
+  useEffect(() => {
+    if (!token || offsite || !date || startTime >= endTime) {
+      setFreeRooms(null);
+      return;
+    }
+    let stale = false;
+    const q = `start=${encodeURIComponent(`${date}T${startTime}:00+08:00`)}&end=${encodeURIComponent(`${date}T${endTime}:00+08:00`)}`;
+    clientFetch(`/rooms/availability?${q}`, token)
+      .then((r) => { if (!stale) setFreeRooms(r); })
+      .catch(() => { if (!stale) setFreeRooms(null); });
+    return () => { stale = true; };
+  }, [token, offsite, date, startTime, endTime]);
+
   const weekDays = useMemo(
     () => Array.from({ length: 7 }, (_, i) => shiftDate(weekStart, i)),
     [weekStart]
@@ -128,7 +157,7 @@ export default function BookingPage() {
     return weekAppts.filter(
       (a) =>
         a.room_id === roomId &&
-        a.status !== "cancelled" &&
+        (a.status === "booked" || a.status === "executed") &&
         a.start_time?.slice(0, 10) === date &&
         hhmm(a.start_time) < endTime &&
         hhmm(a.end_time) > startTime
@@ -248,6 +277,29 @@ export default function BookingPage() {
                       </option>
                     ))}
                   </select>
+                  {freeRooms && (
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
+                      <span className="text-gray-500">此時段空房：</span>
+                      {freeRooms.length === 0 ? (
+                        <span className="text-red-600">沒有空房</span>
+                      ) : (
+                        freeRooms.map((r) => (
+                          <button
+                            key={r.id}
+                            type="button"
+                            onClick={() => setRoomId(r.id)}
+                            className={`rounded-full border px-2 py-0.5 ${
+                              roomId === r.id
+                                ? "border-primary-500 bg-primary-50 text-primary-700"
+                                : "border-gray-300 text-gray-600 hover:bg-gray-50"
+                            }`}
+                          >
+                            {r.room_code}{r.room_type === "play" ? "（遊戲室）" : ""}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
                 </label>
               )}
 
@@ -338,7 +390,10 @@ export default function BookingPage() {
             <div className="space-y-2">
               {weekDays.map((d) => {
                 const list = weekAppts.filter(
-                  (a) => a.start_time?.slice(0, 10) === d && a.status !== "cancelled" && (!roomId || a.room_id === roomId)
+                  (a) =>
+                    a.start_time?.slice(0, 10) === d &&
+                    (a.status === "booked" || a.status === "executed") &&
+                    (!roomId || a.room_id === roomId)
                 );
                 return (
                   <div key={d} className={`rounded-lg border px-3 py-2 ${d === date ? "border-primary-400 bg-primary-50" : "border-gray-200"}`}>
@@ -349,8 +404,10 @@ export default function BookingPage() {
                       list.map((a) => (
                         <div key={a.id} className={`text-xs text-gray-700 ${a.occupied_only ? "cursor-default select-none" : ""}`} aria-disabled={a.occupied_only || undefined}>
                           {hhmm(a.start_time)}–{hhmm(a.end_time)}{" "}
-                          {isTherapist || a.occupied_only ? (
-                            <span className="text-gray-400">已使用 · {a.therapist_name}</span>
+                          {a.occupied_only ? (
+                            <span className="text-gray-400">已佔用</span>
+                          ) : isTherapist ? (
+                            <span className="text-gray-700">{a.case_name}</span>
                           ) : (
                             <>{a.case_name} · {a.therapist_name}</>
                           )}

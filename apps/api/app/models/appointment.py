@@ -1,5 +1,5 @@
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, Numeric, String, func
-from sqlalchemy.dialects.postgresql import TSTZRANGE
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, Numeric, String, func, literal_column, text
+from sqlalchemy.dialects.postgresql import ExcludeConstraint, TSTZRANGE
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -55,3 +55,16 @@ class Appointment(Base):
     session_record = relationship("SessionRecord", back_populates="appointment", uselist=False)
     invoice = relationship("Invoice", back_populates="appointment", uselist=False)
     reminders = relationship("ReminderLog", back_populates="appointment")
+
+    # 診間不可重疊由資料庫保證（只有 booked／executed 佔用；cancelled、no_show 釋出）。
+    # 用 int4range(room_id, room_id) 代替 `room_id WITH =`：不需要 btree_gist extension。
+    # 對應 migration zh8d2e3f4a5d_room_exclusion。
+    __table_args__ = (
+        ExcludeConstraint(
+            (func.int4range(room_id, room_id, literal_column("'[]'")), "&&"),
+            ("time_range", "&&"),
+            using="gist",
+            where=text("room_id IS NOT NULL AND status IN ('booked', 'executed')"),
+            name="ex_appointments_room",
+        ),
+    )
