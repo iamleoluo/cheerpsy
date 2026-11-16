@@ -194,6 +194,19 @@ def assert_case_free(
         raise HTTPException(status_code=409, detail=f"個案在 {_fmt(row.s, row.e)} 已有其他預約")
 
 
+def therapist_is_busy(
+    db: Session, therapist_id: int, start: datetime, end: datetime,
+    exclude_appointment_id: int | None = None,
+) -> bool:
+    """心理師在時段內有 booked／executed 預約或「這段不接案」。與預約寫入同一組檢查，只回是否，不帶任何細節。"""
+    try:
+        assert_therapist_free(db, therapist_id, start, end, exclude_appointment_id=exclude_appointment_id)
+        assert_therapist_available(db, therapist_id, start, end)
+    except HTTPException:
+        return True
+    return False
+
+
 def assert_therapist_available(db: Session, therapist_id: int | None, start: datetime, end: datetime) -> None:
     """心理師在時段內沒有「這段不接案」；否則 409。訊息只寫時段，不帶原因（原因只有本人與行政看得到）。"""
     if not therapist_id:

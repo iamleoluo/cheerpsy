@@ -299,7 +299,7 @@ def test_dashboard_today_counts(client, auth, w, make_appt):
     assert (r["today_expected"], r["today_arrived"], r["today_absent"]) == (2, 1, 1)
 
 
-# ---- 媒合轉初診仍擋診間衝突；自費要填金額 ---------------------------------
+# ---- 媒合預約初診仍擋診間衝突；自費要填金額 ---------------------------------
 def test_referral_convert_self_pay_needs_amount_and_room_conflict(client, auth, db, w):
     from datetime import date as _d
     from app.models.referral import (ReferralDispatch, ReferralDispatchTarget,
