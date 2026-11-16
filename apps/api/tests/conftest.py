@@ -4,6 +4,7 @@
     TEST_DATABASE_URL=postgresql://cheerpsy:cheerpsy@localhost:5432/cheerpsy_test pytest apps/api/tests
     pytest -n auto apps/api/tests          # 平行：每個 worker 用自己的資料庫 <名稱>_<worker>（不存在就建立）
     pytest -m "not slow" apps/api/tests    # 跳過跑 migration 的慢測試
+    REUSE_TEST_SCHEMA=1 pytest tests/test_x.py   # 開發中跑少數檔案：schema 已是最新就不重建（預設不開，完整流程不受影響）
 
 TEST_DATABASE_URL 必須指向「專用的測試資料庫」。
 資料隔離：每個測試包在外層 transaction + SAVEPOINT 裡，結束時整個 rollback（比 TRUNCATE 快很多）。
@@ -11,6 +12,7 @@ TEST_DATABASE_URL 必須指向「專用的測試資料庫」。
 它們改用 TRUNCATE（測試前後各一次）。連不上資料庫時整批測試會 skip，而不是失敗。
 """
 
+import hashlib
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -47,6 +49,10 @@ def _per_worker_url(url: str) -> str:
     return urlunsplit(parts._replace(path=f"/{name}"))
 
 
+# 開發用：REUSE_TEST_SCHEMA=1 時，資料庫裡的 schema 若與目前的 model 完全一致就沿用，不 DROP／重建，結束也不清掉。
+# 預設（含 CI 與完整 -n auto 流程）不開，行為與以前完全相同。
+REUSE_SCHEMA = os.environ.get("REUSE_TEST_SCHEMA") == "1"
+
 TEST_DB_URL = _per_worker_url(TEST_DB_URL)
 # 必須在 import app 之前設定，app.database 會在 import 時建立 engine
 os.environ["DATABASE_URL"] = TEST_DB_URL
@@ -71,11 +77,62 @@ def _schema():
             c.execute(text("SELECT 1"))
     except Exception as e:  # pragma: no cover
         pytest.skip(f"測試資料庫連不上（{TEST_DB_URL}）：{e}", allow_module_level=False)
-    # 現有 schema 有循環外鍵（cases↔referral_requests 等），drop_all 排序會失敗，直接重建 schema
-    _reset_schema()
-    Base.metadata.create_all(engine)
+    if REUSE_SCHEMA and _schema_is_current():
+        _truncate_all()  # 上次被中斷時可能留下資料
+    else:
+        # 現有 schema 有循環外鍵（cases↔referral_requests 等），drop_all 排序會失敗，直接重建 schema
+        _reset_schema()
+        Base.metadata.create_all(engine)
+        if REUSE_SCHEMA:
+            _store_fingerprint()
     yield
-    _reset_schema()
+    if not REUSE_SCHEMA:
+        _reset_schema()
+
+
+_FP_TABLE = "_test_schema_fingerprint"
+
+
+def _schema_fingerprint() -> str:
+    """目前所有 model 的結構雜湊（欄位、型別、可空、預設、約束、索引）；任何異動都會不同。
+    刻意不用 CreateTable 的 DDL 文字：約束的輸出順序在不同 process 間不固定，會讓雜湊每次都變。"""
+    from sqlalchemy.dialects import postgresql
+
+    d = postgresql.dialect()
+    lines = []
+    for t in sorted(Base.metadata.tables.values(), key=lambda t: t.name):
+        for c in t.columns:  # 欄位順序固定（宣告順序）
+            default = c.server_default.arg if c.server_default is not None else None
+            lines.append(f"{t.name}.{c.name}|{c.type.compile(dialect=d)}|{c.nullable}|{c.primary_key}|{default}")
+        cons = []
+        for k in t.constraints:
+            cols = ",".join(sorted(x.name for x in getattr(k, "columns", [])))
+            extra = str(getattr(k, "sqltext", "")) if k.__class__.__name__ == "CheckConstraint" else ""
+            if k.__class__.__name__ == "ForeignKeyConstraint":
+                extra = ",".join(sorted(e.target_fullname for e in k.elements))
+            cons.append(f"{k.__class__.__name__}|{k.name}|{cols}|{extra}")
+        lines.extend(f"{t.name}!{x}" for x in sorted(cons))
+        lines.extend(
+            f"{t.name}#{i.name}|{','.join(sorted(x.name for x in i.columns))}|{i.unique}" for i in sorted(t.indexes, key=lambda i: i.name or "")
+        )
+    return hashlib.sha256("\n".join(lines).encode()).hexdigest()
+
+
+def _schema_is_current() -> bool:
+    try:
+        with engine.connect() as c:
+            stored = c.execute(text(f"SELECT fp FROM {_FP_TABLE}")).scalar()
+            have = {r[0] for r in c.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'"))}
+    except Exception:
+        return False
+    want = set(Base.metadata.tables) | {_FP_TABLE}
+    return stored == _schema_fingerprint() and have == want
+
+
+def _store_fingerprint() -> None:
+    with engine.begin() as c:
+        c.execute(text(f"CREATE TABLE {_FP_TABLE} (fp text NOT NULL)"))
+        c.execute(text(f"INSERT INTO {_FP_TABLE} (fp) VALUES (:fp)"), {"fp": _schema_fingerprint()})
 
 
 def _reset_schema():
