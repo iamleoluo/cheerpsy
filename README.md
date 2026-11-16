@@ -9,7 +9,6 @@ FastAPI + Next.js 14 全端營運管理系統。
 | 前端 | Next.js 14 (App Router) + TypeScript + Tailwind CSS | `apps/web/` |
 | 後端 | FastAPI + SQLAlchemy 2.x + Pydantic v2 | `apps/api/` |
 | 資料庫 | PostgreSQL 16 | Docker / Railway |
-| 快取 | Redis 7 | Docker / Railway |
 
 ## 本地開發
 

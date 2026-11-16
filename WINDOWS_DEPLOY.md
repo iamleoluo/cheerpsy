@@ -1,6 +1,6 @@
 # CheerPsy Windows 部署說明書（慈恩伺服器）
 
-把正式站從 Railway 移植到自有的 Windows 機器（固定 IP，`cheerpsy@114.35.230.241`），用 Docker Desktop 跑 api/web/postgres/redis，用 Cloudflare Tunnel 對外連線。
+把正式站從 Railway 移植到自有的 Windows 機器（固定 IP，`cheerpsy@114.35.230.241`），用 Docker Desktop 跑 api/web/postgres（另有日曆同步 worker），用 Cloudflare Tunnel 對外連線。
 
 ## 架構概覽
 
@@ -16,12 +16,11 @@ Internet ── Cloudflare (DNS + Tunnel) ── cloudflared (Windows service)
                                     │      └─────┬────┘      │
                                     │       ┌────┴────┐      │
                                     │       │postgres │      │
-                                    │       │  redis  │      │
                                     │       └─────────┘      │
                                     └─────────────────────────┘
 ```
 
-跟 Railway 版最大的差異：這裡用同一份 `docker-compose.prod.yml` 把四個服務全部起在同一台機器上（Railway 是 api/web 各自獨立 service + 兩個 plugin）。
+跟 Railway 版最大的差異：這裡用同一份 `docker-compose.prod.yml` 把四個服務全部起在同一台機器上（Railway 是 api/web 各自獨立 service + PostgreSQL plugin）。
 
 ---
 
@@ -186,7 +185,7 @@ out: `A specified logon session does not exist. It may already have been termina
 
 **原因：** `%USERPROFILE%\.docker\config.json` 的 `credsStore` 指向 `wincred`，而
 `docker-credential-wincred.exe` 需要存取 Windows 認證管理員 —— 非互動式的 SSH session
-沒有可用的 logon session，因此必定失敗。即使拉的是公開 image（`postgres`、`redis`、
+沒有可用的 logon session，因此必定失敗。即使拉的是公開 image（`postgres`、
 `python`、`node`）也一樣整個 build 中斷。桌面手動跑沒事、SSH 進去跑就炸，就是這個原因。
 
 #### 實測過程中被推翻的三種做法（別再走一次）

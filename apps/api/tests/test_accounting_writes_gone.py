@@ -44,11 +44,7 @@ GONE = [
     ("POST", "/claim-batches/1/documents/upload"),
     ("POST", "/claim-batches/my/confirm-docs"),
     ("POST", "/claim-batches/my/withdraw-docs"),
-    # 收據、發票
-    ("POST", "/receipts/single-session/1"),
-    ("POST", "/receipts/batch/1"),
-    ("POST", "/receipts/product/1"),
-    ("POST", "/receipts/self-pay-batch/1"),
+    # 發票
     ("POST", "/invoices"),
     ("PUT", "/invoices/1/void"),
     # 帳冊逐筆寫入
@@ -134,7 +130,7 @@ def test_all_write_routes_of_retired_routers_are_gone_or_explicitly_kept():
     from app.auth.dependencies import accounting_gone
 
     retired_prefixes = ("/ledger", "/invoices", "/claim-batches", "/finance", "/payouts",
-                        "/petty-cash", "/product-sales", "/receipts")
+                        "/petty-cash", "/product-sales")
     # 機構合約、方案、價目、交通費、個案額度屬「金流資訊」，已恢復，不在此列（見 test_institution_plans.py）
     kept = {  # 刻意保留的寫入端點（本階段範圍之外，上線 B 再處理）
         ("DELETE", "/petty-cash/{record_id}"),

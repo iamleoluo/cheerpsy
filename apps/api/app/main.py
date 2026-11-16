@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import appointments, audit, auth, case_quotas, cases, churn, claim_batches, dashboard, data_import, export, health, institutions, invoices, ledger, notifications, payouts, petty_cash, product_sales, receipts, reminders, reports, rooms, therapist_time_off
+from app.routers import appointments, audit, auth, case_quotas, cases, churn, claim_batches, dashboard, data_import, export, health, institutions, invoices, ledger, notifications, payouts, petty_cash, product_sales, reminders, reports, rooms, therapist_time_off
 from app.routers import quota_templates
 from app.routers import gcal_calendars, gcal_settings, gcal_sync
 from app.routers import institution_contracts, institution_plans, referrals, finance_daily, claims_extra, therapist_portal, holidays, analytics, events
@@ -38,7 +38,6 @@ app.include_router(data_import.router)
 app.include_router(claim_batches.router)
 app.include_router(notifications.router)
 app.include_router(product_sales.router)
-app.include_router(receipts.router)
 app.include_router(case_quotas.router)
 app.include_router(quota_templates.router)
 app.include_router(institution_contracts.router)

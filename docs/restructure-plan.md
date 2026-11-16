@@ -28,9 +28,9 @@ Alembic HEAD：~~`zg7c1d2e3f4c`（`apps/api/alembic/versions/zg7c1d2e3f4c_phase9
 | 層 | 實作 | 位置 |
 |---|---|---|
 | 前端 | Next.js 14 App Router、TypeScript、Tailwind、NextAuth v5 beta（`next-auth@5.0.0-beta.25`）、FullCalendar 6、Chart.js | `apps/web/` |
-| 後端 | FastAPI 0.115、SQLAlchemy 2.0、Alembic、Pydantic Settings、python-jose JWT、bcrypt、ReportLab、openpyxl | `apps/api/` |
+| 後端 | FastAPI 0.115、SQLAlchemy 2.0、Alembic、Pydantic Settings、python-jose JWT、bcrypt、openpyxl（ReportLab 已於 §3.5 移除） | `apps/api/` |
 | 資料庫 | PostgreSQL 16。預約時間用 `tstzrange` | `docker-compose.yml` |
-| 快取 | Redis 7 只在 compose 裡。`apps/api` 沒有任何 `redis` / Celery / APScheduler 引用 | `docker-compose.yml`、`docker-compose.prod.yml` |
+| 快取 | 無。Redis 已從 compose 移除（`apps/api` 從未引用 `redis` / Celery / APScheduler） | — |
 | 認證 | API：Bearer JWT，角色以資料庫 `users.role` 為準（`apps/api/app/auth/dependencies.py` 的 `RequireRole`）。Web：Credentials provider 打 `POST /auth/login` 再打 `GET /auth/me`（`apps/web/src/lib/auth.ts`） | |
 | 測試 | 整個 repo 沒有 pytest / 前端測試檔 | |
 | 背景工作 | 沒有。結算與派案逾期都是「有人打 API 時順便做」 | `settlement.py`、`referrals.py` 的 `sweep_expired` |
@@ -44,11 +44,11 @@ Alembic HEAD：~~`zg7c1d2e3f4c`（`apps/api/alembic/versions/zg7c1d2e3f4c_phase9
 
 環境變數（現有，沒有 Google 相關）：
 
-- API（`apps/api/app/config.py`）：`DATABASE_URL`、`JWT_SECRET`、`JWT_ALGORITHM`、`JWT_EXPIRE_MINUTES`、`ID_ENCRYPTION_KEY`、`CORS_ORIGINS`、`OUTPATIENT_MIN_FEE`（預設 1000，只服務外出諮商保底抽成）。
+- API（`apps/api/app/config.py`）：`DATABASE_URL`、`JWT_SECRET`、`JWT_ALGORITHM`、`JWT_EXPIRE_MINUTES`、`ID_ENCRYPTION_KEY`、`CORS_ORIGINS`。（`OUTPATIENT_MIN_FEE` 已於 §3.5 移除。）
 - 正式 compose 另有 `CLAIM_DOC_ROOT`（核銷附件，volume `claimdocs`）。
 - Web：`NEXT_PUBLIC_API_URL`、`API_URL`、`NEXTAUTH_SECRET`、`NEXTAUTH_URL`、`AUTH_TRUST_HOST`。範本在 `.env.production.example`。
 
-`OUTPATIENT_MIN_FEE` 與 `CLAIM_DOC_ROOT` 只服務帳務，刪帳務後可移除。
+`OUTPATIENT_MIN_FEE` 已移除；`CLAIM_DOC_ROOT` 仍供核銷附件下載讀取，歸檔完成後再移除。
 
 ### 1.2 目錄（與本次有關的部分）
 
@@ -415,10 +415,10 @@ Drop 順序（先解循環 FK，再由子表到父表）：
 
 ### 3.5 依賴與設定清理
 
-- `requirements.txt` 移除 `reportlab`，除非還有非收據 PDF。目前 PDF 都在 `app/services/pdf/`。
-- `docker-compose.prod.yml` 移除 `claimdocs` volume 與 `CLAIM_DOC_ROOT`（歸檔完成後）。
-- `config.py` 移除 `OUTPATIENT_MIN_FEE`。
-- Redis service 可從 `docker-compose.yml` 與 `docker-compose.prod.yml` 移除。不要在這次為了日曆把 Redis 加進應用程式。
+- [x] `requirements.txt` 移除 `reportlab`，除非還有非收據 PDF。目前 PDF 都在 `app/services/pdf/`。**（已完成：連同 `app/services/pdf/`、`pdf_generator.py`、`/receipts` router 與 3 個 PDF GET 路由一併刪除）**
+- [ ] `docker-compose.prod.yml` 移除 `claimdocs` volume 與 `CLAIM_DOC_ROOT`（歸檔完成後；目前仍保留，`GET /claim-batches/{id}/documents/{doc_id}/download` 還在讀）。
+- [x] `config.py` 移除 `OUTPATIENT_MIN_FEE`。**（已完成；`services/settlement.py` 內仍有殘留引用，該檔無人 import，隨上線 B 刪除）**
+- [x] Redis service 可從 `docker-compose.yml` 與 `docker-compose.prod.yml` 移除。不要在這次為了日曆把 Redis 加進應用程式。**（已完成）**
 - `seed.py` 去掉會計使用者。心理師與診間種子留下，診間名單以 §5.1 的核對結果為準。
 - `RAILWAY_DEPLOY.md`、`WINDOWS_DEPLOY.md`、`WORK_REPORT.md` 裡「每日匯出流水到 Google Drive」改成「預約是主資料，帳務 CSV 只是上線 B 前的一次歸檔」。文件更新跟程式同一批，避免部署手冊繼續要求 `CLAIM_DOC_ROOT`。
 
@@ -909,7 +909,7 @@ flowchart TD
 ## 待辦（2026-11-17 稽核）
 
 - **上線 B**：歸檔加 drop migration（只 drop 帳務表、`hourly_rate`／`fee_item`、`therapist_share`／`clinic_share`；先在正式資料複本跑 `check_amounts.py`、`list_overlaps.py`）。
-- **§3.5 清理**：`reportlab`、Redis、`OUTPATIENT_MIN_FEE`、`CLAIM_DOC_ROOT`／`claimdocs`、seed 的 accountant、`RAILWAY_DEPLOY.md`／`WORK_REPORT.md` 的「每日匯出流水到 Google Drive」；帳務 router 和 `settlement.py` 在上線 B 後刪。
+- **§3.5 清理**：~~`reportlab`、Redis、`OUTPATIENT_MIN_FEE`~~（已完成）；尚餘 `CLAIM_DOC_ROOT`／`claimdocs`（歸檔後）、seed 的 accountant、`RAILWAY_DEPLOY.md`／`WORK_REPORT.md` 的「每日匯出流水到 Google Drive」；帳務 router 和 `settlement.py` 在上線 B 後刪。
 - **刪除 accountant 角色（已定 2026-11-17，本次實作）**：後端 23 個 router 檔的 `RequireRole`／角色判斷、角色列舉與 schema 驗證、`seed.py` 拿掉 `"accountant"`；新 migration 把既有 `role='accountant'` 帳號停用（`is_active=false`，不刪、不改角色）；建立或改成 accountant 回 422、既有 accountant 登入被拒；前端 middleware、nav、`landingForRole`、角色選單、使用者管理頁、`guide-content` 同步拿掉；測試更新。不動 `quota_flow.py`、`settlement.py`。
 - `events` 講師費停止寫入。
 - `sweep_expired` 改成定時跑（`gcal_worker` 或排程）。

@@ -1,10 +1,8 @@
 from datetime import date, datetime, time, timezone
 from decimal import Decimal
 
-import io
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
@@ -32,7 +30,6 @@ from app.schemas.session_record import (
     VoidRequest,
 )
 from app.services.claim_batch import generate_batch_number
-from app.services.pdf_generator import generate_self_pay_receipt
 
 DEFAULT_COMMISSION_RATE = Decimal("0.70")
 
@@ -318,51 +315,6 @@ def list_self_pay_cases(
 
     result.sort(key=lambda s: (s.all_paid, s.case_name))
     return result
-
-
-def _build_receipt_dicts(records: list[SessionRecord], db: Session) -> list[dict]:
-    out = []
-    for r in records:
-        appt = r.appointment
-        therapist = appt.therapist if appt else db.query(User).filter(User.id == r.therapist_id).first()
-        out.append({
-            "session_date": r.session_date,
-            "therapist_name": therapist.name if therapist else "",
-            "session_type": {"in_person": "現場", "online": "線上", "outdoor": "外出"}.get(r.session_type, r.session_type),
-            "amount": float(r.amount) - float(r.discount_amount or 0),
-        })
-    return out
-
-
-@router.get("/receipt")
-def download_combined_receipt(
-    record_ids: str = Query(..., description="comma-separated session_record ids"),
-    user: User = Depends(RequireRole(["admin", "staff"])),
-    db: Session = Depends(get_db),
-):
-    ids = [int(x) for x in record_ids.split(",") if x.strip()]
-    records = db.query(SessionRecord).filter(SessionRecord.id.in_(ids)).all()
-    if not records:
-        raise HTTPException(status_code=404, detail="No records found")
-    records.sort(key=lambda r: (r.session_date, r.id))
-    case = db.query(Case).filter(Case.id == records[0].case_id).first() if records[0].case_id else None
-    dicts = _build_receipt_dicts(records, db)
-    total = sum(d["amount"] for d in dicts)
-    dates = sorted(r.session_date for r in records)
-    label = f"R{dates[0].strftime('%Y%m%d')}-{len(records)}筆"
-    pdf = generate_self_pay_receipt(
-        batch_number=label,
-        case_name=case.name if case else "N/A",
-        period_start=dates[0],
-        period_end=dates[-1],
-        records=dicts,
-        total_amount=total,
-    )
-    return StreamingResponse(
-        io.BytesIO(pdf),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="receipt-{label}.pdf"'},
-    )
 
 
 @router.get("/{record_id}", response_model=SessionRecordResponse)
