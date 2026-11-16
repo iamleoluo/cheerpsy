@@ -69,7 +69,9 @@ export function billingBody(v: BillingValue, canAmount: boolean): Record<string,
 
 /** 自費預約必須填金額（機構案由方案帶出）。回傳錯誤訊息或空字串。 */
 export function billingError(v: BillingValue): string {
-  if (v.funding === "self_pay" && parseAmount(v.amount) === undefined) return "自費預約請填金額（免費請填 0）";
+  const amt = parseAmount(v.amount);
+  if (v.funding === "self_pay" && (amt === undefined || amt <= 0)) return "自費預約請填金額（須大於 0）";
+  if (v.funding === "institution" && amt !== undefined && amt <= 0) return "手動調整的金額須大於 0（借場地等方案請在方案設定允許 0 並留空）";
   return "";
 }
 
@@ -252,22 +254,22 @@ export function BillingFields({
       {canAmount && (
         <label className="block text-sm">
           <span className="mb-1 block text-xs font-medium text-gray-700">
-            {value.funding === "self_pay" ? "金額（必填，個案要付的全額）" : "手動調整應收（選填）"}
+            {value.funding === "self_pay" ? "金額（必填，須大於 0；個案要付的全額）" : "手動調整應收（選填）"}
           </span>
           <input
             type="number"
             inputMode="decimal"
-            min={0}
+            min={1}
             max={9999999}
             step="any"
             required={value.funding === "self_pay"}
             value={value.amount}
             onChange={(e) => set({ amount: e.target.value })}
-            placeholder={value.funding === "self_pay" ? "例如 1500；免費請填 0" : "不填就依價目"}
+            placeholder={value.funding === "self_pay" ? "例如 1500" : "不填就依價目"}
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
           />
           <span className="mt-1 block text-xs text-gray-400">
-            Google 日曆事件標題結尾會顯示個案這次要付的錢（機構案＝自付額；0 元不顯示）。
+            Google 日曆標題結尾會顯示金額：自費「$全額」；機構「$總額（自付 $X）」，全額補助「（機構全額）」。
           </span>
         </label>
       )}

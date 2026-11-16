@@ -37,11 +37,11 @@ def world(make_user, make_case, room, db):
                 other_case=other_case, room=room, inst=inst)
 
 
-def make_plan(client, auth, w, rate_items=None, transport=None):
+def make_plan(client, auth, w, rate_items=None, transport=None, allows_zero_amount=False):
     c = client.post("/institution-contracts", headers=auth(w["admin"]), json={
         "institution_id": w["inst"].id, "name": "115 合約", "hourly_rate": 1600, "self_pay_amount": 200}).json()
     p = client.post("/institution-plans", headers=auth(w["admin"]), json={
-        "contract_id": c["id"], "name": "個別方案", "per_person_count": 10,
+        "contract_id": c["id"], "name": "個別方案", "per_person_count": 10, "allows_zero_amount": allows_zero_amount,
         "rate_items": rate_items if rate_items is not None else [
             {"label": "個別 50 分", "total_amount": 1600, "self_pay_amount": 200}],
         "transport_fees": transport if transport is not None else [
@@ -75,6 +75,7 @@ def row(db, appt_id):
 def test_self_pay_requires_amount_and_snapshots_full_amount(client, auth, world, db):
     w = world
     assert book(client, auth, w["staff"], w["self_case"], w["room"]).status_code == 422  # 沒填金額
+    assert book(client, auth, w["staff"], w["self_case"], w["room"], amount=0).status_code == 422  # 金額必須大於 0
     r = book(client, auth, w["staff"], w["self_case"], w["room"], amount=1800)
     assert r.status_code == 201, r.text
     j = r.json()
@@ -82,7 +83,7 @@ def test_self_pay_requires_amount_and_snapshots_full_amount(client, auth, world,
     assert float(row(db, j["id"]).self_pay_amount) == 1800
     # 心理師建立自己的自費預約一樣要填
     assert book(client, auth, w["a"], w["self_case"], w["room"], day=4).status_code == 422
-    assert book(client, auth, w["a"], w["self_case"], w["room"], day=4, amount=0).status_code == 201  # 免費場次可填 0
+    assert book(client, auth, w["a"], w["self_case"], w["room"], day=4, amount=500).status_code == 201
     # 自費改金額 → 自付額跟著變
     r = client.put(f"/appointments/{j['id']}", headers=auth(w["staff"]), json={"amount": 2000})
     assert r.json()["amount"] == 2000 and r.json()["self_pay_amount"] == 2000
@@ -138,11 +139,13 @@ def test_batch_uses_plan_for_every_slot(client, auth, world):
     assert [(x["amount"], x["self_pay_amount"]) for x in r.json()] == [(1600, 200), (1600, 200)]
 
 
-def test_institution_without_plan_warns_and_allows_manual_amount(client, auth, world):
+def test_institution_without_plan_needs_manual_amount_and_self_pay_is_unset(client, auth, world):
     w = world
+    assert book(client, auth, w["staff"], w["inst_case"], w["room"]).status_code == 422  # 沒方案又沒金額
     r = book(client, auth, w["staff"], w["inst_case"], w["room"], amount=900)
     assert r.status_code == 201
-    assert r.json()["amount"] == 900 and r.json()["self_pay_amount"] == 0 and r.json()["warnings"]
+    j = r.json()
+    assert j["amount"] == 900 and j["self_pay_amount"] is None and j["institution_subsidy"] is None and j["warnings"]
 
 
 def test_plan_and_rate_item_must_belong_together(client, auth, world):
@@ -213,27 +216,55 @@ def test_editing_plan_master_does_not_change_existing_appointments(client, auth,
 # ---------------------------------------------------------------------------
 # Google 標題的金額＝個案這次要付的錢
 # ---------------------------------------------------------------------------
-def test_title_amount_is_what_the_client_pays(client, auth, world, db):
+def test_title_amount_formats(client, auth, world, db):
     w = world
     p = make_plan(client, auth, w)
     quota(client, auth, w, w["inst_case"], p)
     inst = book(client, auth, w["staff"], w["inst_case"], w["room"], day=3).json()
     selfpay = book(client, auth, w["staff"], w["self_case"], w["room"], day=4, amount=1800).json()
-    free = book(client, auth, w["staff"], w["self_case"], w["room"], day=5, amount=0).json()
-    t_inst = gcal_titles.event_title(row(db, inst["id"]), "type_room")
-    t_self = gcal_titles.event_title(row(db, selfpay["id"]), "type_room")
-    t_free = gcal_titles.event_title(row(db, free["id"]), "type_room")
-    assert t_inst.endswith("$200") and "1,600" not in t_inst  # 機構案＝自付額，不是應收
-    assert t_self.endswith("$1,800")  # 自費案＝全額
-    assert "$" not in t_free  # 0 元不顯示
-    # 機構案自付額 0（例如第 1 次免費）也不顯示
+    title = lambda i: gcal_titles.event_title(row(db, i), "type_room")
+    assert title(inst["id"]).endswith("$1,600（自付 $200）")  # 機構：總額（自付 $X）
+    assert title(selfpay["id"]).endswith("· $1,800") and "（" not in title(selfpay["id"])  # 自費：全額
+    # 全額補助（自付 0）
     p0 = make_plan(client, auth, w, rate_items=[{"label": "免費", "total_amount": 1600, "self_pay_amount": 0}])
     case0 = w["other_case"]
     case0.therapist_id = w["a"].id
     db.commit()
     quota(client, auth, w, case0, p0)
     z = book(client, auth, w["staff"], case0, w["room"], day=6).json()
-    assert "$" not in gcal_titles.event_title(row(db, z["id"]), "type_room")
+    assert title(z["id"]).endswith("$1,600（機構全額）")
+    # 自付額未設定
+    db.execute(text("UPDATE appointments SET self_pay_amount = NULL WHERE id = :i"), {"i": inst["id"]})
+    db.commit()
+    assert title(inst["id"]).endswith("$1,600（自付未設定）")
+    # 借場地等允許金額 0 的方案：0 不顯示
+    pv = make_plan(client, auth, w, rate_items=[{"label": "場地", "total_amount": 0, "self_pay_amount": 0}], allows_zero_amount=True)
+    case1 = w["inst_case"]
+    quota(client, auth, w, case1, pv)
+    v = book(client, auth, w["staff"], case1, w["room"], day=8, plan_id=pv["id"])
+    assert v.status_code == 201, v.text
+    assert "$" not in title(v.json()["id"])
+
+
+def test_amount_must_be_positive_except_plans_that_allow_zero(client, auth, world):
+    w = world
+    p = make_plan(client, auth, w, rate_items=[{"label": "零", "total_amount": 0, "self_pay_amount": 0}])
+    quota(client, auth, w, w["inst_case"], p)
+    assert book(client, auth, w["staff"], w["inst_case"], w["room"]).status_code == 422  # 價目 0 且方案不允許
+    ok = book(client, auth, w["staff"], w["inst_case"], w["room"], amount=500)
+    assert ok.status_code == 201
+    assert client.put(f"/appointments/{ok.json()['id']}", headers=auth(w["staff"]), json={"amount": 0}).status_code == 422
+
+
+def test_response_shows_institution_name_and_subsidy(client, auth, world):
+    w = world
+    p = make_plan(client, auth, w)
+    quota(client, auth, w, w["inst_case"], p)
+    j = book(client, auth, w["staff"], w["inst_case"], w["room"]).json()
+    assert (j["institution_name"], j["amount"], j["self_pay_amount"], j["institution_subsidy"]) == ("某某基金會", 1600, 200, 1400)
+    assert j["quota_remaining"] == 9  # 額度只顯示剩餘堂數
+    s = book(client, auth, w["staff"], w["self_case"], w["room"], day=4, amount=1800).json()
+    assert (s["institution_name"], s["institution_subsidy"], s["self_pay_amount"]) == (None, None, 1800)
 
 
 # ---------------------------------------------------------------------------

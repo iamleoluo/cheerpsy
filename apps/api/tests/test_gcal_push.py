@@ -124,7 +124,7 @@ def run(fake, now=None, client_factory=None):
 
 def create(client, auth, w, day=2, hour=10, **extra):
     s, e = _slot(day, hour)
-    body = {"case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person", "amount": 0,
+    body = {"case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person", "amount": 1000,
             "start_time": s.isoformat(), "end_time": e.isoformat(), **extra}
     r = client.post("/appointments", json=body, headers=auth(w["staff"]))
     assert r.status_code == 201, r.text
@@ -272,7 +272,7 @@ def test_create_enqueues_one_upsert_and_worker_pushes_event(client, auth, w, fak
     assert (j.job_type, j.status, j.attempts, j.dedupe_key) == ("upsert_event", "pending", 0, f"appt:{a['id']}")
     assert run(fake) == 1
     body = ev(fake, a["id"])
-    assert body["summary"] == "諮商 · 2B · 王小明" and body["extendedProperties"]["private"]["cheerpsyAppointmentId"] == str(a["id"])
+    assert body["summary"] == "諮商 · 2B · 王小明 · $1,000" and body["extendedProperties"]["private"]["cheerpsyAppointmentId"] == str(a["id"])
     assert job(db, a["id"]).status == "done"
     m = db.get(AppointmentGoogleEvent, a["id"])
     assert m.google_calendar_id == CAL and m.google_event_id == gcal_titles.event_id(a["id"]) and m.last_status == "pushed"
@@ -283,7 +283,7 @@ def test_batch_create_enqueues_each(client, auth, w, fake, db):
     s1, e1 = _slot(3)
     s2, e2 = _slot(4)
     r = client.post("/appointments/batch", headers=auth(w["staff"]), json={
-        "case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person", "amount": 0,
+        "case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person", "amount": 1000,
         "slots": [{"start_time": s1.isoformat(), "end_time": e1.isoformat()},
                   {"start_time": s2.isoformat(), "end_time": e2.isoformat()}]})
     assert r.status_code == 201, r.text
@@ -309,7 +309,7 @@ def test_room_change_updates_title(client, auth, w, fake, db):
     run(fake)
     client.put(f"/appointments/{a['id']}", headers=auth(w["staff"]), json={"room_id": w["room2"].id})
     run(fake)
-    assert ev(fake, a["id"])["summary"] == "諮商 · 3C · 王小明"
+    assert ev(fake, a["id"])["summary"] == "諮商 · 3C · 王小明 · $1,000"
 
 
 def test_two_reschedules_before_worker_runs_keep_one_job(client, auth, w, fake, db):
@@ -494,7 +494,7 @@ def test_no_calendar_blocks_then_provision_unblocks_and_pushes(client, auth, w, 
     db.commit()
     s, e = _slot(3)
     r = client.post("/appointments", headers=auth(w["staff"]), json={
-        "case_id": c3.id, "room_id": w["room"].id, "session_type": "in_person", "amount": 0,
+        "case_id": c3.id, "room_id": w["room"].id, "session_type": "in_person", "amount": 1000,
         "start_time": s.isoformat(), "end_time": e.isoformat()})
     assert r.status_code == 201, r.text
     aid = r.json()["id"]
@@ -565,7 +565,7 @@ def test_each_calendar_only_contains_its_own_therapists_sessions(client, auth, w
     create(client, auth, w)
     s, e = _slot(3)
     client.post("/appointments", headers=auth(w["staff"]), json={
-        "case_id": c2.id, "room_id": w["room2"].id, "session_type": "in_person", "amount": 0, "start_time": s.isoformat(), "end_time": e.isoformat()})
+        "case_id": c2.id, "room_id": w["room2"].id, "session_type": "in_person", "amount": 1000, "start_time": s.isoformat(), "end_time": e.isoformat()})
     run(fake)
     cals = {}
     for (cal, _id), body in fake.events.items():
@@ -589,7 +589,7 @@ def test_default_format_is_d_with_full_name_and_amount(client, auth, w, fake, db
     run(fake)
     e = ev(fake, a["id"])
     blob = json.dumps(e, ensure_ascii=False)
-    assert e["summary"] == "諮商 · 2B · 王小明" and "0912" not in blob and "憂鬱" not in blob
+    assert e["summary"] == "諮商 · 2B · 王小明 · $1,000" and "0912" not in blob and "憂鬱" not in blob
 
 
 def test_amount_change_triggers_resync_and_zero_amount_hides_line(client, auth, w, fake, db):
@@ -823,7 +823,7 @@ def test_resync_overwrites_google_side_edits_and_removes_cancelled(client, auth,
     db.commit()
     client.post("/settings/google/sync/resync", headers=auth(w["admin"]))
     run(fake, now=now_() + timedelta(minutes=5))
-    assert ev(fake, a["id"])["summary"] == "諮商 · 2B · 王小明"  # 以 Cheerpsy 為準覆寫
+    assert ev(fake, a["id"])["summary"] == "諮商 · 2B · 王小明 · $1,000"  # 以 Cheerpsy 為準覆寫
     assert ev(fake, b["id"]) is None
 
 
@@ -972,9 +972,9 @@ def test_editing_amount_in_the_form_resyncs_the_event_title(client, auth, w, fak
     run(fake)
     assert [c[0] for c in fake.event_calls()] == ["update_event"]
     assert ev(fake, a["id"])["summary"].endswith("$1,800") and "金額" not in ev(fake, a["id"])["description"]
-    client.put(f"/appointments/{a['id']}", headers=auth(w["staff"]), json={"amount": 0})
+    assert client.put(f"/appointments/{a['id']}", headers=auth(w["staff"]), json={"amount": 0}).status_code == 422  # 金額必須大於 0
     run(fake)
-    assert "$" not in ev(fake, a["id"])["summary"]  # 沒有金額就不顯示
+    assert ev(fake, a["id"])["summary"].endswith("$1,800")  # 沒改成，標題不變
 
 
 def test_therapist_editing_own_amount_resyncs_only_to_own_calendar(client, auth, w, fake, db, make_case):
@@ -982,12 +982,12 @@ def test_therapist_editing_own_amount_resyncs_only_to_own_calendar(client, auth,
     case2 = make_case(w["t2"], "李小華")
     s, e = _slot(3, 10)
     mine = client.post("/appointments", headers=auth(w["t"]), json={
-        "case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person", "amount": 0,
+        "case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person", "amount": 1000,
         "start_time": s.isoformat(), "end_time": e.isoformat(), "amount": 1200})
     assert mine.status_code == 201 and mine.json()["amount"] == 1200
     s2, e2 = _slot(3, 14)
     theirs = client.post("/appointments", headers=auth(w["t2"]), json={
-        "case_id": case2.id, "room_id": w["room"].id, "session_type": "in_person", "amount": 0,
+        "case_id": case2.id, "room_id": w["room"].id, "session_type": "in_person", "amount": 1000,
         "start_time": s2.isoformat(), "end_time": e2.isoformat(), "amount": 900}).json()
     run(fake)
     mid, tid = mine.json()["id"], theirs["id"]

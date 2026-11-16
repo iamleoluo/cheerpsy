@@ -13,8 +13,8 @@ export function useCanEditAmount(): boolean {
 }
 
 /**
- * 預約金額。自費預約必填（免費請填 0）；機構預約的金額由方案帶出，不必填。
- * 只是預約上的數字：個案這次要付的錢會顯示在 Google 日曆事件標題結尾（0 不顯示），
+ * 預約金額。必須大於 0（借場地等方案可在方案設定允許 0）；機構預約的金額由方案帶出，不必填。
+ * 只是預約上的數字：會顯示在 Google 日曆事件標題結尾，
  * 不會產生核銷、流水或對帳。
  */
 export function AmountField({
@@ -32,11 +32,11 @@ export function AmountField({
   if (!can) return null;
   return (
     <label className={`block text-sm ${className}`}>
-      <span className="mb-1 block text-xs font-medium text-gray-700">{required ? "金額（必填，免費請填 0）" : "金額"}</span>
+      <span className="mb-1 block text-xs font-medium text-gray-700">{required ? "金額（必填，須大於 0）" : "金額"}</span>
       <input
         type="number"
         inputMode="decimal"
-        min={0}
+        min={1}
         max={9999999}
         step="any"
         required={required}
@@ -45,7 +45,7 @@ export function AmountField({
         placeholder="例如 1500"
         className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
       />
-      <span className="mt-1 block text-xs text-gray-400">會顯示在 Google 日曆事件標題結尾；0 元不顯示。</span>
+      <span className="mt-1 block text-xs text-gray-400">會顯示在 Google 日曆事件標題結尾；標題格式：自費「$全額」；機構「$總額（自付 $X）」。</span>
     </label>
   );
 }

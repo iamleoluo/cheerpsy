@@ -29,7 +29,7 @@ def _slot(days=3, hour=10, hours=1):
 
 
 def _create(client, auth, who, case, room, start, end, **extra):
-    body = {"case_id": case.id, "room_id": room.id, "session_type": "in_person", "amount": 0,
+    body = {"case_id": case.id, "room_id": room.id, "session_type": "in_person", "amount": 1000,
             "start_time": start.isoformat(), "end_time": end.isoformat(), **extra}
     return client.post("/appointments", json=body, headers=auth(who))
 
@@ -63,7 +63,7 @@ def test_edit_amount_visible_to_admin_staff_and_owner_and_audited(client, auth, 
     r = client.put(f"/appointments/{a['id']}", headers=auth(w["staff"]), json={"amount": 2200})
     assert r.status_code == 200 and r.json()["amount"] == 2200
     assert client.put(f"/appointments/{a['id']}", headers=auth(w["staff"]), json={"room_id": w["room"].id}).json()["amount"] == 2200  # 沒送就不改
-    assert client.put(f"/appointments/{a['id']}", headers=auth(w["staff"]), json={"amount": 0}).json()["amount"] == 0  # 0＝清除
+    assert client.put(f"/appointments/{a['id']}", headers=auth(w["staff"]), json={"amount": 0}).status_code == 422  # 金額必須大於 0
     assert client.put(f"/appointments/{a['id']}", headers=auth(w["staff"]), json={"amount": -5}).status_code == 422
     client.put(f"/appointments/{a['id']}", headers=auth(w["admin"]), json={"amount": 3000})
     assert client.get(f"/appointments/{a['id']}", headers=auth(w["admin"])).json()["amount"] == 3000
@@ -81,7 +81,7 @@ def test_batch_create_amount_applies_to_all_slots_and_conflict(client, auth, db,
     slots = [{"start_time": s.isoformat(), "end_time": e.isoformat(), "amount": 3000},
              {"start_time": (s + timedelta(days=7)).isoformat(),
               "end_time": (e + timedelta(days=7)).isoformat()}]
-    body = {"case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person", "amount": 0,
+    body = {"case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person", "amount": 1000,
             "amount": 2000, "funding_source": "institution", "slots": slots}
     r = client.post("/appointments/batch", json=body, headers=auth(w["staff"]))
     assert r.status_code == 201, r.text
@@ -120,7 +120,7 @@ def test_room_overlap_409_on_reschedule(client, auth, w):
 def test_online_session_does_not_need_room(client, auth, w):
     s, e = _slot()
     r = client.post("/appointments", headers=auth(w["staff"]),
-                    json={"case_id": w["case"].id, "session_type": "online", "amount": 0,
+                    json={"case_id": w["case"].id, "session_type": "online", "amount": 1000,
                           "start_time": s.isoformat(), "end_time": e.isoformat()})
     assert r.status_code == 201
 
@@ -128,7 +128,7 @@ def test_online_session_does_not_need_room(client, auth, w):
 def test_in_person_requires_room(client, auth, w):
     s, e = _slot()
     r = client.post("/appointments", headers=auth(w["staff"]),
-                    json={"case_id": w["case"].id, "session_type": "in_person", "amount": 0,
+                    json={"case_id": w["case"].id, "session_type": "in_person", "amount": 1000,
                           "start_time": s.isoformat(), "end_time": e.isoformat()})
     assert r.status_code == 400
 
@@ -196,7 +196,7 @@ def test_amount_endpoint_gone_payment_endpoint_restored(client, auth, db, w):
                       json={"amount": 999}).status_code == 410  # 專屬金額端點仍停用（金額走預約編輯）
     # 付款方式（自費／機構、額度）屬金流資訊，已恢復；機構案沒有額度只警告
     r = client.put(f"/appointments/{a['id']}/payment", headers=auth(w["staff"]),
-                   json={"funding_source": "institution"})
+                   json={"funding_source": "institution", "amount": 900})
     assert r.status_code == 200 and r.json()["funding_source"] == "institution" and r.json()["warnings"]
     assert client.put(f"/appointments/{a['id']}/payment", headers=auth(w["t"]),
                       json={"funding_source": "self_pay"}).status_code == 403  # 改付款方式限行政

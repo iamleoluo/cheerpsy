@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
+import { BillingDetailModal, BillingLine } from "@/components/billing-summary";
 import { AmountField, parseAmount, useCanEditAmount } from "@/components/amount-field";
 import { NO_SHOW_TYPES, SESSION_TYPE, hhmm, shiftDate, todayISO } from "@/lib/format";
 
@@ -20,6 +21,13 @@ interface Appt {
   checkin_status: string;
   is_intake: boolean;
   amount?: number;
+  self_pay_amount?: number | null;
+  plan_name?: string | null;
+  rate_item_label?: string | null;
+  institution_name?: string | null;
+  institution_subsidy?: number | null;
+  transport_fee?: number;
+  transport_fee_label?: string | null;
   funding_source?: string | null;
   quota_used?: number | null;
   quota_total?: number | null;
@@ -49,6 +57,7 @@ export default function ApptsPage() {
   const [fType, setFType] = useState("");
   const [absentFor, setAbsentFor] = useState<Appt | null>(null);
   const [adjustFor, setAdjustFor] = useState<Appt | null>(null);
+  const [detail, setDetail] = useState<Appt | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -182,11 +191,9 @@ export default function ApptsPage() {
                   <td className="px-3 py-2.5 font-medium">
                     {r.is_intake && <span className="mr-1 text-amber-600" title="媒合初診">⭐</span>}
                     {r.case_name}
-                    {r.funding_source === "institution" && (
-                      <span className={`ml-1.5 rounded px-1.5 py-0.5 text-[11px] font-normal ${r.quota_is_last_session ? "bg-red-50 text-red-600" : "bg-violet-50 text-violet-700"}`}>
-                        機構{r.quota_total != null ? ` ${r.quota_used}/${r.quota_total}` : "（未佔額度）"}
-                      </span>
-                    )}
+                    <button type="button" onClick={() => setDetail(r)} className="mt-0.5 block text-left text-[11px] font-normal hover:underline" title="金額與經費來源">
+                      <BillingLine a={r} />
+                    </button>
                   </td>
                   <td className="px-3 py-2.5">{r.therapist_name}</td>
                   <td className="px-3 py-2.5 tabular-nums">{hhmm(r.start_time)}–{hhmm(r.end_time)}</td>
@@ -228,6 +235,8 @@ export default function ApptsPage() {
           </tbody>
         </table>
       </div>
+
+      {detail && <BillingDetailModal appt={detail} onClose={() => setDetail(null)} />}
 
       {adjustFor && (
         <AdjustModal
@@ -338,7 +347,7 @@ function AdjustModal({
       // 改期不動機構案的金額（由方案帶出）；自費案只在金額有改時才送，且不可清空
       if (canAmount && selfPay && amount !== String(appt.amount ?? "")) {
         const amt = parseAmount(amount);
-        if (amt === undefined) { setErr("自費預約請填金額（免費請填 0）"); setSaving(false); return; }
+        if (amt === undefined || amt <= 0) { setErr("自費預約請填金額（須大於 0）"); setSaving(false); return; }
         body.amount = amt;
       }
       await clientFetch(`/appointments/${appt.id}`, token, { method: "PUT", body: JSON.stringify(body) });

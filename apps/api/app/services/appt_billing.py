@@ -141,7 +141,7 @@ def quota_summary(db: Session, quota_id: int | None) -> dict | None:
 class Pricing:
     funding: str
     amount: Decimal
-    self_pay: Decimal
+    self_pay: Decimal | None  # 機構：None＝自付額未知（沒方案／沒價目）
     transport_fee: Decimal = Decimal("0")
     plan_id: int | None = None
     rate_item_id: int | None = None
@@ -201,6 +201,8 @@ def compute_pricing(
         if manual_amount is None:
             raise HTTPException(status_code=422, detail="自費預約請填金額")
         amt = _D(manual_amount)
+        if amt <= 0:
+            raise HTTPException(status_code=422, detail="自費預約金額必須大於 0")
         return Pricing(funding="self_pay", amount=amt, self_pay=amt)
 
     warnings: list[str] = []
@@ -208,7 +210,9 @@ def compute_pricing(
     if plan is None:
         warnings.append("尚未指定機構方案，無法帶出應收與自付額，請手動填金額")
         amt = _D(manual_amount) if manual_amount is not None else Decimal("0")
-        return Pricing(funding="institution", amount=amt, self_pay=Decimal("0"), warnings=warnings,
+        if amt <= 0:
+            raise HTTPException(status_code=422, detail="機構預約尚未指定方案：請選方案，或手動填金額（須大於 0）")
+        return Pricing(funding="institution", amount=amt, self_pay=None, warnings=warnings,
                        manual_adjusted=manual_amount is not None, computed_amount=Decimal("0"))
 
     item: PlanRateItem | None = None
@@ -228,7 +232,7 @@ def compute_pricing(
         self_pay = min(_D(plan.contract.self_pay_amount or 0), total)
         warnings.append("方案沒有價目表，改用合約鐘點費與自付額")
     else:
-        total, self_pay = Decimal("0"), Decimal("0")
+        total, self_pay = Decimal("0"), None
         warnings.append("方案沒有價目，請手動填金額")
 
     transport = Decimal("0")
@@ -246,7 +250,9 @@ def compute_pricing(
     manual = manual_amount is not None and _D(manual_amount) != total
     if manual_amount is not None:
         total = _D(manual_amount)
-        self_pay = min(self_pay, total)
+        self_pay = min(self_pay, total) if self_pay is not None else None
+    if total <= 0 and not plan.allows_zero_amount:
+        raise HTTPException(status_code=422, detail="金額必須大於 0：請補方案價目，或手動填金額（借場地等方案可在方案設定允許 0）")
     return Pricing(
         funding="institution", amount=total, self_pay=self_pay, transport_fee=transport,
         plan_id=plan.id, rate_item_id=item.id if item else None,
@@ -309,3 +315,12 @@ def billing_options(db: Session, case) -> dict:
             for p in plans
         ],
     }
+
+
+def institution_name_of(db: Session, a: Appointment, plan: InstitutionPlan | None, quota: dict | None) -> str | None:
+    """預約所屬機構名稱：先看額度，再看方案的合約。"""
+    if quota and quota.get("institution_name"):
+        return quota["institution_name"]
+    if plan is not None and plan.contract is not None and plan.contract.institution is not None:
+        return plan.contract.institution.name
+    return None

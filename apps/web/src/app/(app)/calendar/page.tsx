@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
-import { money } from "@/lib/format";
+import { BillingDetailModal, BillingLine } from "@/components/billing-summary";
 import {
   DAY_END_MIN,
   DAY_START_MIN,
@@ -53,8 +53,11 @@ interface Appt {
   plan_name?: string | null;
   rate_item_label?: string | null;
   amount?: number;
-  self_pay_amount?: number;
+  self_pay_amount?: number | null;
+  institution_name?: string | null;
+  institution_subsidy?: number | null;
   transport_fee?: number;
+  transport_fee_label?: string | null;
   no_show_type?: string | null;
 }
 
@@ -76,6 +79,7 @@ export default function CalendarPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [absentFor, setAbsentFor] = useState<Appt | null>(null);
+  const [detailFor, setDetailFor] = useState<Appt | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -267,6 +271,7 @@ export default function CalendarPage() {
                           a={a}
                           onArrive={() => arrive(a)}
                           onAbsent={() => setAbsentFor(a)}
+                          onDetail={() => setDetailFor(a)}
                         />
                       </td>
                     );
@@ -302,6 +307,7 @@ export default function CalendarPage() {
                   a={a}
                   onArrive={() => arrive(a)}
                   onAbsent={() => setAbsentFor(a)}
+                  onDetail={() => setDetailFor(a)}
                 />
               </div>
             ))}
@@ -311,6 +317,8 @@ export default function CalendarPage() {
           </p>
         </div>
       )}
+
+      {detailFor && <BillingDetailModal appt={detailFor} onClose={() => setDetailFor(null)} />}
 
       {absentFor && (
         <AbsentModal
@@ -340,10 +348,12 @@ function ApptCell({
   a,
   onArrive,
   onAbsent,
+  onDetail,
 }: {
   a: Appt;
   onArrive: () => void;
   onAbsent: () => void;
+  onDetail: () => void;
 }) {
   const badge = BADGE[a.checkin_status] ?? BADGE.pending;
   const offsite = !a.room_id;
@@ -360,10 +370,10 @@ function ApptCell({
         {SESSION_TYPE[a.session_type]}
       </div>
       {a.is_intake && <div className="text-[10px] font-medium text-amber-700">⭐ 媒合初診</div>}
-      {a.funding_source === "institution" && (
-        <div className={`truncate text-[10px] ${a.quota_is_last_session ? "font-medium text-red-600" : "text-violet-700"}`}>
-          {a.quota_total != null ? `機構 ${a.quota_used}/${a.quota_total}・剩 ${a.quota_remaining}${a.quota_is_last_session ? "（最後一次）" : ""}` : "機構（未佔額度）"}
-        </div>
+      {a.status !== "cancelled" && (
+        <button type="button" onClick={onDetail} title="金額與經費來源" className="block w-full text-left text-[10px] hover:underline">
+          <BillingLine a={a} className="line-clamp-2" />
+        </button>
       )}
 
       {a.status !== "cancelled" && a.checkin_status === "pending" && !offsite && (

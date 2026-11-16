@@ -65,7 +65,7 @@ def make_quota(client, auth, w, case, total=2, plan_id=None, **kw):
 def book(client, auth, who, case, room, day=3, hour=10, **extra):
     s, e = _slot(day, hour)
     return client.post("/appointments", headers=auth(who), json={
-        "case_id": case.id, "room_id": room.id, "session_type": "in_person", "amount": 0,
+        "case_id": case.id, "room_id": room.id, "session_type": "in_person", "amount": 1000,
         "start_time": s.isoformat(), "end_time": e.isoformat(), **extra})
 
 
@@ -194,7 +194,7 @@ def test_batch_booking_over_quota_warns_per_slot_but_books_all(client, auth, wor
     q = make_quota(client, auth, w, w["case_a"], total=2)
     slots = [{"start_time": _slot(d)[0].isoformat(), "end_time": _slot(d)[1].isoformat()} for d in (3, 4, 5)]
     r = client.post("/appointments/batch", headers=auth(w["staff"]), json={
-        "case_id": w["case_a"].id, "room_id": w["room"].id, "session_type": "in_person", "amount": 0, "slots": slots})
+        "case_id": w["case_a"].id, "room_id": w["room"].id, "session_type": "in_person", "amount": 1000, "slots": slots})
     assert r.status_code == 201, r.text
     rows = r.json()
     assert [bool(x["warnings"]) for x in rows] == [False, False, True]

@@ -72,17 +72,26 @@ def format_amount(amount) -> str | None:
     return f"${value:,.0f}" if value == value.to_integral_value() else f"${value:,.2f}"
 
 
-def payable_amount(a: Appointment):
-    """標題上的金額＝個案這次要付的錢：機構案用自付額，自費案用全額（0 元不顯示）。"""
-    if (a.funding_source or "self_pay") == "institution":
-        return a.self_pay_amount
-    return a.amount
+def amount_suffix(a: Appointment) -> str | None:
+    """標題結尾的金額文字。自費：「$全額」；機構：「$總額（自付 $X）」，
+    全額補助「$總額（機構全額）」，自付額未設定「$總額（自付未設定）」。總額為 0 或沒有就不顯示。"""
+    total = format_amount(a.amount)
+    if total is None:
+        return None
+    if (a.funding_source or "self_pay") != "institution":
+        return total
+    if a.self_pay_amount is None:
+        return f"{total}（自付未設定）"
+    own = format_amount(a.self_pay_amount)
+    if own is None:  # 自付 0 ＝ 機構全額補助
+        return f"{total}（機構全額）"
+    return f"{total}（自付 {own}）"
 
 
 def event_title(a: Appointment, title_format: str) -> str:
     """(a) type_room：「諮商 · 2B」；(b) type_room_code：再加個案代號；(c) type_room_abbrev：再加姓名縮寫；
     (d) type_room_name：再加個案全名（預設）。(a)(b)(c) 缺資料時退化成前一種，絕不改塞姓名。
-    個案這次要付的錢（機構案＝自付額，自費案＝全額）大於 0 時，一律在結尾加「 · $1,500」。"""
+    總額大於 0 時，結尾加金額：自費「 · $1,500」；機構「 · $1,600（自付 $200）」（見 amount_suffix）。"""
     kind, place = _kind_and_place(a)
     parts = [kind] + ([place] if place else [])
     case = a.couple_case or a.case
@@ -94,7 +103,7 @@ def event_title(a: Appointment, title_format: str) -> str:
             parts.append(abbr)
     elif title_format == "type_room_name" and case is not None and (case.name or "").strip():
         parts.append(" ".join(case.name.split()))
-    amount = format_amount(payable_amount(a))
+    amount = amount_suffix(a)
     if amount:
         parts.append(amount)
     return SEP.join(parts)

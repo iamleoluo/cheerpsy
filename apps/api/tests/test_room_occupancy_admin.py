@@ -37,7 +37,7 @@ def w(make_user, make_case, room, db):
 
 def _book(client, auth, who, case, room, s, e):
     return client.post("/appointments", headers=auth(who), json={
-        "case_id": case.id, "room_id": room.id, "session_type": "in_person", "amount": 0,
+        "case_id": case.id, "room_id": room.id, "session_type": "in_person", "amount": 1000,
         "start_time": s.isoformat(), "end_time": e.isoformat()})
 
 
@@ -158,7 +158,7 @@ def test_inactive_room_cannot_be_booked_anywhere(client, auth, w):
     r = _book(client, auth, w["staff"], w["c1"], w["r2"], s, e)
     assert r.status_code == 400 and "3C" in r.json()["detail"] and "停用" in r.json()["detail"]
     r = client.post("/appointments/batch", headers=auth(w["staff"]), json={
-        "case_id": w["c1"].id, "room_id": w["r2"].id, "session_type": "in_person", "amount": 0,
+        "case_id": w["c1"].id, "room_id": w["r2"].id, "session_type": "in_person", "amount": 1000,
         "slots": [{"start_time": s.isoformat(), "end_time": e.isoformat()}]})
     assert r.status_code == 400
     ok = _book(client, auth, w["staff"], w["c1"], w["room"], s, e).json()

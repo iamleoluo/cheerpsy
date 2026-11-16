@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch, exportCsv } from "@/lib/client-api";
+import { BillingDetailModal, BillingLine } from "@/components/billing-summary";
 import { AmountField, parseAmount, useCanEditAmount } from "@/components/amount-field";
 import { CaseQuotaSection, QuotasOverview } from "@/components/quotas-panel";
 import { BillingFields, EMPTY_BILLING, billingBody, billingError, useIsStaff, warningsText, type BillingValue } from "@/components/billing-fields";
@@ -127,7 +128,12 @@ interface Appointment {
   plan_name?: string | null;
   rate_item_id?: number | null;
   transport_fee_option_id?: number | null;
-  self_pay_amount?: number;
+  self_pay_amount?: number | null;
+  institution_name?: string | null;
+  institution_subsidy?: number | null;
+  transport_fee?: number;
+  transport_fee_label?: string | null;
+  rate_item_label?: string | null;
 }
 
 interface Therapist { id: number; name: string; email: string; role: string; }
@@ -722,6 +728,7 @@ function CaseDetailPanel({
   };
 
   const [editApptPanel, setEditApptPanel] = useState<Appointment | null>(null);
+  const [billingDetail, setBillingDetail] = useState<Appointment | null>(null);
 
   const c = caseItem;
   const displayId = caseDisplayId(c);
@@ -797,11 +804,9 @@ function CaseDetailPanel({
                         <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${apptStatusColors[a.status] ?? "bg-gray-100"}`}>
                           {apptStatusLabels[a.status] ?? a.status}
                         </span>
-                        {a.funding_source === "institution" && (
-                          <span className={`ml-1 inline-block rounded px-1.5 py-0.5 text-[11px] ${a.quota_is_last_session ? "bg-red-50 text-red-600" : "bg-violet-50 text-violet-700"}`}>
-                            機構{a.quota_total != null ? ` ${a.quota_used}/${a.quota_total}・剩 ${a.quota_remaining}` : "（未佔額度）"}
-                          </span>
-                        )}
+                        <button type="button" onClick={() => setBillingDetail(a)} className="mt-0.5 block text-left text-[11px] hover:underline" title="金額與經費來源">
+                          <BillingLine a={a} />
+                        </button>
                       </td>
                       <td className="px-3 py-2">
                         {a.status === "booked" && (
@@ -817,6 +822,7 @@ function CaseDetailPanel({
               </table>
             </div>
           )}
+          {billingDetail && <BillingDetailModal appt={billingDetail} onClose={() => setBillingDetail(null)} />}
           {editApptPanel && (
             <AppointmentEditModal
               token={token}

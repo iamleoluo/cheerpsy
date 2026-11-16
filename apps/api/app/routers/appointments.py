@@ -101,7 +101,17 @@ def _to_response(
         plan_name=(plan.name if plan else None) if can_see_amount else None,
         rate_item_id=a.rate_item_id if can_see_amount else None,
         rate_item_label=(rate.label if rate else None) if can_see_amount else None,
-        self_pay_amount=float(a.self_pay_amount or 0) if can_see_amount else 0,
+        # 自付額：自費＝全額；機構 NULL＝未設定（舊資料算不出來，不猜）
+        self_pay_amount=(
+            (float(a.self_pay_amount) if a.self_pay_amount is not None else None)
+            if (a.funding_source or "self_pay") == "institution"
+            else float(a.amount or 0)
+        ) if can_see_amount else 0,
+        institution_name=appt_billing.institution_name_of(db, a, plan, quota) if (db is not None and can_see_amount) else None,
+        # 機構補助＝總額 − 自付額（算出來，不存）；自付額未設定時未知
+        institution_subsidy=(
+            None if a.self_pay_amount is None else max(float(a.amount or 0) - float(a.self_pay_amount), 0.0)
+        ) if (can_see_amount and (a.funding_source or "self_pay") == "institution") else None,
         transport_fee_option_id=a.transport_fee_option_id if can_see_amount else None,
         transport_fee_label=(tfee.label if tfee else None) if can_see_amount else None,
         transport_fee=float(a.transport_fee or 0) if can_see_amount else 0,
@@ -462,10 +472,14 @@ def update_appointment(
             _audit_manual_price(db, a, price, user)
         elif body.amount is not None:
             new_amount = Decimal(str(body.amount))
+            plan_row = db.get(InstitutionPlan, a.plan_id) if a.plan_id else None
+            if new_amount <= 0 and not (funding == "institution" and plan_row is not None and plan_row.allows_zero_amount):
+                raise HTTPException(status_code=422, detail="金額必須大於 0")
             if funding == "institution":
                 write_audit(db, "appointments", a.id, "UPDATE", user.id,
                             {"amount": float(a.amount or 0)}, {"amount": float(new_amount), "manual": True})
-                a.self_pay_amount = min(a.self_pay_amount or Decimal("0"), new_amount)
+                if a.self_pay_amount is not None:  # 未設定的自付額維持未設定（不猜）
+                    a.self_pay_amount = min(a.self_pay_amount, new_amount)
             else:
                 a.self_pay_amount = new_amount  # 自費：個案要付的就是全額
             a.amount = new_amount

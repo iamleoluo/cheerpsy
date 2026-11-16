@@ -78,6 +78,7 @@ class PlanBase(BaseModel):
     extension_sessions: int | None = None
     claim_threshold_sessions: int | None = None
     pricing_mode: str = "contract_fixed"
+    allows_zero_amount: bool = False  # 借場地等：預約金額允許 0
     rate_items: list[RateItemIn] = []
     valid_from: date | None = None
     valid_until: date | None = None
@@ -134,6 +135,7 @@ class PlanResponse(BaseModel):
     extension_sessions: int | None = None
     claim_threshold_sessions: int | None = None
     pricing_mode: str = "contract_fixed"
+    allows_zero_amount: bool = False
     rate_items: list[RateItemOut] = []
     settlement_direction: str = "to_clinic"
     rebate_rate: float | None = None
@@ -214,6 +216,7 @@ def _to_response(p: InstitutionPlan, agg: dict | None = None) -> PlanResponse:
         extension_sessions=p.extension_sessions,
         claim_threshold_sessions=p.claim_threshold_sessions,
         pricing_mode=p.pricing_mode,
+        allows_zero_amount=bool(p.allows_zero_amount),
         rate_items=[
             RateItemOut(
                 id=r.id, label=r.label, service_type=r.service_type,
@@ -365,6 +368,7 @@ def create_plan(
         extension_sessions=body.extension_sessions,
         claim_threshold_sessions=body.claim_threshold_sessions,
         pricing_mode=body.pricing_mode,
+        allows_zero_amount=body.allows_zero_amount,
         valid_from=body.valid_from or contract.valid_from,
         valid_until=body.valid_until or contract.valid_until,
         notes=body.notes,
@@ -407,6 +411,7 @@ def update_plan(
     p.extension_sessions = body.extension_sessions
     p.claim_threshold_sessions = body.claim_threshold_sessions
     p.pricing_mode = body.pricing_mode
+    p.allows_zero_amount = body.allows_zero_amount
     p.valid_from = body.valid_from
     p.valid_until = body.valid_until
     p.notes = body.notes

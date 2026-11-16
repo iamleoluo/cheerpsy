@@ -84,9 +84,9 @@ def test_null_self_pay_is_safe_for_responses_and_titles(client, auth, world, db)
     db.execute(text("UPDATE appointments SET self_pay_amount = NULL WHERE id = :i"), {"i": a})
     db.commit()
     r = client.get(f"/appointments/{a}", headers=auth(w["staff"]))
-    assert r.status_code == 200 and r.json()["self_pay_amount"] == 0
+    assert r.status_code == 200 and r.json()["self_pay_amount"] is None  # 未設定
     assert client.put(f"/appointments/{a}", headers=auth(w["staff"]), json={"amount": 800}).status_code == 200
     db.expire_all()
     db.execute(text("UPDATE appointments SET self_pay_amount = NULL WHERE id = :i"), {"i": a})
     db.commit()
-    assert "$" not in gcal_titles.event_title(db.get(Appointment, a), "type_room")
+    assert gcal_titles.event_title(db.get(Appointment, a), "type_room").endswith("$800（自付未設定）")

@@ -105,7 +105,9 @@ class AppointmentResponse(BaseModel):
     plan_name: str | None = None
     rate_item_id: int | None = None
     rate_item_label: str | None = None
-    self_pay_amount: float = 0  # 個案這次要付的錢（自費＝全額；機構＝自付額）
+    self_pay_amount: float | None = 0  # 個案這次要付的錢（自費＝全額；機構＝自付額；機構 NULL＝未設定）
+    institution_name: str | None = None
+    institution_subsidy: float | None = None  # 機構補助＝總額−自付額（算出來，不存）；自付額未設定時為 None
     transport_fee_option_id: int | None = None
     transport_fee_label: str | None = None
     transport_fee: float = 0

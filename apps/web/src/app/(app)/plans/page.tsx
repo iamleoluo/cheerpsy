@@ -36,6 +36,7 @@ interface Plan {
   extension_sessions: number | null;
   claim_threshold_sessions: number | null;
   pricing_mode: "contract_fixed" | "therapist_rate" | "therapist_defined";
+  allows_zero_amount?: boolean;
   rate_items: RateItem[];
   settlement_direction: string;
   rebate_rate: number | null;
@@ -453,6 +454,7 @@ function PlanForm({
   >(
     plan?.pricing_mode ?? "contract_fixed"
   );
+  const [allowsZero, setAllowsZero] = useState<boolean>(plan?.allows_zero_amount ?? false);
   const [rateItems, setRateItems] = useState<RateItem[]>(
     plan?.rate_items?.length ? plan.rate_items : [{ ...emptyRateItem(), label: "個別諮商" }]
   );
@@ -483,6 +485,7 @@ function PlanForm({
       extension_sessions: extension === "" ? null : Number(extension),
       claim_threshold_sessions: threshold === "" ? null : Number(threshold),
       pricing_mode: pricingMode,
+      allows_zero_amount: allowsZero,
       rate_items: pricingMode === "contract_fixed" ? rateItems : [],
       valid_from: from || null,
       valid_until: until || null,
@@ -654,6 +657,14 @@ function PlanForm({
               多數機構案由合約決定、心理師不能改。
               蛹之生／國泰舊案跟隨心理師主檔鐘點費（調價時由心理師決定舊案用舊價或新價）；
               聊心茶室、遠距抱抱則是心理師自己設定金額。
+            </span>
+          </label>
+
+          <label className="flex items-start gap-2 text-sm md:col-span-2">
+            <input type="checkbox" checked={allowsZero} onChange={(e) => setAllowsZero(e.target.checked)} className="mt-1" />
+            <span>
+              <span className="block text-gray-700">允許預約金額為 0（借場地等不收諮商費的方案）</span>
+              <span className="block text-xs text-gray-400">其餘預約的金額一律必須大於 0。</span>
             </span>
           </label>
 
