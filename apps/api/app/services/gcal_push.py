@@ -95,6 +95,13 @@ def _push_remote(client: CalendarClient, calendar_id: str, event_id: str, body: 
         client.update_event(calendar_id, event_id, body)  # 曾刪除的同 id 事件：update 即可復活
 
 
+def _plan_name(db: Session, a: Appointment) -> str | None:
+    """機構案的方案名稱（給心理師的提醒用）；只取名稱。"""
+    if not a.plan_id:
+        return None
+    return db.execute(text("SELECT name FROM institution_plans WHERE id = :i"), {"i": a.plan_id}).scalar()
+
+
 def note_sections(db: Session, a: Appointment) -> list[tuple[str, str]]:
     """放進事件描述的備註分段 [(標題, 內文)]。
 
@@ -146,7 +153,7 @@ def process(db: Session, client: CalendarClient, appointment_id: int) -> Outcome
     if not cal.is_active:
         return Outcome("done", "日曆已凍結（心理師離職），不再更新")
 
-    body = gcal_titles.event_body(a, _title_format(db), note_sections(db, a))
+    body = gcal_titles.event_body(a, _title_format(db), note_sections(db, a), plan_name=_plan_name(db, a))
     new_hash = gcal_titles.payload_hash(cal.google_calendar_id, body)
     same_calendar = mapping is not None and mapping.google_calendar_id == cal.google_calendar_id
     if same_calendar and mapping.last_status == "pushed" and mapping.payload_hash == new_hash:

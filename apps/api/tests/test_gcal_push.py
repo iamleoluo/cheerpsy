@@ -216,9 +216,10 @@ def test_format_amount():
 
 def test_description_sections_and_amount_line(db, w):
     a = _appt(db, w)
-    assert gcal_titles.event_description(a) == gcal_titles.DESCRIPTION  # 金額只放標題，描述不放
+    base = gcal_titles.event_description(a)
+    assert base.startswith(gcal_titles.DESCRIPTION) and "$" not in base  # 總額只放標題，描述不放
     a.amount = None
-    assert gcal_titles.event_description(a) == gcal_titles.DESCRIPTION
+    assert gcal_titles.event_description(a) == base
     a.amount = 1500
     d = gcal_titles.event_description(a, [("預約備註", "帶孩子來"), ("備註給心理師", "  注意事項  "), ("空的", "  ")])
     assert "【預約備註】\n帶孩子來" in d and "【備註給心理師】\n注意事項" in d and "空的" not in d
@@ -616,7 +617,7 @@ def test_amount_change_triggers_resync_and_zero_amount_hides_line(client, auth, 
 def test_note_change_changes_hash_and_note_sections_reach_description(client, auth, w, fake, db, monkeypatch):
     a = create(client, auth, w)
     run(fake)
-    assert "【" not in ev(fake, a["id"])["description"]  # 目前預約上沒有備註欄位
+    assert "【備註給心理師】" not in ev(fake, a["id"])["description"]  # 目前預約上沒有備註欄位（只有給心理師的提醒）
     monkeypatch.setattr(gcal_push, "note_sections", lambda _db, _a: [("備註給心理師", "請準備量表")])
     from app.models.gcal_hooks import enqueue_appointments
     with engine.begin() as c:  # PR D 寫備註的路徑要做的事
