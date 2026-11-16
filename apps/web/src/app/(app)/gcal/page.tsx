@@ -472,6 +472,7 @@ function TherapistLine({
   const [email, setEmail] = useState(row.share_email ?? "");
   const [busy, setBusy] = useState<string | null>(null);
   const [confirmUnshare, setConfirmUnshare] = useState(false);
+  const [confirmRepush, setConfirmRepush] = useState(false);
   useEffect(() => setEmail(row.share_email ?? ""), [row.share_email]);
 
   const cal = row.calendar;
@@ -489,6 +490,19 @@ function TherapistLine({
     } finally {
       setBusy(null);
       setConfirmUnshare(false);
+    }
+  }
+
+  async function repush() {
+    setBusy("repush");
+    try {
+      const r: { message: string } = await clientFetch(`/gcal/therapists/${row.id}/repush`, token, { method: "POST" });
+      onChanged(row, `${row.name}：${r.message}`);
+    } catch (e: any) {
+      onError(`${row.name}：${e.message}`);
+    } finally {
+      setBusy(null);
+      setConfirmRepush(false);
     }
   }
 
@@ -558,6 +572,24 @@ function TherapistLine({
               {busy === "resend" ? "寄送中..." : "重寄邀請"}
             </button>
           )}
+          {cal && !cal.is_missing && row.is_active && cal.is_active &&
+            (confirmRepush ? (
+              <span className="flex items-center gap-1.5 text-sm">
+                <span className="text-amber-800">把 {row.name} 未來的預約重新推送到 Google？</span>
+                <button onClick={repush} disabled={!!busy} className="rounded-lg bg-primary-600 px-2.5 py-1 text-white disabled:opacity-50">
+                  {busy === "repush" ? "排入中..." : "確定"}
+                </button>
+                <button onClick={() => setConfirmRepush(false)} className="text-gray-500 hover:underline">取消</button>
+              </span>
+            ) : (
+              <button
+                onClick={() => setConfirmRepush(true)}
+                disabled={!connected || !!busy}
+                className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-40"
+              >
+                重新推送
+              </button>
+            ))}
           {cal && !cal.is_missing &&
             (confirmUnshare ? (
               <span className="flex items-center gap-1.5 text-sm">

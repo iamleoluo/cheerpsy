@@ -3,9 +3,9 @@
 隱私規則（測試鎖死）。診所決定的事件內容：
 - 標題：類型 · 診間，依設定再加 個案代號 (b)／姓名縮寫 (c)／個案全名 (d，預設)；有金額時標題結尾加「 · $金額」。
   只有 (d) 會輸出個案全名；(a)(b)(c) 絕不輸出完整姓名。
-- 描述：固定說明，以及備註分段（PR D 的「備註給心理師」接在 `note_sections` 之後，分段標示）。
-  金額只放標題，描述不放。
-- 永遠不放：電話、Email、地址、主訴／病歷／治療備註、帳務備註、機構、任何 token。
+- 描述：固定說明、「給心理師的提醒」（類型、診間、是否初診；機構案再加方案名稱與自負額），
+  以及備註分段（「備註給心理師」接在 `note_sections` 之後，分段標示）。總額只放標題，描述不放。
+- 永遠不放：電話、Email、地址、主訴／病歷／治療備註、帳務備註、機構名稱、其他心理師、任何 token。
 """
 
 import hashlib
@@ -109,10 +109,39 @@ def event_title(a: Appointment, title_format: str) -> str:
     return SEP.join(parts)
 
 
-def event_description(a: Appointment, note_sections: list[tuple[str, str]] | None = None) -> str:
-    """固定說明；備註分段標示（標題、內文），空內文不輸出。金額不放描述（只在標題）。
+SESSION_LABEL = {"in_person": "現場", "online": "視訊", "outdoor": "外展"}
+
+
+def self_pay_text(value) -> str:
+    """自負額：NULL＝未設定；0＝0（全額補助）；其餘「200 元」。描述不用 $ 符號（$ 只出現在標題）。"""
+    if value is None:
+        return "未設定"
+    try:
+        v = Decimal(str(value))
+    except (InvalidOperation, TypeError):
+        return "未設定"
+    if v == 0:
+        return "0（全額補助）"
+    return f"{v:,.0f} 元" if v == v.to_integral_value() else f"{v:,.2f} 元"
+
+
+def reminder_lines(a: Appointment, plan_name: str | None = None) -> list[str]:
+    """給心理師看的提醒。只有類型、診間、是否初診、方案名稱、自負額；不含任何個案識別或聯絡資料。"""
+    lines = [f"類型：{SESSION_LABEL.get(a.session_type, a.session_type)}"]
+    if a.session_type == "in_person":
+        lines.append(f"診間：{a.room.room_code if a.room is not None else '未指定'}")
+    lines.append(f"初診：{'是' if a.is_intake else '否'}")
+    if (a.funding_source or "self_pay") == "institution":
+        lines.append(f"方案：{(plan_name or '').strip() or '未設定'}")
+        lines.append(f"自負額：{self_pay_text(a.self_pay_amount)}")
+    return lines
+
+
+def event_description(a: Appointment, note_sections: list[tuple[str, str]] | None = None,
+                      plan_name: str | None = None) -> str:
+    """固定說明＋給心理師的提醒；備註分段標示（標題、內文），空內文不輸出。總額不放描述（只在標題）。
     note_sections 由呼叫端依來源提供，例如 [("預約備註", ...), ("備註給心理師", ...)]。"""
-    lines = [DESCRIPTION]
+    lines = [DESCRIPTION, "\n【給心理師的提醒】", *reminder_lines(a, plan_name)]
     for heading, body in note_sections or []:
         body = (body or "").strip()
         if body:
@@ -125,12 +154,13 @@ def event_id(appointment_id: int) -> str:
     return f"cheer{appointment_id:07d}"
 
 
-def event_body(a: Appointment, title_format: str, note_sections: list[tuple[str, str]] | None = None) -> dict:
+def event_body(a: Appointment, title_format: str, note_sections: list[tuple[str, str]] | None = None,
+               plan_name: str | None = None) -> dict:
     lo, up = a.time_range.lower, a.time_range.upper
     return {
         "id": event_id(a.id),
         "summary": event_title(a, title_format),
-        "description": event_description(a, note_sections),
+        "description": event_description(a, note_sections, plan_name),
         "start": {"dateTime": _iso(lo), "timeZone": TIME_ZONE},
         "end": {"dateTime": _iso(up), "timeZone": TIME_ZONE},
         "status": "confirmed",

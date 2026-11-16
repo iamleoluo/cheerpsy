@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
+import { DEFAULT_SESSION_MINUTES, addMinutes } from "@/lib/config";
 import { useCanEditAmount } from "@/components/amount-field";
 import { BillingFields, EMPTY_BILLING, billingBody, billingError, warningsText, type BillingValue } from "@/components/billing-fields";
 import { EventsTab } from "@/components/events-tab";
@@ -43,10 +44,7 @@ interface OccSlot {
 
 const MINUTES = ["00", "15", "30", "45"];
 
-function addHour(t: string): string {
-  const [h, m] = t.split(":").map(Number);
-  return `${String((h + 1) % 24).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-}
+const addDefault = (t: string) => addMinutes(t, DEFAULT_SESSION_MINUTES);
 
 export default function BookingPage() {
   const { data: session } = useSession();
@@ -73,7 +71,7 @@ export default function BookingPage() {
   const [sessionType, setSessionType] = useState("in_person");
   const [date, setDate] = useState(todayISO());
   const [startTime, setStartTime] = useState("14:00");
-  const [endTime, setEndTime] = useState("15:00");
+  const [endTime, setEndTime] = useState(addDefault("14:00"));
   const [videoLink, setVideoLink] = useState("");
   const [billing, setBilling] = useState<BillingValue>(EMPTY_BILLING);
   const canAmount = useCanEditAmount();
@@ -97,7 +95,7 @@ export default function BookingPage() {
     if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) setDate(d);
     if (s && /^\d{2}:\d{2}$/.test(s)) {
       setStartTime(s);
-      setEndTime(addHour(s));
+      setEndTime(addDefault(s));
     }
   }, []);
 
@@ -389,7 +387,7 @@ export default function BookingPage() {
               <div className="text-sm">
                 <span className="mb-1 block text-gray-600">時段 *</span>
                 <div className="flex items-center gap-1">
-                  <TimeSelect value={startTime} onChange={(v) => { setStartTime(v); setEndTime(addHour(v)); }} />
+                  <TimeSelect value={startTime} onChange={(v) => { setStartTime(v); setEndTime(addDefault(v)); }} />
                   <span className="text-gray-400">–</span>
                   <TimeSelect value={endTime} onChange={setEndTime} />
                 </div>
@@ -505,6 +503,7 @@ export default function BookingPage() {
 
 function TimeSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [h, m] = value.split(":");
+  const minutes = MINUTES.includes(m) ? MINUTES : [...MINUTES, m].sort(); // 預設時長可能產生 :50 這類非整刻
   const hours = Array.from({ length: 15 }, (_, i) => String(i + 8).padStart(2, "0"));
   return (
     <div className="flex items-center gap-0.5">
@@ -513,7 +512,7 @@ function TimeSelect({ value, onChange }: { value: string; onChange: (v: string) 
       </select>
       <span>:</span>
       <select value={m} onChange={(e) => onChange(`${h}:${e.target.value}`)} className="rounded-lg border border-gray-300 px-1.5 py-2 text-sm">
-        {MINUTES.map((x) => <option key={x} value={x}>{x}</option>)}
+        {minutes.map((x) => <option key={x} value={x}>{x}</option>)}
       </select>
     </div>
   );
