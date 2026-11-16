@@ -4,14 +4,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
 import { EventsTab } from "@/components/events-tab";
-import { FEE_ITEMS, SESSION_TYPE, hhmm, money, shiftDate, todayISO } from "@/lib/format";
+import { SESSION_TYPE, hhmm, shiftDate, todayISO } from "@/lib/format";
 
 interface Case {
   id: number;
   name: string;
   case_number: string | null;
   therapist_id: number;
-  funding_source: string;
 }
 interface Room {
   id: number;
@@ -22,7 +21,6 @@ interface Room {
 interface Therapist {
   id: number;
   name: string;
-  base_price?: number | null;
 }
 interface Appt {
   id: number;
@@ -65,9 +63,6 @@ export default function BookingPage() {
   const [date, setDate] = useState(todayISO());
   const [startTime, setStartTime] = useState("14:00");
   const [endTime, setEndTime] = useState("15:00");
-  const [amount, setAmount] = useState("");
-  const [funding, setFunding] = useState("self_pay");
-  const [feeItem, setFeeItem] = useState("counseling");
   const [videoLink, setVideoLink] = useState("");
   const [notifyAdmin, setNotifyAdmin] = useState(false);
   const [outreach, setOutreach] = useState("");
@@ -115,20 +110,11 @@ export default function BookingPage() {
     loadWeek();
   }, [loadWeek]);
 
-  // 選了個案自動帶心理師；金額預設為該個案上次金額 → 心理師 base_price（D1）
+  // 選了個案自動帶心理師
   useEffect(() => {
     const c = cases.find((x) => x.id === caseId);
-    if (c) {
-      setTherapistId(c.therapist_id);
-      setFunding(c.funding_source);
-    }
+    if (c) setTherapistId(c.therapist_id);
   }, [caseId, cases]);
-
-  useEffect(() => {
-    if (amount) return;
-    const t = therapists.find((x) => x.id === therapistId);
-    if (t?.base_price != null) setAmount(String(t.base_price));
-  }, [therapistId, therapists, amount]);
 
   const offsite = sessionType !== "in_person";
 
@@ -161,8 +147,6 @@ export default function BookingPage() {
       session_type: sessionType,
       start_time: `${date}T${startTime}:00+08:00`,
       end_time: `${date}T${endTime}:00+08:00`,
-      amount: Number(amount) || 0,
-      funding_source: funding,
     };
     try {
       if (tab === "batch") {
@@ -173,7 +157,6 @@ export default function BookingPage() {
           slots.push({
             start_time: `${d}T${startTime}:00+08:00`,
             end_time: `${d}T${endTime}:00+08:00`,
-            funding_source: funding,
           });
         }
         await clientFetch("/appointments/batch", token, {
@@ -301,26 +284,6 @@ export default function BookingPage() {
                 </div>
               </div>
 
-              <label className="text-sm">
-                <span className="mb-1 block text-gray-600">繳費方式</span>
-                <select value={funding} onChange={(e) => setFunding(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2">
-                  <option value="self_pay">自費</option>
-                  <option value="institution">機構</option>
-                </select>
-              </label>
-
-              <label className="text-sm">
-                <span className="mb-1 block text-gray-600">當次金額 *</span>
-                <input required type="number" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 tabular-nums" />
-              </label>
-
-              <label className="col-span-2 text-sm">
-                <span className="mb-1 block text-gray-600">諮商項目（連動收據名目）</span>
-                <select value={feeItem} onChange={(e) => setFeeItem(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2">
-                  {FEE_ITEMS.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                </select>
-              </label>
-
               {tab === "batch" && (
                 <>
                   <label className="text-sm">
@@ -337,7 +300,7 @@ export default function BookingPage() {
                   </label>
                   <p className="col-span-2 rounded bg-amber-50 px-3 py-2 text-xs text-amber-800">
                     批次遇國定假日會標示提醒但<b>不自動跳過</b>，請與個案另行喬時間。
-                    機構案批次會一次佔用 N 次額度，額度不足時整批不會建立。
+                    診間時段衝突時整批不會建立。
                   </p>
                 </>
               )}
@@ -384,7 +347,7 @@ export default function BookingPage() {
                       <div className="text-xs text-gray-400">空</div>
                     ) : (
                       list.map((a) => (
-                        <div key={a.id} className="text-xs text-gray-700">
+                        <div key={a.id} className={`text-xs text-gray-700 ${a.occupied_only ? "cursor-default select-none" : ""}`} aria-disabled={a.occupied_only || undefined}>
                           {hhmm(a.start_time)}–{hhmm(a.end_time)}{" "}
                           {isTherapist || a.occupied_only ? (
                             <span className="text-gray-400">已使用 · {a.therapist_name}</span>

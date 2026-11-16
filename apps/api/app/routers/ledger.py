@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import io
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import or_
@@ -33,7 +33,6 @@ from app.schemas.session_record import (
 )
 from app.services.claim_batch import generate_batch_number
 from app.services.pdf_generator import generate_self_pay_receipt
-from app.services.settlement import materialize_due_appointments, run_daily_settlement
 
 DEFAULT_COMMISSION_RATE = Decimal("0.70")
 
@@ -144,7 +143,6 @@ def list_records(
     db: Session = Depends(get_db),
 ):
     import calendar
-    materialize_due_appointments(db)
     query = db.query(SessionRecord).options(
         joinedload(SessionRecord.appointment).joinedload(Appointment.case).joinedload(Case.institution),
         joinedload(SessionRecord.appointment).joinedload(Appointment.therapist),
@@ -196,7 +194,6 @@ def list_pending_docs(
     Scoped: therapist sees own; admin/staff/accountant see all.
     Not capped — pending docs may span multiple months.
     """
-    materialize_due_appointments(db)
     q = db.query(SessionRecord).options(
         joinedload(SessionRecord.appointment).joinedload(Appointment.case).joinedload(Case.institution),
         joinedload(SessionRecord.appointment).joinedload(Appointment.therapist),
@@ -237,7 +234,6 @@ def list_self_pay_unpaid(
     db: Session = Depends(get_db),
 ):
     """Self-pay records awaiting payment (no claim batch needed). Grouped by case client-side."""
-    materialize_due_appointments(db)
     records = (
         db.query(SessionRecord)
         .options(
@@ -261,7 +257,6 @@ def list_self_pay_all(
     db: Session = Depends(get_db),
 ):
     """All non-void self-pay session records (paid + unpaid), for finance tracking."""
-    materialize_due_appointments(db)
     records = (
         db.query(SessionRecord)
         .options(
@@ -285,7 +280,6 @@ def list_self_pay_cases(
 ):
     """Aggregate all non-void self-pay session records by case, returning paid/unpaid counts."""
     from collections import defaultdict
-    materialize_due_appointments(db)
     records = (
         db.query(SessionRecord)
         .filter(
@@ -962,22 +956,7 @@ def pay_batch(
 
 
 
-@router.post("/settle", response_model=SettlementResponse)
-def trigger_settlement(
-    body: SettlementRequest = SettlementRequest(),
-    user: User = Depends(RequireRole(["admin"])),
-    db: Session = Depends(get_db),
-):
-    from datetime import timedelta
-    if body.date_from and body.date_to:
-        total_executed = 0
-        total_skipped = 0
-        d = body.date_from
-        while d <= body.date_to:
-            r = run_daily_settlement(db, d)
-            total_executed += r["executed"]
-            total_skipped += r["skipped"]
-            d += timedelta(days=1)
-        return {"date": f"{body.date_from} ~ {body.date_to}", "executed": total_executed, "skipped": total_skipped}
-    result = run_daily_settlement(db, body.target_date)
-    return result
+@router.post("/settle", status_code=status.HTTP_410_GONE)
+def trigger_settlement(user: User = Depends(RequireRole(["admin"]))):
+    """帳務拆除上線 A：自動／手動結算已停用，預約不再產生流水。"""
+    raise HTTPException(status_code=status.HTTP_410_GONE, detail="結算功能已停用")

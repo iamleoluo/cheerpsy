@@ -1,0 +1,314 @@
+"""帳務拆除「上線 A」：預約流程不再寫帳務，但診間衝突檢查與取消照常運作。"""
+
+from datetime import datetime, timedelta, timezone
+
+import pytest
+from sqlalchemy import text
+
+from app.models.session_record import SessionRecord
+
+
+@pytest.fixture()
+def w(make_user, make_case, room):
+    t = make_user("therapist", name="林心理師")
+    staff = make_user("staff")
+    admin = make_user("admin")
+    case = make_case(t, "王小明")
+    case2 = make_case(t, "李小華")
+    return dict(t=t, staff=staff, admin=admin, case=case, case2=case2, room=room)
+
+
+def _sr_count(db) -> int:
+    return db.execute(text("SELECT count(*) FROM session_records")).scalar()
+
+
+def _slot(days=3, hour=10, hours=1):
+    start = (datetime.now(timezone.utc) + timedelta(days=days)).replace(
+        hour=hour, minute=0, second=0, microsecond=0)
+    return start, start + timedelta(hours=hours)
+
+
+def _create(client, auth, who, case, room, start, end, **extra):
+    body = {"case_id": case.id, "room_id": room.id, "session_type": "in_person",
+            "start_time": start.isoformat(), "end_time": end.isoformat(), **extra}
+    return client.post("/appointments", json=body, headers=auth(who))
+
+
+# ---- 建立：金額由伺服器填 0 ------------------------------------------------
+def test_create_without_amount_ok_and_server_writes_zero(client, auth, db, w):
+    s, e = _slot()
+    r = _create(client, auth, w["staff"], w["case"], w["room"], s, e)
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["amount"] == 0 and body["funding_source"] is None
+    assert body["quota_id"] is None and body["therapist_share"] is None
+    row = db.execute(text("SELECT amount, quota_id FROM appointments WHERE id=:i"),
+                     {"i": body["id"]}).one()
+    assert float(row.amount) == 0 and row.quota_id is None
+
+
+def test_create_ignores_legacy_money_fields(client, auth, db, w):
+    """舊前端仍送 amount／institution／quota_id：不報錯，也不寫入。"""
+    s, e = _slot()
+    r = _create(client, auth, w["staff"], w["case"], w["room"], s, e,
+                amount=2500, funding_source="institution", quota_id=999)
+    assert r.status_code == 201, r.text
+    row = db.execute(text("SELECT amount, quota_id FROM appointments WHERE id=:i"),
+                     {"i": r.json()["id"]}).one()
+    assert float(row.amount) == 0 and row.quota_id is None
+    assert r.json()["funding_source"] is None
+
+
+def test_batch_create_server_zero_and_conflict(client, auth, db, w):
+    s, e = _slot()
+    slots = [{"start_time": s.isoformat(), "end_time": e.isoformat(), "amount": 3000},
+             {"start_time": (s + timedelta(days=7)).isoformat(),
+              "end_time": (e + timedelta(days=7)).isoformat()}]
+    body = {"case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person",
+            "amount": 2000, "funding_source": "institution", "slots": slots}
+    r = client.post("/appointments/batch", json=body, headers=auth(w["staff"]))
+    assert r.status_code == 201, r.text
+    assert all(x["amount"] == 0 for x in r.json())
+    # 同一批次再送一次：第一個 slot 就衝突，整批 409
+    r2 = client.post("/appointments/batch", json=body, headers=auth(w["staff"]))
+    assert r2.status_code == 409
+
+
+# ---- 診間重疊仍回 409 -------------------------------------------------------
+def test_room_overlap_409_on_create(client, auth, w):
+    s, e = _slot()
+    assert _create(client, auth, w["staff"], w["case"], w["room"], s, e).status_code == 201
+    r = _create(client, auth, w["staff"], w["case2"], w["room"],
+                s + timedelta(minutes=30), e + timedelta(minutes=30))
+    assert r.status_code == 409
+    assert "王小明" not in r.text  # 衝突訊息不洩漏另一位個案姓名
+
+
+def test_adjacent_slot_is_allowed(client, auth, w):
+    s, e = _slot()
+    assert _create(client, auth, w["staff"], w["case"], w["room"], s, e).status_code == 201
+    assert _create(client, auth, w["staff"], w["case2"], w["room"], e, e + timedelta(hours=1)).status_code == 201
+
+
+def test_room_overlap_409_on_reschedule(client, auth, w):
+    s, e = _slot()
+    _create(client, auth, w["staff"], w["case"], w["room"], s, e)
+    s2, e2 = _slot(hour=14)
+    b = _create(client, auth, w["staff"], w["case2"], w["room"], s2, e2).json()
+    r = client.put(f"/appointments/{b['id']}", headers=auth(w["staff"]),
+                   json={"start_time": s.isoformat(), "end_time": e.isoformat()})
+    assert r.status_code == 409
+
+
+def test_online_session_does_not_need_room(client, auth, w):
+    s, e = _slot()
+    r = client.post("/appointments", headers=auth(w["staff"]),
+                    json={"case_id": w["case"].id, "session_type": "online",
+                          "start_time": s.isoformat(), "end_time": e.isoformat()})
+    assert r.status_code == 201
+
+
+def test_in_person_requires_room(client, auth, w):
+    s, e = _slot()
+    r = client.post("/appointments", headers=auth(w["staff"]),
+                    json={"case_id": w["case"].id, "session_type": "in_person",
+                          "start_time": s.isoformat(), "end_time": e.isoformat()})
+    assert r.status_code == 400
+
+
+# ---- 報到／未到：不寫帳務 ---------------------------------------------------
+def test_arrive_does_not_create_session_record(client, auth, db, w):
+    s, e = _slot(days=0, hour=9)
+    a = _create(client, auth, w["staff"], w["case"], w["room"], s, e).json()
+    before = _sr_count(db)
+    r = client.put(f"/appointments/{a['id']}/arrive", headers=auth(w["staff"]))
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "executed" and r.json()["checkin_status"] == "arrived"
+    assert _sr_count(db) == before == 0
+    assert db.query(SessionRecord).count() == 0
+
+
+def test_absent_marks_no_show_without_fee_or_record(client, auth, db, w):
+    s, e = _slot()
+    a = _create(client, auth, w["staff"], w["case"], w["room"], s, e).json()
+    r = client.put(f"/appointments/{a['id']}/absent", headers=auth(w["staff"]),
+                   json={"no_show_type": "no_notice"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "no_show" and body["no_show_type"] == "no_notice"
+    assert body["no_show_fee"] == 0
+    assert db.execute(text("SELECT no_show_fee FROM appointments WHERE id=:i"), {"i": a["id"]}).scalar() == 0
+    assert _sr_count(db) == 0
+
+
+def test_absent_rejects_unknown_type(client, auth, w):
+    s, e = _slot()
+    a = _create(client, auth, w["staff"], w["case"], w["room"], s, e).json()
+    r = client.put(f"/appointments/{a['id']}/absent", headers=auth(w["staff"]), json={"no_show_type": "x"})
+    assert r.status_code == 400
+
+
+def test_arrive_twice_rejected(client, auth, w):
+    s, e = _slot()
+    a = _create(client, auth, w["staff"], w["case"], w["room"], s, e).json()
+    assert client.put(f"/appointments/{a['id']}/arrive", headers=auth(w["staff"])).status_code == 200
+    assert client.put(f"/appointments/{a['id']}/arrive", headers=auth(w["staff"])).status_code == 400
+
+
+# ---- 打開 /ledger 不會再改寫預約 --------------------------------------------
+def test_ledger_reads_do_not_materialize_past_appointments(client, auth, db, w, make_appt):
+    past = datetime.now(timezone.utc) - timedelta(days=2)
+    a = make_appt(w["case"], w["t"], w["room"], start=past)  # booked，已過期
+    for path in ("/ledger", "/ledger/pending-docs", "/ledger/confirmed-docs",
+                 "/ledger/self-pay-unpaid", "/ledger/self-pay-all", "/ledger/self-pay-cases"):
+        assert client.get(path, headers=auth(w["admin"])).status_code == 200, path
+    db.expire_all()
+    assert db.execute(text("SELECT status FROM appointments WHERE id=:i"), {"i": a.id}).scalar() == "booked"
+    assert _sr_count(db) == 0
+
+
+def test_ledger_settle_is_gone(client, auth, w):
+    assert client.post("/ledger/settle", json={}, headers=auth(w["admin"])).status_code == 410
+
+
+# ---- 410：金額與付款方式 ----------------------------------------------------
+def test_amount_and_payment_endpoints_are_gone(client, auth, db, w):
+    s, e = _slot()
+    a = _create(client, auth, w["staff"], w["case"], w["room"], s, e).json()
+    assert client.put(f"/appointments/{a['id']}/amount", headers=auth(w["admin"]),
+                      json={"amount": 999}).status_code == 410
+    assert client.put(f"/appointments/{a['id']}/payment", headers=auth(w["staff"]),
+                      json={"funding_source": "institution"}).status_code == 410
+    assert float(db.execute(text("SELECT amount FROM appointments WHERE id=:i"), {"i": a["id"]}).scalar()) == 0
+
+
+# ---- 取消 -------------------------------------------------------------------
+def test_cancel_frees_room_for_rebooking(client, auth, w):
+    s, e = _slot()
+    a = _create(client, auth, w["staff"], w["case"], w["room"], s, e).json()
+    r = client.put(f"/appointments/{a['id']}/cancel", headers=auth(w["staff"]))
+    assert r.status_code == 200 and r.json()["status"] == "cancelled"
+    assert _create(client, auth, w["staff"], w["case2"], w["room"], s, e).status_code == 201
+
+
+def test_therapist_can_cancel_own_but_not_others(client, auth, make_user, w):
+    other = make_user("therapist")
+    s, e = _slot()
+    a = _create(client, auth, w["staff"], w["case"], w["room"], s, e).json()
+    assert client.put(f"/appointments/{a['id']}/cancel", headers=auth(other)).status_code == 403
+    assert client.put(f"/appointments/{a['id']}/cancel", headers=auth(w["t"])).status_code == 200
+
+
+def test_cancel_past_cutoff_rejected(client, auth, w, make_appt):
+    # 1 小時的場次 50 分鐘前開始：10 分鐘後結束，已過「結束前 20 分鐘」的取消時限
+    soon = datetime.now(timezone.utc) - timedelta(minutes=50)
+    a = make_appt(w["case"], w["t"], w["room"], start=soon)
+    assert client.put(f"/appointments/{a.id}/cancel", headers=auth(w["staff"])).status_code == 400
+
+
+def test_cannot_cancel_twice(client, auth, w):
+    s, e = _slot()
+    a = _create(client, auth, w["staff"], w["case"], w["room"], s, e).json()
+    assert client.put(f"/appointments/{a['id']}/cancel", headers=auth(w["staff"])).status_code == 200
+    assert client.put(f"/appointments/{a['id']}/cancel", headers=auth(w["staff"])).status_code == 400
+
+
+# ---- 結案不再動額度，仍取消未來預約 ----------------------------------------
+def test_close_case_cancels_future_appointments(client, auth, db, w):
+    from app.auth.password import hash_password
+
+    w["admin"].password_hash = hash_password("pw12345")
+    db.commit()
+    s, e = _slot()
+    a = _create(client, auth, w["staff"], w["case"], w["room"], s, e).json()
+    r = client.post(f"/cases/{w['case'].id}/close", headers=auth(w["admin"]),
+                    json={"password": "pw12345", "reason": "測試"})
+    assert r.status_code == 200, r.text
+    assert client.get(f"/appointments/{a['id']}", headers=auth(w["admin"])).json()["status"] == "cancelled"
+
+
+# ---- 儀表板不依賴帳務 -------------------------------------------------------
+FORBIDDEN_KEYS = {"total_revenue", "unpaid_count", "unpaid_amount", "petty_balance", "petty_alert",
+                  "session_count"}
+
+
+def test_dashboard_payload_has_no_accounting(client, auth, w):
+    for who in ("staff", "admin", "t"):
+        r = client.get("/dashboard", headers=auth(w[who]))
+        assert r.status_code == 200
+        assert not (FORBIDDEN_KEYS & set(r.json()))
+
+
+def test_dashboard_does_not_import_accounting_models():
+    import app.routers.dashboard as d
+
+    src = open(d.__file__, encoding="utf-8").read()
+    for name in ("SessionRecord", "PettyCash", "session_record", "petty_cash"):
+        assert f"import {name}" not in src and f"models.{name}" not in src
+
+
+def test_dashboard_counts(client, auth, w, make_appt):
+    make_appt(w["case"], w["t"], w["room"], start=datetime.now(timezone.utc) + timedelta(days=1))
+    r = client.get("/dashboard", headers=auth(w["staff"])).json()
+    assert r["active_cases"] == 2
+    assert r["churn_count"] == 1  # case2 從未有預約，case 有未來預約
+    assert r["new_referrals_month"] == 0 and r["matching_count"] == 0
+    assert r["upcoming_reminders"] == 1
+
+
+def test_dashboard_therapist_scoped_and_hides_clinic_stats(client, auth, make_user, w, make_appt):
+    other = make_user("therapist")
+    make_appt(w["case"], w["t"], w["room"], start=datetime.now(timezone.utc) + timedelta(days=1))
+    r = client.get("/dashboard", headers=auth(other)).json()
+    assert r["active_cases"] == 0 and r["upcoming_reminders"] == 0
+    mine = client.get("/dashboard", headers=auth(w["t"])).json()
+    assert mine["active_cases"] == 2 and mine["upcoming_reminders"] == 1
+    assert mine["churn_count"] is None and mine["matching_count"] is None
+
+
+def test_dashboard_today_counts(client, auth, w, make_appt):
+    tz = timezone(timedelta(hours=8))
+    today = datetime.now(tz).replace(hour=15, minute=0, second=0, microsecond=0)
+    a1 = make_appt(w["case"], w["t"], w["room"], start=today)
+    a2 = make_appt(w["case2"], w["t"], w["room"], start=today + timedelta(hours=2))
+    client.put(f"/appointments/{a1.id}/arrive", headers=auth(w["staff"]))
+    client.put(f"/appointments/{a2.id}/absent", headers=auth(w["staff"]), json={"no_show_type": "no_notice"})
+    r = client.get("/dashboard", headers=auth(w["staff"])).json()
+    assert (r["today_expected"], r["today_arrived"], r["today_absent"]) == (2, 1, 1)
+
+
+# ---- 媒合轉初診仍擋診間衝突，且不再需要金額 ---------------------------------
+def test_referral_convert_without_amount_and_room_conflict(client, auth, db, w):
+    from datetime import date as _d
+    from app.models.referral import (ReferralDispatch, ReferralDispatchTarget,
+                                     ReferralRequest, ReferralSlotOffer)
+
+    r = ReferralRequest(dispatch_code="261116009", name="新個案", consultation_mode="individual",
+                        status="converted")
+    db.add(r)
+    db.flush()
+    d = ReferralDispatch(referral_id=r.id, seq=1)
+    db.add(d)
+    db.flush()
+    t = ReferralDispatchTarget(dispatch_id=d.id, therapist_id=w["t"].id, status="accepted")
+    db.add(t)
+    db.flush()
+    day = _d.today() + timedelta(days=5)
+    slot = ReferralSlotOffer(target_id=t.id, seq=1, slot_date=day, start_time="10:00", end_time="11:00")
+    db.add(slot)
+    db.commit()
+
+    # 先在同診間同時段放一筆預約
+    start = datetime.fromisoformat(f"{day}T10:00:00+08:00")
+    assert _create(client, auth, w["staff"], w["case"], w["room"], start, start + timedelta(hours=1)).status_code == 201
+    r1 = client.post(f"/referrals/{r.id}/convert", headers=auth(w["staff"]),
+                     json={"slot_id": slot.id, "room_id": w["room"].id})
+    assert r1.status_code == 409
+
+    # 換成線上場次：不需金額即可成立，伺服器寫 0
+    r2 = client.post(f"/referrals/{r.id}/convert", headers=auth(w["staff"]),
+                     json={"slot_id": slot.id, "session_type": "online"})
+    assert r2.status_code == 201, r2.text
+    amt = db.execute(text("SELECT amount FROM appointments WHERE id=:i"),
+                     {"i": r2.json()["appointment_id"]}).scalar()
+    assert float(amt) == 0

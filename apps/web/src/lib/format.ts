@@ -57,10 +57,10 @@ export const FEE_ITEMS: [string, string][] = [
   ["other", "其他"],
 ];
 
-export const NO_SHOW_TYPES: [string, string, number][] = [
-  ["advance_notice", "24 小時前請假", 0],
-  ["late_cancel", "臨時取消", 200],
-  ["no_notice", "無故未到", 500],
+export const NO_SHOW_TYPES: [string, string][] = [
+  ["advance_notice", "24 小時前請假"],
+  ["late_cancel", "臨時取消"],
+  ["no_notice", "無故未到"],
 ];
 
 export const PAYMENT_TRACKS: [string, string][] = [

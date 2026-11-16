@@ -109,34 +109,13 @@ interface Appointment {
   session_type: string;
   start_time: string | null;
   end_time: string | null;
-  amount: number;
-  funding_source: string;
-  quota_id: number | null;
-  quota_institution_name: string | null;
-  therapist_share: number | null;
-  clinic_share: number | null;
   visit_seq: number | null;
   status: string;
   batch_id: string | null;
   created_at: string | null;
 }
 
-interface SessionRecord {
-  id: number;
-  session_date: string;
-  appointment_number: string;
-  case_name: string;
-  therapist_name: string;
-  amount: number;
-  therapist_share: number;
-  clinic_share: number;
-  commission_rate_used: number | null;
-  payment_status: string;
-  claim_batch_id: number | null;
-  therapist_doc_submitted_at: string | null;
-}
-
-interface Therapist { id: number; name: string; email: string; role: string; base_price?: number | null; }
+interface Therapist { id: number; name: string; email: string; role: string; }
 interface InstitutionItem { id: number; name: string; is_active: boolean; }
 interface RoomOption { id: number; name: string; floor: number; room_code: string; }
 
@@ -696,11 +675,8 @@ function CaseDetailPanel({
 }: {
   token: string; userRole: string; caseItem: CaseItem; onClose: () => void; onCaseUpdated: () => void;
 }) {
-  const [subTab, setSubTab] = useState<"appointments" | "ledger">("appointments");
   const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [records, setRecords] = useState<SessionRecord[]>([]);
   const [loadingAppts, setLoadingAppts] = useState(true);
-  const [loadingRecords, setLoadingRecords] = useState(false);
   const [showApptForm, setShowApptForm] = useState(false);
   const [showBatchForm, setShowBatchForm] = useState(false);
 
@@ -711,16 +687,7 @@ function CaseDetailPanel({
     } catch { /* ignore */ } finally { setLoadingAppts(false); }
   }, [token, caseItem.id]);
 
-  const fetchRecords = useCallback(async () => {
-    setLoadingRecords(true);
-    try {
-      const all = await clientFetch("/ledger", token);
-      setRecords(all.filter((r: any) => r.case_name === caseItem.name));
-    } catch { /* ignore */ } finally { setLoadingRecords(false); }
-  }, [token, caseItem.name]);
-
   useEffect(() => { fetchAppts(); }, [fetchAppts]);
-  useEffect(() => { if (subTab === "ledger") fetchRecords(); }, [subTab, fetchRecords]);
 
   const handleCancelAppt = async (id: number) => {
     if (!confirm("確定要取消此預約？")) return;
@@ -730,7 +697,6 @@ function CaseDetailPanel({
     } catch (e: any) { alert(e.message); }
   };
 
-  const [paymentModal, setPaymentModal] = useState<Appointment | null>(null);
   const [editApptPanel, setEditApptPanel] = useState<Appointment | null>(null);
 
   const c = caseItem;
@@ -756,24 +722,14 @@ function CaseDetailPanel({
         <button onClick={onClose} className="rounded px-2 py-1 text-sm text-gray-400 hover:bg-gray-100 hover:text-gray-600">✕ 收合</button>
       </div>
 
-      {/* Sub-tabs */}
       <div className="mb-4 flex gap-1 border-b border-gray-200">
-        <button
-          onClick={() => setSubTab("appointments")}
-          className={`px-3 py-2 text-sm font-medium ${subTab === "appointments" ? "border-b-2 border-primary-600 text-primary-700" : "text-gray-500 hover:text-gray-700"}`}
-        >
+        <span className="border-b-2 border-primary-600 px-3 py-2 text-sm font-medium text-primary-700">
           預約紀錄 ({appointments.length})
-        </button>
-        <button
-          onClick={() => setSubTab("ledger")}
-          className={`px-3 py-2 text-sm font-medium ${subTab === "ledger" ? "border-b-2 border-primary-600 text-primary-700" : "text-gray-500 hover:text-gray-700"}`}
-        >
-          帳冊紀錄 ({records.length})
-        </button>
+        </span>
       </div>
 
       {/* Sub-tab content */}
-      {subTab === "appointments" && (
+      {(
         <>
           <div className="mb-3 flex justify-end gap-2">
             <button onClick={() => setShowBatchForm(true)} className="rounded-lg border border-primary-600 px-3 py-1.5 text-xs font-medium text-primary-600 hover:bg-primary-50">批次預約</button>
@@ -792,8 +748,6 @@ function CaseDetailPanel({
                     <th className="px-3 py-2">日期</th>
                     <th className="px-3 py-2">時間</th>
                     <th className="px-3 py-2">診間</th>
-                    <th className="px-3 py-2">金額</th>
-                    <th className="px-3 py-2">酬勞</th>
                     <th className="px-3 py-2">狀態</th>
                     <th className="px-3 py-2">操作</th>
                   </tr>
@@ -807,10 +761,6 @@ function CaseDetailPanel({
                       <td className="px-3 py-2 text-xs">{fmtDate(a.start_time)}</td>
                       <td className="px-3 py-2 text-xs">{fmtTime(a.start_time)}~{fmtTime(a.end_time)}</td>
                       <td className="px-3 py-2 text-xs">{a.room_name ?? "—"}</td>
-                      <td className="px-3 py-2">${a.amount.toLocaleString()}</td>
-                      <td className="px-3 py-2 text-xs text-gray-500">
-                        ${a.therapist_share?.toLocaleString()}
-                      </td>
                       <td className="px-3 py-2">
                         <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${apptStatusColors[a.status] ?? "bg-gray-100"}`}>
                           {apptStatusLabels[a.status] ?? a.status}
@@ -820,15 +770,6 @@ function CaseDetailPanel({
                         {a.status === "booked" && (
                           <div className="flex gap-2">
                             <button onClick={() => setEditApptPanel(a)} className="text-xs text-blue-600 hover:underline">編輯</button>
-                            <button
-                              onClick={() => setPaymentModal(a)}
-                              className="text-xs text-primary-600 hover:underline"
-                              title={a.funding_source === "institution"
-                                ? `機構：${a.quota_institution_name ?? "—"}`
-                                : "自費"}
-                            >
-                              付款（{a.funding_source === "institution" ? "機構" : "自費"}）
-                            </button>
                             <button onClick={() => handleCancelAppt(a.id)} className="text-xs text-red-500 hover:underline">取消</button>
                           </div>
                         )}
@@ -839,14 +780,6 @@ function CaseDetailPanel({
               </table>
             </div>
           )}
-          {paymentModal && (
-            <AppointmentPaymentModal
-              token={token}
-              appointment={paymentModal}
-              onClose={() => setPaymentModal(null)}
-              onSaved={() => { setPaymentModal(null); fetchAppts(); }}
-            />
-          )}
           {editApptPanel && (
             <AppointmentEditModal
               token={token}
@@ -854,47 +787,6 @@ function CaseDetailPanel({
               onClose={() => setEditApptPanel(null)}
               onDone={() => { setEditApptPanel(null); fetchAppts(); }}
             />
-          )}
-        </>
-      )}
-
-      {subTab === "ledger" && (
-        <>
-          {loadingRecords ? (
-            <p className="py-4 text-center text-sm text-gray-400">載入中...</p>
-          ) : records.length === 0 ? (
-            <p className="py-4 text-center text-sm text-gray-400">尚無帳冊紀錄（需先日結）</p>
-          ) : (
-            <div className="overflow-x-auto rounded-lg border border-gray-200">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-gray-50 text-xs uppercase text-gray-500">
-                  <tr>
-                    <th className="px-3 py-2">日期</th>
-                    <th className="px-3 py-2">金額</th>
-                    <th className="px-3 py-2">抽成</th>
-                    <th className="px-3 py-2">收款狀態</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {records.map((r) => (
-                    <tr key={r.id} className="hover:bg-gray-50">
-                      <td className="px-3 py-2 text-xs">{r.session_date}</td>
-                      <td className="px-3 py-2">${r.amount.toLocaleString()}</td>
-                      <td className="px-3 py-2 text-xs text-gray-500">
-                        {r.commission_rate_used ? `${Math.round(r.commission_rate_used * 100)}%` : "—"}
-                      </td>
-                      <td className="px-3 py-2">
-                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs ${
-                          r.payment_status === "paid" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"
-                        }`}>
-                          {r.payment_status === "paid" ? "已收" : "未收"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
           )}
         </>
       )}
@@ -1275,17 +1167,10 @@ function AppointmentForm({
     start_date: "",
     start_time: "10:00",
     end_time: "11:00",
-    amount: "2000",
-    funding_source: "self_pay",
-    quota_id: "",
   });
-  const [payerCaseId, setPayerCaseId] = useState("");
-  const [availableQuotas, setAvailableQuotas] = useState<QuotaRow[]>([]);
 
-  // 合療付款方：選到伴侶案時，billingCaseId 改為付款方（伴侶案本身或某成員）
   const selectedCase = cases.find((c) => String(c.id) === form.case_id);
   const isCouple = selectedCase?.case_type === "couple";
-  const billingCaseId = isCouple ? (payerCaseId || (selectedCase ? String(selectedCase.id) : "")) : form.case_id;
 
   useEffect(() => {
     clientFetch("/auth/therapists", token).then(setTherapists).catch(() => {});
@@ -1297,42 +1182,6 @@ function AppointmentForm({
     }
   }, [token, fixedCaseId]);
 
-  useEffect(() => {
-    if (form.funding_source !== "institution" || !billingCaseId || !form.start_date) {
-      setAvailableQuotas([]);
-      return;
-    }
-    clientFetch(
-      `/cases/${billingCaseId}/quotas/available?on_date=${form.start_date}`,
-      token,
-    )
-      .then((rows: QuotaRow[]) => {
-        setAvailableQuotas(rows);
-        setForm((prev) => {
-          if (prev.quota_id && rows.some((r) => r.id === Number(prev.quota_id))) return prev;
-          return { ...prev, quota_id: rows[0] ? String(rows[0].id) : "" };
-        });
-      })
-      .catch(() => setAvailableQuotas([]));
-  }, [token, form.funding_source, billingCaseId, form.start_date]);
-
-  // Resolve a case's therapist base price (default 2000 if unset)
-  const basePriceFor = (caseId: string) => {
-    const c = cases.find((x) => String(x.id) === caseId);
-    if (!c) return null;
-    const t = therapists.find((x) => x.id === c.therapist_id);
-    const bp = t?.base_price;
-    return bp != null ? String(bp) : "2000";
-  };
-
-  // Auto-fill amount when the selected case (and therefore therapist) resolves
-  useEffect(() => {
-    if (!form.case_id || cases.length === 0 || therapists.length === 0) return;
-    const bp = basePriceFor(form.case_id);
-    if (bp != null) setForm((prev) => ({ ...prev, amount: bp }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.case_id, cases, therapists]);
-
   const sf = (key: string, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1340,25 +1189,15 @@ function AppointmentForm({
     setSaving(true);
     setError("");
     try {
-      if (form.funding_source === "institution" && !form.quota_id) {
-        setError("請選擇機構 Quota，或改回自費");
-        setSaving(false);
-        return;
-      }
       await clientFetch("/appointments", token, {
         method: "POST",
         body: JSON.stringify({
-          case_id: parseInt(billingCaseId),
+          case_id: parseInt(form.case_id),
           couple_case_id: isCouple && selectedCase ? selectedCase.id : null,
           room_id: form.room_id ? parseInt(form.room_id) : null,
           session_type: form.session_type,
           start_time: `${form.start_date}T${form.start_time}:00+08:00`,
           end_time: `${form.start_date}T${form.end_time}:00+08:00`,
-          amount: parseFloat(form.amount),
-          funding_source: form.funding_source,
-          quota_id: form.funding_source === "institution" && form.quota_id
-            ? Number(form.quota_id)
-            : null,
         }),
       });
       onSaved();
@@ -1382,22 +1221,10 @@ function AppointmentForm({
             {!fixedCaseId && (
               <label className="block">
                 <span className="mb-1 block text-xs text-gray-500">個案 <span className="text-red-500">*</span></span>
-                <select required value={form.case_id} onChange={(e) => { sf("case_id", e.target.value); setPayerCaseId(""); }} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                <select required value={form.case_id} onChange={(e) => sf("case_id", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
                   <option value="">請選擇</option>
                   {cases.map((c) => <option key={c.id} value={c.id}>{c.case_type === "couple" ? "👫 " : ""}{c.name}</option>)}
                 </select>
-              </label>
-            )}
-            {isCouple && (
-              <label className="block">
-                <span className="mb-1 block text-xs text-gray-500">付款方（誰付款）<span className="text-red-500">*</span></span>
-                <select value={billingCaseId} onChange={(e) => setPayerCaseId(e.target.value)} className="w-full rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm">
-                  <option value={selectedCase!.id}>伴侶案（自費合計）</option>
-                  {(selectedCase!.members ?? []).map((m) => (
-                    <option key={m.case_id} value={m.case_id}>{m.name}（機構請選此，扣其扣打）</option>
-                  ))}
-                </select>
-                <span className="mt-1 block text-xs text-gray-400">機構合療請選某位成員，費用記在他名下、扣他的機構扣打。</span>
               </label>
             )}
             <label className="block">
@@ -1431,49 +1258,6 @@ function AppointmentForm({
                 <input required type="time" value={form.end_time} onChange={(e) => sf("end_time", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
               </label>
             </div>
-            <label className="block">
-              <span className="mb-1 block text-xs text-gray-500">金額 <span className="text-red-500">*</span></span>
-              <input required type="number" value={form.amount} onChange={(e) => sf("amount", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-            </label>
-            <div>
-              <span className="mb-1 block text-xs text-gray-500">付款方式</span>
-              <div className="flex gap-3 text-sm">
-                <label className="inline-flex items-center gap-1">
-                  <input
-                    type="radio"
-                    checked={form.funding_source === "self_pay"}
-                    onChange={() => setForm((p) => ({ ...p, funding_source: "self_pay", quota_id: "" }))}
-                  />
-                  自費
-                </label>
-                <label className="inline-flex items-center gap-1">
-                  <input
-                    type="radio"
-                    checked={form.funding_source === "institution"}
-                    onChange={() => setForm((p) => ({ ...p, funding_source: "institution" }))}
-                  />
-                  機構
-                </label>
-              </div>
-            </div>
-            {form.funding_source === "institution" && (
-              <label className="block">
-                <span className="mb-1 block text-xs text-gray-500">機構 Quota <span className="text-red-500">*</span></span>
-                <select
-                  required
-                  value={form.quota_id}
-                  onChange={(e) => sf("quota_id", e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                >
-                  <option value="">{availableQuotas.length === 0 ? "該日無可用 Quota" : "請選擇"}</option>
-                  {availableQuotas.map((q) => (
-                    <option key={q.id} value={q.id}>
-                      {q.institution_name}｜剩餘 {q.remaining}（預約 {q.reserved_count ?? 0}）/{q.total_count}｜到期 {q.valid_until ?? "永久"}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">取消</button>
               <button type="submit" disabled={saving} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">{saving ? "儲存中..." : "儲存"}</button>
@@ -1596,17 +1380,10 @@ function BatchForm({
     case_id: fixedCaseId?.toString() ?? "",
     room_id: "",
     session_type: "in_person",
-    amount: "2000",
-    funding_source: "self_pay",
-    quota_id: "",
   });
-  const [payerCaseId, setPayerCaseId] = useState("");
-  const [allQuotas, setAllQuotas] = useState<QuotaRow[]>([]);
 
-  // 合療付款方
   const selectedCase = cases.find((c) => String(c.id) === form.case_id);
   const isCouple = selectedCase?.case_type === "couple";
-  const billingCaseId = isCouple ? (payerCaseId || (selectedCase ? String(selectedCase.id) : "")) : form.case_id;
 
   // recurrence settings
   const [recurrence, setRecurrence] = useState<"weekly" | "biweekly" | "monthly">("weekly");
@@ -1634,41 +1411,6 @@ function BatchForm({
     }
   }, [token, fixedCaseId]);
 
-  const basePriceFor = (caseId: string) => {
-    const c = cases.find((x) => String(x.id) === caseId);
-    if (!c) return null;
-    const t = therapists.find((x) => x.id === c.therapist_id);
-    const bp = t?.base_price;
-    return bp != null ? String(bp) : "2000";
-  };
-
-  useEffect(() => {
-    if (!form.case_id || cases.length === 0 || therapists.length === 0) return;
-    const bp = basePriceFor(form.case_id);
-    if (bp != null) setForm((prev) => ({ ...prev, amount: bp }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.case_id, cases, therapists]);
-
-  useEffect(() => {
-    if (form.funding_source !== "institution" || !billingCaseId) {
-      setAllQuotas([]);
-      return;
-    }
-    clientFetch(`/cases/${billingCaseId}/quotas`, token)
-      .then((rows: QuotaRow[]) => {
-        const today = new Date().toISOString().slice(0, 10);
-        const active = rows.filter(
-          (r) => (!r.valid_until || r.valid_until >= today) && r.remaining > 0,
-        );
-        setAllQuotas(active);
-        setForm((prev) => {
-          if (prev.quota_id && active.some((r) => r.id === Number(prev.quota_id))) return prev;
-          return { ...prev, quota_id: active[0] ? String(active[0].id) : "" };
-        });
-      })
-      .catch(() => setAllQuotas([]));
-  }, [token, form.funding_source, billingCaseId]);
-
   const sf = (key: string, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
 
   const handleGenerate = () => {
@@ -1693,23 +1435,13 @@ function BatchForm({
     setSaving(true);
     setError("");
     try {
-      if (form.funding_source === "institution" && !form.quota_id) {
-        setError("請選擇機構 Quota，或改回自費");
-        setSaving(false);
-        return;
-      }
       await clientFetch("/appointments/batch", token, {
         method: "POST",
         body: JSON.stringify({
-          case_id: parseInt(billingCaseId),
+          case_id: parseInt(form.case_id),
           couple_case_id: isCouple && selectedCase ? selectedCase.id : null,
           room_id: form.room_id ? parseInt(form.room_id) : null,
           session_type: form.session_type,
-          amount: parseFloat(form.amount),
-          funding_source: form.funding_source,
-          quota_id: form.funding_source === "institution" && form.quota_id
-            ? Number(form.quota_id)
-            : null,
           slots: slots.map((s) => ({
             start_time: `${s.date}T${s.start}:00+08:00`,
             end_time: `${s.date}T${s.end}:00+08:00`,
@@ -1741,24 +1473,12 @@ function BatchForm({
               {!fixedCaseId && (
                 <label className="block">
                   <span className="mb-1 block text-xs text-gray-500">個案 <span className="text-red-500">*</span></span>
-                  <select required value={form.case_id} onChange={(e) => { sf("case_id", e.target.value); setPayerCaseId(""); }} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+                  <select required value={form.case_id} onChange={(e) => sf("case_id", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
                     <option value="">請選擇</option>
                     {cases.map((c) => <option key={c.id} value={c.id}>{c.case_type === "couple" ? "👫 " : ""}{c.name}</option>)}
                   </select>
                 </label>
               )}
-              {isCouple && (
-                <label className="block">
-                  <span className="mb-1 block text-xs text-gray-500">付款方（誰付款）<span className="text-red-500">*</span></span>
-                  <select value={billingCaseId} onChange={(e) => setPayerCaseId(e.target.value)} className="w-full rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm">
-                    <option value={selectedCase!.id}>伴侶案（自費合計）</option>
-                    {(selectedCase!.members ?? []).map((m) => (
-                      <option key={m.case_id} value={m.case_id}>{m.name}（機構請選此，扣其扣打）</option>
-                    ))}
-                  </select>
-                </label>
-              )}
-
               {/* session type + room */}
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
@@ -1779,56 +1499,6 @@ function BatchForm({
                   </label>
                 )}
               </div>
-
-              {/* amount */}
-              <label className="block">
-                <span className="mb-1 block text-xs text-gray-500">每次金額 <span className="text-red-500">*</span></span>
-                <input required type="number" value={form.amount} onChange={(e) => sf("amount", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-              </label>
-
-              {/* funding source */}
-              <div>
-                <span className="mb-1 block text-xs text-gray-500">付款方式（套用全部時段）</span>
-                <div className="flex gap-3 text-sm">
-                  <label className="inline-flex items-center gap-1">
-                    <input
-                      type="radio"
-                      checked={form.funding_source === "self_pay"}
-                      onChange={() => setForm((p) => ({ ...p, funding_source: "self_pay", quota_id: "" }))}
-                    />
-                    自費
-                  </label>
-                  <label className="inline-flex items-center gap-1">
-                    <input
-                      type="radio"
-                      checked={form.funding_source === "institution"}
-                      onChange={() => setForm((p) => ({ ...p, funding_source: "institution" }))}
-                    />
-                    機構
-                  </label>
-                </div>
-              </div>
-              {form.funding_source === "institution" && (
-                <label className="block">
-                  <span className="mb-1 block text-xs text-gray-500">機構 Quota <span className="text-red-500">*</span></span>
-                  <select
-                    required
-                    value={form.quota_id}
-                    onChange={(e) => sf("quota_id", e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  >
-                    <option value="">{allQuotas.length === 0 ? "尚無有效 Quota" : "請選擇"}</option>
-                    {allQuotas.map((q) => (
-                      <option key={q.id} value={q.id}>
-                        {q.institution_name}｜剩餘 {q.remaining}（預約 {q.reserved_count ?? 0}）/{q.total_count}｜到期 {q.valid_until ?? "永久"}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-1 text-xs text-amber-600">
-                    注意：批次所有時段共用同一 Quota；若預約日超過該 Quota 期限或剩餘不足，後端會拒絕建立。
-                  </p>
-                </label>
-              )}
 
               {/* recurrence panel */}
               <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
@@ -1999,136 +1669,6 @@ function BatchForm({
 }
 
 /* ═══════════════════════════════════════════════════
-   付款方式編輯 modal（既有預約改自費/機構）
-   ═══════════════════════════════════════════════════ */
-
-function AppointmentPaymentModal({
-  token, appointment, onClose, onSaved,
-}: {
-  token: string;
-  appointment: Appointment;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [fundingSource, setFundingSource] = useState<"self_pay" | "institution">(
-    (appointment.funding_source as any) ?? "self_pay",
-  );
-  const [quotaId, setQuotaId] = useState<string>(
-    appointment.quota_id ? String(appointment.quota_id) : "",
-  );
-  const [availableQuotas, setAvailableQuotas] = useState<QuotaRow[]>([]);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
-
-  const apptDate = appointment.start_time?.slice(0, 10) ?? "";
-
-  useEffect(() => {
-    if (fundingSource !== "institution" || !apptDate) {
-      setAvailableQuotas([]);
-      return;
-    }
-    clientFetch(
-      `/cases/${appointment.case_id}/quotas/available?on_date=${apptDate}`,
-      token,
-    )
-      .then((rows: QuotaRow[]) => {
-        setAvailableQuotas(rows);
-        setQuotaId((cur) => {
-          if (cur && rows.some((r) => r.id === Number(cur))) return cur;
-          return rows[0] ? String(rows[0].id) : "";
-        });
-      })
-      .catch(() => setAvailableQuotas([]));
-  }, [token, fundingSource, appointment.case_id, apptDate]);
-
-  const submit = async () => {
-    setError("");
-    if (fundingSource === "institution" && !quotaId) {
-      setError("請選擇 Quota，或改回自費");
-      return;
-    }
-    setSubmitting(true);
-    try {
-      await clientFetch(`/appointments/${appointment.id}/payment`, token, {
-        method: "PUT",
-        body: JSON.stringify({
-          funding_source: fundingSource,
-          quota_id: fundingSource === "institution" && quotaId ? Number(quotaId) : null,
-        }),
-      });
-      onSaved();
-    } catch (e: any) {
-      setError(e.message ?? "儲存失敗");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-      <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-        <h3 className="mb-4 text-lg font-bold">編輯付款方式</h3>
-        <p className="mb-3 text-xs text-gray-500">
-          預約 {appointment.appointment_number} · {apptDate}
-        </p>
-
-        {error && <div className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
-
-        <div className="space-y-3 text-sm">
-          <div className="flex gap-3">
-            <label className="inline-flex items-center gap-1">
-              <input
-                type="radio"
-                checked={fundingSource === "self_pay"}
-                onChange={() => { setFundingSource("self_pay"); setQuotaId(""); }}
-              />
-              自費
-            </label>
-            <label className="inline-flex items-center gap-1">
-              <input
-                type="radio"
-                checked={fundingSource === "institution"}
-                onChange={() => setFundingSource("institution")}
-              />
-              機構
-            </label>
-          </div>
-
-          {fundingSource === "institution" && (
-            <div>
-              <label className="mb-1 block text-xs text-gray-500">機構 Quota</label>
-              <select
-                value={quotaId}
-                onChange={(e) => setQuotaId(e.target.value)}
-                className="w-full rounded border border-gray-300 px-3 py-2"
-              >
-                <option value="">{availableQuotas.length === 0 ? "該日無可用 Quota" : "請選擇"}</option>
-                {availableQuotas.map((q) => (
-                  <option key={q.id} value={q.id}>
-                    {q.institution_name}｜剩餘 {q.remaining}/{q.total_count}｜到期 {q.valid_until ?? "永久"}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
-
-        <div className="mt-5 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">取消</button>
-          <button
-            onClick={submit}
-            disabled={submitting}
-            className="rounded bg-primary-600 px-4 py-2 text-sm text-white hover:bg-primary-700 disabled:opacity-50"
-          >
-            {submitting ? "儲存中..." : "儲存"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════
    Appointment Edit Modal
    ═══════════════════════════════════════════════════ */
 
@@ -2146,7 +1686,6 @@ function AppointmentEditModal({
   const [startDate, setStartDate] = useState(appt.start_time?.slice(0, 10) ?? "");
   const [startTime, setStartTime] = useState(appt.start_time?.slice(11, 16) ?? "");
   const [endTime, setEndTime] = useState(appt.end_time?.slice(11, 16) ?? "");
-  const [amount, setAmount] = useState(String(appt.amount));
 
   useEffect(() => {
     clientFetch("/rooms", token).then(setRooms).catch(() => {});
@@ -2160,7 +1699,6 @@ function AppointmentEditModal({
       const body: Record<string, unknown> = {
         session_type: sessionType,
         room_id: roomId ? parseInt(roomId) : null,
-        amount: parseFloat(amount),
       };
       if (startDate && startTime) {
         body.start_time = `${startDate}T${startTime}:00+08:00`;
@@ -2221,10 +1759,6 @@ function AppointmentEditModal({
               <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
             </label>
           </div>
-          <label className="block">
-            <span className="text-xs font-medium text-gray-700">費用</span>
-            <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-          </label>
           {error && <p className="text-xs text-red-600">{error}</p>}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">取消</button>

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
-import { NO_SHOW_TYPES, SESSION_TYPE, hhmm, money, shiftDate, todayISO } from "@/lib/format";
+import { NO_SHOW_TYPES, SESSION_TYPE, hhmm, shiftDate, todayISO } from "@/lib/format";
 
 interface Appt {
   id: number;
@@ -15,14 +15,9 @@ interface Appt {
   session_type: string;
   start_time: string | null;
   end_time: string | null;
-  amount: number;
-  funding_source: string;
   status: string;
   checkin_status: string;
-  no_show_fee: number;
   is_intake: boolean;
-  quota_used: number | null;
-  quota_total: number | null;
 }
 
 const STATUS: Record<string, { label: string; cls: string }> = {
@@ -95,7 +90,7 @@ export default function ApptsPage() {
   }
 
   function exportCsv() {
-    const head = ["心理師", "個案", "空間", "類型", "日期", "時段", "金額", "狀態", "報到"];
+    const head = ["心理師", "個案", "空間", "類型", "日期", "時段", "狀態", "報到"];
     const lines = filtered.map((r) => [
       r.therapist_name ?? "",
       r.case_name ?? "",
@@ -103,7 +98,6 @@ export default function ApptsPage() {
       SESSION_TYPE[r.session_type] ?? r.session_type,
       r.start_time?.slice(0, 10) ?? "",
       `${hhmm(r.start_time)}-${hhmm(r.end_time)}`,
-      String(r.amount),
       STATUS[r.status]?.label ?? r.status,
       r.checkin_status,
     ]);
@@ -160,15 +154,13 @@ export default function ApptsPage() {
               <th className="px-3 py-3">時間</th>
               <th className="px-3 py-3">類型</th>
               <th className="px-3 py-3">診間</th>
-              <th className="px-3 py-3">方案</th>
-              <th className="px-3 py-3 text-right">金額</th>
               <th className="px-3 py-3">狀態</th>
               <th className="px-3 py-3">行政確認</th>
             </tr>
           </thead>
           <tbody>
             {!loading && filtered.length === 0 && (
-              <tr><td colSpan={10} className="px-4 py-10 text-center text-gray-400">此區間沒有符合的預約</td></tr>
+              <tr><td colSpan={8} className="px-4 py-10 text-center text-gray-400">此區間沒有符合的預約</td></tr>
             )}
             {filtered.map((r) => {
               const st = STATUS[r.status] ?? { label: r.status, cls: "bg-gray-100" };
@@ -184,17 +176,6 @@ export default function ApptsPage() {
                   <td className="px-3 py-2.5 tabular-nums">{hhmm(r.start_time)}–{hhmm(r.end_time)}</td>
                   <td className="px-3 py-2.5">{SESSION_TYPE[r.session_type] ?? r.session_type}</td>
                   <td className="px-3 py-2.5">{r.room_name ?? "—"}</td>
-                  <td className="px-3 py-2.5 text-xs">
-                    {r.funding_source === "institution"
-                      ? `機構 ${r.quota_used ?? "?"}/${r.quota_total ?? "?"}`
-                      : "自費"}
-                  </td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">
-                    {money(r.amount)}
-                    {r.no_show_fee > 0 && (
-                      <span className="block text-[10px] text-red-600">失約費 {money(r.no_show_fee)}</span>
-                    )}
-                  </td>
                   <td className="px-3 py-2.5">
                     <span className={`rounded px-1.5 py-0.5 text-xs ${st.cls}`}>{st.label}</span>
                   </td>
@@ -226,7 +207,7 @@ export default function ApptsPage() {
           <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
             <h2 className="mb-4 text-lg font-bold">未到原因 — {absentFor.case_name}</h2>
             <div className="space-y-2">
-              {NO_SHOW_TYPES.map(([k, label, fee]) => (
+              {NO_SHOW_TYPES.map(([k, label]) => (
                 <button
                   key={k}
                   onClick={async () => {
@@ -244,7 +225,6 @@ export default function ApptsPage() {
                   className="flex w-full items-center justify-between rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
                 >
                   <span>{label}</span>
-                  <span className="tabular-nums text-gray-500">失約費 {money(fee)}</span>
                 </button>
               ))}
             </div>

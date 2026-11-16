@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
-import { SESSION_TYPE, hhmm, money, shiftDate, todayISO } from "@/lib/format";
+import { SESSION_TYPE, hhmm, shiftDate, todayISO } from "@/lib/format";
 
 interface Appt {
   id: number;
@@ -13,13 +13,8 @@ interface Appt {
   session_type: string;
   start_time: string | null;
   end_time: string | null;
-  amount: number;
-  funding_source: string;
   status: string;
   checkin_status: string;
-  quota_is_last_session: boolean;
-  quota_used: number | null;
-  quota_total: number | null;
 }
 
 const WEEKDAYS = ["週一", "週二", "週三", "週四", "週五", "週六", "週日"];
@@ -138,21 +133,13 @@ export default function SchedPage() {
                       key={a.id}
                       className={`rounded-lg p-1.5 text-[11px] ${
                         done ? "bg-green-50" : offsite ? "bg-violet-50" : "bg-blue-50"
-                      } ${a.quota_is_last_session ? "ring-1 ring-red-400" : ""}`}
+                      }`}
                     >
                       <div className="font-medium">{hhmm(a.start_time)}–{hhmm(a.end_time)}</div>
                       <div className="truncate">{a.case_name}</div>
                       <div className="truncate text-gray-500">
                         {a.room_name ?? SESSION_TYPE[a.session_type]}
                       </div>
-                      <div className="truncate text-gray-500">
-                        {a.funding_source === "institution"
-                          ? `機構 ${a.quota_used ?? "?"}/${a.quota_total ?? "?"}`
-                          : "自費"}
-                      </div>
-                      {a.quota_is_last_session && (
-                        <div className="text-red-600">最後一次 · 下次轉自費</div>
-                      )}
                       {done && <div className="text-green-700">已完成</div>}
                       {!done && offsite && (
                         <button
@@ -182,7 +169,7 @@ export default function SchedPage() {
       </div>
 
       <p className="mt-3 text-xs text-gray-400">
-        視訊／外展的個案不會到櫃檯報到，超過起始時間後系統自動視為已到；個案沒來時才需要按「請假」。
+        視訊／外展的個案不會到櫃檯報到，狀態不會自動變更，由行政事後標記；個案沒來時才需要按「請假」。
         現場個案由櫃檯報到，此處不顯示操作按鈕。
       </p>
 
@@ -194,7 +181,7 @@ export default function SchedPage() {
               {cancelFor.case_name} · {cancelFor.start_time?.slice(5, 10)}{" "}
               {hhmm(cancelFor.start_time)}–{hhmm(cancelFor.end_time)}
               <br />
-              取消後不產生應收，機構額度會釋回為可用。
+              取消後該時段會釋出。
             </p>
             <div className="flex justify-end gap-2">
               <button onClick={() => setCancelFor(null)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm">返回</button>

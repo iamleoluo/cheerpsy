@@ -9,7 +9,6 @@ from app.auth.password import verify_password
 from app.database import get_db
 from app.models.appointment import Appointment
 from app.models.case import Case
-from app.models.case_institution_quota import CaseInstitutionQuota
 from app.models.couple_member import CoupleMember
 from app.models.user import User
 from app.schemas.case import (
@@ -296,8 +295,7 @@ def close_case(
       1. 驗證呼叫者密碼（防誤觸）
       2. case.status = "closed"，寫入 closed_at/by 與 closure_reason
       3. 取消所有未來預約（booked 且 lower(time_range) > now）
-      4. 機構額度歸零：total_count := used_count（保留歷史紀錄完整性）
-      5. write_audit
+      4. write_audit（帳務拆除上線 A：不再動機構額度）
     """
     if not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="密碼錯誤")
@@ -322,22 +320,6 @@ def close_case(
         .update({Appointment.status: "cancelled"}, synchronize_session=False)
     )
 
-    # 4-2) 額度歸零（剩餘 = 0；保留歷史 used_count）
-    quotas_zeroed = 0
-    quotas = (
-        db.query(CaseInstitutionQuota)
-        .filter(CaseInstitutionQuota.case_id == case_id)
-        .all()
-    )
-    for q in quotas:
-        if q.total_count > q.used_count:
-            # 結案：已預留＋已預約全數釋出回方案總池，只保留已使用的歷史
-            q.total_count = q.used_count
-            q.booked_count = 0
-            q.reserved_count = 0
-            q.status = "closed"
-            quotas_zeroed += 1
-
     c.status = "closed"
     c.closed_at = now
     c.closed_by = user.id
@@ -350,7 +332,6 @@ def close_case(
             "status": "closed",
             "closure_reason": c.closure_reason,
             "cancelled_appointments": cancelled,
-            "quotas_zeroed": quotas_zeroed,
         },
     )
     db.commit()
