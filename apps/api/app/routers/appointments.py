@@ -434,6 +434,12 @@ def _can_delete(a: Appointment, user: User, db: Session) -> str | None:
     return None
 
 
+def _therapist_cannot_delete(user: User) -> None:
+    """刪除只限 admin／staff。心理師只能「取消」自己的預約。"""
+    if user.role == "therapist":
+        raise HTTPException(status_code=403, detail="心理師不能刪除預約，請改用取消")
+
+
 @router.delete("")
 def batch_delete_appointments(
     body: BatchDeleteRequest,
@@ -450,6 +456,7 @@ def batch_delete_appointments(
     missing = [i for i in body.ids if i not in found_ids]
     if missing:
         raise HTTPException(status_code=404, detail=f"預約不存在：{missing}")
+    _therapist_cannot_delete(user)  # 別人的 id 已在上面視同不存在（404）；到這裡的都是自己的，一律 403
     for a in appts:
         err = _can_delete(a, user, db)
         if err:
@@ -476,6 +483,7 @@ def delete_by_batch_id(
     appts = q.all()
     if not appts:
         raise HTTPException(status_code=404, detail="找不到此批次預約")
+    _therapist_cannot_delete(user)
     for a in appts:
         err = _can_delete(a, user, db)
         if err:

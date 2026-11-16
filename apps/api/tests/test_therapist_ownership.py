@@ -282,3 +282,35 @@ def test_accountant_unchanged(client, auth, world):
     assert post(client, auth, w["acct"], w["case_a"], w["room"], day=8).status_code == 403  # 不能建立預約
     assert client.put(f"/appointments/{mine}", headers=auth(w["acct"]), json={"amount": 1}).status_code == 403
     assert client.get(f"/appointments/{mine}", headers=auth(w["acct"])).json()["amount"] == 0  # 記帳已移除，維持現狀
+
+
+def test_therapist_cannot_delete_even_own_but_can_cancel(client, auth, world, db):
+    w = world
+    h = auth(w["a"])
+    own = post(client, auth, w["a"], w["case_a"], w["room"], day=7).json()
+    # 單筆（ids）與整批（batch_id）刪除：自己的也一律 403，資料不動
+    assert client.request("DELETE", "/appointments", headers=h, json={"ids": [own["id"]]}).status_code == 403
+    s8, e8 = _slot(8)
+    bt = client.post("/appointments/batch", headers=h, json={
+        "case_id": w["case_a"].id, "room_id": w["room"].id, "session_type": "in_person",
+        "slots": [{"start_time": s8.isoformat(), "end_time": e8.isoformat()}]}).json()[0]["batch_id"]
+    assert client.request("DELETE", f"/appointments/batch?batch_id={bt}", headers=h).status_code == 403
+    assert db_row(db, own["id"]) is not None
+    # 別人的仍是 404（與不存在相同），不是 403
+    bid = b_appt(client, auth, w)
+    assert client.request("DELETE", "/appointments", headers=h, json={"ids": [bid["id"]]}).status_code == 404
+    s9, e9 = _slot(9)
+    bb = client.post("/appointments/batch", headers=auth(w["b"]), json={
+        "case_id": w["case_b"].id, "room_id": w["room"].id, "session_type": "in_person",
+        "slots": [{"start_time": s9.isoformat(), "end_time": e9.isoformat()}]}).json()[0]["batch_id"]
+    assert client.request("DELETE", f"/appointments/batch?batch_id={bb}", headers=h).status_code == 404
+    # 取消自己的可以
+    assert client.put(f"/appointments/{own['id']}/cancel", headers=h).json()["status"] == "cancelled"
+
+
+@pytest.mark.parametrize("who", ["staff", "admin"])
+def test_staff_and_admin_can_delete(client, auth, world, db, who):
+    w = world
+    own = post(client, auth, w["a"], w["case_a"], w["room"], day=7).json()
+    r = client.request("DELETE", "/appointments", headers=auth(w[who]), json={"ids": [own["id"]]})
+    assert r.status_code == 200 and r.json()["deleted"] == 1
