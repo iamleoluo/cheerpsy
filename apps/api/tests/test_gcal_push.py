@@ -118,7 +118,8 @@ def w(make_user, make_case, room, db, fake):
 
 
 def run(fake, now=None, client_factory=None):
-    return gcal_push.run_once(SessionLocal, client_factory or (lambda _db: fake), now=now)
+    # 預設往後一秒：資料庫的 now() 與這裡的時鐘有毫秒級誤差，別讓「剛入列」的工作剛好落在邊界外
+    return gcal_push.run_once(SessionLocal, client_factory or (lambda _db: fake), now=now or now_())
 
 
 def create(client, auth, w, day=2, hour=10, **extra):
@@ -184,36 +185,74 @@ def _appt(db, w, **kw):
 
 def test_title_formats(db, w):
     a = _appt(db, w)
+    a.amount = 0  # 沒有金額：標題不加那一段
     assert gcal_titles.event_title(a, "type_room") == "諮商 · 2B"
     assert gcal_titles.event_title(a, "type_room_code") == "諮商 · 2B · C-1042"
     assert gcal_titles.event_title(a, "type_room_abbrev") == "諮商 · 2B · 王小"
+    assert gcal_titles.event_title(a, "type_room_name") == "諮商 · 2B · 王小明"
+    a.amount = 1500  # 有金額：任一格式結尾都加
+    assert gcal_titles.event_title(a, "type_room_name") == "諮商 · 2B · 王小明 · $1,500"
+    assert gcal_titles.event_title(a, "type_room") == "諮商 · 2B · $1,500"
+    a.amount = 1500.5
+    assert gcal_titles.event_title(a, "type_room") == "諮商 · 2B · $1,500.50"
+    a.amount = 1500
     a.is_intake = True
-    assert gcal_titles.event_title(a, "type_room") == "初診 · 2B"
+    assert gcal_titles.event_title(a, "type_room") == "初診 · 2B · $1,500"
     a.is_intake = False
     a.session_type = "online"
-    assert gcal_titles.event_title(a, "type_room_abbrev") == "諮商 · 線上 · 王小"
+    assert gcal_titles.event_title(a, "type_room_abbrev") == "諮商 · 線上 · 王小 · $1,500"
     a.session_type = "outdoor"
-    assert gcal_titles.event_title(a, "type_room") == "外展"
+    assert gcal_titles.event_title(a, "type_room") == "外展 · $1,500"
     a.session_type, a.room = "in_person", None
-    assert gcal_titles.event_title(a, "type_room") == "諮商"  # 缺診間：不留空的分隔
+    a.amount = None
+    assert gcal_titles.event_title(a, "type_room") == "諮商"  # 缺診間、沒金額：不留空的分隔
+
+
+def test_format_amount():
+    f = gcal_titles.format_amount
+    assert f(1500) == "$1,500" and f("2000.00") == "$2,000" and f(1234.5) == "$1,234.50" and f(1000000) == "$1,000,000"
+    assert f(0) is None and f(None) is None and f(-5) is None and f("abc") is None
+
+
+def test_description_sections_and_amount_line(db, w):
+    a = _appt(db, w)
+    assert gcal_titles.event_description(a) == gcal_titles.DESCRIPTION + "\n金額：$1,500"
+    a.amount = None
+    assert gcal_titles.event_description(a) == gcal_titles.DESCRIPTION  # 沒金額：不顯示那一行
+    a.amount = 1500
+    d = gcal_titles.event_description(a, [("預約備註", "帶孩子來"), ("備註給心理師", "  注意事項  "), ("空的", "  ")])
+    assert "【預約備註】\n帶孩子來" in d and "【備註給心理師】\n注意事項" in d and "空的" not in d
+    assert d.index("預約備註") < d.index("備註給心理師")  # 分段標示、順序固定
 
 
 def test_title_degrades_instead_of_leaking_name(db, w):
     a = _appt(db, w)
     w["case"].case_code = None
+    a.amount = 0
     assert gcal_titles.event_title(a, "type_room_code") == "諮商 · 2B"  # 沒有代號 → (a)，不改塞姓名
     w["case"].name = "王"
     assert gcal_titles.event_title(a, "type_room_abbrev") == "諮商 · 2B"  # 無法縮寫 → (a)
+    assert gcal_titles.event_title(a, "type_room_name") == "諮商 · 2B · 王"  # (d) 就是全名
+
+
+def test_only_format_d_ever_outputs_the_full_name(db, w):
+    a = _appt(db, w)
+    for fmt in ("type_room", "type_room_code", "type_room_abbrev"):
+        assert "王小明" not in gcal_titles.event_title(a, fmt) and "王小明" not in gcal_titles.event_description(a)
+    assert "王小明" in gcal_titles.event_title(a, "type_room_name")
 
 
 def test_event_body_has_no_sensitive_data(db, w):
     a = _appt(db, w)
     w["case"].chief_complaint = "憂鬱與失眠"
-    body = gcal_titles.event_body(a, "type_room_abbrev")
-    blob = json.dumps(body, ensure_ascii=False)
-    for secret in ("王小明", "0912", "憂鬱", "1500", "lin-therapist", "@", "林心理師", a.appointment_number):
-        assert secret not in blob, secret
-    assert body["description"] == gcal_titles.DESCRIPTION
+    for fmt in ("type_room", "type_room_code", "type_room_abbrev", "type_room_name"):
+        body = gcal_titles.event_body(a, fmt)
+        blob = json.dumps(body, ensure_ascii=False)
+        # 電話、主訴、Email、內部編號、心理師姓名一律不放（金額與 (d) 的全名是診所決定要放的）
+        for secret in ("0912", "憂鬱", "@", "林心理師", a.appointment_number):
+            assert secret not in blob, (fmt, secret)
+        assert "金額：$1,500" in body["description"] and body["summary"].endswith("$1,500")
+    assert gcal_titles.event_body(a, "type_room")["description"].startswith(gcal_titles.DESCRIPTION)
     assert body["start"]["timeZone"] == "Asia/Taipei" and body["start"]["dateTime"].endswith("+08:00")
     assert body["id"] == gcal_titles.event_id(a.id)
 
@@ -233,7 +272,7 @@ def test_create_enqueues_one_upsert_and_worker_pushes_event(client, auth, w, fak
     assert (j.job_type, j.status, j.attempts, j.dedupe_key) == ("upsert_event", "pending", 0, f"appt:{a['id']}")
     assert run(fake) == 1
     body = ev(fake, a["id"])
-    assert body["summary"] == "諮商 · 2B · 王小" and body["extendedProperties"]["private"]["cheerpsyAppointmentId"] == str(a["id"])
+    assert body["summary"] == "諮商 · 2B · 王小明" and body["extendedProperties"]["private"]["cheerpsyAppointmentId"] == str(a["id"])
     assert job(db, a["id"]).status == "done"
     m = db.get(AppointmentGoogleEvent, a["id"])
     assert m.google_calendar_id == CAL and m.google_event_id == gcal_titles.event_id(a["id"]) and m.last_status == "pushed"
@@ -270,7 +309,7 @@ def test_room_change_updates_title(client, auth, w, fake, db):
     run(fake)
     client.put(f"/appointments/{a['id']}", headers=auth(w["staff"]), json={"room_id": w["room2"].id})
     run(fake)
-    assert ev(fake, a["id"])["summary"] == "諮商 · 3C · 王小"
+    assert ev(fake, a["id"])["summary"] == "諮商 · 3C · 王小明"
 
 
 def test_two_reschedules_before_worker_runs_keep_one_job(client, auth, w, fake, db):
@@ -353,7 +392,6 @@ def test_non_event_changes_do_not_enqueue(client, auth, w, fake, db):
     run(fake)
     row = db.get(Appointment, a["id"])
     row.video_link = "https://meet.example/x"
-    row.amount = 9999
     db.commit()
     assert job(db, a["id"]).version == 1 and job(db, a["id"]).status == "done"
 
@@ -540,8 +578,52 @@ def test_title_format_setting_is_used(client, auth, w, fake, db):
     db.add(ClinicSettings(id=1, event_title_format="type_room_code"))
     db.commit()
     a = create(client, auth, w)
+    db.get(Appointment, a["id"]).amount = 1500  # API 建立的預約金額為 0；金額會在標題結尾
+    db.commit()
     run(fake)
-    assert ev(fake, a["id"])["summary"] == "諮商 · 2B · C-1042"
+    assert ev(fake, a["id"])["summary"] == "諮商 · 2B · C-1042 · $1,500"
+
+
+def test_default_format_is_d_with_full_name_and_amount(client, auth, w, fake, db):
+    a = create(client, auth, w)  # 沒有設定列：預設 (d)
+    run(fake)
+    e = ev(fake, a["id"])
+    blob = json.dumps(e, ensure_ascii=False)
+    assert e["summary"] == "諮商 · 2B · 王小明" and "0912" not in blob and "憂鬱" not in blob
+
+
+def test_amount_change_triggers_resync_and_zero_amount_hides_line(client, auth, w, fake, db):
+    a = create(client, auth, w)
+    row = db.get(Appointment, a["id"])
+    row.amount = 1500
+    db.commit()
+    run(fake)
+    e = ev(fake, a["id"])
+    assert e["summary"].endswith("· $1,500") and "金額：$1,500" in e["description"]
+    row.amount = 2000  # 金額改了 → 入列 → 內容 hash 變 → update 同一事件
+    db.commit()
+    fake.clear_calls()
+    run(fake)
+    assert [c[0] for c in fake.event_calls()] == ["update_event"] and ev(fake, a["id"])["summary"].endswith("$2,000")
+    row.amount = 0
+    db.commit()
+    run(fake)
+    e = ev(fake, a["id"])
+    assert "$" not in e["summary"] and "金額" not in e["description"]
+
+
+def test_note_change_changes_hash_and_note_sections_reach_description(client, auth, w, fake, db, monkeypatch):
+    a = create(client, auth, w)
+    run(fake)
+    assert "【" not in ev(fake, a["id"])["description"]  # 目前預約上沒有備註欄位
+    monkeypatch.setattr(gcal_push, "note_sections", lambda _db, _a: [("備註給心理師", "請準備量表")])
+    from app.models.gcal_hooks import enqueue_appointments
+    with engine.begin() as c:  # PR D 寫備註的路徑要做的事
+        enqueue_appointments(c, [a["id"]])
+    fake.clear_calls()
+    run(fake)
+    assert [c[0] for c in fake.event_calls()] == ["update_event"]  # 備註改了 → hash 變 → 重新同步
+    assert "【備註給心理師】\n請準備量表" in ev(fake, a["id"])["description"]
 
 
 def test_event_deleted_on_google_is_recreated_on_next_change(client, auth, w, fake, db):
@@ -741,7 +823,7 @@ def test_resync_overwrites_google_side_edits_and_removes_cancelled(client, auth,
     db.commit()
     client.post("/settings/google/sync/resync", headers=auth(w["admin"]))
     run(fake, now=now_() + timedelta(minutes=5))
-    assert ev(fake, a["id"])["summary"] == "諮商 · 2B · 王小"  # 以 Cheerpsy 為準覆寫
+    assert ev(fake, a["id"])["summary"] == "諮商 · 2B · 王小明"  # 以 Cheerpsy 為準覆寫
     assert ev(fake, b["id"]) is None
 
 
@@ -787,7 +869,7 @@ def test_migration_adds_only_its_tables_and_chain_is_linear():
     assert 'down_revision = "zk1a5b6c7d8e"' in txt and txt.count("drop_table") == 2
     assert "alter_column" not in txt and "drop_column" not in txt
     others = [q.name for q in (API_DIR / "alembic" / "versions").glob("*.py") if 'down_revision = "zl2b6c7d8e9f"' in q.read_text(encoding="utf-8")]
-    assert others == []
+    assert others == ["zm3c7d8e9f0a_gcal_title_name.py"]  # 後面只接標題格式 (d) 的 migration（鏈不分叉）
 
 
 def test_migration_roundtrip(db):
@@ -832,3 +914,48 @@ def test_worker_entrypoint_and_compose_service():
         if name == "docker-compose.prod.yml":
             assert "worker:" in txt and "app.gcal_worker" in txt and "GCAL_TOKEN_FERNET_KEY" in txt
             assert "GOOGLE_OAUTH_CLIENT_SECRET" in txt
+
+
+def _load_zm():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("zm3c", API_DIR / "alembic" / "versions" / "zm3c7d8e9f0a_gcal_title_name.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _go(mod, fn):
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+
+    with engine.begin() as conn, Operations.context(MigrationContext.configure(conn)):
+        getattr(mod, fn)()
+
+
+def test_title_migration_only_changes_untouched_default_and_is_reversible(db, make_user):
+    mod = _load_zm()
+    admin = make_user("admin")
+    db.rollback()
+    try:
+        _go(mod, "downgrade")  # 退回舊的三選一
+        with pytest.raises(Exception):
+            db.execute(text("INSERT INTO clinic_settings (id, event_title_format) VALUES (1, 'type_room_name')"))
+        db.rollback()
+        db.execute(text("INSERT INTO clinic_settings (id, event_title_format) VALUES (1, 'type_room_abbrev')"))
+        db.commit()
+        _go(mod, "upgrade")
+        assert db.execute(text("SELECT event_title_format FROM clinic_settings")).scalar() == "type_room_name"  # 沒人動過的舊預設 → (d)
+        db.rollback()
+        _go(mod, "downgrade")
+        assert db.execute(text("SELECT event_title_format FROM clinic_settings")).scalar() == "type_room_abbrev"
+        db.execute(text("UPDATE clinic_settings SET updated_by_user_id = :u"), {"u": admin.id})  # 管理員明確選過 (c)
+        db.commit()
+        _go(mod, "upgrade")
+        assert db.execute(text("SELECT event_title_format FROM clinic_settings")).scalar() == "type_room_abbrev"  # 不動
+    finally:
+        db.rollback()
+        try:
+            _go(mod, "upgrade")
+        except Exception:
+            pass

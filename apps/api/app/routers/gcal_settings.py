@@ -153,7 +153,7 @@ class ClinicSettingsPatch(BaseModel):
     # 行政分享名單不能從這裡改：必須走 PUT /settings/google/staff-emails，才會同步更新各日曆的分享
     model_config = ConfigDict(extra="forbid")
 
-    event_title_format: Literal["type_room", "type_room_code", "type_room_abbrev"] | None = None
+    event_title_format: Literal["type_room", "type_room_code", "type_room_abbrev", "type_room_name"] | None = None
     push_therapist_notes_to_google: bool | None = None
     ical_follow_title_format: bool | None = None
     resync_lookback_days: int | None = Field(None, ge=0, le=365)

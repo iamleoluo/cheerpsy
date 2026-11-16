@@ -1,13 +1,18 @@
 """Google 事件的標題與內容（docs/gcal-sync-plan.md §5）。全部是純函式，不碰資料庫與網路。
 
-隱私硬規則（測試鎖死）：事件只會有 類型／診間／（個案代號）／（姓名縮寫）、時間、一句固定說明，
-以及預約的內部編號。絕不含完整姓名、電話、Email、地址、病歷、金額、備註本文。
+隱私規則（測試鎖死）。診所決定的事件內容：
+- 標題：類型 · 診間，依設定再加 個案代號 (b)／姓名縮寫 (c)／個案全名 (d，預設)；有金額時標題結尾加「 · $金額」。
+  只有 (d) 會輸出個案全名；(a)(b)(c) 絕不輸出完整姓名。
+- 描述：固定說明、金額（預約上的金額欄位，沒有或為 0 就不顯示那一行），以及備註分段
+  （PR D 的「備註給心理師」接在 `note_sections` 之後，分段標示）。
+- 永遠不放：電話、Email、地址、主訴／病歷／治療備註、帳務備註、機構、任何 token。
 """
 
 import hashlib
 import json
 import re
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 
 from app.models.appointment import Appointment
 
@@ -56,9 +61,21 @@ def _kind_and_place(a: Appointment) -> tuple[str, str | None]:
     return kind, (a.room.room_code if a.room is not None else None)
 
 
+def format_amount(amount) -> str | None:
+    """金額文字，例如 $1,500；沒有金額（None 或 0 以下）回 None，呼叫端就不顯示。"""
+    try:
+        value = Decimal(str(amount))
+    except (InvalidOperation, TypeError):
+        return None
+    if value <= 0:
+        return None
+    return f"${value:,.0f}" if value == value.to_integral_value() else f"${value:,.2f}"
+
+
 def event_title(a: Appointment, title_format: str) -> str:
-    """(a) type_room：「諮商 · 2B」；(b) type_room_code：再加個案代號；(c) type_room_abbrev：再加姓名縮寫。
-    缺資料時退化成前一種，絕不改塞姓名。"""
+    """(a) type_room：「諮商 · 2B」；(b) type_room_code：再加個案代號；(c) type_room_abbrev：再加姓名縮寫；
+    (d) type_room_name：再加個案全名（預設）。(a)(b)(c) 缺資料時退化成前一種，絕不改塞姓名。
+    有金額時一律在結尾加「 · $1,500」。"""
     kind, place = _kind_and_place(a)
     parts = [kind] + ([place] if place else [])
     case = a.couple_case or a.case
@@ -68,7 +85,26 @@ def event_title(a: Appointment, title_format: str) -> str:
         abbr = abbreviate_name(case.name)
         if abbr:
             parts.append(abbr)
+    elif title_format == "type_room_name" and case is not None and (case.name or "").strip():
+        parts.append(" ".join(case.name.split()))
+    amount = format_amount(a.amount)
+    if amount:
+        parts.append(amount)
     return SEP.join(parts)
+
+
+def event_description(a: Appointment, note_sections: list[tuple[str, str]] | None = None) -> str:
+    """固定說明；有金額加一行「金額：$1,500」；備註分段標示（標題、內文），空內文不輸出。
+    note_sections 由呼叫端依來源提供，例如 [("預約備註", ...), ("備註給心理師", ...)]。"""
+    lines = [DESCRIPTION]
+    amount = format_amount(a.amount)
+    if amount:
+        lines.append(f"金額：{amount}")
+    for heading, body in note_sections or []:
+        body = (body or "").strip()
+        if body:
+            lines.append(f"\n【{heading}】\n{body}")
+    return "\n".join(lines)
 
 
 def event_id(appointment_id: int) -> str:
@@ -76,12 +112,12 @@ def event_id(appointment_id: int) -> str:
     return f"cheer{appointment_id:07d}"
 
 
-def event_body(a: Appointment, title_format: str) -> dict:
+def event_body(a: Appointment, title_format: str, note_sections: list[tuple[str, str]] | None = None) -> dict:
     lo, up = a.time_range.lower, a.time_range.upper
     return {
         "id": event_id(a.id),
         "summary": event_title(a, title_format),
-        "description": DESCRIPTION,
+        "description": event_description(a, note_sections),
         "start": {"dateTime": _iso(lo), "timeZone": TIME_ZONE},
         "end": {"dateTime": _iso(up), "timeZone": TIME_ZONE},
         "status": "confirmed",

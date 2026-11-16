@@ -11,7 +11,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from app.database import Base
 
-TITLE_FORMATS = ("type_room", "type_room_code", "type_room_abbrev")  # 對應計畫書的 (a)、(b)、(c)
+TITLE_FORMATS = ("type_room", "type_room_code", "type_room_abbrev", "type_room_name")  # 計畫書的 (a)(b)(c)(d)
 CONNECTION_STATUSES = ("active", "token_invalid", "disconnected")
 # 心理師本人的分享狀態（行政名單的分享另看 shared_emails）：
 # not_shared 沒信箱或尚未分享；invited 已送出 ACL（Google 不讓我們偵測對方是否已點加入）；
@@ -24,14 +24,14 @@ class ClinicSettings(Base):
     __table_args__ = (
         CheckConstraint("id = 1", name="ck_clinic_settings_single_row"),
         CheckConstraint(
-            "event_title_format IN ('type_room', 'type_room_code', 'type_room_abbrev')",
+            "event_title_format IN ('type_room', 'type_room_code', 'type_room_abbrev', 'type_room_name')",
             name="ck_clinic_settings_title_format",
         ),
     )
 
     id = Column(Integer, primary_key=True, default=1)
-    # 預設 (c)：類型 · 診間 · 姓名縮寫（診所已決定）。縮寫規則見計畫書 §5：不會輸出完整姓名
-    event_title_format = Column(String(30), nullable=False, default="type_room_abbrev", server_default="type_room_abbrev")
+    # 預設 (d)：類型 · 診間 · 個案全名（診所已決定）。(a)(b)(c) 較保守，仍可選；縮寫規則見計畫書 §5
+    event_title_format = Column(String(30), nullable=False, default="type_room_name", server_default="type_room_name")
     # 行政人員 Gmail 清單：每本日曆都以 reader 分享給名單上的人（診所帳號本人除外）
     staff_share_emails = Column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
     push_therapist_notes_to_google = Column(Boolean, nullable=False, default=False, server_default="false")

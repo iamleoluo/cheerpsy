@@ -67,7 +67,7 @@ def describe(e: CalendarApiError) -> str:
 # ---------------------------------------------------------------------------
 def _title_format(db: Session) -> str:
     row = db.get(ClinicSettings, 1)
-    return row.event_title_format if row else "type_room_abbrev"
+    return row.event_title_format if row else "type_room_name"
 
 
 def _delete_remote(client: CalendarClient, calendar_id: str, event_id: str) -> None:
@@ -93,6 +93,14 @@ def _push_remote(client: CalendarClient, calendar_id: str, event_id: str, body: 
         if e.status != 409:
             raise
         client.update_event(calendar_id, event_id, body)  # 曾刪除的同 id 事件：update 即可復活
+
+
+def note_sections(db: Session, a: Appointment) -> list[tuple[str, str]]:
+    """放進事件描述的備註分段 [(標題, 內文)]。
+
+    目前預約上沒有備註欄位（appointments 無 notes），所以是空的。PR D 的「備註給心理師」做好後，在這裡加一段
+    ("備註給心理師", 內文)；內文變動時事件內容 hash 會變、並要在寫備註的路徑入列（見計畫書 PR C 實作備註）。"""
+    return []
 
 
 def process(db: Session, client: CalendarClient, appointment_id: int) -> Outcome:
@@ -138,7 +146,7 @@ def process(db: Session, client: CalendarClient, appointment_id: int) -> Outcome
     if not cal.is_active:
         return Outcome("done", "日曆已凍結（心理師離職），不再更新")
 
-    body = gcal_titles.event_body(a, _title_format(db))
+    body = gcal_titles.event_body(a, _title_format(db), note_sections(db, a))
     new_hash = gcal_titles.payload_hash(cal.google_calendar_id, body)
     same_calendar = mapping is not None and mapping.google_calendar_id == cal.google_calendar_id
     if same_calendar and mapping.last_status == "pushed" and mapping.payload_hash == new_hash:

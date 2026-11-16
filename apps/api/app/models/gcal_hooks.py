@@ -13,9 +13,10 @@ from sqlalchemy.orm import Session
 
 from app.models.appointment import Appointment
 
-# 這些欄位改變，Google 上的事件就需要跟著變（或刪除）。金額、備註、報到時間等不影響事件內容，不入列
+# 這些欄位改變，Google 上的事件就需要跟著變（或刪除）。金額會出現在標題與描述，所以也要監看；
+# 報到時間等不影響事件內容，不入列。備註改變由寫備註的路徑自行入列（enqueue_appointments）
 WATCHED = ("time_range", "room_id", "status", "therapist_id", "session_type", "case_id",
-           "couple_case_id", "is_intake")
+           "couple_case_id", "is_intake", "amount")
 
 _ENQUEUE_SQL = text("""
 INSERT INTO gcal_outbox (job_type, appointment_id, dedupe_key, status, attempts, next_attempt_at, version,
