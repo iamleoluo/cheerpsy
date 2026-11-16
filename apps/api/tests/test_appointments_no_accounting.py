@@ -340,3 +340,30 @@ def test_referral_convert_self_pay_needs_amount_and_room_conflict(client, auth, 
     row = db.execute(text("SELECT amount, self_pay_amount FROM appointments WHERE id=:i"),
                      {"i": r3.json()["appointment_id"]}).one()
     assert float(row.amount) == 1200 and float(row.self_pay_amount) == 1200
+
+
+# ---- 心理師補按已到／未到：自己的三種類型都可以，別人的 404 -----------------
+@pytest.mark.parametrize("stype", ["in_person", "online", "outdoor"])
+@pytest.mark.parametrize("action", ["arrive", "absent"])
+def test_therapist_can_check_in_own_appointments_of_any_type(client, auth, make_user, make_case, make_appt, room, stype, action):
+    t, other = make_user("therapist"), make_user("therapist")
+    c = make_case(t, "個案")
+    a = make_appt(c, t, room if stype == "in_person" else None, session_type=stype)
+    body = {"no_show_type": "no_notice"} if action == "absent" else None
+    r = client.put(f"/appointments/{a.id}/{action}", headers=auth(t), json=body) if body else client.put(f"/appointments/{a.id}/{action}", headers=auth(t))
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == ("executed" if action == "arrive" else "no_show")
+
+
+@pytest.mark.parametrize("stype", ["in_person", "online", "outdoor"])
+@pytest.mark.parametrize("action", ["arrive", "absent"])
+def test_therapist_cannot_check_in_others_appointment(client, auth, db, make_user, make_case, make_appt, room, stype, action):
+    t, other = make_user("therapist"), make_user("therapist")
+    c = make_case(other, "別人的個案")
+    a = make_appt(c, other, room if stype == "in_person" else None, session_type=stype)
+    kw = {"json": {"no_show_type": "no_notice"}} if action == "absent" else {}
+    r = client.put(f"/appointments/{a.id}/{action}", headers=auth(t), **kw)
+    miss = client.put(f"/appointments/999999/{action}", headers=auth(t), **kw)
+    assert r.status_code == 404 and r.json() == miss.json()  # 與不存在的回應相同
+    db.refresh(a)
+    assert a.status == "booked" and a.checkin_status == "pending"

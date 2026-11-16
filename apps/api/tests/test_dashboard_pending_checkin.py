@@ -36,6 +36,20 @@ def test_timezone_boundary(client, auth, world):
     assert not i["is_intake"]
 
 
+def test_only_last_30_days_newest_first(client, auth, world):
+    w = world
+    t0 = today0()
+    old31 = w["make_appt"](w["ca"], w["a"], w["room"], start=t0 - timedelta(days=31))  # 31 天前：不列
+    edge = w["make_appt"](w["ca"], w["a"], w["room"], start=t0 - timedelta(days=30))  # 剛好 30 天前 00:00：列
+    mid = w["make_appt"](w["ca"], w["a"], w["room"], start=t0 - timedelta(days=10))
+    new = w["make_appt"](w["ca"], w["a"], w["room"], start=t0 - timedelta(days=1))
+    out = get(client, auth, w["staff"])
+    ids = [i["appointment_id"] for i in out["items"]]
+    assert ids == [new.id, mid.id, edge.id]  # 從新排到舊
+    assert old31.id not in ids and out["count"] == 3  # count 也只算這 30 天
+    assert get(client, auth, w["a"])["count"] == 3
+
+
 def test_exactly_midnight_today_is_not_listed(client, auth, world):
     w = world
     w["make_appt"](w["ca"], w["a"], w["room"], start=today0())
