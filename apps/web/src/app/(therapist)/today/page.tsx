@@ -16,8 +16,6 @@ interface Slot {
   status: string;
   checkin_status: string;
   action: "front_desk" | "self";
-  funding_source: string;
-  quota: { used: number; total: number; is_last: boolean } | null;
 }
 interface Todo { type: string; label: string; count: number; link: string }
 interface Data {
@@ -85,14 +83,8 @@ export default function TodayPage() {
                   <div className="min-w-0 flex-1">
                     <div className="font-medium">{s.case_name}</div>
                     <div className="text-xs text-gray-500">
-                      {s.room_name ?? SESSION_TYPE[s.session_type]} ·{" "}
-                      {s.funding_source === "institution"
-                        ? `機構 ${s.quota?.used ?? "?"}/${s.quota?.total ?? "?"}`
-                        : "自費"}
+                      {s.room_name ?? SESSION_TYPE[s.session_type]}
                     </div>
-                    {s.quota?.is_last && (
-                      <div className="text-xs font-medium text-red-600">機構最後一次 · 下次轉自費</div>
-                    )}
                   </div>
                   <div className="shrink-0 text-xs">
                     {s.status === "executed" ? (

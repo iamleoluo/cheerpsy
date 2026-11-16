@@ -126,6 +126,13 @@ export default function RoomMiniCalendar({
         slotMaxTime="22:00:00"
         allDaySlot={false}
         eventDisplay="block"
+        // 「已佔用」場次（別的心理師）只是佔位：不可編輯、不可點進任何個案或預約頁
+        editable={false}
+        eventInteractive={false}
+        eventClick={(info) => info.jsEvent.preventDefault()}
+        eventClassNames={(arg) =>
+          arg.event.extendedProps.occupied_only ? ["cursor-default", "pointer-events-none"] : []
+        }
         titleFormat={{ month: "short", day: "numeric" }}
         dayHeaderFormat={{ weekday: "narrow", day: "numeric" }}
         slotLabelFormat={{

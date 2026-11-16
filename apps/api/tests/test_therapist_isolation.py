@@ -60,7 +60,7 @@ def test_room_view_masks_other_therapist(client, auth, world):
     assert other["case_name"] is None and other["couple_case_id"] is None
     assert other["amount"] == 0 and other["appointment_number"] == ""
     assert other["video_link"] is None and other["outreach_location"] is None
-    assert other["quota_id"] is None and other["funding_source"] == "self_pay"
+    assert other["quota_id"] is None and other["funding_source"] is None
     assert not _leaks(r)
 
 

@@ -1,18 +1,27 @@
-from datetime import date, datetime, timedelta, timezone
+"""營運總覽。
+
+帳務拆除上線 A：資料來源只有 appointments／cases／referral_requests，
+不再讀 session_records、petty_cash，回應也沒有營收、未收、零用金欄位。
+"""
+
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import extract, func, text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user
 from app.database import get_db
 from app.models.appointment import Appointment
 from app.models.case import Case
-from app.models.petty_cash import PettyCash
-from app.models.session_record import SessionRecord
+from app.models.referral import ReferralRequest
 from app.models.user import User
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+
+TZ = timezone(timedelta(hours=8))  # 診所在台灣
+CHURN_DAYS = 45
+OVERVIEW_ROLES = ("admin", "accountant", "staff")  # 看得到全所媒合與流失統計
 
 
 @router.get("")
@@ -20,78 +29,82 @@ def dashboard_stats(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    today = date.today()
-    year, month = today.year, today.month
+    is_therapist = user.role == "therapist"
+    now = datetime.now(TZ)
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    day_end = day_start + timedelta(days=1)
+    week_start = day_start - timedelta(days=day_start.weekday())  # 週一
+    week_end = week_start + timedelta(days=7)
+    month_start = day_start.replace(day=1)
 
-    base_q = db.query(SessionRecord).filter(
-        extract("year", SessionRecord.session_date) == year,
-        extract("month", SessionRecord.session_date) == month,
-        SessionRecord.is_void.is_(False),
-    )
-    if user.role == "therapist":
-        base_q = base_q.filter(SessionRecord.therapist_id == user.id)
+    def appts(start: datetime, end: datetime):
+        q = db.query(Appointment).filter(
+            Appointment.status != "cancelled",
+            Appointment.time_range.op("&&")(func.tstzrange(start, end)),
+        )
+        if is_therapist:
+            q = q.filter(Appointment.therapist_id == user.id)
+        return q
 
-    records = base_q.all()
-    session_count = len(records)
+    today_q = appts(day_start, day_end)
+    today_expected = today_q.count()
+    today_arrived = today_q.filter(Appointment.checkin_status == "arrived").count()
+    today_absent = today_q.filter(Appointment.checkin_status == "absent").count()
+    week_appointments = appts(week_start, week_end).count()
 
-    def _eff(r):
-        return float(r.amount) - float(r.discount_amount or 0)
-
-    total_revenue = sum(_eff(r) for r in records)
-    unpaid_count = sum(1 for r in records if r.payment_status in ("unpaid", "claiming"))
-    unpaid_amount = sum(_eff(r) for r in records if r.payment_status in ("unpaid", "claiming"))
-
-    # Upcoming 7-day appointments needing reminders
-    day_start = datetime(today.year, today.month, today.day, tzinfo=timezone.utc)
-    day_end = day_start + timedelta(days=7)
-    range_str = f"[{day_start.isoformat()},{day_end.isoformat()})"
-
+    # 未來 7 天待提醒（已預約、尚未報到）
     reminder_q = db.query(func.count(Appointment.id)).filter(
         Appointment.status == "booked",
-        text("time_range && :r").bindparams(r=range_str),
+        Appointment.time_range.op("&&")(func.tstzrange(day_start, day_start + timedelta(days=7))),
     )
-    if user.role == "therapist":
+    if is_therapist:
         reminder_q = reminder_q.filter(Appointment.therapist_id == user.id)
-    upcoming_count = reminder_q.scalar() or 0
+    upcoming_reminders = reminder_q.scalar() or 0
 
-    # Active case count
     case_q = db.query(func.count(Case.id)).filter(Case.status.in_(["initial", "ongoing"]))
-    if user.role == "therapist":
+    if is_therapist:
         case_q = case_q.filter(Case.therapist_id == user.id)
     active_cases = case_q.scalar() or 0
 
-    # Petty cash balance (admin/accountant only)
-    petty_balance = None
-    petty_alert = False
-    if user.role in ("admin", "accountant"):
-        last_petty = db.query(PettyCash).order_by(PettyCash.id.desc()).first()
-        if last_petty:
-            petty_balance = float(last_petty.balance_after)
-            petty_alert = petty_balance < 3000
-
-    # Churn warning count (cases with no future appointments, status ongoing)
-    churn_count = 0
-    if user.role in ("admin", "accountant"):
-        now_str = f"[{day_start.isoformat()},)"
-        active_case_ids = [c.id for c in db.query(Case.id).filter(Case.status.in_(["initial", "ongoing"])).all()]
-        if active_case_ids:
-            cases_with_future = set(
-                r[0] for r in db.query(Appointment.case_id).filter(
-                    Appointment.case_id.in_(active_case_ids),
-                    Appointment.status == "booked",
-                    text("time_range && :r").bindparams(r=now_str),
-                ).distinct().all()
+    # 全所統計：心理師看不到
+    new_referrals_month = matching_count = churn_count = None
+    if user.role in OVERVIEW_ROLES:
+        new_referrals_month = (
+            db.query(func.count(ReferralRequest.id))
+            .filter(ReferralRequest.created_at >= month_start)
+            .scalar() or 0
+        )
+        matching_count = (
+            db.query(func.count(ReferralRequest.id))
+            .filter(ReferralRequest.status.in_(["new", "matching", "failed"]))
+            .scalar() or 0
+        )
+        # 流失預警：進行中個案，最後一筆有效預約已結束超過 45 天（或從未有預約），且沒有未來預約
+        cutoff = day_start - timedelta(days=CHURN_DAYS)
+        recent = (
+            db.query(Appointment.case_id)
+            .filter(
+                Appointment.case_id.isnot(None),
+                Appointment.status.in_(["booked", "executed"]),
+                text("upper(time_range) > :cutoff").bindparams(cutoff=cutoff),
             )
-            churn_count = len(set(active_case_ids) - cases_with_future)
+            .distinct()
+            .scalar_subquery()
+        )
+        churn_count = (
+            db.query(func.count(Case.id))
+            .filter(Case.status.in_(["initial", "ongoing"]), ~Case.id.in_(recent))
+            .scalar() or 0
+        )
 
     return {
-        "session_count": session_count,
-        "total_revenue": total_revenue,
-        "unpaid_count": unpaid_count,
-        "unpaid_amount": unpaid_amount,
-        "upcoming_reminders": upcoming_count,
+        "today_expected": today_expected,
+        "today_arrived": today_arrived,
+        "today_absent": today_absent,
+        "week_appointments": week_appointments,
+        "upcoming_reminders": upcoming_reminders,
         "active_cases": active_cases,
-        "petty_balance": petty_balance,
-        "petty_alert": petty_alert,
+        "new_referrals_month": new_referrals_month,
+        "matching_count": matching_count,
         "churn_count": churn_count,
     }

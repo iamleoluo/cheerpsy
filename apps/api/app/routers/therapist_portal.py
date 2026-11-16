@@ -17,7 +17,6 @@ from app.auth.dependencies import RequireRole
 from app.database import get_db
 from app.models.appointment import Appointment
 from app.models.availability import PERIODS, TherapistAvailability
-from app.models.case_institution_quota import CaseInstitutionQuota
 from app.models.finance import DailyClosing
 from app.models.referral import ReferralDispatch, ReferralDispatchTarget
 from app.models.session_record import SessionRecord
@@ -51,15 +50,6 @@ def my_today(
     )
     schedule = []
     for a in sorted(appts, key=lambda x: x.time_range.lower):
-        quota = None
-        if a.quota_id:
-            q = db.query(CaseInstitutionQuota).filter(CaseInstitutionQuota.id == a.quota_id).first()
-            if q:
-                quota = {
-                    "used": q.used_count,
-                    "total": q.total_count,
-                    "is_last": (q.reserved_count + q.booked_count) == 1,
-                }
         schedule.append({
             "id": a.id,
             "case_name": a.case.name if a.case else None,
@@ -71,11 +61,12 @@ def my_today(
             "checkin_status": a.checkin_status,
             # 現場個案由櫃檯報到，心理師端不提供操作
             "action": "front_desk" if a.room_id else "self",
-            "funding_source": a.funding_source,
-            "quota": quota,
+            # 上線 A 佔位欄位（前端不得讀取），上線 B 移除
+            "funding_source": None,
+            "quota": None,
         })
 
-    # 待辦依急迫度排序：派案邀請 → 文件確認 → 額度提醒
+    # 待辦依急迫度排序：派案邀請 → 文件確認
     pending_invites = (
         db.query(func.count(ReferralDispatchTarget.id))
         .filter(
@@ -95,17 +86,11 @@ def my_today(
         )
         .scalar() or 0
     )
-    last_session_cases = [
-        s["case_name"] for s in schedule if s["quota"] and s["quota"]["is_last"]
-    ]
-
     todos = []
     if pending_invites:
         todos.append({"type": "invite", "label": "派案邀請待回覆", "count": pending_invites, "link": "/pool"})
     if pending_docs:
         todos.append({"type": "doc", "label": "核銷文件待確認", "count": pending_docs, "link": "/docs"})
-    for name in last_session_cases:
-        todos.append({"type": "quota", "label": f"{name} 機構額度最後一次，下次轉自費", "count": 1, "link": "/sched"})
 
     return {
         "date": d,
