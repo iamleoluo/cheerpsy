@@ -1737,7 +1737,7 @@ interface GcalConnection {
 }
 
 interface ClinicSettingsData {
-  event_title_format: "type_room" | "type_room_code" | "type_room_abbrev";
+  event_title_format: "type_room" | "type_room_code" | "type_room_abbrev" | "type_room_name";
   connection: GcalConnection;
   can_edit: boolean;
 }
@@ -1753,10 +1753,15 @@ const GCAL_RESULT_MESSAGES: Record<string, { ok: boolean; text: string }> = {
 };
 
 const TITLE_FORMATS: { value: ClinicSettingsData["event_title_format"]; label: string; example: string; note: string }[] = [
-  { value: "type_room", label: "(a) 類型與診間", example: "諮商 · 2B", note: "最保守。線上場次顯示「線上」。" },
-  { value: "type_room_code", label: "(b) 再加個案代號", example: "諮商 · 2B · C-1042", note: "沒有代號時退化成 (a)，不會改放姓名。" },
-  { value: "type_room_abbrev", label: "(c) 再加姓名縮寫", example: "諮商 · 2B · 陳小", note: "預設。三字名取前兩字、複姓取三字、兩字名只顯示姓；無法安全縮寫時退化成 (a)。小診所裡縮寫仍可能辨識出個案，請診所自行評估。" },
+  { value: "type_room_name", label: "(d) 再加個案全名", example: "諮商 · 2B · 陳小美 · $1,500", note: "預設。標題直接顯示個案全名；沒有診間時只顯示類型。能看到該日曆的人（心理師本人、行政、診所帳號）都會看到全名，請確認日曆只分享給該知道的人。" },
+  { value: "type_room", label: "(a) 類型與診間", example: "諮商 · 2B · $1,500", note: "最保守。線上場次顯示「線上」。" },
+  { value: "type_room_code", label: "(b) 再加個案代號", example: "諮商 · 2B · C-1042 · $1,500", note: "沒有代號時退化成 (a)，不會改放姓名。" },
+  { value: "type_room_abbrev", label: "(c) 再加姓名縮寫", example: "諮商 · 2B · 陳小 · $1,500", note: "三字名取前兩字、複姓取三字、兩字名只顯示姓；無法安全縮寫時退化成 (a)。小診所裡縮寫仍可能辨識出個案。" },
 ];
+
+const EVENT_CONTENT_NOTE =
+  "不論選哪一種：預約有填金額時，標題結尾會加「· $金額」（沒有金額就不顯示；金額在預約表單由行政填寫，只是一個數字，不是記帳）。" +
+  "事件說明只有固定句與預約備註（備註分段標示，之後的「備註給心理師」也會放進來），不放金額。電話、Email、主訴、病歷內容一律不會放進 Google。";
 
 function fmtTime(iso: string | null) {
   return iso ? new Date(iso).toLocaleString("zh-TW", { hour12: false }) : "—";
@@ -1914,7 +1919,7 @@ function CalendarTab({ token, gcalResult }: { token: string; gcalResult: string 
 
       <section className="rounded-xl border border-gray-200 bg-white p-5">
         <h2 className="mb-1 text-base font-semibold">事件標題格式</h2>
-        <p className="mb-3 text-xs text-gray-500">不論選哪一種，都不會把完整姓名、備註、電話或 Email 寫進 Google 事件。</p>
+        <p className="mb-3 text-xs text-gray-500">{EVENT_CONTENT_NOTE}</p>
         <div className="space-y-2">
           {TITLE_FORMATS.map((f) => (
             <label key={f.value} className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 ${data?.event_title_format === f.value ? "border-primary-500 bg-primary-50" : "border-gray-200"}`}>

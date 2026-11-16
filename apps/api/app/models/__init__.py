@@ -22,7 +22,7 @@ from app.models.claim_extra import ClaimBatchPlan, ClaimDocument
 from app.models.event import Event
 from app.models.finance import DailyClosing, MonthlyReport, SupervisorReview
 from app.models.holiday import Holiday
-from app.models.gcal import ClinicSettings, GoogleCalendar, GoogleOAuthConnection
+from app.models.gcal import AppointmentGoogleEvent, ClinicSettings, GcalOutbox, GoogleCalendar, GoogleOAuthConnection
 from app.models.referral import (
     ReferralRequest,
     ReferralDesignation,
@@ -62,6 +62,8 @@ __all__ = [
     "Holiday",
     "ClinicSettings",
     "GoogleCalendar",
+    "AppointmentGoogleEvent",
+    "GcalOutbox",
     "GoogleOAuthConnection",
     "DailyClosing",
     "MonthlyReport",
@@ -71,3 +73,5 @@ __all__ = [
     "TherapistAvailability",
     "Event",
 ]
+
+from app.models import gcal_hooks  # noqa: E402,F401  預約寫入時同交易入列 Google 同步工作

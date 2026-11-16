@@ -7,7 +7,7 @@ import { clientFetch } from "@/lib/client-api";
 /* ------------------------------------------------------------------ */
 /*  日曆分享：每位心理師一本 Google 日曆（診所帳號擁有），這裡管分享對象。 */
 /*  行政與管理員都可以填心理師的 Gmail、建立並分享、重寄邀請、取消分享；    */
-/*  行政分享名單只有管理員能改。目前還不會把預約推到 Google。              */
+/*  行政分享名單只有管理員能改。預約由背景工作者推到 Google；這裡看同步狀態。 */
 /* ------------------------------------------------------------------ */
 
 interface CalendarInfo {
@@ -100,7 +100,7 @@ export default function GcalPage() {
         <h1 className="text-2xl font-bold">日曆分享</h1>
         <p className="mt-1 text-sm text-gray-500">
           每位心理師有一本專屬的 Google 日曆（由診所帳號擁有），只包含他自己的場次。這裡決定誰能看到它。
-          目前只建立日曆與分享，還不會把預約推進去。
+          預約的新增、改期、換診間、取消會自動同步過去（背景處理，通常幾秒內）。請勿在 Google 上直接改行程，下次同步會被蓋掉。
         </p>
       </div>
 
@@ -108,6 +108,20 @@ export default function GcalPage() {
       {notice && <div className="rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700">{notice}</div>}
 
       <ConnectionBanner conn={conn} role={role} />
+
+      <SyncCard
+        token={token}
+        role={role}
+        connected={connected}
+        onNotice={(m) => {
+          setNotice(m);
+          setError(null);
+        }}
+        onError={(m) => {
+          setError(m);
+          setNotice(null);
+        }}
+      />
 
       <StaffEmailsCard
         token={token}
@@ -175,6 +189,162 @@ export default function GcalPage() {
         </div>
       </section>
     </div>
+  );
+}
+
+interface ProblemJob {
+  id: number;
+  status: "failed" | "blocked";
+  attempts: number;
+  last_error: string | null;
+  appointment_number: string;
+  therapist_name: string;
+  starts_at: string | null;
+}
+
+interface SyncStatus {
+  counts: Record<string, number>;
+  problems: ProblemJob[];
+  oldest_due_seconds: number | null;
+  connection_status: string;
+  can_resync: boolean;
+}
+
+function SyncCard({
+  token,
+  role,
+  connected,
+  onNotice,
+  onError,
+}: {
+  token: string;
+  role: string;
+  connected: boolean;
+  onNotice: (m: string) => void;
+  onError: (m: string) => void;
+}) {
+  const [st, setSt] = useState<SyncStatus | null>(null);
+  const [busy, setBusy] = useState<"retry" | "resync" | null>(null);
+  const [confirmResync, setConfirmResync] = useState(false);
+
+  const refresh = useCallback(async () => {
+    try {
+      setSt(await clientFetch("/settings/google/sync", token));
+    } catch (e: any) {
+      onError(e.message);
+    }
+  }, [token, onError]);
+
+  useEffect(() => {
+    refresh();
+    const t = setInterval(refresh, 15000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
+  async function act(kind: "retry" | "resync") {
+    setBusy(kind);
+    setConfirmResync(false);
+    try {
+      const r = await clientFetch(`/settings/google/sync/${kind}`, token, { method: "POST" });
+      setSt(r.status);
+      onNotice(r.message);
+    } catch (e: any) {
+      onError(e.message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  if (!st) return null;
+  const c = st.counts;
+  const waiting = (c.pending ?? 0) + (c.retry ?? 0) + (c.running ?? 0);
+  const stuck = st.oldest_due_seconds !== null && st.oldest_due_seconds > 120;
+  const hasProblems = (c.failed ?? 0) + (c.blocked ?? 0) > 0;
+
+  return (
+    <section className="rounded-xl border border-gray-200 bg-white">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-5 py-3">
+        <div>
+          <h2 className="text-base font-semibold">預約同步狀態</h2>
+          <p className="mt-0.5 text-xs text-gray-500">
+            等待中 {waiting}　失敗 {c.failed ?? 0}　被擋住 {c.blocked ?? 0}　已完成 {c.done ?? 0}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          {hasProblems && (
+            <button
+              onClick={() => act("retry")}
+              disabled={busy !== null || !connected}
+              className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50"
+            >
+              {busy === "retry" ? "排入中..." : "重試失敗工作"}
+            </button>
+          )}
+          {role === "admin" &&
+            (confirmResync ? (
+              <span className="flex items-center gap-2 text-sm">
+                <span className="text-gray-600">會重新推送區間內所有預約，確定？</span>
+                <button onClick={() => act("resync")} className="rounded-lg bg-blue-600 px-3 py-1.5 text-white hover:bg-blue-700">
+                  確定
+                </button>
+                <button onClick={() => setConfirmResync(false)} className="rounded-lg border border-gray-300 px-3 py-1.5 hover:bg-gray-50">
+                  取消
+                </button>
+              </span>
+            ) : (
+              <button
+                onClick={() => setConfirmResync(true)}
+                disabled={busy !== null || !connected}
+                className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50"
+              >
+                {busy === "resync" ? "排入中..." : "全部重新同步"}
+              </button>
+            ))}
+        </div>
+      </div>
+      {stuck && (
+        <div className="bg-amber-50 px-5 py-2 text-sm text-amber-800">
+          有工作已等待超過 {Math.round((st.oldest_due_seconds ?? 0) / 60)} 分鐘還沒處理，背景同步程式可能沒有在執行，請通知系統管理員。
+        </div>
+      )}
+      {hasProblems ? (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-left text-xs text-gray-500">
+              <tr>
+                <th className="px-4 py-2">預約</th>
+                <th className="px-4 py-2">心理師</th>
+                <th className="px-4 py-2">狀態</th>
+                <th className="px-4 py-2">原因</th>
+              </tr>
+            </thead>
+            <tbody>
+              {st.problems.map((p) => (
+                <tr key={p.id} className="border-t border-gray-100">
+                  <td className="px-4 py-2">
+                    {p.appointment_number}
+                    {p.starts_at && <span className="ml-2 text-xs text-gray-400">{new Date(p.starts_at).toLocaleString("zh-TW")}</span>}
+                  </td>
+                  <td className="px-4 py-2">{p.therapist_name}</td>
+                  <td className="px-4 py-2">
+                    <span className={`rounded px-1.5 py-0.5 text-xs ${p.status === "failed" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
+                      {p.status === "failed" ? `失敗（已試 ${p.attempts} 次）` : "被擋住"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2 text-gray-600">{p.last_error ?? ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="px-5 py-3 text-sm text-gray-500">目前沒有失敗或被擋住的工作。</p>
+      )}
+      <p className="border-t border-gray-100 px-5 py-2 text-xs text-gray-400">
+        首次啟用時，管理員按「全部重新同步」可把既有預約（預設過去 30 天到未來 180 天）匯入各心理師的日曆。
+      </p>
+    </section>
   );
 }
 

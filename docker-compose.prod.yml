@@ -24,7 +24,7 @@ services:
     volumes:
       # 核銷案附件實際存檔處（B7）
       - claimdocs:/data/claim_docs
-    environment:
+    environment: &api-env
       CLAIM_DOC_ROOT: /data/claim_docs
       DATABASE_URL: postgresql://${POSTGRES_USER:-cheerpsy}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cheerpsy}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
@@ -32,8 +32,26 @@ services:
       JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-480}
       ID_ENCRYPTION_KEY: ${ID_ENCRYPTION_KEY:?ID_ENCRYPTION_KEY is required}
       CORS_ORIGINS: ${CORS_ORIGINS:?CORS_ORIGINS is required}
+      # Google 日曆同步（選用；沒設定時同步功能顯示「尚未設定」，其餘功能不受影響）。金鑰不要進 git
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      GOOGLE_OAUTH_REDIRECT_URI: ${GOOGLE_OAUTH_REDIRECT_URI:-}
+      GCAL_TOKEN_FERNET_KEY: ${GCAL_TOKEN_FERNET_KEY:-}
+      FRONTEND_URL: ${FRONTEND_URL:-}
     ports:
       - "8000:8000"
+
+  # Google 日曆同步工作者：讀 gcal_outbox 推到 Google。停掉它預約照常運作，只是 Google 暫時不更新
+  worker:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - api
+    environment: *api-env
+    command: ["python", "-m", "app.gcal_worker"]
 
   web:
     build:

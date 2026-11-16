@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
+import { AmountField, parseAmount, useCanEditAmount } from "@/components/amount-field";
 import { NO_SHOW_TYPES, SESSION_TYPE, hhmm, shiftDate, todayISO } from "@/lib/format";
 
 interface Appt {
@@ -18,6 +19,7 @@ interface Appt {
   status: string;
   checkin_status: string;
   is_intake: boolean;
+  amount?: number; // 只有管理員與行政看得到（0＝沒有金額）
 }
 
 const STATUS: Record<string, { label: string; cls: string }> = {
@@ -291,6 +293,8 @@ function AdjustModal({
   const [free, setFree] = useState<FreeRoom[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const canAmount = useCanEditAmount();
+  const [amount, setAmount] = useState(appt.amount ? String(appt.amount) : "");
 
   useEffect(() => {
     if (!inPerson || !date || !st || !et || st >= et) {
@@ -320,6 +324,7 @@ function AdjustModal({
         end_time: `${date}T${et}:00+08:00`,
       };
       if (inPerson) body.room_id = Number(roomId);
+      if (canAmount) body.amount = parseAmount(amount) ?? 0; // 清空＝沒有金額
       await clientFetch(`/appointments/${appt.id}`, token, { method: "PUT", body: JSON.stringify(body) });
       onDone();
     } catch (e: any) {
@@ -365,6 +370,7 @@ function AdjustModal({
             </label>
           )}
         </div>
+        <AmountField value={amount} onChange={setAmount} className="mt-3" />
         <div className="mt-6 flex justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm">取消</button>
           <button type="submit" disabled={saving || (inPerson && !roomId)} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">

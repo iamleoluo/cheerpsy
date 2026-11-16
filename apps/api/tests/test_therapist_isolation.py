@@ -77,9 +77,11 @@ def test_case_id_filter_cannot_reach_other_therapist(client, auth, world):
     assert r.json() == []
 
 
-def test_get_other_appointment_403(client, auth, world):
+def test_get_other_appointment_404_same_as_missing(client, auth, world):
+    """別人的預約與不存在的預約回一模一樣的 404，不讓人用 id 猜出存在與否。"""
     r = client.get(f"/appointments/{world['appt_b'].id}", headers=auth(world["a"]))
-    assert r.status_code == 403
+    ghost = client.get("/appointments/999999", headers=auth(world["a"]))
+    assert r.status_code == 404 and (r.status_code, r.json()) == (ghost.status_code, ghost.json())
 
 
 def test_staff_sees_full_room_view(client, auth, world):
@@ -92,7 +94,9 @@ def test_staff_sees_full_room_view(client, auth, world):
 def test_cases_list_and_get(client, auth, world):
     r = client.get("/cases", headers=auth(world["a"]))
     assert [c["id"] for c in r.json()] == [world["case_a"].id]
-    assert client.get(f"/cases/{world['case_b'].id}", headers=auth(world["a"])).status_code == 403
+    other = client.get(f"/cases/{world['case_b'].id}", headers=auth(world["a"]))
+    ghost = client.get("/cases/999999", headers=auth(world["a"]))
+    assert other.status_code == 404 and other.json() == ghost.json()
     r = client.get(f"/cases?q={SECRET_NAME}", headers=auth(world["a"]))
     assert r.json() == []
     r = client.get(f"/cases?therapist_id={world['b'].id}", headers=auth(world["a"]))

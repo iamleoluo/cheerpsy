@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch, exportCsv } from "@/lib/client-api";
+import { AmountField, parseAmount, useCanEditAmount } from "@/components/amount-field";
 import RoomMiniCalendar from "@/components/room-mini-calendar";
 import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
 
@@ -1167,7 +1168,9 @@ function AppointmentForm({
     start_date: "",
     start_time: "10:00",
     end_time: "11:00",
+    amount: "",
   });
+  const canAmount = useCanEditAmount();
 
   const selectedCase = cases.find((c) => String(c.id) === form.case_id);
   const isCouple = selectedCase?.case_type === "couple";
@@ -1198,6 +1201,7 @@ function AppointmentForm({
           session_type: form.session_type,
           start_time: `${form.start_date}T${form.start_time}:00+08:00`,
           end_time: `${form.start_date}T${form.end_time}:00+08:00`,
+          ...(canAmount && parseAmount(form.amount) !== undefined ? { amount: parseAmount(form.amount) } : {}),
         }),
       });
       onSaved();
@@ -1258,6 +1262,7 @@ function AppointmentForm({
                 <input required type="time" value={form.end_time} onChange={(e) => sf("end_time", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
               </label>
             </div>
+            <AmountField value={form.amount} onChange={(v) => sf("amount", v)} className="col-span-2" />
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">取消</button>
               <button type="submit" disabled={saving} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">{saving ? "儲存中..." : "儲存"}</button>
@@ -1686,6 +1691,8 @@ function AppointmentEditModal({
   const [startDate, setStartDate] = useState(appt.start_time?.slice(0, 10) ?? "");
   const [startTime, setStartTime] = useState(appt.start_time?.slice(11, 16) ?? "");
   const [endTime, setEndTime] = useState(appt.end_time?.slice(11, 16) ?? "");
+  const canAmount = useCanEditAmount();
+  const [amount, setAmount] = useState((appt as { amount?: number }).amount ? String((appt as { amount?: number }).amount) : "");
 
   useEffect(() => {
     clientFetch("/rooms", token).then(setRooms).catch(() => {});
@@ -1706,6 +1713,7 @@ function AppointmentEditModal({
       if (startDate && endTime) {
         body.end_time = `${startDate}T${endTime}:00+08:00`;
       }
+      if (canAmount) body.amount = parseAmount(amount) ?? 0; // 清空＝沒有金額
       await clientFetch(`/appointments/${appt.id}`, token, {
         method: "PUT",
         body: JSON.stringify(body),
@@ -1759,6 +1767,7 @@ function AppointmentEditModal({
               <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
             </label>
           </div>
+          <AmountField value={amount} onChange={setAmount} />
           {error && <p className="text-xs text-red-600">{error}</p>}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">取消</button>

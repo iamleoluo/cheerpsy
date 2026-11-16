@@ -336,11 +336,12 @@ def test_reschedule_onto_occupied_slot_is_409_and_self_overlap_ok(client, auth, 
     assert ok.status_code == 200
 
 
-def test_therapist_cannot_change_room(client, auth, w):
+def test_therapist_can_change_room_of_own_appointment(client, auth, w):
+    """隔離單位是心理師：自己的預約可改診間（仍會檢查診間衝突）。"""
     s, e = _slot()
     a = _create(client, auth, w["staff"], w["case"], w["room"], s, e).json()
     r = client.put(f"/appointments/{a['id']}", headers=auth(w["t"]), json={"room_id": w["room2"].id})
-    assert r.status_code == 403
+    assert r.status_code == 200 and r.json()["room_id"] == w["room2"].id
 
 
 # ---- 空房查詢 -----------------------------------------------------------------

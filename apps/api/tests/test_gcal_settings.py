@@ -98,7 +98,7 @@ def test_defaults_and_readers(client, auth, users, env):
     r = client.get("/settings/clinic", headers=auth(users["admin"]))
     assert r.status_code == 200
     d = r.json()
-    assert d["event_title_format"] == "type_room_abbrev"  # 預設 (c)：診所已決定
+    assert d["event_title_format"] == "type_room_name"  # 預設 (d)：診所已決定
     assert d["staff_share_emails"] == [] and d["push_therapist_notes_to_google"] is False
     assert d["ical_follow_title_format"] is False
     assert (d["resync_lookback_days"], d["resync_lookahead_days"]) == (30, 180)
@@ -120,6 +120,14 @@ def test_only_admin_can_change_settings_and_connection(client, auth, users, env)
     for method, path in (("patch", "/settings/clinic"), ("post", "/settings/google/connect"),
                          ("post", "/settings/google/disconnect")):
         assert getattr(client, method)(path).status_code in (401, 403)
+
+
+def test_all_four_title_formats_selectable_and_unknown_rejected(client, auth, users, env):
+    h = auth(users["admin"])
+    for fmt in ("type_room", "type_room_code", "type_room_abbrev", "type_room_name"):
+        r = client.patch("/settings/clinic", headers=h, json={"event_title_format": fmt})
+        assert r.status_code == 200 and r.json()["event_title_format"] == fmt
+    assert client.patch("/settings/clinic", headers=h, json={"event_title_format": "full_name"}).status_code == 422
 
 
 def test_patch_settings_validates_and_audits(client, auth, users, env, db):
@@ -417,7 +425,7 @@ def test_get_client_reports_missing_settings(monkeypatch):
 def test_tables_are_single_row_and_validated(db):
     db.execute(text("INSERT INTO clinic_settings (id) VALUES (1)"))
     db.commit()
-    assert db.execute(text("SELECT event_title_format FROM clinic_settings")).scalar() == "type_room_abbrev"  # 資料庫預設也是 (c)
+    assert db.execute(text("SELECT event_title_format FROM clinic_settings")).scalar() == "type_room_name"  # 資料庫預設也是 (d)
     with pytest.raises(IntegrityError):
         db.execute(text("INSERT INTO clinic_settings (id) VALUES (2)"))
     db.rollback()
@@ -453,6 +461,17 @@ def _tables():
     return set(inspect(engine).get_table_names())
 
 
+def _restore_head_title_constraint():
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+
+    spec = importlib.util.spec_from_file_location("zm3c7d8e9f0a", API_DIR / "alembic" / "versions" / "zm3c7d8e9f0a_gcal_title_name.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    with engine.begin() as conn, Operations.context(MigrationContext.configure(conn)):
+        mod.upgrade()
+
+
 def test_migration_roundtrip_touches_only_its_own_tables(db, make_user):
     make_user("admin")  # 既有資料不能被動到
     mine = {"clinic_settings", "google_oauth_connections"}
@@ -471,6 +490,7 @@ def test_migration_roundtrip_touches_only_its_own_tables(db, make_user):
         db.rollback()
         if not mine <= _tables():
             _run("upgrade")
+        _restore_head_title_constraint()  # zj 重建的表帶的是舊的三選一 constraint，補上後續 migration（標題格式 d）
 
 
 def test_migration_chain_and_only_adds():

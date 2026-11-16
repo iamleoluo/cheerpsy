@@ -9,6 +9,7 @@ from app.auth.password import verify_password
 from app.database import get_db
 from app.models.appointment import Appointment
 from app.models.case import Case
+from app.models.gcal_hooks import enqueue_appointments
 from app.models.couple_member import CoupleMember
 from app.models.user import User
 from app.schemas.case import (
@@ -121,7 +122,7 @@ def get_case(
     if not c:
         raise HTTPException(status_code=404, detail="Case not found")
     if user.role == "therapist" and c.therapist_id != user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(status_code=404, detail="Case not found")  # 與不存在相同，不讓人猜 id
     return _to_response(c, user)
 
 
@@ -218,14 +219,19 @@ def create_couple_case(
 def update_case(
     case_id: int,
     body: CaseUpdate,
-    user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
+    user: User = Depends(RequireRole(["admin", "accountant", "staff", "therapist"])),
     db: Session = Depends(get_db),
 ):
     c = db.query(Case).filter(Case.id == case_id).first()
-    if not c:
+    if not c or (user.role == "therapist" and c.therapist_id != user.id):
         raise HTTPException(status_code=404, detail="Case not found")
 
     update_data = body.model_dump(exclude_unset=True)
+    if user.role == "therapist":
+        # 心理師能改自己個案的資料，但不能把個案改派給別人，也不能自行改個案狀態（轉正式／結案走行政流程）
+        if update_data.get("therapist_id") not in (None, user.id) or "status" in update_data:
+            raise HTTPException(status_code=403, detail="不能改派個案或變更個案狀態，請洽行政人員")
+        update_data.pop("therapist_id", None)
 
     if "national_id" in update_data:
         nid = update_data.pop("national_id")
@@ -310,15 +316,18 @@ def close_case(
     prev_status = c.status
 
     # 4-1) 取消未來 booked 預約
-    cancelled = (
+    to_cancel = (
         db.query(Appointment)
         .filter(
             Appointment.case_id == case_id,
             Appointment.status == "booked",
             text("lower(time_range) > now()"),
         )
-        .update({Appointment.status: "cancelled"}, synchronize_session=False)
     )
+    cancel_ids = [i for (i,) in to_cancel.with_entities(Appointment.id).all()]
+    cancelled = to_cancel.update({Appointment.status: "cancelled"}, synchronize_session=False)
+    # 批次 UPDATE 不經過 ORM 事件，Google 日曆同步要明確入列（同一交易）
+    enqueue_appointments(db.connection(), cancel_ids)
 
     c.status = "closed"
     c.closed_at = now
