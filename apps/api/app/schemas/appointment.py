@@ -15,9 +15,12 @@ class AppointmentCreate(BaseModel):
     session_type: str = "in_person"
     start_time: datetime
     end_time: datetime
-    amount: float | None = Amount  # 選填；0＝沒有金額
+    amount: float | None = Amount  # 自費：必填（個案要付的全額）；機構：不送＝由方案價目帶出，送了＝行政手動調整
     funding_source: str | None = None  # self_pay | institution；沒送＝沿用個案的付款方式
     quota_id: int | None = None  # 機構案指定額度；沒送＝自動挑
+    plan_id: int | None = None  # 機構案的方案；沒送＝用額度所屬方案
+    rate_item_id: int | None = None  # 價目項目；沒送＝依方案、時長、第幾次自動挑
+    transport_fee_option_id: int | None = None  # 交通費選項；沒送＝現場無交通費、外出用預設選項
     couple_case_id: int | None = None  # 合療：標記場次所屬伴侶案（case_id 為付款方）
 
 
@@ -36,6 +39,9 @@ class AppointmentBatchCreate(BaseModel):
     amount: float | None = Amount  # 選填；整批每一場同一個金額（slot 上的 amount 已忽略）
     funding_source: str | None = None
     quota_id: int | None = None
+    plan_id: int | None = None
+    rate_item_id: int | None = None
+    transport_fee_option_id: int | None = None
     couple_case_id: int | None = None
     slots: list[BatchSlot]
 
@@ -45,12 +51,20 @@ class AppointmentUpdate(BaseModel):
     session_type: str | None = None
     start_time: datetime | None = None
     end_time: datetime | None = None
-    amount: float | None = Amount  # 不送＝不改；送 0＝清除金額
+    amount: float | None = Amount  # 不送＝不改；送了＝手動調整應收（機構案會寫稽核）
+    # 改方案、價目項目、交通費時，會依 plan_pricing 重新計算應收與自付額（改價目主檔不影響既有預約）
+    plan_id: int | None = None
+    rate_item_id: int | None = None
+    transport_fee_option_id: int | None = None
 
 
 class AppointmentPaymentUpdate(BaseModel):
     funding_source: str  # self_pay | institution
     quota_id: int | None = None
+    plan_id: int | None = None
+    rate_item_id: int | None = None
+    transport_fee_option_id: int | None = None
+    amount: float | None = Amount  # 自費必填；機構不送＝由價目帶出
 
 
 class AppointmentResponse(BaseModel):
@@ -89,6 +103,12 @@ class AppointmentResponse(BaseModel):
     no_show_fee: float = 0
     fee_item: str | None = None
     plan_id: int | None = None
+    plan_name: str | None = None
+    rate_item_id: int | None = None
+    rate_item_label: str | None = None
+    self_pay_amount: float = 0  # 個案這次要付的錢（自費＝全額；機構＝自付額）
+    transport_fee_option_id: int | None = None
+    transport_fee_label: str | None = None
     transport_fee: float = 0
     video_link: str | None = None
     notify_admin_to_forward: bool = False

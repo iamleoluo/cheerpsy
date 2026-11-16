@@ -53,7 +53,7 @@ def w(make_user, make_case, room, db):
 
 
 def _create(client, auth, who, case, room, start, end, **extra):
-    body = {"case_id": case.id, "room_id": room.id if room else None, "session_type": "in_person",
+    body = {"case_id": case.id, "room_id": room.id if room else None, "session_type": "in_person", "amount": 0,
             "start_time": start.isoformat(), "end_time": end.isoformat(), **extra}
     return client.post("/appointments", json=body, headers=auth(who))
 
@@ -175,7 +175,7 @@ def test_api_race_many_clients_exactly_one_wins(client, auth, w, db):
     n = 6
     barrier = threading.Barrier(n, timeout=30)
     headers = auth(w["staff"])
-    body = {"case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person",
+    body = {"case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person", "amount": 0,
             "start_time": s.isoformat(), "end_time": e.isoformat()}
 
     def go(_):
@@ -257,7 +257,7 @@ def test_batch_conflict_rolls_back_whole_batch(client, auth, w):
     slots = [{"start_time": (s + timedelta(days=7 * i)).isoformat(), "end_time": (e + timedelta(days=7 * i)).isoformat()}
              for i in range(4)]
     r = client.post("/appointments/batch", headers=auth(w["staff"]),
-                    json={"case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person", "slots": slots})
+                    json={"case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person", "amount": 0, "slots": slots})
     assert r.status_code == 409
     assert "2B" in r.json()["detail"] and "王小明" not in r.text
     listed = client.get("/appointments", headers=auth(w["admin"])).json()

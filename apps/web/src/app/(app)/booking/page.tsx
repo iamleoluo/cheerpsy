@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
 import { useCanEditAmount } from "@/components/amount-field";
-import { BillingFields, EMPTY_BILLING, billingBody, warningsText, type BillingValue } from "@/components/billing-fields";
+import { BillingFields, EMPTY_BILLING, billingBody, billingError, warningsText, type BillingValue } from "@/components/billing-fields";
 import { EventsTab } from "@/components/events-tab";
 import { SESSION_TYPE, hhmm, shiftDate, todayISO } from "@/lib/format";
 
@@ -188,6 +188,8 @@ export default function BookingPage() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    const billErr = billingError(billing);
+    if (billErr) { setError(billErr); return; }
     setSaving(true);
     setError(null);
     setOk(null);
@@ -333,6 +335,7 @@ export default function BookingPage() {
                 caseId={caseId}
                 caseFunding={cases.find((x) => x.id === caseId)?.funding_source}
                 date={date}
+                sessionType={sessionType}
                 value={billing}
                 onChange={setBilling}
                 className="col-span-2"

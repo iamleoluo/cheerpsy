@@ -72,10 +72,17 @@ def format_amount(amount) -> str | None:
     return f"${value:,.0f}" if value == value.to_integral_value() else f"${value:,.2f}"
 
 
+def payable_amount(a: Appointment):
+    """標題上的金額＝個案這次要付的錢：機構案用自付額，自費案用全額（0 元不顯示）。"""
+    if (a.funding_source or "self_pay") == "institution":
+        return a.self_pay_amount
+    return a.amount
+
+
 def event_title(a: Appointment, title_format: str) -> str:
     """(a) type_room：「諮商 · 2B」；(b) type_room_code：再加個案代號；(c) type_room_abbrev：再加姓名縮寫；
     (d) type_room_name：再加個案全名（預設）。(a)(b)(c) 缺資料時退化成前一種，絕不改塞姓名。
-    有金額時一律在結尾加「 · $1,500」。"""
+    個案這次要付的錢（機構案＝自付額，自費案＝全額）大於 0 時，一律在結尾加「 · $1,500」。"""
     kind, place = _kind_and_place(a)
     parts = [kind] + ([place] if place else [])
     case = a.couple_case or a.case
@@ -87,7 +94,7 @@ def event_title(a: Appointment, title_format: str) -> str:
             parts.append(abbr)
     elif title_format == "type_room_name" and case is not None and (case.name or "").strip():
         parts.append(" ".join(case.name.split()))
-    amount = format_amount(a.amount)
+    amount = format_amount(payable_amount(a))
     if amount:
         parts.append(amount)
     return SEP.join(parts)

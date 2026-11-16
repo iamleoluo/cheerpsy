@@ -124,7 +124,7 @@ def run(fake, now=None, client_factory=None):
 
 def create(client, auth, w, day=2, hour=10, **extra):
     s, e = _slot(day, hour)
-    body = {"case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person",
+    body = {"case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person", "amount": 0,
             "start_time": s.isoformat(), "end_time": e.isoformat(), **extra}
     r = client.post("/appointments", json=body, headers=auth(w["staff"]))
     assert r.status_code == 201, r.text
@@ -283,7 +283,7 @@ def test_batch_create_enqueues_each(client, auth, w, fake, db):
     s1, e1 = _slot(3)
     s2, e2 = _slot(4)
     r = client.post("/appointments/batch", headers=auth(w["staff"]), json={
-        "case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person",
+        "case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person", "amount": 0,
         "slots": [{"start_time": s1.isoformat(), "end_time": e1.isoformat()},
                   {"start_time": s2.isoformat(), "end_time": e2.isoformat()}]})
     assert r.status_code == 201, r.text
@@ -494,7 +494,7 @@ def test_no_calendar_blocks_then_provision_unblocks_and_pushes(client, auth, w, 
     db.commit()
     s, e = _slot(3)
     r = client.post("/appointments", headers=auth(w["staff"]), json={
-        "case_id": c3.id, "room_id": w["room"].id, "session_type": "in_person",
+        "case_id": c3.id, "room_id": w["room"].id, "session_type": "in_person", "amount": 0,
         "start_time": s.isoformat(), "end_time": e.isoformat()})
     assert r.status_code == 201, r.text
     aid = r.json()["id"]
@@ -565,7 +565,7 @@ def test_each_calendar_only_contains_its_own_therapists_sessions(client, auth, w
     create(client, auth, w)
     s, e = _slot(3)
     client.post("/appointments", headers=auth(w["staff"]), json={
-        "case_id": c2.id, "room_id": w["room2"].id, "session_type": "in_person", "start_time": s.isoformat(), "end_time": e.isoformat()})
+        "case_id": c2.id, "room_id": w["room2"].id, "session_type": "in_person", "amount": 0, "start_time": s.isoformat(), "end_time": e.isoformat()})
     run(fake)
     cals = {}
     for (cal, _id), body in fake.events.items():
@@ -982,12 +982,12 @@ def test_therapist_editing_own_amount_resyncs_only_to_own_calendar(client, auth,
     case2 = make_case(w["t2"], "李小華")
     s, e = _slot(3, 10)
     mine = client.post("/appointments", headers=auth(w["t"]), json={
-        "case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person",
+        "case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person", "amount": 0,
         "start_time": s.isoformat(), "end_time": e.isoformat(), "amount": 1200})
     assert mine.status_code == 201 and mine.json()["amount"] == 1200
     s2, e2 = _slot(3, 14)
     theirs = client.post("/appointments", headers=auth(w["t2"]), json={
-        "case_id": case2.id, "room_id": w["room"].id, "session_type": "in_person",
+        "case_id": case2.id, "room_id": w["room"].id, "session_type": "in_person", "amount": 0,
         "start_time": s2.isoformat(), "end_time": e2.isoformat(), "amount": 900}).json()
     run(fake)
     mid, tid = mine.json()["id"], theirs["id"]

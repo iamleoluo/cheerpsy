@@ -52,6 +52,10 @@ def make_plan(client, auth, w, who="admin"):
 
 
 def make_quota(client, auth, w, case, total=2, plan_id=None, **kw):
+    if plan_id is None:  # 預設掛一個方案（沒有方案的機構預約會多一則「尚未指定方案」的提示）
+        if "_plan" not in w:
+            w["_plan"] = make_plan(client, auth, w)[1]
+        plan_id = w["_plan"]["id"]
     r = client.post(f"/cases/{case.id}/quotas", headers=auth(w["staff"]),
                     json={"institution_id": w["inst"].id, "total_count": total, "plan_id": plan_id, **kw})
     assert r.status_code == 201, r.text
@@ -61,7 +65,7 @@ def make_quota(client, auth, w, case, total=2, plan_id=None, **kw):
 def book(client, auth, who, case, room, day=3, hour=10, **extra):
     s, e = _slot(day, hour)
     return client.post("/appointments", headers=auth(who), json={
-        "case_id": case.id, "room_id": room.id, "session_type": "in_person",
+        "case_id": case.id, "room_id": room.id, "session_type": "in_person", "amount": 0,
         "start_time": s.isoformat(), "end_time": e.isoformat(), **extra})
 
 
@@ -190,7 +194,7 @@ def test_batch_booking_over_quota_warns_per_slot_but_books_all(client, auth, wor
     q = make_quota(client, auth, w, w["case_a"], total=2)
     slots = [{"start_time": _slot(d)[0].isoformat(), "end_time": _slot(d)[1].isoformat()} for d in (3, 4, 5)]
     r = client.post("/appointments/batch", headers=auth(w["staff"]), json={
-        "case_id": w["case_a"].id, "room_id": w["room"].id, "session_type": "in_person", "slots": slots})
+        "case_id": w["case_a"].id, "room_id": w["room"].id, "session_type": "in_person", "amount": 0, "slots": slots})
     assert r.status_code == 201, r.text
     rows = r.json()
     assert [bool(x["warnings"]) for x in rows] == [False, False, True]
@@ -203,7 +207,7 @@ def test_change_payment_method_moves_quota(client, auth, world, db):
     w = world
     q = make_quota(client, auth, w, w["case_a"], total=2)
     a = book(client, auth, w["staff"], w["case_a"], w["room"]).json()
-    r = client.put(f"/appointments/{a['id']}/payment", headers=auth(w["staff"]), json={"funding_source": "self_pay"})
+    r = client.put(f"/appointments/{a['id']}/payment", headers=auth(w["staff"]), json={"funding_source": "self_pay", "amount": 1500})
     assert r.status_code == 200 and r.json()["quota_id"] is None
     assert quota_row(db, q["id"]).reserved_count == 2  # 退回
     r = client.put(f"/appointments/{a['id']}/payment", headers=auth(w["staff"]), json={"funding_source": "institution"})

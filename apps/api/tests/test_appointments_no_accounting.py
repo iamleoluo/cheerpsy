@@ -29,7 +29,7 @@ def _slot(days=3, hour=10, hours=1):
 
 
 def _create(client, auth, who, case, room, start, end, **extra):
-    body = {"case_id": case.id, "room_id": room.id, "session_type": "in_person",
+    body = {"case_id": case.id, "room_id": room.id, "session_type": "in_person", "amount": 0,
             "start_time": start.isoformat(), "end_time": end.isoformat(), **extra}
     return client.post("/appointments", json=body, headers=auth(who))
 
@@ -81,7 +81,7 @@ def test_batch_create_amount_applies_to_all_slots_and_conflict(client, auth, db,
     slots = [{"start_time": s.isoformat(), "end_time": e.isoformat(), "amount": 3000},
              {"start_time": (s + timedelta(days=7)).isoformat(),
               "end_time": (e + timedelta(days=7)).isoformat()}]
-    body = {"case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person",
+    body = {"case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person", "amount": 0,
             "amount": 2000, "funding_source": "institution", "slots": slots}
     r = client.post("/appointments/batch", json=body, headers=auth(w["staff"]))
     assert r.status_code == 201, r.text
@@ -120,7 +120,7 @@ def test_room_overlap_409_on_reschedule(client, auth, w):
 def test_online_session_does_not_need_room(client, auth, w):
     s, e = _slot()
     r = client.post("/appointments", headers=auth(w["staff"]),
-                    json={"case_id": w["case"].id, "session_type": "online",
+                    json={"case_id": w["case"].id, "session_type": "online", "amount": 0,
                           "start_time": s.isoformat(), "end_time": e.isoformat()})
     assert r.status_code == 201
 
@@ -128,7 +128,7 @@ def test_online_session_does_not_need_room(client, auth, w):
 def test_in_person_requires_room(client, auth, w):
     s, e = _slot()
     r = client.post("/appointments", headers=auth(w["staff"]),
-                    json={"case_id": w["case"].id, "session_type": "in_person",
+                    json={"case_id": w["case"].id, "session_type": "in_person", "amount": 0,
                           "start_time": s.isoformat(), "end_time": e.isoformat()})
     assert r.status_code == 400
 
@@ -299,8 +299,8 @@ def test_dashboard_today_counts(client, auth, w, make_appt):
     assert (r["today_expected"], r["today_arrived"], r["today_absent"]) == (2, 1, 1)
 
 
-# ---- 媒合轉初診仍擋診間衝突，且不再需要金額 ---------------------------------
-def test_referral_convert_without_amount_and_room_conflict(client, auth, db, w):
+# ---- 媒合轉初診仍擋診間衝突；自費要填金額 ---------------------------------
+def test_referral_convert_self_pay_needs_amount_and_room_conflict(client, auth, db, w):
     from datetime import date as _d
     from app.models.referral import (ReferralDispatch, ReferralDispatchTarget,
                                      ReferralRequest, ReferralSlotOffer)
@@ -327,10 +327,13 @@ def test_referral_convert_without_amount_and_room_conflict(client, auth, db, w):
                      json={"slot_id": slot.id, "room_id": w["room"].id})
     assert r1.status_code == 409
 
-    # 換成線上場次：不需金額即可成立，伺服器寫 0
+    # 換成線上場次：自費初診必填金額（機構案由方案帶出）
     r2 = client.post(f"/referrals/{r.id}/convert", headers=auth(w["staff"]),
                      json={"slot_id": slot.id, "session_type": "online"})
-    assert r2.status_code == 201, r2.text
-    amt = db.execute(text("SELECT amount FROM appointments WHERE id=:i"),
-                     {"i": r2.json()["appointment_id"]}).scalar()
-    assert float(amt) == 0
+    assert r2.status_code == 422, r2.text
+    r3 = client.post(f"/referrals/{r.id}/convert", headers=auth(w["staff"]),
+                     json={"slot_id": slot.id, "session_type": "online", "amount": 1200})
+    assert r3.status_code == 201, r3.text
+    row = db.execute(text("SELECT amount, self_pay_amount FROM appointments WHERE id=:i"),
+                     {"i": r3.json()["appointment_id"]}).one()
+    assert float(row.amount) == 1200 and float(row.self_pay_amount) == 1200

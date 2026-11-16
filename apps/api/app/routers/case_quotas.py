@@ -11,6 +11,7 @@ from app.models.case import Case
 from app.models.case_institution_quota import CaseInstitutionQuota
 from app.models.institution import Institution
 from app.models.institution_plan import InstitutionPlan
+from app.services import appt_billing
 from app.models.user import User
 from app.schemas.case_quota import QuotaCreate, QuotaResponse, QuotaUpdate
 from app.services.audit import write_audit
@@ -69,6 +70,17 @@ def list_case_quotas(
         .all()
     )
     return [_to_response(q, db) for q in rows]
+
+
+@router.get("/cases/{case_id}/billing-options")
+def case_billing_options(
+    case_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """預約表單用：這個個案可選的方案、價目項目、交通費。心理師只看得到自己個案的（別人的回 404）。"""
+    case = _require_case_access(db, case_id, user)
+    return appt_billing.billing_options(db, case)
 
 
 @router.get("/cases/{case_id}/quotas/available", response_model=list[QuotaResponse])

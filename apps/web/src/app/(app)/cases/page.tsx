@@ -5,7 +5,7 @@ import { useSession } from "next-auth/react";
 import { clientFetch, exportCsv } from "@/lib/client-api";
 import { AmountField, parseAmount, useCanEditAmount } from "@/components/amount-field";
 import { CaseQuotaSection, QuotasOverview } from "@/components/quotas-panel";
-import { BillingFields, EMPTY_BILLING, billingBody, useIsStaff, warningsText, type BillingValue } from "@/components/billing-fields";
+import { BillingFields, EMPTY_BILLING, billingBody, billingError, useIsStaff, warningsText, type BillingValue } from "@/components/billing-fields";
 import RoomMiniCalendar from "@/components/room-mini-calendar";
 import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
 
@@ -123,6 +123,11 @@ interface Appointment {
   quota_total?: number | null;
   quota_remaining?: number | null;
   quota_is_last_session?: boolean;
+  plan_id?: number | null;
+  plan_name?: string | null;
+  rate_item_id?: number | null;
+  transport_fee_option_id?: number | null;
+  self_pay_amount?: number;
 }
 
 interface Therapist { id: number; name: string; email: string; role: string; }
@@ -1220,6 +1225,8 @@ function AppointmentForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const billErr = billingError(billing);
+    if (billErr) { setError(billErr); return; }
     setSaving(true);
     setError("");
     try {
@@ -1300,6 +1307,7 @@ function AppointmentForm({
               caseId={form.case_id ? parseInt(form.case_id) : 0}
               caseFunding={(cases.find((c) => String(c.id) === form.case_id) as { funding_source?: string } | undefined)?.funding_source}
               date={form.start_date || isoDate(new Date())}
+              sessionType={form.session_type}
               value={billing}
               onChange={setBilling}
             />
@@ -1479,6 +1487,8 @@ function BatchForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!slots || slots.length === 0) { setError("請先產生時段預覽"); return; }
+    const billErr = billingError(billing);
+    if (billErr) { setError(billErr); return; }
     setSaving(true);
     setError("");
     try {
@@ -1648,6 +1658,7 @@ function BatchForm({
                   caseId={form.case_id ? parseInt(form.case_id) : 0}
                   caseFunding={(cases.find((c) => String(c.id) === form.case_id) as { funding_source?: string } | undefined)?.funding_source}
                   date={startDate}
+                  sessionType={form.session_type}
                   value={billing}
                   onChange={setBilling}
                 />
@@ -1750,7 +1761,11 @@ function AppointmentEditModal({
   const [billing, setBilling] = useState<BillingValue>({
     funding: appt.funding_source === "institution" ? "institution" : "self_pay",
     quotaId: appt.quota_id ? String(appt.quota_id) : "",
-    amount: appt.amount ? String(appt.amount) : "",
+    planId: appt.plan_id ? String(appt.plan_id) : "",
+    rateItemId: appt.rate_item_id ? String(appt.rate_item_id) : "",
+    transportId: appt.transport_fee_option_id ? String(appt.transport_fee_option_id) : "",
+    // 自費：全額；機構：空白＝依價目（要手動調整應收才填）
+    amount: appt.funding_source === "institution" ? "" : appt.amount ? String(appt.amount) : "0",
   });
 
   useEffect(() => {
@@ -1772,18 +1787,35 @@ function AppointmentEditModal({
       if (startDate && endTime) {
         body.end_time = `${startDate}T${endTime}:00+08:00`;
       }
-      if (canAmount) body.amount = parseAmount(billing.amount) ?? 0; // 清空＝沒有金額
+      const wasInstitution = appt.funding_source === "institution";
+      const fundingChanged =
+        billing.funding !== (wasInstitution ? "institution" : "self_pay") ||
+        billing.quotaId !== (appt.quota_id ? String(appt.quota_id) : "");
+      const billErr = fundingChanged ? billingError(billing) : "";
+      if (billErr) { setError(billErr); setSaving(false); return; }
+      // 沒換付款方式時：自費的金額一定送；機構案只有手動調整應收（有填）才送
+      const amt = parseAmount(billing.amount);
+      if (canAmount && !fundingChanged && (billing.funding === "self_pay" ? true : amt !== undefined)) body.amount = amt ?? 0;
+      if (isStaff && !fundingChanged && billing.funding === "institution") {
+        if (billing.planId !== (appt.plan_id ? String(appt.plan_id) : "")) body.plan_id = Number(billing.planId);
+        if (billing.rateItemId !== (appt.rate_item_id ? String(appt.rate_item_id) : "")) body.rate_item_id = Number(billing.rateItemId);
+        if (billing.transportId !== (appt.transport_fee_option_id ? String(appt.transport_fee_option_id) : "")) body.transport_fee_option_id = Number(billing.transportId);
+      }
       await clientFetch(`/appointments/${appt.id}`, token, {
         method: "PUT",
         body: JSON.stringify(body),
       });
-      const fundingChanged =
-        billing.funding !== (appt.funding_source === "institution" ? "institution" : "self_pay") ||
-        billing.quotaId !== (appt.quota_id ? String(appt.quota_id) : "");
       if (isStaff && fundingChanged) {
         const res = await clientFetch(`/appointments/${appt.id}/payment`, token, {
           method: "PUT",
-          body: JSON.stringify({ funding_source: billing.funding, quota_id: billing.quotaId ? Number(billing.quotaId) : null }),
+          body: JSON.stringify({
+            funding_source: billing.funding,
+            quota_id: billing.quotaId ? Number(billing.quotaId) : null,
+            ...(billing.planId ? { plan_id: Number(billing.planId) } : {}),
+            ...(billing.rateItemId ? { rate_item_id: Number(billing.rateItemId) } : {}),
+            ...(billing.transportId ? { transport_fee_option_id: Number(billing.transportId) } : {}),
+            ...(amt !== undefined ? { amount: amt } : {}),
+          }),
         });
         const w = warningsText(res);
         if (w) window.alert(`已儲存。提醒：${w}`);
@@ -1838,7 +1870,7 @@ function AppointmentEditModal({
             </label>
           </div>
           {isStaff ? (
-            <BillingFields token={token} caseId={appt.case_id} date={startDate || isoDate(new Date())} value={billing} onChange={setBilling} />
+            <BillingFields token={token} caseId={appt.case_id} date={startDate || isoDate(new Date())} sessionType={sessionType} value={billing} onChange={setBilling} />
           ) : (
             <AmountField value={billing.amount} onChange={(v) => setBilling({ ...billing, amount: v })} />
           )}

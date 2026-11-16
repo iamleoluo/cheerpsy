@@ -18,6 +18,7 @@ from app.models.referral import (
     ReferralSlotOffer,
 )
 from app.models.user import User
+from app.services import appt_billing
 from app.services.audit import write_audit
 from app.services.slot_check import assert_room_active, assert_room_free, flush_or_409
 
@@ -725,6 +726,8 @@ class ConvertBody(BaseModel):
     session_type: str = "in_person"
     amount: float | None = None  # 自費：應收金額；機構案由方案帶出（見預約帶方案）
     fee_item: str | None = None  # 諮商項目
+    rate_item_id: int | None = None  # 機構案的價目項目；不送＝自動挑
+    transport_fee_option_id: int | None = None
 
 
 @router.post("/{referral_id}/convert", status_code=http.HTTP_201_CREATED)
@@ -776,6 +779,13 @@ def convert_to_appointment(
     assert_room_active(db, body.room_id)
     assert_room_free(db, body.room_id, start, end)
 
+    # 自費：金額必填；機構案：由方案價目帶出應收與自付額（快照）
+    price = appt_billing.compute_pricing(
+        db, case_id=None, funding=r.funding_source or "self_pay", quota=None, plan_id=r.plan_id,
+        rate_item_id=body.rate_item_id, transport_option_id=body.transport_fee_option_id,
+        session_type=body.session_type, duration_minutes=int((end - start).total_seconds() // 60),
+        manual_amount=body.amount,
+    )
     seq = (db.query(func.count(Appointment.id)).scalar() or 0) + 1
     appt = Appointment(
         appointment_number=f"M-{r.dispatch_code}-{seq:03d}",
@@ -785,9 +795,13 @@ def convert_to_appointment(
         room_id=body.room_id,
         session_type=body.session_type,
         time_range=func.tstzrange(start, end),
-        amount=body.amount or 0,
+        amount=price.amount,
+        self_pay_amount=price.self_pay,
         funding_source=r.funding_source,
-        plan_id=r.plan_id,
+        plan_id=price.plan_id,
+        rate_item_id=price.rate_item_id,
+        transport_fee=price.transport_fee,
+        transport_fee_option_id=price.transport_option_id,
         fee_item=body.fee_item,
         is_intake=True,
         created_by=user.id,

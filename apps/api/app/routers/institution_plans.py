@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import RequireRole, get_current_user
 from app.database import get_db
+from app.models.appointment import Appointment
 from app.models.case_institution_quota import CaseInstitutionQuota
 from app.models.institution_contract import InstitutionContract
 from app.models.institution_plan import InstitutionPlan, PlanRateItem, PlanTransportFee
@@ -246,6 +247,12 @@ def _to_response(p: InstitutionPlan, agg: dict | None = None) -> PlanResponse:
 
 
 def _sync_rate_items(db: Session, plan: InstitutionPlan, items) -> None:
+    # 預約存的是價格快照（應收、自付額），改價目主檔不影響它；但價目列會被重建，
+    # 所以先把既有預約對舊價目列的參照放掉（只清參照，不動金額）
+    old_ids = [r.id for r in plan.rate_items]
+    if old_ids:
+        db.query(Appointment).filter(Appointment.rate_item_id.in_(old_ids)).update(
+            {Appointment.rate_item_id: None}, synchronize_session=False)
     for existing in list(plan.rate_items):
         db.delete(existing)
     db.flush()

@@ -15,6 +15,8 @@ from app.models.case import Case
 from app.models.room import Room
 from app.models.session_record import SessionRecord
 from app.models.user import User
+from app.models.institution_plan import InstitutionPlan, PlanRateItem, PlanTransportFee
+from app.models.case_institution_quota import CaseInstitutionQuota
 from app.services import appt_billing
 from app.services.audit import write_audit
 from app.services.slot_check import assert_room_active, assert_room_free, flush_or_409
@@ -81,6 +83,11 @@ def _to_response(
     # 一定是自己的預約，別人的在查詢就被擋掉）。會計維持現狀（記帳已移除，一律 0）。
     can_see_amount = viewer is not None and viewer.role in ("admin", "staff", "therapist")
     quota = appt_billing.quota_summary(db, a.quota_id) if (db is not None and can_see_amount) else None
+    plan = rate = tfee = None
+    if db is not None and can_see_amount and a.plan_id:
+        plan = db.get(InstitutionPlan, a.plan_id)
+        rate = db.get(PlanRateItem, a.rate_item_id) if a.rate_item_id else None
+        tfee = db.get(PlanTransportFee, a.transport_fee_option_id) if a.transport_fee_option_id else None
     return AppointmentResponse(
         amount=float(a.amount or 0) if can_see_amount else 0,
         funding_source=(a.funding_source or "self_pay") if can_see_amount else None,
@@ -91,6 +98,12 @@ def _to_response(
         quota_remaining=quota["remaining"] if quota else None,
         quota_is_last_session=bool(quota and quota["is_last"]),
         plan_id=a.plan_id if can_see_amount else None,
+        plan_name=(plan.name if plan else None) if can_see_amount else None,
+        rate_item_id=a.rate_item_id if can_see_amount else None,
+        rate_item_label=(rate.label if rate else None) if can_see_amount else None,
+        self_pay_amount=float(a.self_pay_amount or 0) if can_see_amount else 0,
+        transport_fee_option_id=a.transport_fee_option_id if can_see_amount else None,
+        transport_fee_label=(tfee.label if tfee else None) if can_see_amount else None,
         transport_fee=float(a.transport_fee or 0) if can_see_amount else 0,
         warnings=warnings or [],
         id=a.id,
@@ -124,9 +137,15 @@ def _to_response(
     )
 
 
-def _amount_for(amount: float | None) -> Decimal:
-    """新增預約的金額（選填，沒送就是 0）。誰能建立預約就能填：心理師填自己的、行政填任何人的。"""
-    return Decimal(str(amount)) if amount is not None else Decimal("0")
+def _minutes(start: datetime, end: datetime) -> int:
+    return int((end - start).total_seconds() // 60)
+
+
+def _audit_manual_price(db: Session, a: Appointment, price, user: User) -> None:
+    """機構案行政手動調整應收：留稽核（誰、方案算出多少、改成多少）。"""
+    if price.funding == "institution" and price.manual_adjusted:
+        write_audit(db, "appointments", a.id, "UPDATE", user.id,
+                    {"amount": float(price.computed_amount or 0)}, {"amount": float(price.amount), "manual": True})
 
 
 def _appointment_or_404(db: Session, user: User, appointment_id: int) -> Appointment:
@@ -260,6 +279,14 @@ def create_appointment(
         db, body.case_id, funding, body.quota_id, body.start_time.date()
     )
 
+    price = appt_billing.compute_pricing(
+        db, case_id=body.case_id, funding=funding, quota=quota, plan_id=body.plan_id,
+        rate_item_id=body.rate_item_id, transport_option_id=body.transport_fee_option_id,
+        session_type=body.session_type, duration_minutes=_minutes(body.start_time, body.end_time),
+        manual_amount=body.amount,
+    )
+    warnings = warnings + price.warnings
+
     time_range = DateTimeTZRange(body.start_time, body.end_time)
     appt = Appointment(
         appointment_number=number,
@@ -268,8 +295,13 @@ def create_appointment(
         room_id=body.room_id,
         session_type=body.session_type,
         time_range=time_range,
-        amount=_amount_for(body.amount),
+        amount=price.amount,
+        self_pay_amount=price.self_pay,
         funding_source=funding,
+        plan_id=price.plan_id,
+        rate_item_id=price.rate_item_id,
+        transport_fee=price.transport_fee,
+        transport_fee_option_id=price.transport_option_id,
         quota_id=quota.id if quota else None,
         visit_seq=visit_seq,
         couple_case_id=body.couple_case_id,
@@ -279,6 +311,7 @@ def create_appointment(
     db.add(appt)
     flush_or_409(db, body.room_id, body.start_time, body.end_time)  # 並行寫入由資料庫約束擋下
     appt_billing.hold_quota(quota)  # 已預留 → 已預約（同一交易）
+    _audit_manual_price(db, appt, price, user)
     db.commit()
     db.refresh(appt)
     return _to_response(appt, therapist, db, viewer=user, warnings=warnings)
@@ -327,6 +360,14 @@ def create_batch(
             db, body.case_id, funding, body.quota_id, slot.start_time.date()
         )
 
+        price = appt_billing.compute_pricing(
+            db, case_id=body.case_id, funding=funding, quota=quota, plan_id=body.plan_id,
+            rate_item_id=body.rate_item_id, transport_option_id=body.transport_fee_option_id,
+            session_type=body.session_type, duration_minutes=_minutes(slot.start_time, slot.end_time),
+            manual_amount=body.amount,
+        )
+        slot_warnings = slot_warnings + price.warnings
+
         appt = Appointment(
             appointment_number=number,
             case_id=body.case_id,
@@ -334,8 +375,13 @@ def create_batch(
             room_id=body.room_id,
             session_type=body.session_type,
             time_range=time_range,
-            amount=_amount_for(body.amount),
+            amount=price.amount,
+            self_pay_amount=price.self_pay,
             funding_source=funding,
+            plan_id=price.plan_id,
+            rate_item_id=price.rate_item_id,
+            transport_fee=price.transport_fee,
+            transport_fee_option_id=price.transport_option_id,
             quota_id=quota.id if quota else None,
             visit_seq=next_vs + i,
             couple_case_id=body.couple_case_id,
@@ -347,6 +393,7 @@ def create_batch(
         # flush 讓同批次後面的 slot 也能看到前面的佔用（診間衝突檢查）
         flush_or_409(db, body.room_id, slot.start_time, slot.end_time)
         appt_billing.hold_quota(quota)  # 同批次後面的 slot 會看到前面已佔用的額度；額度用完的 slot 只警告、不佔額度
+        _audit_manual_price(db, appt, price, user)
         results.append(appt)
         warns[i] = slot_warnings
 
@@ -370,6 +417,8 @@ def update_appointment(
     before = {
         "room_id": a.room_id, "session_type": a.session_type,
         "time_range": str(a.time_range), "amount": float(a.amount or 0),
+        "self_pay_amount": float(a.self_pay_amount or 0), "plan_id": a.plan_id,
+        "rate_item_id": a.rate_item_id, "transport_fee_option_id": a.transport_fee_option_id,
     }
 
     # 改期或改房都要重新檢查診間（只改房、不改時間也要檢查）
@@ -389,19 +438,49 @@ def update_appointment(
     if body.session_type is not None:
         a.session_type = body.session_type
     flush_or_409(db, a.room_id, new_start, new_end, exclude_appointment_id=appointment_id)
-    # funding_source／quota_id 已忽略。金額只是一個數字，不涉及收款或結算
-    if body.amount is not None:
-        a.amount = Decimal(str(body.amount))
+    # 金額與方案：改方案、價目項目、交通費 → 依價目重新計算（快照）；只改金額 → 手動調整
+    warnings: list[str] = []
+    repriced = any(v is not None for v in (body.plan_id, body.rate_item_id, body.transport_fee_option_id))
+    if repriced or body.amount is not None:
+        funding = a.funding_source or "self_pay"
+        quota = db.get(CaseInstitutionQuota, a.quota_id) if a.quota_id else None
+        same_plan = body.plan_id is None or body.plan_id == a.plan_id
+        if repriced and funding == "institution":
+            price = appt_billing.compute_pricing(
+                db, case_id=a.case_id, funding=funding, quota=quota,
+                plan_id=body.plan_id if body.plan_id is not None else a.plan_id,
+                # 方案沒換時，沒指定的價目項目、交通費沿用原本的；換方案就重新挑
+                rate_item_id=body.rate_item_id if body.rate_item_id is not None else (
+                    a.rate_item_id if same_plan else None),
+                transport_option_id=body.transport_fee_option_id if body.transport_fee_option_id is not None else (
+                    a.transport_fee_option_id if same_plan else None),
+                session_type=a.session_type, duration_minutes=_minutes(new_start, new_end),
+                manual_amount=body.amount, exclude_appointment_id=a.id,
+            )
+            appt_billing.apply_pricing(a, price)
+            warnings = price.warnings
+            _audit_manual_price(db, a, price, user)
+        elif body.amount is not None:
+            new_amount = Decimal(str(body.amount))
+            if funding == "institution":
+                write_audit(db, "appointments", a.id, "UPDATE", user.id,
+                            {"amount": float(a.amount or 0)}, {"amount": float(new_amount), "manual": True})
+                a.self_pay_amount = min(a.self_pay_amount or Decimal("0"), new_amount)
+            else:
+                a.self_pay_amount = new_amount  # 自費：個案要付的就是全額
+            a.amount = new_amount
 
     after = {
         "room_id": a.room_id, "session_type": a.session_type,
         "time_range": str(a.time_range), "amount": float(a.amount or 0),
+        "self_pay_amount": float(a.self_pay_amount or 0), "plan_id": a.plan_id,
+        "rate_item_id": a.rate_item_id, "transport_fee_option_id": a.transport_fee_option_id,
     }
     write_audit(db, "appointments", a.id, "UPDATE", user.id, before, after)
     db.commit()
     db.refresh(a)
     therapist = db.query(User).filter(User.id == a.therapist_id).first()
-    return _to_response(a, therapist, db, viewer=user)
+    return _to_response(a, therapist, db, viewer=user, warnings=warnings)
 
 
 @router.put("/{appointment_id}/cancel", response_model=AppointmentResponse)
@@ -456,11 +535,23 @@ def update_appointment_payment(
     appt_billing.release_quota(db, a.quota_id)  # 先把舊額度退回，再重新挑（可能挑回同一個）
     a.quota_id = None
     quota, warnings = appt_billing.resolve_quota(db, a.case_id, body.funding_source, body.quota_id, appt_date)
+    # 換付款方式 → 重新計價（自費要金額；機構由方案價目帶出，快照）
+    price = appt_billing.compute_pricing(
+        db, case_id=a.case_id, funding=body.funding_source, quota=quota, plan_id=body.plan_id,
+        rate_item_id=body.rate_item_id, transport_option_id=body.transport_fee_option_id,
+        session_type=a.session_type, duration_minutes=_minutes(a.time_range.lower, a.time_range.upper),
+        manual_amount=body.amount,  # 自費必填；機構不送＝由價目帶出
+        exclude_appointment_id=a.id,
+    )
+    warnings = warnings + price.warnings
     a.funding_source = body.funding_source
     a.quota_id = quota.id if quota else None
     appt_billing.hold_quota(quota)
+    appt_billing.apply_pricing(a, price)
+    _audit_manual_price(db, a, price, user)
     write_audit(db, "appointments", a.id, "UPDATE", user.id, before,
-                {"funding_source": a.funding_source, "quota_id": a.quota_id})
+                {"funding_source": a.funding_source, "quota_id": a.quota_id,
+                 "amount": float(a.amount), "self_pay_amount": float(a.self_pay_amount), "plan_id": a.plan_id})
     db.commit()
     db.refresh(a)
     therapist = db.query(User).filter(User.id == a.therapist_id).first()
