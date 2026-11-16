@@ -19,7 +19,7 @@ interface Appt {
   status: string;
   checkin_status: string;
   is_intake: boolean;
-  amount?: number; // 0＝沒有金額
+  amount?: number;
   funding_source?: string | null;
   quota_used?: number | null;
   quota_total?: number | null;
@@ -304,7 +304,8 @@ function AdjustModal({
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const canAmount = useCanEditAmount();
-  const [amount, setAmount] = useState(appt.amount ? String(appt.amount) : "");
+  const selfPay = (appt.funding_source ?? "self_pay") !== "institution";
+  const [amount, setAmount] = useState(String(appt.amount ?? 0));
 
   useEffect(() => {
     if (!inPerson || !date || !st || !et || st >= et) {
@@ -334,7 +335,12 @@ function AdjustModal({
         end_time: `${date}T${et}:00+08:00`,
       };
       if (inPerson) body.room_id = Number(roomId);
-      if (canAmount) body.amount = parseAmount(amount) ?? 0; // 清空＝沒有金額
+      // 改期不動機構案的金額（由方案帶出）；自費案只在金額有改時才送，且不可清空
+      if (canAmount && selfPay && amount !== String(appt.amount ?? "")) {
+        const amt = parseAmount(amount);
+        if (amt === undefined) { setErr("自費預約請填金額（免費請填 0）"); setSaving(false); return; }
+        body.amount = amt;
+      }
       await clientFetch(`/appointments/${appt.id}`, token, { method: "PUT", body: JSON.stringify(body) });
       onDone();
     } catch (e: any) {
@@ -380,7 +386,7 @@ function AdjustModal({
             </label>
           )}
         </div>
-        <AmountField value={amount} onChange={setAmount} className="mt-3" />
+        {selfPay && <AmountField required value={amount} onChange={setAmount} className="mt-3" />}
         <div className="mt-6 flex justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm">取消</button>
           <button type="submit" disabled={saving || (inPerson && !roomId)} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">

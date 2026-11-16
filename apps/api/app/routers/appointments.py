@@ -559,7 +559,7 @@ def update_appointment_payment(
     _audit_manual_price(db, a, price, user)
     write_audit(db, "appointments", a.id, "UPDATE", user.id, before,
                 {"funding_source": a.funding_source, "quota_id": a.quota_id,
-                 "amount": float(a.amount), "self_pay_amount": float(a.self_pay_amount), "plan_id": a.plan_id})
+                 "amount": float(a.amount), "self_pay_amount": float(a.self_pay_amount or 0), "plan_id": a.plan_id})
     db.commit()
     db.refresh(a)
     therapist = db.query(User).filter(User.id == a.therapist_id).first()

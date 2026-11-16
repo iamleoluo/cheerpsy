@@ -1872,7 +1872,7 @@ function AppointmentEditModal({
           {isStaff ? (
             <BillingFields token={token} caseId={appt.case_id} date={startDate || isoDate(new Date())} sessionType={sessionType} value={billing} onChange={setBilling} />
           ) : (
-            <AmountField value={billing.amount} onChange={(v) => setBilling({ ...billing, amount: v })} />
+            <AmountField required={billing.funding === "self_pay"} value={billing.amount} onChange={(v) => setBilling({ ...billing, amount: v })} />
           )}
           {error && <p className="text-xs text-red-600">{error}</p>}
           <div className="flex justify-end gap-2 pt-2">

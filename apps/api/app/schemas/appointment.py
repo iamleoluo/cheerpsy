@@ -36,7 +36,7 @@ class AppointmentBatchCreate(BaseModel):
     case_id: int
     room_id: int | None = None
     session_type: str = "in_person"
-    amount: float | None = Amount  # 選填；整批每一場同一個金額（slot 上的 amount 已忽略）
+    amount: float | None = Amount  # 整批每一場同一個金額（slot 上的 amount 已忽略）；自費必填，機構由方案帶出
     funding_source: str | None = None
     quota_id: int | None = None
     plan_id: int | None = None
