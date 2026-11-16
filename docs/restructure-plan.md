@@ -710,7 +710,7 @@ OAuth 流程放在現有 JWT 後面：心理師已登入 → 導去 Google → c
 | 心理師 | `therapist` | 已有。含 `has_account=false` 的名單制（可被派、不可登入） |
 | 主管 | **新增 `manager`** | 現在這些權限在 `admin`。拆出來，避免診所主管拿到重設密碼與匯入權 |
 | 系統管理員 | `admin` | 留下，收斂成帳號、診間主檔、選項、稽核、OAuth 用戶端設定 |
-| 會計 | `accountant` | ~~停用。不遷移成 staff~~ **（2026-11-17 取代：待業主決定（停用或維持唯讀）；與 `gcal-sync-plan.md` §8.0 矛盾，兩邊都未定。）** |
+| 會計 | `accountant` | ~~停用。不遷移成 staff~~ ~~**（2026-11-17 取代：待業主決定（停用或維持唯讀）；與 `gcal-sync-plan.md` §8.0 矛盾，兩邊都未定。）**~~ **已定（2026-11-17）：刪除 accountant 角色**——既有帳號改停用（不刪資料列、不改成 staff），之後不能再建立或改成 accountant。 |
 
 `manager` 的權限集合＝現在 staff 的全部營運能力，加上：看所有心理師班表與負荷、改派與結案、看稽核裡的營運操作、停用某心理師的日曆連結。**沒有**：建立使用者、重設密碼、改 `issue_tags` 主檔、跑資料匯入、drop 等級的匯出。
 
@@ -910,7 +910,7 @@ flowchart TD
 
 - **上線 B**：歸檔加 drop migration（只 drop 帳務表、`hourly_rate`／`fee_item`、`therapist_share`／`clinic_share`；先在正式資料複本跑 `check_amounts.py`、`list_overlaps.py`）。
 - **§3.5 清理**：`reportlab`、Redis、`OUTPATIENT_MIN_FEE`、`CLAIM_DOC_ROOT`／`claimdocs`、seed 的 accountant、`RAILWAY_DEPLOY.md`／`WORK_REPORT.md` 的「每日匯出流水到 Google Drive」；帳務 router 和 `settlement.py` 在上線 B 後刪。
-- **會計角色決策**：23 個 router 檔還有 `"accountant"`；待業主決定停用或維持唯讀（見 §7.1）。
+- **刪除 accountant 角色（已定 2026-11-17，本次實作）**：後端 23 個 router 檔的 `RequireRole`／角色判斷、角色列舉與 schema 驗證、`seed.py` 拿掉 `"accountant"`；新 migration 把既有 `role='accountant'` 帳號停用（`is_active=false`，不刪、不改角色）；建立或改成 accountant 回 422、既有 accountant 登入被拒；前端 middleware、nav、`landingForRole`、角色選單、使用者管理頁、`guide-content` 同步拿掉；測試更新。不動 `quota_flow.py`、`settlement.py`。
 - `events` 講師費停止寫入。
 - `sweep_expired` 改成定時跑（`gcal_worker` 或排程）。
 - **媒合加強**：需求表新欄位、`therapist_profiles`、suggestions、`matching_vocab`、可當診時段畫面。
