@@ -60,3 +60,6 @@ coverage/
 
 # Docker credential 繞道用的暫存設定（deploy.ps1 產生）
 .docker-ci/
+
+# Google Calendar 沙盒的 OAuth 憑證與 token（絕不可進 git）
+.sandbox/
