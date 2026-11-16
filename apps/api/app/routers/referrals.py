@@ -259,7 +259,7 @@ class ReferralOut(BaseModel):
     case_id: int | None
     case_number: str | None
     created_at: datetime
-    intake_appointment_id: int | None = None  # 已轉初診就不再顯示「轉初診」
+    intake_appointment_id: int | None = None  # 已預約初診就不再顯示「預約初診」
     # 親友介紹需提示雙重關係（原型 pool 倫理提示）
     dual_relationship_warning: bool
 
@@ -688,6 +688,25 @@ def accept_invite(
         db.commit()
         raise HTTPException(status_code=409, detail="此案已被其他心理師承接")
 
+    # 心理師提出的每個時段都要沒有預約、沒有不接案；逐筆列出第幾個時段（只寫時段），讓心理師改
+    problems: list[str] = []
+    for i, s in enumerate(body.slots, start=1):
+        try:
+            start = datetime.fromisoformat(f"{s.slot_date}T{s.start_time}:00+08:00")
+            end = datetime.fromisoformat(f"{s.slot_date}T{s.end_time}:00+08:00")
+        except ValueError:
+            raise HTTPException(status_code=422, detail=f"第 {i} 個時段的時間格式不正確")
+        if end <= start:
+            raise HTTPException(status_code=422, detail=f"第 {i} 個時段的結束時間必須晚於開始時間")
+        for check in (assert_therapist_free, assert_therapist_available):
+            try:
+                check(db, user.id, start, end)
+            except HTTPException as exc:
+                problems.append(f"第 {i} 個時段：{exc.detail}")
+                break
+    if problems:
+        raise HTTPException(status_code=409, detail="；".join(problems))
+
     t.status = "accepted"
     t.responded_at = _now()
     for i, s in enumerate(body.slots, start=1):
@@ -721,7 +740,7 @@ def decline_invite(
 
 
 # ---------------------------------------------------------------------------
-# 轉預約：把心理師承接時提供的時段，選一個排成初診
+# 預約初診：把心理師承接時提供的時段，選一個排成初診
 # ---------------------------------------------------------------------------
 class ConvertBody(BaseModel):
     slot_id: int
