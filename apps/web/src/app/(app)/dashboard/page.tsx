@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
 import Link from "next/link";
+import { SESSION_TYPE, hhmm } from "@/lib/format";
 import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
 
 const helpContent: HelpContent = {
@@ -45,6 +46,20 @@ interface DashboardData {
   churn_count: number | null;
 }
 
+interface PendingItem {
+  appointment_id: number;
+  start_time: string;
+  end_time: string;
+  therapist_name: string | null;
+  subject_name: string | null;
+  is_intake: boolean;
+  session_type: string;
+}
+interface PendingCheckin {
+  count: number;
+  items: PendingItem[];
+}
+
 export default function DashboardPage() {
   const { data: session } = useSession();
   const token = (session?.user as any)?.accessToken;
@@ -52,6 +67,7 @@ export default function DashboardPage() {
   const userName = (session?.user as any)?.name ?? "";
 
   const [data, setData] = useState<DashboardData | null>(null);
+  const [pending, setPending] = useState<PendingCheckin | null>(null);
   const [loading, setLoading] = useState(true);
   const [helpOpen, setHelpOpen] = useState(false);
 
@@ -61,6 +77,8 @@ export default function DashboardPage() {
     try {
       const d = await clientFetch("/dashboard", token);
       setData(d);
+      // 昨天以前仍待報到：失敗不影響其他數字
+      setPending(await clientFetch("/dashboard/pending-checkin", token).catch(() => null));
     } catch {
       // ignore
     } finally {
@@ -139,6 +157,44 @@ export default function DashboardPage() {
                 alertText="超過 45 天沒有預約"
                 href="/cases"
               />
+            </div>
+          )}
+
+          {pending && pending.count > 0 && (
+            <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4">
+              <div className="mb-2 flex items-baseline justify-between">
+                <h2 className="text-sm font-medium text-amber-900">昨日（含更早）仍待報到</h2>
+                <span className="text-lg font-bold text-amber-700">{pending.count} 筆</span>
+              </div>
+              <p className="mb-2 text-xs text-amber-800">
+                這些預約開始時間已過、狀態仍是「已預約」。點進去補按「有到」或「未到」；系統不會自動更改。
+              </p>
+              <ul className="divide-y divide-amber-200 text-sm">
+                {pending.items.map((p) => {
+                  const day = p.start_time.slice(0, 10);
+                  return (
+                    <li key={p.appointment_id}>
+                      <Link
+                        href={`/appts?date=${day}`}
+                        className="flex flex-wrap items-center gap-x-3 gap-y-0.5 py-1.5 hover:bg-amber-100"
+                      >
+                        <span className="tabular-nums text-gray-700">
+                          {day.slice(5)} {hhmm(p.start_time)}–{hhmm(p.end_time)}
+                        </span>
+                        <span className="font-medium">
+                          {p.is_intake && <span className="mr-1 text-amber-600">⭐初診</span>}
+                          {p.subject_name ?? "—"}
+                        </span>
+                        {!isTherapist && <span className="text-gray-500">{p.therapist_name}</span>}
+                        <span className="text-xs text-gray-500">{SESSION_TYPE[p.session_type] ?? p.session_type}</span>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+              {pending.count > pending.items.length && (
+                <p className="mt-2 text-xs text-amber-800">僅顯示最早的 {pending.items.length} 筆。</p>
+              )}
             </div>
           )}
 

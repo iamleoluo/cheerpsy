@@ -8,14 +8,20 @@
 import logging
 import signal
 import threading
+import time
 
-from app.services import gcal_push
+from app.services import gcal_push, referral_sweep
 
 IDLE_SECONDS = 5  # 沒事做時多久看一次 outbox
 BUSY_SECONDS = 1  # 剛處理完一批，稍微喘口氣再看
+SWEEP_INTERVAL_SECONDS = 3600  # 媒合逾期處理（sweep_expired）每小時一次
 
 logger = logging.getLogger("cheerpsy.gcal")
 _stop = threading.Event()
+
+
+def sweep_due(last: float | None, now: float, interval: float = SWEEP_INTERVAL_SECONDS) -> bool:
+    return last is None or now - last >= interval
 
 
 def main() -> None:
@@ -23,7 +29,14 @@ def main() -> None:
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: _stop.set())
     logger.info("gcal worker started")
+    last_sweep: float | None = None  # 上次執行時間（monotonic）；None＝啟動後第一輪就跑
     while not _stop.is_set():
+        if sweep_due(last_sweep, time.monotonic()):
+            last_sweep = time.monotonic()  # 先記時間：失敗也等下一小時再試，不會每輪重跑
+            try:
+                referral_sweep.run_sweep()
+            except Exception:  # noqa: BLE001 — run_sweep 已自行處理，這裡是最後一道保險
+                logger.exception("referral sweep crashed")
         n = gcal_push.run_once()
         _stop.wait(BUSY_SECONDS if n else IDLE_SECONDS)
     logger.info("gcal worker stopped")

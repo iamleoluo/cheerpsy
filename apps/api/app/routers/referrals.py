@@ -20,6 +20,7 @@ from app.models.referral import (
 from app.models.user import User
 from app.services import appt_billing
 from app.services.audit import write_audit
+from app.services.referral_sweep import settle_dispatch as _settle_dispatch, sweep_expired  # noqa: F401
 from app.services.slot_check import (
     assert_room_active, assert_room_free, assert_therapist_available, assert_therapist_free, flush_or_409,
 )
@@ -29,9 +30,6 @@ router = APIRouter(prefix="/referrals", tags=["referrals"])
 STAFF = ["admin", "staff"]
 ADMIN_STAFF = ["admin", "staff"]
 
-# 逾 1 個自然日提醒、逾 3 個自然日自動退回（原型 match 定案④）
-REMIND_AFTER_DAYS = 1
-EXPIRE_AFTER_DAYS = 3
 MAX_DISPATCH_TARGETS = 3
 
 
@@ -54,68 +52,8 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-# ---------------------------------------------------------------------------
-# 逾期處理：讀取時延遲結算，不需要排程器
-#   逾 1 天標記 reminded_at（供待辦顯示）
-#   逾 3 天 target 轉 expired；整批都 expired 則 dispatch 轉 expired、
-#   媒合狀態退回 failed 供行政重新派案
-# ---------------------------------------------------------------------------
-def sweep_expired(db: Session) -> int:
-    now = _now()
-    remind_before = now - timedelta(days=REMIND_AFTER_DAYS)
-    expire_before = now - timedelta(days=EXPIRE_AFTER_DAYS)
-    changed = 0
-
-    pending = (
-        db.query(ReferralDispatchTarget)
-        .join(ReferralDispatch)
-        .filter(ReferralDispatchTarget.status == "pending")
-        .all()
-    )
-    for t in pending:
-        sent = t.dispatch.dispatched_at
-        if sent is None:
-            continue
-        if sent <= expire_before:
-            t.status = "expired"
-            t.responded_at = now
-            changed += 1
-        elif sent <= remind_before and t.reminded_at is None:
-            t.reminded_at = now
-            changed += 1
-
-    if changed:
-        db.flush()
-        for dsp in {t.dispatch for t in pending}:
-            _settle_dispatch(db, dsp)
-        db.commit()
-    return changed
-
-
-def _settle_dispatch(db: Session, dispatch: ReferralDispatch) -> None:
-    """依 target 狀態收斂 dispatch 與 referral 的狀態。"""
-    statuses = [t.status for t in dispatch.targets]
-    if not statuses:
-        return
-    referral = dispatch.referral
-
-    if "accepted" in statuses:
-        dispatch.status = "accepted"
-        dispatch.resolved_at = dispatch.resolved_at or _now()
-        # 先回先得：其餘未回覆者轉「被他人承接」
-        for t in dispatch.targets:
-            if t.status == "pending":
-                t.status = "taken"
-                t.responded_at = _now()
-        if referral.status in ("new", "matching", "failed"):
-            referral.status = "converted"
-        return
-
-    if all(s in ("declined", "taken", "expired", "released") for s in statuses):
-        dispatch.status = "expired" if "expired" in statuses else "failed"
-        dispatch.resolved_at = dispatch.resolved_at or _now()
-        if referral.status == "matching":
-            referral.status = "failed"
+# 逾期處理（sweep_expired／settle_dispatch）在 services/referral_sweep.py；
+# 列表頁讀取時順便呼叫，另由 gcal_worker 每小時定時呼叫。
 
 
 # ---------------------------------------------------------------------------

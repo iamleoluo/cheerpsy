@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, text
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user
@@ -21,6 +22,7 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 TZ = timezone(timedelta(hours=8))  # 診所在台灣
 CHURN_DAYS = 45
+PENDING_CHECKIN_DAYS = 30  # 「仍待報到」只回看這麼多天
 OVERVIEW_ROLES = ("admin", "staff")  # 看得到全所媒合與流失統計
 
 
@@ -108,3 +110,56 @@ def dashboard_stats(
         "matching_count": matching_count,
         "churn_count": churn_count,
     }
+
+
+class PendingCheckinItem(BaseModel):
+    appointment_id: int
+    start_time: datetime
+    end_time: datetime
+    therapist_name: str | None
+    subject_name: str | None  # 個案姓名；初診（尚無個案）為媒合需求表的姓名
+    is_intake: bool
+    session_type: str
+
+
+class PendingCheckinOut(BaseModel):
+    count: int
+    items: list[PendingCheckinItem]
+
+
+@router.get("/pending-checkin", response_model=PendingCheckinOut)
+def pending_checkin(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """開始時間早於今天 00:00（Asia/Taipei）、且在最近 30 天內、狀態仍為 booked 的預約：該補按「有到」或「未到」的。
+
+    只看 [今天 00:00 往前 30 天, 今天 00:00)；更早的不列（也不算進 count）。從新排到舊。
+
+    行政、管理員看全部；心理師只看自己的。只列出，不自動改任何狀態。
+    """
+    day_start = datetime.now(TZ).replace(hour=0, minute=0, second=0, microsecond=0)
+    q = db.query(Appointment).filter(
+        Appointment.status == "booked",
+        func.lower(Appointment.time_range) < day_start,
+        func.lower(Appointment.time_range) >= day_start - timedelta(days=PENDING_CHECKIN_DAYS),
+    )
+    if user.role == "therapist":
+        q = q.filter(Appointment.therapist_id == user.id)
+    elif user.role not in OVERVIEW_ROLES:
+        return PendingCheckinOut(count=0, items=[])
+    total = q.count()
+    rows = q.order_by(func.lower(Appointment.time_range).desc()).limit(200).all()
+    items = []
+    for a in rows:
+        ref = db.query(ReferralRequest).filter(ReferralRequest.id == a.referral_id).first() if a.referral_id else None
+        items.append(PendingCheckinItem(
+            appointment_id=a.id,
+            start_time=a.time_range.lower.astimezone(TZ),  # 台北時間，前端取日期不會差一天
+            end_time=a.time_range.upper.astimezone(TZ),
+            therapist_name=a.therapist.name if a.therapist else None,
+            subject_name=(a.case.name if a.case else (ref.name if ref else None)),
+            is_intake=bool(a.is_intake),
+            session_type=a.session_type,
+        ))
+    return PendingCheckinOut(count=total, items=items)
