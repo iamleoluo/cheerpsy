@@ -198,6 +198,75 @@ export default function SettingsPage() {
           </button>
         </div>
       </div>
+
+      {me.role === "therapist" && <GcalStatusCard token={token} />}
+    </div>
+  );
+}
+
+interface GcalStatus {
+  clinic_connected: boolean;
+  calendar_created: boolean;
+  shared_to_me: boolean;
+  share_email: string | null;
+  last_push_at: string | null;
+  failed_count: number;
+  pending_count: number;
+  problem: string | null;
+}
+
+/** Google 行事曆同步（唯讀）：只看自己的狀態；設定與重試由行政處理。 */
+function GcalStatusCard({ token }: { token: string }) {
+  const [st, setSt] = useState<GcalStatus | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    clientFetch("/gcal/my-status", token)
+      .then(setSt)
+      .catch(() => setFailed(true));
+  }, [token]);
+
+  const Row = ({ label, ok, text }: { label: string; ok: boolean; text: string }) => (
+    <div className="flex items-center justify-between py-1.5">
+      <span className="text-gray-500">{label}</span>
+      <span className={ok ? "font-medium text-green-700" : "font-medium text-amber-700"}>{ok ? "✓ " : "✗ "}{text}</span>
+    </div>
+  );
+
+  return (
+    <div className="mt-6 rounded-lg border border-gray-200 p-5 text-sm">
+      <h2 className="mb-1 text-base font-semibold">Google 行事曆同步</h2>
+      <p className="mb-3 text-xs text-gray-400">唯讀。你的預約會由行政設定的診所帳號推送到你的 Google 行事曆。</p>
+      {failed ? (
+        <p className="text-gray-400">暫時無法取得同步狀態</p>
+      ) : !st ? (
+        <p className="text-gray-400">載入中...</p>
+      ) : (
+        <>
+          <div className="divide-y divide-gray-100">
+            <Row label="診所已連上 Google" ok={st.clinic_connected} text={st.clinic_connected ? "已連上" : "尚未連上"} />
+            <Row label="我的行事曆" ok={st.calendar_created} text={st.calendar_created ? "已建立" : "尚未建立"} />
+            <Row
+              label={`共享給我的信箱${st.share_email ? `（${st.share_email}）` : ""}`}
+              ok={st.shared_to_me}
+              text={st.shared_to_me ? "已共享" : "尚未共享"}
+            />
+            <div className="flex items-center justify-between py-1.5">
+              <span className="text-gray-500">最近一次推送成功</span>
+              <span className="font-medium">{st.last_push_at ? new Date(st.last_push_at).toLocaleString("zh-TW", { hour12: false }) : "尚無紀錄"}</span>
+            </div>
+            <div className="flex items-center justify-between py-1.5">
+              <span className="text-gray-500">待推送／失敗</span>
+              <span className="font-medium">
+                {st.pending_count} 筆 ／ <span className={st.failed_count > 0 ? "text-red-600" : ""}>{st.failed_count} 筆</span>
+              </span>
+            </div>
+          </div>
+          {st.problem && (
+            <div className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">⚠ {st.problem}</div>
+          )}
+        </>
+      )}
     </div>
   );
 }
