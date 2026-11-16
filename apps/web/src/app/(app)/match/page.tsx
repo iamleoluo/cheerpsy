@@ -331,7 +331,7 @@ export default function MatchPage() {
                             onClick={() => setModal({ kind: "convert", referral: r })}
                             className="font-medium text-primary-600 hover:underline"
                           >
-                            轉初診
+                            預約初診
                           </button>
                         )}
                         {r.status === "converted" && (
@@ -970,7 +970,7 @@ interface FreeRoom {
   room_type: string;
 }
 
-/** 轉初診：先列出「時段 × 診間」可選清單（已排除該心理師的預約與不接案），選了才能送出。 */
+/** 預約初診：先列出「時段 × 診間」可選清單（已排除該心理師的預約與不接案），選了才能送出。 */
 function ConvertModal({
   token,
   referral,
@@ -987,7 +987,7 @@ function ConvertModal({
   const [date, setDate] = useState("");
   const [sessionType, setSessionType] = useState("in_person");
   const [amount, setAmount] = useState("");
-  const [free, setFree] = useState<Record<number, FreeRoom[]> | null>(null);
+  const [free, setFree] = useState<Record<number, FreeRoom[] | null> | null>(null);
   const [pick, setPick] = useState<{ slotId: number; roomId: number | null } | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1005,6 +1005,7 @@ function ConvertModal({
       .catch((e) => setError(e.message));
   }, [token, referral.id]);
 
+  const online = sessionType !== "in_person";
   const target = targets?.find((t) => t.id === targetId);
   const dates = Array.from(new Set(target?.slots.map((s) => s.slot_date) ?? [])).sort();
   const daySlots = (target?.slots ?? []).filter((s) => s.slot_date === date);
@@ -1021,6 +1022,12 @@ function ConvertModal({
             end: `${s.slot_date}T${s.end_time}:00+08:00`,
             therapist_id: String(target.therapist_id),
           });
+          if (online) {
+            // 線上不佔診間：只問心理師有沒有空，避免診間全滿時誤判
+            q.set("therapist_only", "true");
+            const r: { available: boolean } = await clientFetch(`/rooms/availability?${q}`, token);
+            return [s.id, r.available ? [] : null] as const;
+          }
           const rooms: FreeRoom[] = await clientFetch(`/rooms/availability?${q}`, token);
           return [s.id, rooms] as const;
         })
@@ -1030,7 +1037,7 @@ function ConvertModal({
       setError(e.message);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, target, date]);
+  }, [token, target, date, online]);
 
   useEffect(() => {
     loadFree();
@@ -1066,10 +1073,8 @@ function ConvertModal({
     }
   }
 
-  const online = sessionType !== "in_person";
-
   return (
-    <Modal title={`轉初診：${referral.name}`}>
+    <Modal title={`預約初診：${referral.name}`}>
       <form onSubmit={submit} className="space-y-3 text-sm">
         {!targets ? (
           <p className="text-gray-400">載入中...</p>
@@ -1122,11 +1127,11 @@ function ConvertModal({
               ) : (
                 <div className="space-y-2">
                   {daySlots.map((s) => {
-                    const rooms = free[s.id] ?? [];
+                    const rooms = free[s.id];  // 現場：空診間清單；線上：[] 代表有空、null 代表不可約
                     return (
                       <div key={s.id} className="rounded-lg border border-gray-200 px-3 py-2">
                         <div className="mb-1 text-xs font-medium text-gray-700">{s.start_time}–{s.end_time}</div>
-                        {rooms.length === 0 ? (
+                        {rooms === null || rooms === undefined || (!online && rooms.length === 0) ? (
                           <div className="text-xs text-gray-400">此時段不可約</div>
                         ) : online ? (
                           <label className="flex items-center gap-2 text-xs">
@@ -1155,7 +1160,7 @@ function ConvertModal({
         <div className="flex justify-end gap-2 pt-1">
           <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2">返回</button>
           <button type="submit" disabled={saving || !pick} className="rounded-lg bg-primary-600 px-4 py-2 font-medium text-white disabled:opacity-50">
-            {saving ? "建立中..." : "確認轉初診"}
+            {saving ? "建立中..." : "確認預約初診"}
           </button>
         </div>
       </form>
