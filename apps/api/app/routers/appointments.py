@@ -20,7 +20,8 @@ from app.models.case_institution_quota import CaseInstitutionQuota
 from app.services import appt_billing
 from app.services.audit import write_audit
 from app.services.slot_check import (
-    assert_case_free, assert_room_active, assert_room_free, assert_therapist_free, flush_or_409,
+    assert_case_free, assert_room_active, assert_room_free, assert_therapist_available, assert_therapist_free,
+    flush_or_409,
 )
 from app.schemas.appointment import (
     AppointmentBatchCreate,
@@ -282,6 +283,7 @@ def create_appointment(
     assert_room_active(db, body.room_id)
     assert_room_free(db, body.room_id, body.start_time, body.end_time)
     assert_therapist_free(db, therapist.id, body.start_time, body.end_time)
+    assert_therapist_available(db, therapist.id, body.start_time, body.end_time)
     assert_case_free(db, [body.case_id, body.couple_case_id], body.start_time, body.end_time)
 
     seq = _next_seq(db, therapist.user_code, body.start_time)
@@ -365,10 +367,16 @@ def create_batch(
     consult_type = _consult_type(body.consult_type, case, body.couple_case_id)
     results = []
     warns: dict[int, list[str]] = {}
+    off_slots: list[str] = []  # 落在請假時段的場次：逐筆列出，整批不成立
 
     for i, slot in enumerate(body.slots):
         assert_room_free(db, body.room_id, slot.start_time, slot.end_time)
         assert_therapist_free(db, therapist.id, slot.start_time, slot.end_time)
+        try:
+            assert_therapist_available(db, therapist.id, slot.start_time, slot.end_time)
+        except HTTPException as exc:
+            off_slots.append(f"第 {i + 1} 筆：{exc.detail}")
+            continue
         assert_case_free(db, [body.case_id, body.couple_case_id], slot.start_time, slot.end_time)
 
         seq = _next_seq(db, therapist.user_code, slot.start_time)
@@ -418,6 +426,9 @@ def create_batch(
         results.append(appt)
         warns[i] = slot_warnings
 
+    if off_slots:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="；".join(off_slots))
     db.commit()
     for a in results:
         db.refresh(a)
@@ -495,6 +506,7 @@ def update_appointment(
         assert_room_free(db, new_room, new_start, new_end, exclude_appointment_id=appointment_id)
         if body.start_time is not None or body.end_time is not None:  # 只換診間、時間沒動，不重查（舊資料的既有重疊不該卡住換房）
             assert_therapist_free(db, a.therapist_id, new_start, new_end, exclude_appointment_id=appointment_id)
+            assert_therapist_available(db, a.therapist_id, new_start, new_end)
             assert_case_free(db, [a.case_id, a.couple_case_id], new_start, new_end, exclude_appointment_id=appointment_id)
         a.time_range = DateTimeTZRange(new_start, new_end)
     if body.room_id is not None:

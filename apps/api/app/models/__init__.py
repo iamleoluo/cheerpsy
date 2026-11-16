@@ -3,6 +3,7 @@ from app.models.institution import Institution
 from app.models.case import Case
 from app.models.couple_member import CoupleMember
 from app.models.room import Room
+from app.models.therapist_time_off import TherapistTimeOff  # noqa: F401
 from app.models.appointment import Appointment
 from app.models.session_record import SessionRecord
 from app.models.invoice import Invoice

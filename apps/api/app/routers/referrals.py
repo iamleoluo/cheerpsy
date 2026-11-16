@@ -20,7 +20,9 @@ from app.models.referral import (
 from app.models.user import User
 from app.services import appt_billing
 from app.services.audit import write_audit
-from app.services.slot_check import assert_room_active, assert_room_free, assert_therapist_free, flush_or_409
+from app.services.slot_check import (
+    assert_room_active, assert_room_free, assert_therapist_available, assert_therapist_free, flush_or_409,
+)
 
 router = APIRouter(prefix="/referrals", tags=["referrals"])
 
@@ -779,6 +781,7 @@ def convert_to_appointment(
     assert_room_active(db, body.room_id)
     assert_room_free(db, body.room_id, start, end)
     assert_therapist_free(db, target.therapist_id, start, end)  # 初診尚無個案，只檢查心理師
+    assert_therapist_available(db, target.therapist_id, start, end)
 
     # 自費：金額必填；機構案：由方案價目帶出應收與自付額（快照）
     price = appt_billing.compute_pricing(

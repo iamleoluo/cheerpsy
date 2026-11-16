@@ -192,3 +192,19 @@ def assert_case_free(
     row = db.execute(text(sql + " ORDER BY lower(time_range) LIMIT 1"), params).first()
     if row:
         raise HTTPException(status_code=409, detail=f"個案在 {_fmt(row.s, row.e)} 已有其他預約")
+
+
+def assert_therapist_available(db: Session, therapist_id: int | None, start: datetime, end: datetime) -> None:
+    """心理師在時段內沒有「這段不接案」；否則 409。訊息只寫時段，不帶原因（原因只有本人與行政看得到）。"""
+    if not therapist_id:
+        return
+    row = db.execute(
+        text("""
+            SELECT lower(time_range) AS s, upper(time_range) AS e FROM therapist_time_off
+             WHERE therapist_id = :tid AND time_range && tstzrange(:start, :end)
+             ORDER BY lower(time_range) LIMIT 1
+        """),
+        {"tid": therapist_id, "start": start, "end": end},
+    ).first()
+    if row:
+        raise HTTPException(status_code=409, detail=f"心理師在 {_fmt(row.s, row.e)} 不接案")
