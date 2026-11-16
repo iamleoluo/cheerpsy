@@ -46,8 +46,6 @@ class AppointmentBatchCreate(BaseModel):
     transport_fee_option_id: int | None = None
     consult_type: str | None = None  # individual/couple/family/parenting；不送＝伴侶案為 couple、其餘 individual
     service_type: str | None = None  # 價目項目的服務型態代碼；不送＝不限
-    consult_type: str | None = None
-    service_type: str | None = None
     couple_case_id: int | None = None
     slots: list[BatchSlot]
 

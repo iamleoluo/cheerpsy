@@ -1,4 +1,4 @@
-"""唯讀檢查：列出金額為 0／NULL，或機構預約自付額為 NULL 的預約。
+"""唯讀檢查：列出金額為 0／NULL、機構預約自付額為 NULL，或同一預約有多筆有效 session_records 的預約。
 
 只執行 SELECT，不改任何資料。用法（需設定 DATABASE_URL）：
     python scripts/check_amounts.py            # 列表
@@ -16,11 +16,13 @@ SELECT a.id, a.appointment_number, lower(a.time_range) AS start_time, a.status, 
        CASE
          WHEN a.amount IS NULL THEN '金額為 NULL'
          WHEN a.amount = 0 THEN '金額為 0'
-         ELSE '機構預約自付額未設定'
+         WHEN a.funding_source = 'institution' AND a.self_pay_amount IS NULL THEN '機構預約自付額未設定'
+         ELSE '有多筆有效 session_records（回填取最新一筆，請確認）'
        END AS problem
   FROM appointments a
  WHERE a.amount IS NULL OR a.amount = 0
     OR (a.funding_source = 'institution' AND a.self_pay_amount IS NULL)
+    OR (SELECT count(*) FROM session_records s WHERE s.appointment_id = a.id AND s.is_void = false) > 1
  ORDER BY lower(a.time_range), a.id
 """
 

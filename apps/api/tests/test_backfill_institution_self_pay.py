@@ -167,3 +167,53 @@ def test_check_amounts_script_lists_problem_rows_read_only(client, auth, world, 
     assert f"#{zero}\t" in r.stdout and "金額為 0" in r.stdout
     assert f"#{good}\t" not in r.stdout
     assert db.execute(text("SELECT id, amount, self_pay_amount FROM appointments ORDER BY id")).all() == snapshot  # 唯讀
+
+
+def test_duplicate_valid_session_records_use_latest_and_are_listed_by_check_script(client, auth, world, db):
+    import os, subprocess, sys
+
+    w = world
+    p = make_plan(client, auth, w, rate_items=[{"label": "個別", "total_amount": 1600, "self_pay_amount": 200}])
+    quota(client, auth, w, w["c1"], p)
+    a = book(client, auth, w["staff"], w["c1"], w["room"], day=3).json()["id"]
+
+    # 若資料庫對 appointment_id 有唯一限制，重複根本寫不進去；這裡只在允許時才驗（舊資料可能有）
+    def rec(sp, cl):
+        db.execute(text("""
+            INSERT INTO session_records (appointment_id, session_date, therapist_id, session_type, amount,
+                                         self_pay_amount, institution_claim_amount, is_void, fee_category, payment_status)
+            SELECT id, current_date, therapist_id, session_type, amount, :sp, :cl, false, 'counseling', 'unpaid'
+              FROM appointments WHERE id = :i
+        """), {"i": a, "sp": sp, "cl": cl})
+
+    # 這個測試庫對 appointment_id 有唯一限制；為了模擬舊資料，暫時拿掉，測完還原
+    cons = db.execute(text("""
+        SELECT c.conname FROM pg_constraint c
+         WHERE c.conrelid = 'session_records'::regclass AND c.contype = 'u'
+           AND (SELECT array_agg(a.attname::text) FROM pg_attribute a
+                 WHERE a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)) = ARRAY['appointment_id']
+    """)).scalars().all()
+    for n in cons:
+        db.execute(text(f'ALTER TABLE session_records DROP CONSTRAINT "{n}"'))
+    db.commit()
+    try:
+        rec(500, 1100)
+        rec(300, 1300)
+        db.commit()
+        db.execute(text("UPDATE appointments SET self_pay_amount = NULL WHERE id = :i"), {"i": a})
+        db.commit()
+        db.rollback()
+        _run_zt0d()
+        db.expire_all()
+        assert float(db.execute(text("SELECT self_pay_amount FROM appointments WHERE id = :i"), {"i": a}).scalar()) == 300  # 最新一筆
+
+        env = {**os.environ, "DATABASE_URL": str(engine.url.render_as_string(hide_password=False)), "PYTHONUTF8": "1"}
+        r = subprocess.run([sys.executable, "-X", "utf8", str(API_DIR / "scripts" / "check_amounts.py")],
+                           capture_output=True, text=True, encoding="utf-8", env=env)
+        assert f"#{a}	" in r.stdout and "多筆有效 session_records" in r.stdout
+    finally:
+        db.rollback()
+        db.execute(text("DELETE FROM session_records WHERE appointment_id = :i"), {"i": a})
+        for n in cons:
+            db.execute(text(f'ALTER TABLE session_records ADD CONSTRAINT "{n}" UNIQUE (appointment_id)'))
+        db.commit()
