@@ -165,7 +165,7 @@ def create_case(
 @router.post("/couple", response_model=CaseResponse, status_code=status.HTTP_201_CREATED)
 def create_couple_case(
     body: CoupleCreate,
-    user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
+    user: User = Depends(RequireRole(["admin", "staff"])),
     db: Session = Depends(get_db),
 ):
     """建立伴侶案：把兩個既有個案綁成一筆合療收費單位（case_type='couple'）。"""
@@ -221,7 +221,7 @@ def create_couple_case(
 def update_case(
     case_id: int,
     body: CaseUpdate,
-    user: User = Depends(RequireRole(["admin", "accountant", "staff", "therapist"])),
+    user: User = Depends(RequireRole(["admin", "staff", "therapist"])),
     db: Session = Depends(get_db),
 ):
     c = db.query(Case).filter(Case.id == case_id).first()
@@ -259,7 +259,7 @@ def update_case(
 @router.post("/{case_id}/activate", response_model=CaseResponse)
 def activate_case(
     case_id: int,
-    user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
+    user: User = Depends(RequireRole(["admin", "staff"])),
     db: Session = Depends(get_db),
 ):
     c = db.query(Case).filter(Case.id == case_id).first()

@@ -38,7 +38,7 @@ from app.services.pdf.receipt import (
 
 router = APIRouter(prefix="/receipts", tags=["receipts"])
 
-ROLES = ["admin", "accountant", "staff"]
+ROLES = ["admin", "staff"]
 
 
 def _preview_from_data(data: ReceiptData, show_tax_id: bool = False) -> ReceiptPreview:

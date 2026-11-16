@@ -60,7 +60,7 @@ def list_invoices(
 @router.post("", response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(accounting_gone)])
 def create_invoice(
     body: InvoiceCreate,
-    user: User = Depends(RequireRole(["admin", "accountant"])),
+    user: User = Depends(RequireRole(["admin"])),
     db: Session = Depends(get_db),
 ):
     appt = db.query(Appointment).filter(Appointment.id == body.appointment_id).first()
@@ -96,7 +96,7 @@ def create_invoice(
 def void_invoice(
     invoice_id: int,
     body: InvoiceVoid,
-    user: User = Depends(RequireRole(["admin", "accountant"])),
+    user: User = Depends(RequireRole(["admin"])),
     db: Session = Depends(get_db),
 ):
     inv = db.query(Invoice).filter(Invoice.id == invoice_id).first()

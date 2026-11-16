@@ -255,10 +255,6 @@ def create_appointment(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    # accountant cannot create appointments
-    if user.role == "accountant":
-        raise HTTPException(status_code=403, detail="Accountant cannot create appointments")
-
     case = _case_or_404(db, user, body.case_id)
     if body.couple_case_id:
         _case_or_404(db, user, body.couple_case_id)  # 別人的伴侶案與不存在一樣回 404
@@ -341,9 +337,6 @@ def create_batch(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if user.role == "accountant":
-        raise HTTPException(status_code=403, detail="Accountant cannot create appointments")
-
     case = _case_or_404(db, user, body.case_id)
     if body.couple_case_id:
         _case_or_404(db, user, body.couple_case_id)  # 別人的伴侶案與不存在一樣回 404
@@ -752,7 +745,7 @@ NO_SHOW_TYPES = ("advance_notice", "late_cancel", "no_notice")
 @router.put("/{appointment_id}/arrive", response_model=AppointmentResponse)
 def mark_arrived(
     appointment_id: int,
-    user: User = Depends(RequireRole(["admin", "staff", "accountant", "therapist"])),
+    user: User = Depends(RequireRole(["admin", "staff", "therapist"])),
     db: Session = Depends(get_db),
 ):
     """初診／一般預約報到「已到」：只轉為已執行，不產生帳務紀錄。心理師只能處理自己的預約。"""
@@ -786,7 +779,7 @@ def set_no_show_fee(user: User = Depends(get_current_user)):
 def mark_absent(
     appointment_id: int,
     body: CheckInBody,
-    user: User = Depends(RequireRole(["admin", "staff", "accountant", "therapist"])),
+    user: User = Depends(RequireRole(["admin", "staff", "therapist"])),
     db: Session = Depends(get_db),
 ):
     """報到「未到」：只記錄未到類型，不產生帳務紀錄、不計失約費。心理師只能處理自己的預約。"""

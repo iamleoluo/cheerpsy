@@ -3,6 +3,8 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Literal
+
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -79,7 +81,9 @@ class UserListResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-ROLE_CODE_PREFIX = {"admin": "A", "accountant": "C", "staff": "S", "therapist": "T"}
+ROLE_CODE_PREFIX = {"admin": "A", "staff": "S", "therapist": "T"}
+# accountant 角色已刪除（2026-11-17）：不能再建立、不能改成 accountant；既有帳號由 migration 停用
+AssignableRole = Literal["therapist", "admin", "staff"]
 
 
 def _next_user_code(role: str, db: Session) -> str:
@@ -113,6 +117,8 @@ def toggle_user(user_id: int, user: User = Depends(RequireRole(["admin"])), db: 
         raise HTTPException(status_code=404, detail="User not found")
     if target.id == user.id:
         raise HTTPException(status_code=400, detail="Cannot deactivate yourself")
+    if target.role == "accountant":
+        raise HTTPException(status_code=409, detail="accountant 角色已刪除，帳號不能再啟用")
     before_active = target.is_active
     target.is_active = not target.is_active
     write_audit(db, "users", target.id, "UPDATE", user.id,
@@ -126,7 +132,7 @@ def toggle_user(user_id: int, user: User = Depends(RequireRole(["admin"])), db: 
 
 class UpdateUserRequest(BaseModel):
     name: str | None = None
-    role: str | None = None
+    role: AssignableRole | None = None
     user_code: str | None = None
     base_price: float | None = None
 
@@ -158,7 +164,7 @@ def update_user(
         target.name = stripped
 
     if body.role is not None:
-        if body.role not in ("therapist", "accountant", "admin", "staff"):
+        if body.role not in ("therapist", "admin", "staff"):
             raise HTTPException(status_code=400, detail="Invalid role")
         target.role = body.role
 
@@ -264,7 +270,7 @@ def set_commission_rate(
 
 class CreateInviteRequest(BaseModel):
     name: str
-    role: str  # therapist | accountant | admin | staff
+    role: AssignableRole  # therapist | admin | staff（accountant 已刪除）
     user_code: str | None = None
 
 
@@ -288,7 +294,7 @@ def create_invitation(
     user: User = Depends(RequireRole(["admin"])),
     db: Session = Depends(get_db),
 ):
-    if body.role not in ("therapist", "accountant", "admin", "staff"):
+    if body.role not in ("therapist", "admin", "staff"):
         raise HTTPException(status_code=400, detail="Invalid role")
 
     code = (body.user_code or "").strip()

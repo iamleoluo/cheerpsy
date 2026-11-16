@@ -71,8 +71,7 @@ def env(monkeypatch):
 
 @pytest.fixture()
 def users(make_user):
-    return dict(admin=make_user("admin"), staff=make_user("staff"), therapist=make_user("therapist"),
-                accountant=make_user("accountant"))
+    return dict(admin=make_user("admin"), staff=make_user("staff"), therapist=make_user("therapist"))
 
 
 def _connect(client, auth, users, code=CODE):
@@ -106,13 +105,13 @@ def test_defaults_and_readers(client, auth, users, env):
     assert d["can_edit"] is True
     s = client.get("/settings/clinic", headers=auth(users["staff"])).json()
     assert s["can_edit"] is False
-    for who in ("therapist", "accountant"):
+    for who in ("therapist",):
         assert client.get("/settings/clinic", headers=auth(users[who])).status_code == 403
     assert client.get("/settings/clinic").status_code in (401, 403)
 
 
 def test_only_admin_can_change_settings_and_connection(client, auth, users, env):
-    for who in ("staff", "therapist", "accountant"):
+    for who in ("staff", "therapist"):
         h = auth(users[who])
         assert client.patch("/settings/clinic", headers=h, json={"event_title_format": "type_room_code"}).status_code == 403
         assert client.post("/settings/google/connect", headers=h).status_code == 403

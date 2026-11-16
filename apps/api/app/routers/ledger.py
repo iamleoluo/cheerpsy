@@ -191,7 +191,7 @@ def list_pending_docs(
 ):
     """Records inside a claim batch needing therapist doc confirmation.
 
-    Scoped: therapist sees own; admin/staff/accountant see all.
+    Scoped: therapist sees own; admin/staff see all.
     Not capped — pending docs may span multiple months.
     """
     q = db.query(SessionRecord).options(
@@ -230,7 +230,7 @@ def list_confirmed_docs(
 
 @router.get("/self-pay-unpaid", response_model=list[SessionRecordResponse])
 def list_self_pay_unpaid(
-    user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
+    user: User = Depends(RequireRole(["admin", "staff"])),
     db: Session = Depends(get_db),
 ):
     """Self-pay records awaiting payment (no claim batch needed). Grouped by case client-side."""
@@ -253,7 +253,7 @@ def list_self_pay_unpaid(
 
 @router.get("/self-pay-all", response_model=list[SessionRecordResponse])
 def list_self_pay_all(
-    user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
+    user: User = Depends(RequireRole(["admin", "staff"])),
     db: Session = Depends(get_db),
 ):
     """All non-void self-pay session records (paid + unpaid), for finance tracking."""
@@ -275,7 +275,7 @@ def list_self_pay_all(
 
 @router.get("/self-pay-cases", response_model=list[SelfPayCaseStat])
 def list_self_pay_cases(
-    user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
+    user: User = Depends(RequireRole(["admin", "staff"])),
     db: Session = Depends(get_db),
 ):
     """Aggregate all non-void self-pay session records by case, returning paid/unpaid counts."""
@@ -337,7 +337,7 @@ def _build_receipt_dicts(records: list[SessionRecord], db: Session) -> list[dict
 @router.get("/receipt")
 def download_combined_receipt(
     record_ids: str = Query(..., description="comma-separated session_record ids"),
-    user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
+    user: User = Depends(RequireRole(["admin", "staff"])),
     db: Session = Depends(get_db),
 ):
     ids = [int(x) for x in record_ids.split(",") if x.strip()]
@@ -443,7 +443,7 @@ def update_payment_status(
 @router.put("/{record_id}/lock", response_model=SessionRecordResponse, dependencies=[Depends(accounting_gone)])
 def lock_record(
     record_id: int,
-    user: User = Depends(RequireRole(["admin", "accountant"])),
+    user: User = Depends(RequireRole(["admin"])),
     db: Session = Depends(get_db),
 ):
     r = db.query(SessionRecord).filter(SessionRecord.id == record_id).first()

@@ -841,7 +841,7 @@ def test_sync_status_permissions_and_no_case_data(client, auth, w, fake, db, mak
     a = create(client, auth, w)
     db.execute(text("UPDATE gcal_outbox SET status = 'failed', last_error = '壞了', attempts = 10 WHERE appointment_id = :a"), {"a": a["id"]})
     db.commit()
-    for who, code in ((w["admin"], 200), (w["staff"], 200), (w["t"], 403), (make_user("accountant"), 403)):
+    for who, code in ((w["admin"], 200), (w["staff"], 200), (w["t"], 403)):
         assert client.get("/settings/google/sync", headers=auth(who)).status_code == code
         assert client.post("/settings/google/sync/retry", headers=auth(who)).status_code in ((200, 409) if code == 200 else (403,))
     assert client.get("/settings/google/sync").status_code in (401, 403)

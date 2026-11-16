@@ -28,14 +28,14 @@ def _slot(days=3, hour=10, hours=1):
 def world(make_user, make_case, room, db):
     a = make_user("therapist", name="甲心理師")
     b = make_user("therapist", name="乙心理師")
-    staff, admin, acct = make_user("staff"), make_user("admin"), make_user("accountant")
+    staff, admin = make_user("staff"), make_user("admin")
     case_a = make_case(a, "甲的個案")
     case_b = make_case(b, B_NAME, phone="0988-111-222")
     couple_b = make_case(b, "乙的伴侶案", case_type="couple")
     room2 = Room(name="晤談室 3C", floor=3, room_code="3C")
     db.add(room2)
     db.commit()
-    return dict(a=a, b=b, staff=staff, admin=admin, acct=acct, case_a=case_a, case_b=case_b,
+    return dict(a=a, b=b, staff=staff, admin=admin, case_a=case_a, case_b=case_b,
                 couple_b=couple_b, room=room, room2=room2)
 
 
@@ -274,14 +274,6 @@ def test_staff_and_admin_see_and_edit_everything(client, auth, world, db, who):
     r = post(client, auth, w[who], w["case_b"], w["room"], day=9, amount=950)
     assert r.status_code == 201 and r.json()["amount"] == 950 and r.json()["therapist_id"] == w["b"].id
     assert client.put(f"/appointments/{ma}/cancel", headers=auth(w[who])).status_code == 200
-
-
-def test_accountant_unchanged(client, auth, world):
-    w = world
-    mine = post(client, auth, w["a"], w["case_a"], w["room"], amount=100).json()["id"]
-    assert post(client, auth, w["acct"], w["case_a"], w["room"], day=8).status_code == 403  # 不能建立預約
-    assert client.put(f"/appointments/{mine}", headers=auth(w["acct"]), json={"amount": 1}).status_code == 403
-    assert client.get(f"/appointments/{mine}", headers=auth(w["acct"])).json()["amount"] == 0  # 記帳已移除，維持現狀
 
 
 def test_therapist_cannot_delete_even_own_but_can_cancel(client, auth, world, db):

@@ -86,7 +86,6 @@ STILL_READABLE = [
 def people(make_user):
     return {
         "admin": make_user("admin"),
-        "accountant": make_user("accountant"),
         "staff": make_user("staff"),
         "therapist": make_user("therapist"),
     }

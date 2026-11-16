@@ -1,4 +1,4 @@
-"""Seed script: creates initial users (1 admin, 1 accountant, 17 therapists) and rooms."""
+"""Seed script: creates initial users (1 admin, 17 therapists) and rooms."""
 
 from app.auth.password import hash_password
 from app.database import Base, engine, SessionLocal
@@ -18,7 +18,6 @@ def seed():
 
     users = [
         User(email="admin@cheerpsy.com", password_hash=default_pw, name="管理員", role="admin"),
-        User(email="accountant@cheerpsy.com", password_hash=default_pw, name="會計", role="accountant"),
     ]
 
     therapist_names = [

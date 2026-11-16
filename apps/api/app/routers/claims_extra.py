@@ -26,7 +26,7 @@ from app.services.audit import write_audit
 
 router = APIRouter(prefix="/claim-batches", tags=["claim-batches-extra"])
 
-STAFF = ["admin", "accountant", "staff"]
+STAFF = ["admin", "staff"]
 DOC_TYPES = {"receipt": "領據", "monthly_list": "月次清冊表", "other": "其他"}
 
 
@@ -240,7 +240,7 @@ class VoidBody(BaseModel):
 def void_batch(
     batch_id: int,
     body: VoidBody,
-    user: User = Depends(RequireRole(["admin", "accountant"])),
+    user: User = Depends(RequireRole(["admin"])),
     db: Session = Depends(get_db),
 ):
     """任一階段皆可作廢，需原因 + 密碼，並留稽核軌跡。
@@ -298,7 +298,7 @@ class RateBody(BaseModel):
 def revise_amount(
     record_id: int,
     body: RateBody,
-    user: User = Depends(RequireRole(["admin", "accountant"])),
+    user: User = Depends(RequireRole(["admin"])),
     db: Session = Depends(get_db),
 ):
     """核銷紀錄的鐘點費回溯修改。
@@ -804,10 +804,10 @@ class UnlockClaimBody(BaseModel):
 def unlock_batch(
     batch_id: int,
     body: UnlockClaimBody,
-    user: User = Depends(RequireRole(["admin", "accountant"])),
+    user: User = Depends(RequireRole(["admin"])),
     db: Session = Depends(get_db),
 ):
-    """解鎖已收款的核銷案。需要上一層權限（admin／accountant）。"""
+    """解鎖已收款的核銷案。需要上一層權限（admin）。"""
     b = _batch(db, batch_id)
     if not b.is_locked:
         raise HTTPException(status_code=400, detail="此核銷案未鎖定")

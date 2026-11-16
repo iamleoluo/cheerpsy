@@ -16,7 +16,7 @@ from app.services.audit import write_audit
 router = APIRouter(prefix="/institution-contracts", tags=["institution-contracts"])
 
 CAP_TYPES = {"amount", "count", "unlimited"}
-STAFF = ["admin", "accountant", "staff"]
+STAFF = ["admin", "staff"]
 
 
 class ContractBase(BaseModel):

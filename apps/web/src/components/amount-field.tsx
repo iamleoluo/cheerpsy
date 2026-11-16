@@ -4,7 +4,7 @@ import { useSession } from "next-auth/react";
 
 /**
  * 誰能建立／編輯預約，誰就能填金額：心理師填自己的、行政與管理員填任何人的。
- * 隔離的單位是心理師，不是欄位；後端另外保證心理師碰不到別人的預約。會計不能建立預約，所以不顯示。
+ * 隔離的單位是心理師，不是欄位；後端另外保證心理師碰不到別人的預約。
  */
 export function useCanEditAmount(): boolean {
   const { data } = useSession();

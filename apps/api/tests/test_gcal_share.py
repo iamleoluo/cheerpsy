@@ -117,7 +117,7 @@ def fake(monkeypatch, db):
 @pytest.fixture()
 def people(make_user):
     return dict(
-        admin=make_user("admin"), staff=make_user("staff"), accountant=make_user("accountant"),
+        admin=make_user("admin"), staff=make_user("staff"),
         me=make_user("therapist"),
         a=make_user("therapist", name="王小明", gcal_share_email="a@gmail.com"),
         b=make_user("therapist", name="李大華", gcal_share_email="b@gmail.com", has_account=False),
@@ -658,7 +658,7 @@ def test_staff_emails_permissions(client, auth, people, fake):
         r = client.get("/settings/google/staff-emails", headers=auth(people[who]))
         assert r.status_code == 200 and r.json()["can_edit"] is (who == "admin") and r.json()["owner_email"] == OWNER
     assert client.put("/settings/google/staff-emails", headers=auth(people["staff"]), json={"emails": ["a@b.com"]}).status_code == 403
-    for who in ("me", "accountant"):
+    for who in ("me",):
         assert client.get("/settings/google/staff-emails", headers=auth(people[who])).status_code == 403
         assert client.put("/settings/google/staff-emails", headers=auth(people[who]), json={"emails": []}).status_code == 403
     assert client.get("/settings/google/staff-emails").status_code in (401, 403)
@@ -748,9 +748,9 @@ def test_list_therapists(client, auth, people, fake, make_user):
     assert client.get("/settings/google/therapists").status_code in (401, 403)
 
 
-def test_therapist_and_accountant_cannot_use_any_calendar_endpoint(client, auth, people, fake):
+def test_therapist_cannot_use_any_calendar_endpoint(client, auth, people, fake):
     tid = people["a"].id
-    for who in ("me", "accountant"):
+    for who in ("me",):
         h = auth(people[who])
         assert client.get("/settings/google/therapists", headers=h).status_code == 403
         assert client.put(f"/settings/google/therapists/{tid}/email", headers=h, json={"email": "z@z.com"}).status_code == 403

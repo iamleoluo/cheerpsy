@@ -24,7 +24,7 @@ from app.services.slot_check import assert_room_active, assert_room_free, flush_
 
 router = APIRouter(prefix="/referrals", tags=["referrals"])
 
-STAFF = ["admin", "accountant", "staff"]
+STAFF = ["admin", "staff"]
 ADMIN_STAFF = ["admin", "staff"]
 
 # 逾 1 個自然日提醒、逾 3 個自然日自動退回（原型 match 定案④）

@@ -23,7 +23,7 @@ from app.services.audit import write_audit
 
 router = APIRouter(tags=["events"])
 
-STAFF = ["admin", "accountant", "staff"]
+STAFF = ["admin", "staff"]
 BORROWER_TYPES = {"therapist": "心理師", "staff": "行政", "external": "外部講師"}
 
 

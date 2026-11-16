@@ -21,7 +21,7 @@ export default async function TherapistLayout({
   const userName = session.user.name ?? "User";
   const userRole = (session.user as any).role ?? "therapist";
 
-  // 管理者需要能檢視心理師端頁面以供支援；會計與櫃台行政沒有理由進來
+  // 管理者需要能檢視心理師端頁面以供支援；櫃台行政沒有理由進來
   if (!isTherapist(userRole) && userRole !== "admin") {
     redirect(landingForRole(userRole));
   }

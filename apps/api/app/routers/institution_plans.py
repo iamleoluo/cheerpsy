@@ -17,7 +17,7 @@ from app.services.audit import write_audit
 router = APIRouter(prefix="/institution-plans", tags=["institution-plans"])
 
 PLAN_STATUS = {"active", "exhausted", "expired"}
-STAFF = ["admin", "accountant", "staff"]
+STAFF = ["admin", "staff"]
 
 
 class TransportFeeIn(BaseModel):

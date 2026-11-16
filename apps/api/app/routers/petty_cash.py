@@ -24,7 +24,7 @@ def list_petty_cash(
 @router.post("", response_model=PettyCashResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(accounting_gone)])
 def create_petty_cash(
     body: PettyCashCreate,
-    user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
+    user: User = Depends(RequireRole(["admin", "staff"])),
     db: Session = Depends(get_db),
 ):
     last = db.query(PettyCash).order_by(desc(PettyCash.id)).first()

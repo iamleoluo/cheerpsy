@@ -19,7 +19,7 @@ interface UserItem {
 }
 
 const ROLE_CODE_PREFIX: Record<string, string> = {
-  admin: "A", accountant: "C", staff: "S", therapist: "T",
+  admin: "A", staff: "S", therapist: "T",
 };
 
 function computeNextCode(users: UserItem[], role: string): string {
@@ -54,14 +54,12 @@ interface Institution {
 
 const roleLabels: Record<string, string> = {
   admin: "管理員",
-  accountant: "會計",
   staff: "行政人員",
   therapist: "心理師",
 };
 
 const roleBadge: Record<string, string> = {
   admin: "bg-green-100 text-green-700",
-  accountant: "bg-amber-100 text-amber-700",
   staff: "bg-purple-100 text-purple-700",
   therapist: "bg-blue-100 text-blue-700",
 };
@@ -559,7 +557,6 @@ function UsersTab({ token }: { token: string }) {
                 >
                   <option value="therapist">心理師</option>
                   <option value="staff">行政人員</option>
-                  <option value="accountant">會計</option>
                   <option value="admin">管理員</option>
                 </select>
               </div>
