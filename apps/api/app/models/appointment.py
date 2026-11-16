@@ -20,6 +20,11 @@ class Appointment(Base):
     amount = Column(Numeric(10, 2), nullable=False)  # 應收金額（自費＝全額；機構＝方案價目的總額，行政可手動調整）
     # 個案這次要付的錢（快照）：自費＝全額；機構＝方案價目的自付額。改價目主檔不影響既有預約
     self_pay_amount = Column(Numeric(10, 2), nullable=False, default=0, server_default="0")
+    # 收款記錄：只記狀態、方式、時間、經手人。不產生流水、核銷、對帳
+    payment_status = Column(String(10), nullable=False, default="unpaid", server_default="unpaid")  # unpaid|paid|waived
+    payment_method = Column(String(20), nullable=True)  # cash|transfer|card|other
+    paid_at = Column(DateTime(timezone=True), nullable=True)
+    paid_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     # booked / executed / cancelled / no_show（Phase 1b 新增 no_show）
     status = Column(String(20), nullable=False, default="booked")
     # advance_notice 24h前請假 $0 / late_cancel 臨時取消 / no_notice 無故未到

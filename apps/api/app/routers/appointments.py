@@ -22,6 +22,8 @@ from app.services.audit import write_audit
 from app.services.slot_check import assert_room_active, assert_room_free, flush_or_409
 from app.schemas.appointment import (
     AppointmentBatchCreate,
+    PAYMENT_METHODS,
+    AppointmentCollectionUpdate,
     AppointmentCreate,
     AppointmentPaymentUpdate,
     AppointmentResponse,
@@ -102,6 +104,10 @@ def _to_response(
         rate_item_id=a.rate_item_id if can_see_amount else None,
         rate_item_label=(rate.label if rate else None) if can_see_amount else None,
         self_pay_amount=float(a.self_pay_amount or 0) if can_see_amount else 0,
+        payment_status=(a.payment_status or "unpaid") if can_see_amount else "unpaid",
+        payment_method=a.payment_method if can_see_amount else None,
+        paid_at=a.paid_at if can_see_amount else None,
+        paid_by_name=(db.get(User, a.paid_by).name if (db is not None and a.paid_by and can_see_amount and db.get(User, a.paid_by)) else None),
         transport_fee_option_id=a.transport_fee_option_id if can_see_amount else None,
         transport_fee_label=(tfee.label if tfee else None) if can_see_amount else None,
         transport_fee=float(a.transport_fee or 0) if can_see_amount else 0,
@@ -556,6 +562,42 @@ def update_appointment_payment(
     db.refresh(a)
     therapist = db.query(User).filter(User.id == a.therapist_id).first()
     return _to_response(a, therapist, db, viewer=user, warnings=warnings)
+
+
+@router.put("/{appointment_id}/collection", response_model=AppointmentResponse)
+def record_collection(
+    appointment_id: int,
+    body: AppointmentCollectionUpdate,
+    user: User = Depends(RequireRole(["admin", "staff"])),
+    db: Session = Depends(get_db),
+):
+    """行政記錄收款：已收／未收／免收與收款方式。只是預約上的幾個欄位，
+    不產生 session_records、流水、核銷或對帳。心理師看得到自己預約的收款狀態，但不能改。"""
+    a = _appointment_or_404(db, user, appointment_id)
+    if body.payment_status not in ("unpaid", "paid", "waived"):
+        raise HTTPException(status_code=400, detail="payment_status 需為 unpaid、paid 或 waived")
+    if a.status == "cancelled":
+        raise HTTPException(status_code=400, detail="已取消的預約不能記錄收款")
+    method = body.payment_method
+    if body.payment_status == "paid":
+        if method not in PAYMENT_METHODS:
+            raise HTTPException(status_code=400, detail=f"已收請選收款方式：{list(PAYMENT_METHODS)}")
+    else:
+        method = None  # 未收、免收沒有收款方式
+
+    before = {"payment_status": a.payment_status, "payment_method": a.payment_method}
+    a.payment_status = body.payment_status
+    a.payment_method = method
+    if body.payment_status == "unpaid":
+        a.paid_at, a.paid_by = None, None
+    else:
+        a.paid_at, a.paid_by = datetime.now(timezone.utc), user.id
+    write_audit(db, "appointments", a.id, "UPDATE", user.id, before,
+                {"payment_status": a.payment_status, "payment_method": a.payment_method})
+    db.commit()
+    db.refresh(a)
+    therapist = db.query(User).filter(User.id == a.therapist_id).first()
+    return _to_response(a, therapist, db, viewer=user)
 
 
 class BatchDeleteRequest(BaseModel):

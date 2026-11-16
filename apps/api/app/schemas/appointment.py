@@ -58,6 +58,16 @@ class AppointmentUpdate(BaseModel):
     transport_fee_option_id: int | None = None
 
 
+PAYMENT_METHODS = ("cash", "transfer", "card", "other")
+
+
+class AppointmentCollectionUpdate(BaseModel):
+    """收款記錄：只記狀態、方式、時間、經手人（時間與經手人由伺服器填）。"""
+
+    payment_status: str  # unpaid 未收 | paid 已收 | waived 免收
+    payment_method: str | None = None  # cash 現金 | transfer 轉帳 | card 刷卡 | other 其他；已收必填
+
+
 class AppointmentPaymentUpdate(BaseModel):
     funding_source: str  # self_pay | institution
     quota_id: int | None = None
@@ -107,6 +117,10 @@ class AppointmentResponse(BaseModel):
     rate_item_id: int | None = None
     rate_item_label: str | None = None
     self_pay_amount: float = 0  # 個案這次要付的錢（自費＝全額；機構＝自付額）
+    payment_status: str = "unpaid"  # unpaid 未收 | paid 已收 | waived 免收
+    payment_method: str | None = None
+    paid_at: datetime | None = None
+    paid_by_name: str | None = None
     transport_fee_option_id: int | None = None
     transport_fee_label: str | None = None
     transport_fee: float = 0

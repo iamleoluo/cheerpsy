@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
+import { money } from "@/lib/format";
+import { CollectionModal, PaymentBadge } from "@/components/collection-modal";
 import {
   DAY_END_MIN,
   DAY_START_MIN,
@@ -49,6 +51,17 @@ interface Appt {
   quota_total?: number | null;
   quota_remaining?: number | null;
   quota_is_last_session?: boolean;
+  plan_name?: string | null;
+  rate_item_label?: string | null;
+  amount?: number;
+  self_pay_amount?: number;
+  transport_fee?: number;
+  no_show_fee?: number;
+  no_show_type?: string | null;
+  payment_status?: string;
+  payment_method?: string | null;
+  paid_at?: string | null;
+  paid_by_name?: string | null;
 }
 
 const BADGE: Record<string, { label: string; cls: string }> = {
@@ -62,6 +75,8 @@ export default function CalendarPage() {
   const router = useRouter();
   const token = (session?.user as any)?.accessToken;
   const canBook = (session?.user as any)?.role !== "therapist";
+  const canRecord = ["admin", "staff"].includes((session?.user as any)?.role);
+  const [collectFor, setCollectFor] = useState<Appt | null>(null);
   const [day, setDay] = useState(todayISO());
   const [rooms, setRooms] = useState<Room[]>([]);
   const [appts, setAppts] = useState<Appt[]>([]);
@@ -260,6 +275,7 @@ export default function CalendarPage() {
                           a={a}
                           onArrive={() => arrive(a)}
                           onAbsent={() => setAbsentFor(a)}
+                          onCollect={() => setCollectFor(a)}
                         />
                       </td>
                     );
@@ -295,6 +311,7 @@ export default function CalendarPage() {
                   a={a}
                   onArrive={() => arrive(a)}
                   onAbsent={() => setAbsentFor(a)}
+                  onCollect={() => setCollectFor(a)}
                 />
               </div>
             ))}
@@ -303,6 +320,19 @@ export default function CalendarPage() {
             這兩類個案不會到櫃檯報到，狀態不會自動變更；請在事後由行政標記已到或未到。
           </p>
         </div>
+      )}
+
+      {collectFor && (
+        <CollectionModal
+          token={token}
+          appt={collectFor}
+          canRecord={canRecord}
+          onClose={() => setCollectFor(null)}
+          onDone={() => {
+            setCollectFor(null);
+            load();
+          }}
+        />
       )}
 
       {absentFor && (
@@ -333,10 +363,12 @@ function ApptCell({
   a,
   onArrive,
   onAbsent,
+  onCollect,
 }: {
   a: Appt;
   onArrive: () => void;
   onAbsent: () => void;
+  onCollect: () => void;
 }) {
   const badge = BADGE[a.checkin_status] ?? BADGE.pending;
   const offsite = !a.room_id;
@@ -357,6 +389,18 @@ function ApptCell({
         <div className={`truncate text-[10px] ${a.quota_is_last_session ? "font-medium text-red-600" : "text-violet-700"}`}>
           {a.quota_total != null ? `機構 ${a.quota_used}/${a.quota_total}・剩 ${a.quota_remaining}${a.quota_is_last_session ? "（最後一次）" : ""}` : "機構（未佔額度）"}
         </div>
+      )}
+
+      {a.status !== "cancelled" && (
+        <button onClick={onCollect} className="mt-0.5 flex w-full items-center justify-between gap-1 rounded border border-transparent px-0.5 text-left text-[10px] text-gray-600 hover:border-gray-300 hover:bg-white">
+          <span className="truncate">
+            {a.funding_source === "institution" ? (a.plan_name ?? "機構") : "自費"}
+            {a.amount ? `・應收 ${money(a.amount)}` : ""}
+            {a.funding_source === "institution" ? `・自付 ${money(a.self_pay_amount)}` : ""}
+            {a.transport_fee ? `・車馬 ${money(a.transport_fee)}` : ""}
+          </span>
+          <PaymentBadge a={{ ...a, case_name: a.case_name }} />
+        </button>
       )}
 
       {a.status !== "cancelled" && a.checkin_status === "pending" && !offsite && (
