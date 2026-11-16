@@ -1,17 +1,20 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+# 「金額」只是預約上的一個數字（顯示在 Google 日曆事件標題），不是記帳：沒有收款、結算、額度、分潤。
+# 只有 admin／staff 送來的 amount 會被存（0＝沒有金額）；治療師送的一律忽略。
+# funding_source／quota_id 仍可接收（舊前端相容），但伺服器一律忽略。
+Amount = Field(None, ge=0, le=9_999_999)
 
 
-# 帳務拆除「上線 A」：amount／funding_source／quota_id 仍可接收（舊前端相容），
-# 但伺服器一律忽略，不再寫入。真正移除留到上線 B。
 class AppointmentCreate(BaseModel):
     case_id: int
     room_id: int | None = None
     session_type: str = "in_person"
     start_time: datetime
     end_time: datetime
-    amount: float | None = None  # 已忽略
+    amount: float | None = Amount  # 選填；只有 admin／staff 的會被存
     funding_source: str | None = None  # 已忽略
     quota_id: int | None = None  # 已忽略
     couple_case_id: int | None = None  # 合療：標記場次所屬伴侶案（case_id 為付款方）
@@ -29,7 +32,7 @@ class AppointmentBatchCreate(BaseModel):
     case_id: int
     room_id: int | None = None
     session_type: str = "in_person"
-    amount: float | None = None  # 已忽略
+    amount: float | None = Amount  # 選填；整批每一場同一個金額（slot 上的 amount 已忽略）
     funding_source: str | None = None  # 已忽略
     quota_id: int | None = None  # 已忽略
     couple_case_id: int | None = None
@@ -41,7 +44,7 @@ class AppointmentUpdate(BaseModel):
     session_type: str | None = None
     start_time: datetime | None = None
     end_time: datetime | None = None
-    amount: float | None = None  # 已忽略
+    amount: float | None = Amount  # 不送＝不改；送 0＝清除金額。只有 admin／staff 能改
     funding_source: str | None = None  # 已忽略
     quota_id: int | None = None  # 已忽略
 
@@ -67,7 +70,8 @@ class AppointmentResponse(BaseModel):
     session_type: str
     start_time: datetime | None = None
     end_time: datetime | None = None
-    # 上線 A 佔位欄位（上線 B 才移除）：前端不得讀取。金額與付款相關一律是空值。
+    # amount：只有 admin／staff 看得到（0＝沒有金額），其他角色一律 0。
+    # 其餘付款相關欄位是上線 A 的佔位空值（上線 B 才移除），前端不得讀取。
     amount: float = 0
     funding_source: str | None = None
     quota_id: int | None = None

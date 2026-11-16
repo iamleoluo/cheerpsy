@@ -3,8 +3,8 @@
 隱私規則（測試鎖死）。診所決定的事件內容：
 - 標題：類型 · 診間，依設定再加 個案代號 (b)／姓名縮寫 (c)／個案全名 (d，預設)；有金額時標題結尾加「 · $金額」。
   只有 (d) 會輸出個案全名；(a)(b)(c) 絕不輸出完整姓名。
-- 描述：固定說明、金額（預約上的金額欄位，沒有或為 0 就不顯示那一行），以及備註分段
-  （PR D 的「備註給心理師」接在 `note_sections` 之後，分段標示）。
+- 描述：固定說明，以及備註分段（PR D 的「備註給心理師」接在 `note_sections` 之後，分段標示）。
+  金額只放標題，描述不放。
 - 永遠不放：電話、Email、地址、主訴／病歷／治療備註、帳務備註、機構、任何 token。
 """
 
@@ -94,12 +94,9 @@ def event_title(a: Appointment, title_format: str) -> str:
 
 
 def event_description(a: Appointment, note_sections: list[tuple[str, str]] | None = None) -> str:
-    """固定說明；有金額加一行「金額：$1,500」；備註分段標示（標題、內文），空內文不輸出。
+    """固定說明；備註分段標示（標題、內文），空內文不輸出。金額不放描述（只在標題）。
     note_sections 由呼叫端依來源提供，例如 [("預約備註", ...), ("備註給心理師", ...)]。"""
     lines = [DESCRIPTION]
-    amount = format_amount(a.amount)
-    if amount:
-        lines.append(f"金額：{amount}")
     for heading, body in note_sections or []:
         body = (body or "").strip()
         if body:

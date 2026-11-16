@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
+import { AmountField, parseAmount, useCanEditAmount } from "@/components/amount-field";
 import { EventsTab } from "@/components/events-tab";
 import { SESSION_TYPE, hhmm, shiftDate, todayISO } from "@/lib/format";
 
@@ -70,6 +71,8 @@ export default function BookingPage() {
   const [startTime, setStartTime] = useState("14:00");
   const [endTime, setEndTime] = useState("15:00");
   const [videoLink, setVideoLink] = useState("");
+  const [amount, setAmount] = useState("");
+  const canAmount = useCanEditAmount();
   const [notifyAdmin, setNotifyAdmin] = useState(false);
   const [outreach, setOutreach] = useState("");
   const [saving, setSaving] = useState(false);
@@ -194,6 +197,8 @@ export default function BookingPage() {
       start_time: `${date}T${startTime}:00+08:00`,
       end_time: `${date}T${endTime}:00+08:00`,
     };
+    const amt = canAmount ? parseAmount(amount) : undefined;
+    if (amt !== undefined) body.amount = amt; // 批次時整批每一場同一個金額
     try {
       if (tab === "batch") {
         const slots: any[] = [];
@@ -319,6 +324,8 @@ export default function BookingPage() {
                   )}
                 </label>
               )}
+
+              <AmountField value={amount} onChange={setAmount} className="col-span-2" />
 
               {sessionType === "online" && (
                 <>

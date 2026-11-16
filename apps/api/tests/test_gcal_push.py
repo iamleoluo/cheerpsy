@@ -4,7 +4,7 @@
 - 預約寫入（新增／批次／改期／換診間／取消／未到／報到／刪除／結案）在同一交易入列，且 Google 失敗不影響預約 API。
 - 事件 id 由預約 id 決定；改期是更新同一事件；payload_hash 沒變不打網路。
 - 429 指數退避、用盡次數標 failed；授權失效 → blocked；沒有日曆 → blocked，建立後自動解封。
-- 事件內容永遠沒有完整姓名、電話、Email、主訴、金額。
+- 事件內容永遠沒有電話、Email、主訴；完整姓名只在格式 (d)；金額只在標題，不在描述。
 """
 
 import json
@@ -216,9 +216,9 @@ def test_format_amount():
 
 def test_description_sections_and_amount_line(db, w):
     a = _appt(db, w)
-    assert gcal_titles.event_description(a) == gcal_titles.DESCRIPTION + "\n金額：$1,500"
+    assert gcal_titles.event_description(a) == gcal_titles.DESCRIPTION  # 金額只放標題，描述不放
     a.amount = None
-    assert gcal_titles.event_description(a) == gcal_titles.DESCRIPTION  # 沒金額：不顯示那一行
+    assert gcal_titles.event_description(a) == gcal_titles.DESCRIPTION
     a.amount = 1500
     d = gcal_titles.event_description(a, [("預約備註", "帶孩子來"), ("備註給心理師", "  注意事項  "), ("空的", "  ")])
     assert "【預約備註】\n帶孩子來" in d and "【備註給心理師】\n注意事項" in d and "空的" not in d
@@ -251,7 +251,7 @@ def test_event_body_has_no_sensitive_data(db, w):
         # 電話、主訴、Email、內部編號、心理師姓名一律不放（金額與 (d) 的全名是診所決定要放的）
         for secret in ("0912", "憂鬱", "@", "林心理師", a.appointment_number):
             assert secret not in blob, (fmt, secret)
-        assert "金額：$1,500" in body["description"] and body["summary"].endswith("$1,500")
+        assert body["summary"].endswith("$1,500") and "$" not in body["description"] and "金額" not in body["description"]
     assert gcal_titles.event_body(a, "type_room")["description"].startswith(gcal_titles.DESCRIPTION)
     assert body["start"]["timeZone"] == "Asia/Taipei" and body["start"]["dateTime"].endswith("+08:00")
     assert body["id"] == gcal_titles.event_id(a.id)
@@ -599,7 +599,7 @@ def test_amount_change_triggers_resync_and_zero_amount_hides_line(client, auth, 
     db.commit()
     run(fake)
     e = ev(fake, a["id"])
-    assert e["summary"].endswith("· $1,500") and "金額：$1,500" in e["description"]
+    assert e["summary"].endswith("· $1,500") and "$" not in e["description"] and "金額" not in e["description"]
     row.amount = 2000  # 金額改了 → 入列 → 內容 hash 變 → update 同一事件
     db.commit()
     fake.clear_calls()
@@ -609,7 +609,7 @@ def test_amount_change_triggers_resync_and_zero_amount_hides_line(client, auth, 
     db.commit()
     run(fake)
     e = ev(fake, a["id"])
-    assert "$" not in e["summary"] and "金額" not in e["description"]
+    assert "$" not in e["summary"]
 
 
 def test_note_change_changes_hash_and_note_sections_reach_description(client, auth, w, fake, db, monkeypatch):
@@ -959,3 +959,19 @@ def test_title_migration_only_changes_untouched_default_and_is_reversible(db, ma
             _go(mod, "upgrade")
         except Exception:
             pass
+
+
+def test_editing_amount_in_the_form_resyncs_the_event_title(client, auth, w, fake, db):
+    a = create(client, auth, w, amount=1500)  # 行政建立時填的金額
+    run(fake)
+    assert ev(fake, a["id"])["summary"] == "諮商 · 2B · 王小明 · $1,500"
+    r = client.put(f"/appointments/{a['id']}", headers=auth(w["staff"]), json={"amount": 1800})
+    assert r.status_code == 200
+    assert job(db, a["id"]).status == "pending"  # 改金額 → 入列
+    fake.clear_calls()
+    run(fake)
+    assert [c[0] for c in fake.event_calls()] == ["update_event"]
+    assert ev(fake, a["id"])["summary"].endswith("$1,800") and "金額" not in ev(fake, a["id"])["description"]
+    client.put(f"/appointments/{a['id']}", headers=auth(w["staff"]), json={"amount": 0})
+    run(fake)
+    assert "$" not in ev(fake, a["id"])["summary"]  # 沒有金額就不顯示

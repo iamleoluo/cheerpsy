@@ -34,7 +34,7 @@ def _create(client, auth, who, case, room, start, end, **extra):
     return client.post("/appointments", json=body, headers=auth(who))
 
 
-# ---- 建立：金額由伺服器填 0 ------------------------------------------------
+# ---- 建立：金額只是一個選填的數字（admin／staff 才存），沒有任何記帳 --------------
 def test_create_without_amount_ok_and_server_writes_zero(client, auth, db, w):
     s, e = _slot()
     r = _create(client, auth, w["staff"], w["case"], w["room"], s, e)
@@ -47,19 +47,51 @@ def test_create_without_amount_ok_and_server_writes_zero(client, auth, db, w):
     assert float(row.amount) == 0 and row.quota_id is None
 
 
-def test_create_ignores_legacy_money_fields(client, auth, db, w):
-    """舊前端仍送 amount／institution／quota_id：不報錯，也不寫入。"""
+def test_create_ignores_legacy_money_fields_but_stores_amount_for_staff(client, auth, db, w):
+    """舊前端仍送 institution／quota_id：不報錯，也不寫入。amount 是新的選填數字：staff 送的會存。"""
     s, e = _slot()
     r = _create(client, auth, w["staff"], w["case"], w["room"], s, e,
                 amount=2500, funding_source="institution", quota_id=999)
     assert r.status_code == 201, r.text
     row = db.execute(text("SELECT amount, quota_id FROM appointments WHERE id=:i"),
                      {"i": r.json()["id"]}).one()
-    assert float(row.amount) == 0 and row.quota_id is None
-    assert r.json()["funding_source"] is None
+    assert float(row.amount) == 2500 and row.quota_id is None
+    assert r.json()["funding_source"] is None and r.json()["amount"] == 2500
+    assert r.json()["therapist_share"] is None and r.json()["quota_id"] is None  # 沒有任何額度、分潤
 
 
-def test_batch_create_server_zero_and_conflict(client, auth, db, w):
+def test_amount_only_stored_for_admin_or_staff_and_validated(client, auth, db, w):
+    s, e = _slot()
+    # 治療師自己建預約送的 amount 一律忽略
+    r = _create(client, auth, w["t"], w["case"], w["room"], s, e, amount=999)
+    assert r.status_code == 201 and r.json()["amount"] == 0
+    assert float(db.execute(text("SELECT amount FROM appointments WHERE id=:i"), {"i": r.json()["id"]}).scalar()) == 0
+    s2, e2 = _slot(5)
+    assert _create(client, auth, w["admin"], w["case"], w["room"], s2, e2, amount=1800.5).json()["amount"] == 1800.5
+    for bad in (-1, 10_000_000):
+        assert _create(client, auth, w["staff"], w["case"], w["room"], *_slot(6), amount=bad).status_code == 422
+
+
+def test_edit_amount_staff_only_visible_only_to_admin_staff_and_audited(client, auth, db, w):
+    s, e = _slot()
+    a = _create(client, auth, w["staff"], w["case"], w["room"], s, e).json()
+    r = client.put(f"/appointments/{a['id']}", headers=auth(w["staff"]), json={"amount": 2200})
+    assert r.status_code == 200 and r.json()["amount"] == 2200
+    assert client.put(f"/appointments/{a['id']}", headers=auth(w["staff"]), json={"room_id": w["room"].id}).json()["amount"] == 2200  # 沒送就不改
+    assert client.put(f"/appointments/{a['id']}", headers=auth(w["staff"]), json={"amount": 0}).json()["amount"] == 0  # 0＝清除
+    assert client.put(f"/appointments/{a['id']}", headers=auth(w["staff"]), json={"amount": -5}).status_code == 422
+    client.put(f"/appointments/{a['id']}", headers=auth(w["admin"]), json={"amount": 3000})
+    assert client.get(f"/appointments/{a['id']}", headers=auth(w["admin"])).json()["amount"] == 3000
+    assert client.get(f"/appointments/{a['id']}", headers=auth(w["t"])).json()["amount"] == 0  # 治療師看不到金額
+    assert client.get("/appointments", headers=auth(w["t"])).json()[0]["amount"] == 0
+    assert client.get("/appointments", headers=auth(w["staff"])).json()[0]["amount"] == 3000
+    assert client.put(f"/appointments/{a['id']}", headers=auth(w["t"]), json={"amount": 1}).status_code == 403  # 治療師不能編輯
+    n = db.execute(text("SELECT count(*) FROM audit_log WHERE table_name='appointments' AND record_id=:i AND operation='UPDATE'"),
+                   {"i": a["id"]}).scalar()
+    assert n >= 3  # 金額改動有稽核
+
+
+def test_batch_create_amount_applies_to_all_slots_and_conflict(client, auth, db, w):
     s, e = _slot()
     slots = [{"start_time": s.isoformat(), "end_time": e.isoformat(), "amount": 3000},
              {"start_time": (s + timedelta(days=7)).isoformat(),
@@ -68,7 +100,7 @@ def test_batch_create_server_zero_and_conflict(client, auth, db, w):
             "amount": 2000, "funding_source": "institution", "slots": slots}
     r = client.post("/appointments/batch", json=body, headers=auth(w["staff"]))
     assert r.status_code == 201, r.text
-    assert all(x["amount"] == 0 for x in r.json())
+    assert all(x["amount"] == 2000 for x in r.json())  # 整批同一個金額；slot 上的 amount 忽略
     # 同一批次再送一次：第一個 slot 就衝突，整批 409
     r2 = client.post("/appointments/batch", json=body, headers=auth(w["staff"]))
     assert r2.status_code == 409
@@ -180,6 +212,8 @@ def test_amount_and_payment_endpoints_are_gone(client, auth, db, w):
     assert client.put(f"/appointments/{a['id']}/payment", headers=auth(w["staff"]),
                       json={"funding_source": "institution"}).status_code == 410
     assert float(db.execute(text("SELECT amount FROM appointments WHERE id=:i"), {"i": a["id"]}).scalar()) == 0
+    # 金額只是預約上的一個數字：沒有專屬的收款／結算端點，也不產生任何帳務紀錄
+    assert db.execute(text("SELECT count(*) FROM session_records")).scalar() == 0
 
 
 # ---- 取消 -------------------------------------------------------------------

@@ -1760,8 +1760,8 @@ const TITLE_FORMATS: { value: ClinicSettingsData["event_title_format"]; label: s
 ];
 
 const EVENT_CONTENT_NOTE =
-  "不論選哪一種：預約有金額時，標題結尾會加「· $金額」，事件說明也會有一行「金額：$…」（沒有金額就不顯示）。" +
-  "事件說明另含固定句與預約備註（備註分段標示，之後的「備註給心理師」也會放進來）。電話、Email、主訴、病歷內容一律不會放進 Google。";
+  "不論選哪一種：預約有填金額時，標題結尾會加「· $金額」（沒有金額就不顯示；金額在預約表單由行政填寫，只是一個數字，不是記帳）。" +
+  "事件說明只有固定句與預約備註（備註分段標示，之後的「備註給心理師」也會放進來），不放金額。電話、Email、主訴、病歷內容一律不會放進 Google。";
 
 function fmtTime(iso: string | null) {
   return iso ? new Date(iso).toLocaleString("zh-TW", { hour12: false }) : "—";

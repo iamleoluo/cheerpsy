@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
@@ -72,9 +73,11 @@ def _to_response(
             couple_name = a.couple_case.name
         elif a.case and a.case.case_type == "couple":
             couple_name = a.case.name
-    # 上線 A：回應不再帶任何金額、分潤、額度、失約費、方案資料。
-    # 這些欄位在 schema 裡保留為佔位值（amount=0，其餘 null／False），上線 B 才移除。
+    # 回應不帶分潤、額度、失約費、方案資料（佔位空值，上線 B 才移除）。
+    # 金額只是一個數字：admin／staff 看得到，其他角色（治療師、會計）一律 0。
+    can_see_amount = viewer is not None and viewer.role in ("admin", "staff")
     return AppointmentResponse(
+        amount=float(a.amount or 0) if can_see_amount else 0,
         id=a.id,
         appointment_number=a.appointment_number,
         case_id=a.case_id,
@@ -104,6 +107,13 @@ def _to_response(
         outreach_location=a.outreach_location,
         is_intake=a.is_intake,
     )
+
+
+def _amount_for(user: User, amount: float | None) -> Decimal:
+    """新增預約的金額：只有 admin／staff 送的會存；其他角色（治療師）送的一律忽略；沒送就是 0。"""
+    if user.role in ("admin", "staff") and amount is not None:
+        return Decimal(str(amount))
+    return Decimal("0")
 
 
 def _validate_couple(db: Session, couple_case_id: int | None, payer_case_id: int) -> Case | None:
@@ -228,7 +238,7 @@ def create_appointment(
         room_id=body.room_id,
         session_type=body.session_type,
         time_range=time_range,
-        amount=0,  # 上線 A：金額由伺服器填 0，忽略前端送來的值
+        amount=_amount_for(user, body.amount),
         visit_seq=visit_seq,
         couple_case_id=body.couple_case_id,
         status="booked",
@@ -238,7 +248,7 @@ def create_appointment(
     flush_or_409(db, body.room_id, body.start_time, body.end_time)  # 並行寫入由資料庫約束擋下
     db.commit()
     db.refresh(appt)
-    return _to_response(appt, therapist, db)
+    return _to_response(appt, therapist, db, viewer=user)
 
 
 @router.post("/batch", response_model=list[AppointmentResponse], status_code=status.HTTP_201_CREATED)
@@ -286,7 +296,7 @@ def create_batch(
             room_id=body.room_id,
             session_type=body.session_type,
             time_range=time_range,
-            amount=0,  # 上線 A：金額由伺服器填 0
+            amount=_amount_for(user, body.amount),
             visit_seq=next_vs + i,
             couple_case_id=body.couple_case_id,
             status="booked",
@@ -301,7 +311,7 @@ def create_batch(
     db.commit()
     for a in results:
         db.refresh(a)
-    return [_to_response(a, therapist, db) for a in results]
+    return [_to_response(a, therapist, db, viewer=user) for a in results]
 
 
 @router.put("/{appointment_id}", response_model=AppointmentResponse)
@@ -319,7 +329,7 @@ def update_appointment(
 
     before = {
         "room_id": a.room_id, "session_type": a.session_type,
-        "time_range": str(a.time_range),
+        "time_range": str(a.time_range), "amount": float(a.amount or 0),
     }
 
     # 改期或改房都要重新檢查診間（只改房、不改時間也要檢查）
@@ -339,11 +349,13 @@ def update_appointment(
     if body.session_type is not None:
         a.session_type = body.session_type
     flush_or_409(db, a.room_id, new_start, new_end, exclude_appointment_id=appointment_id)
-    # 上線 A：amount／funding_source／quota_id 已忽略
+    # funding_source／quota_id 已忽略。金額只是一個數字，不涉及收款或結算
+    if body.amount is not None:
+        a.amount = Decimal(str(body.amount))
 
     after = {
         "room_id": a.room_id, "session_type": a.session_type,
-        "time_range": str(a.time_range),
+        "time_range": str(a.time_range), "amount": float(a.amount or 0),
     }
     write_audit(db, "appointments", a.id, "UPDATE", user.id, before, after)
     db.commit()
