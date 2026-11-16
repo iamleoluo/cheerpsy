@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch, exportCsv } from "@/lib/client-api";
@@ -1898,6 +1899,17 @@ function CalendarTab({ token, gcalResult }: { token: string; gcalResult: string 
             </div>
           </div>
         )}
+      </section>
+
+      <section className="rounded-xl border border-gray-200 bg-white p-5">
+        <h2 className="mb-1 text-base font-semibold">心理師日曆與分享</h2>
+        <p className="text-sm text-gray-600">
+          為每位心理師建立日曆、填寫分享用 Gmail、設定行政分享名單，請到{" "}
+          <Link href="/gcal" className="font-medium text-primary-700 hover:underline">
+            日曆分享
+          </Link>
+          。行政人員也可以在那裡操作（行政分享名單只有管理員能改）。
+        </p>
       </section>
 
       <section className="rounded-xl border border-gray-200 bg-white p-5">

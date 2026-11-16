@@ -38,6 +38,7 @@ export const ADMIN_NAV: readonly NavGroup[] = [
       { href: "/calendar", label: "診間日曆", icon: "🗓️", badge: "主控" },
       { href: "/booking", label: "預約作業", icon: "➕" },
       { href: "/appts", label: "預約總表", icon: "📋" },
+      { href: "/gcal", label: "日曆分享", icon: "📤", roles: ["admin", "staff"] },
     ],
   },
   {

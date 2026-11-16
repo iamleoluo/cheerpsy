@@ -15,7 +15,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from jose import JWTError, jwt
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import RequireRole
@@ -33,7 +33,6 @@ ADMIN = RequireRole(["admin"])
 ADMIN_OR_STAFF = RequireRole(["admin", "staff"])
 
 STATE_TTL_MINUTES = 10
-EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 # ---------------------------------------------------------------------------
@@ -151,26 +150,14 @@ def get_clinic_settings(user: User = Depends(ADMIN_OR_STAFF), db: Session = Depe
 
 
 class ClinicSettingsPatch(BaseModel):
+    # 行政分享名單不能從這裡改：必須走 PUT /settings/google/staff-emails，才會同步更新各日曆的分享
+    model_config = ConfigDict(extra="forbid")
+
     event_title_format: Literal["type_room", "type_room_code", "type_room_abbrev"] | None = None
-    staff_share_emails: list[str] | None = Field(None, max_length=50)
     push_therapist_notes_to_google: bool | None = None
     ical_follow_title_format: bool | None = None
     resync_lookback_days: int | None = Field(None, ge=0, le=365)
     resync_lookahead_days: int | None = Field(None, ge=1, le=730)
-
-    @field_validator("staff_share_emails")
-    @classmethod
-    def _emails(cls, v):
-        if v is None:
-            return v
-        out: list[str] = []
-        for e in v:
-            e = e.strip().lower()
-            if not EMAIL_RE.match(e):
-                raise ValueError(f"email 格式不正確：{e}")
-            if e not in out:
-                out.append(e)
-        return out
 
 
 @router.patch("/clinic", response_model=ClinicSettingsOut)

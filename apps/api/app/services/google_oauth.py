@@ -128,6 +128,19 @@ class GoogleOAuthClient:
             email=_email_from_id_token(data.get("id_token")),
         )
 
+    def refresh_access_token(self, refresh_token: str) -> str:
+        """用 refresh token 換短效 access token。invalid_grant＝授權已被撤銷或過期，呼叫端要把連線標為失效。"""
+        data = self._post(TOKEN_URL, {
+            "refresh_token": refresh_token,
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+            "grant_type": "refresh_token",
+        })
+        token = data.get("access_token")
+        if not token:
+            raise GoogleOAuthError("bad_response")
+        return token
+
     def revoke(self, token: str) -> None:
         self._post(REVOKE_URL, {"token": token})
 

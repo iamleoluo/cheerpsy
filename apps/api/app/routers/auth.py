@@ -13,6 +13,7 @@ from app.database import get_db
 from app.models.invitation import Invitation
 from app.models.user import User
 from app.schemas.auth import LoginRequest, TokenResponse, UserResponse
+from app.services import gcal_share
 from app.services.audit import write_audit
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -117,6 +118,9 @@ def toggle_user(user_id: int, user: User = Depends(RequireRole(["admin"])), db: 
     write_audit(db, "users", target.id, "UPDATE", user.id,
                 {"is_active": before_active}, {"is_active": target.is_active})
     db.commit()
+    if target.role == "therapist":
+        # 離職／恢復：日曆凍結與分享要跟上；任何 Google 問題都不得讓這個操作失敗
+        gcal_share.sync_for_user_best_effort(db, target)
     return {"id": target.id, "is_active": target.is_active}
 
 
@@ -438,6 +442,7 @@ class RosterTherapistCreate(BaseModel):
     user_code: str | None = None
     commission_rate: float | None = None
     base_price: float | None = None
+    gcal_share_email: str | None = None  # 選填：已連結 Google 時自動建立並分享日曆
 
 
 @router.get("/roster-therapists", response_model=list[UserListResponse])
@@ -481,8 +486,17 @@ def create_roster_therapist(
     else:
         code = None
 
+    share_email = gcal_share.normalize_email(body.gcal_share_email)
+    if share_email:
+        if not gcal_share.EMAIL_RE.match(share_email):
+            raise HTTPException(status_code=400, detail="分享用 Gmail 格式不正確")
+        clash = db.query(User).filter(User.gcal_share_email == share_email, User.role == "therapist").first()
+        if clash is not None:
+            raise HTTPException(status_code=409, detail=f"這個信箱已經是「{clash.name}」的分享信箱")
+
     u = User(
         email=email,
+        gcal_share_email=share_email,
         # 不可能通過驗證的雜湊值；登入端另有 has_account 阻擋，此為第二道防線
         password_hash="!",
         name=name,
@@ -499,4 +513,8 @@ def create_roster_therapist(
     write_audit(db, "users", u.id, "INSERT", user.id, None,
                 {"name": name, "has_account": False, "roster_only": True})
     db.commit()
+    if share_email:
+        from app.routers.gcal_calendars import auto_provision_and_audit
+        auto_provision_and_audit(db, u, user)
+        db.refresh(u)
     return u

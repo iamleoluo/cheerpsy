@@ -22,7 +22,7 @@ from app.models.claim_extra import ClaimBatchPlan, ClaimDocument
 from app.models.event import Event
 from app.models.finance import DailyClosing, MonthlyReport, SupervisorReview
 from app.models.holiday import Holiday
-from app.models.gcal import ClinicSettings, GoogleOAuthConnection
+from app.models.gcal import ClinicSettings, GoogleCalendar, GoogleOAuthConnection
 from app.models.referral import (
     ReferralRequest,
     ReferralDesignation,
@@ -61,6 +61,7 @@ __all__ = [
     "ReferralSlotOffer",
     "Holiday",
     "ClinicSettings",
+    "GoogleCalendar",
     "GoogleOAuthConnection",
     "DailyClosing",
     "MonthlyReport",
