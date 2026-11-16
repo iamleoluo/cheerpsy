@@ -915,7 +915,7 @@ flowchart TD
 - `sweep_expired` 改成定時跑（`gcal_worker` 或排程）。
 - **媒合加強**：需求表新欄位、`therapist_profiles`、suggestions、`matching_vocab`、可當診時段畫面。
 - **衝突**：心理師與個案重疊檢查、`ex_appointments_therapist`（先清歷史重疊）、`therapist_time_off`、`/sched`「這段不接案」。
-- `/match` 轉初診接上 `/rooms/availability`。
+- `/match` 預約初診接上 `/rooms/availability`。
 - 心理師 `/settings`：iCal 複製與重新產生、Google 連結狀態。
 - **角色收尾（延後）**：`manager`、依角色落地頁、login 寫死 `/dashboard`、`(therapist)/layout` 放行 admin。
 - 儀表板「昨日仍待報到」。
