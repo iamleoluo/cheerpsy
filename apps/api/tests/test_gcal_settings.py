@@ -126,12 +126,11 @@ def test_patch_settings_validates_and_audits(client, auth, users, env, db):
     h = auth(users["admin"])
     r = client.patch("/settings/clinic", headers=h, json={
         "event_title_format": "type_room_abbrev",
-        "staff_share_emails": [" Staff@Gmail.com ", "staff@gmail.com", "b@x.org"],
         "resync_lookback_days": 7, "push_therapist_notes_to_google": True})
     assert r.status_code == 200
     d = r.json()
     assert d["event_title_format"] == "type_room_abbrev"
-    assert d["staff_share_emails"] == ["staff@gmail.com", "b@x.org"]  # 去空白、轉小寫、去重
+    assert d["staff_share_emails"] == []  # 行政名單只能走 PUT /settings/google/staff-emails
     assert d["resync_lookback_days"] == 7 and d["push_therapist_notes_to_google"] is True
     assert d["resync_lookahead_days"] == 180  # 沒送的欄位不變
     # 持久化
@@ -143,7 +142,7 @@ def test_patch_settings_validates_and_audits(client, auth, users, env, db):
 
 @pytest.mark.parametrize("body", [
     {"event_title_format": "full_name"},
-    {"staff_share_emails": ["not-an-email"]},
+    {"staff_share_emails": ["a@b.com"]},  # 不能從這裡改：改了不會同步各日曆的分享
     {"resync_lookback_days": -1},
     {"resync_lookahead_days": 0},
     {"resync_lookahead_days": 9999},
@@ -479,5 +478,5 @@ def test_migration_chain_and_only_adds():
     assert 'down_revision = "zi9e3f4a5b6e"' in txt
     children = [p.name for p in (API_DIR / "alembic" / "versions").glob("*.py")
                 if 'down_revision = "zj0f4a5b6c7d"' in p.read_text(encoding="utf-8")]
-    assert children == []  # 目前的 head
+    assert set(children) <= {"zk1a5b6c7d8e_gcal_calendars.py"}  # 後面只能接 PR B 的 migration（鏈不分叉）
     assert txt.count("drop_table") == 2 and "op.execute" not in txt and "DELETE" not in txt.upper()

@@ -13,6 +13,7 @@ from app.database import get_db
 from app.models.invitation import Invitation
 from app.models.user import User
 from app.schemas.auth import LoginRequest, TokenResponse, UserResponse
+from app.services import gcal_share
 from app.services.audit import write_audit
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -117,6 +118,9 @@ def toggle_user(user_id: int, user: User = Depends(RequireRole(["admin"])), db: 
     write_audit(db, "users", target.id, "UPDATE", user.id,
                 {"is_active": before_active}, {"is_active": target.is_active})
     db.commit()
+    if target.role == "therapist":
+        # 離職／恢復：日曆凍結與分享要跟上；任何 Google 問題都不得讓這個操作失敗
+        gcal_share.sync_for_user_best_effort(db, target)
     return {"id": target.id, "is_active": target.is_active}
 
 
