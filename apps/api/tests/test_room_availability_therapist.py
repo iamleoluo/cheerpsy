@@ -102,3 +102,27 @@ def test_therapist_can_only_query_self(client, auth, world):
     assert avail(client, auth, w["admin"], s, e, therapist_id=w["staff"].id).status_code == 404
     assert avail(client, auth, w["admin"], s, e, therapist_id=999999).status_code == 404
     assert avail(client, auth, w["admin"], s, e, therapist_id=w["t2"].id).status_code == 200
+
+
+def test_therapist_only_ignores_rooms_and_returns_just_a_flag(client, auth, world, db, room):
+    w = world
+    s, e = _t()
+    # 診間被佔滿（另一位心理師佔住唯一診間）：有 therapist_id 會回空，therapist_only 仍說 t1 有空
+    book(client, auth, w, w["c2"], s, e)
+    assert avail(client, auth, w["staff"], s, e, therapist_id=w["t1"].id).json() == []
+    r = avail(client, auth, w["staff"], s, e, therapist_id=w["t1"].id, therapist_only="true")
+    assert r.status_code == 200 and r.json() == {"available": True}
+    # t2 自己有預約 → 不可約；不接案也是
+    assert avail(client, auth, w["staff"], s, e, therapist_id=w["t2"].id, therapist_only="true").json() == {"available": False}
+    client.post("/therapist-time-off", headers=auth(w["t1"]),
+                json={"start_time": s.isoformat(), "end_time": e.isoformat(), "reason": REASON})
+    off = avail(client, auth, w["staff"], s, e, therapist_id=w["t1"].id, therapist_only="true")
+    assert off.json() == {"available": False} and REASON not in off.text
+
+
+def test_therapist_only_needs_therapist_id_and_respects_scope(client, auth, world):
+    w = world
+    s, e = _t()
+    assert avail(client, auth, w["staff"], s, e, therapist_only="true").status_code == 400
+    assert avail(client, auth, w["t1"], s, e, therapist_id=w["t2"].id, therapist_only="true").status_code == 404
+    assert avail(client, auth, w["t1"], s, e, therapist_id=w["t1"].id, therapist_only="true").status_code == 200

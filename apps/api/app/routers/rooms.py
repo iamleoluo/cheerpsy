@@ -40,13 +40,20 @@ def list_rooms(
     return q.order_by(*ROOM_ORDER).all()
 
 
-@router.get("/availability", response_model=list[RoomResponse])
+class TherapistAvailability(BaseModel):
+    """只問心理師有沒有空（不看診間）。刻意只有一個欄位，不帶原因或任何姓名。"""
+
+    available: bool
+
+
+@router.get("/availability", response_model=list[RoomResponse] | TherapistAvailability)
 def available_rooms(
     start: datetime,
     end: datetime,
     prefer: str | None = Query(None, pattern="^(talk|play)$"),
     exclude_appointment_id: int | None = None,
     therapist_id: int | None = None,
+    therapist_only: bool = False,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -57,16 +64,23 @@ def available_rooms(
     改期時帶 exclude_appointment_id，避免把自己原本的時段算成衝突。
     帶 therapist_id 時，該心理師在這段有預約或不接案就回空清單（與預約寫入同一組檢查；
     不說明原因，也不帶任何姓名）。心理師身分只能查自己，查別人回 404。
+    therapist_only=true（需帶 therapist_id）只問心理師有沒有空、不看診間，回 {"available": bool}；
+    線上／外展不佔診間，用這個才不會因為診間全滿而誤判。
     """
     if end <= start:
         raise HTTPException(status_code=400, detail="結束時間必須晚於開始時間")
+    if therapist_only and therapist_id is None:
+        raise HTTPException(status_code=400, detail="therapist_only 需搭配 therapist_id")
     if therapist_id is not None:
         if user.role == "therapist" and user.id != therapist_id:
             raise HTTPException(status_code=404, detail="Not found")
         t = db.query(User).filter(User.id == therapist_id, User.role == "therapist").first()
         if not t:
             raise HTTPException(status_code=404, detail="Not found")
-        if therapist_is_busy(db, therapist_id, start, end, exclude_appointment_id=exclude_appointment_id):
+        busy = therapist_is_busy(db, therapist_id, start, end, exclude_appointment_id=exclude_appointment_id)
+        if therapist_only:
+            return TherapistAvailability(available=not busy)
+        if busy:
             return []
     rooms = db.query(Room).filter(Room.is_active.is_(True)).order_by(*ROOM_ORDER).all()
     free = [
