@@ -70,6 +70,7 @@ export const THERAPIST_NAV: readonly NavGroup[] = [
     items: [
       { href: "/today", label: "我的今日", icon: "🏠" },
       { href: "/sched", label: "我的班表", icon: "🗓️" },
+      { href: "/appts", label: "我的預約", icon: "📋" },
       { href: "/booking", label: "預約作業", icon: "➕" },
     ],
   },
