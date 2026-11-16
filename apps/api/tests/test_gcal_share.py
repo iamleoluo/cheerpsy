@@ -344,11 +344,11 @@ def test_provision_recreates_calendar_deleted_on_google(client, auth, people, fa
     provision(client, auth, people["admin"], people["a"])
     first = list(fake.calendars)[0]
     fake.deleted.add(first)
-    # 同步時發現日曆不在了
+    # 同步時發現日曆不在了 → 改信箱的自動佈建順便重建（沒有 Google 連結時才會停在「找不到」，見下）
     r = client.put(f"/settings/google/therapists/{people['a'].id}/email", headers=auth(people["admin"]), json={"email": "a2@gmail.com"})
     d = r.json()["calendar"]
-    assert d["is_missing"] is True and d["share_status"] == "error" and "找不到" in d["last_share_error"]
-    # 重建：換新的 calendar id，仍只有一列
+    assert d["is_missing"] is False and d["share_status"] == "invited" and d["shared_emails"] == ["a2@gmail.com"]
+    # 手動重建仍可用（已重建過則只是同步），仍只有一列
     d = provision(client, auth, people["admin"], people["a"])["calendar"]
     assert d["is_missing"] is False and d["share_status"] == "invited"
     assert cal_row(db, people["a"]).google_calendar_id != first and db.query(GoogleCalendar).count() == 1
@@ -401,6 +401,117 @@ def test_email_saved_even_when_google_not_connected(client, auth, people, db, mo
     r = client.put(f"/settings/google/therapists/{t.id}/email", headers=auth(people["admin"]), json={"email": "me2@gmail.com"})
     assert r.status_code == 200 and r.json()["share_email"] == "me2@gmail.com"
     assert r.json()["calendar"]["share_status"] == "error" and "尚未同步" in r.json()["calendar"]["last_share_error"]
+
+
+# ---------------------------------------------------------------------------
+# 填信箱後自動建立並分享（best-effort）
+# ---------------------------------------------------------------------------
+def _put_email(client, auth, who, t, email):
+    return client.put(f"/settings/google/therapists/{t.id}/email", headers=auth(who), json={"email": email})
+
+
+def test_setting_email_auto_provisions_and_shares(client, auth, people, fake, db):
+    t = people["me"]
+    r = _put_email(client, auth, people["staff"], t, "Me@Gmail.com")
+    assert r.status_code == 200
+    cal = r.json()["calendar"]
+    assert cal is not None and cal["share_status"] == "invited" and cal["shared_emails"] == ["me@gmail.com"]
+    assert len(fake.ops("create_calendar")) == 1
+    assert fake.ops("insert_acl")[0][2:] == ("me@gmail.com", "reader", True)
+    audit = db.execute(text("select operation from audit_log where table_name='google_calendars'")).scalars().all()
+    assert "PROVISION" in audit
+
+
+def test_auto_provision_is_idempotent_and_does_not_recreate(client, auth, people, fake):
+    t = people["me"]
+    _put_email(client, auth, people["admin"], t, "me@gmail.com")
+    fake.clear_calls()
+    r = _put_email(client, auth, people["admin"], t, "me@gmail.com")
+    assert r.status_code == 200 and not fake.ops("create_calendar") and not fake.ops("insert_acl")
+    r = _put_email(client, auth, people["admin"], t, "me2@gmail.com")  # 改信箱：只換分享，不新建日曆
+    assert len(fake.ops("create_calendar")) == 0 and r.json()["calendar"]["shared_emails"] == ["me2@gmail.com"]
+
+
+def test_auto_provision_failure_does_not_block_saving_email(client, auth, people, fake, db):
+    t = people["me"]
+    fake.fail["create_calendar"] = CalendarApiError(500, "backendError")
+    r = _put_email(client, auth, people["staff"], t, "me@gmail.com")
+    assert r.status_code == 200 and r.json()["share_email"] == "me@gmail.com" and r.json()["calendar"] is None
+    assert cal_row(db, t) is None
+    del fake.fail["create_calendar"]  # 手動補救
+    assert provision(client, auth, people["staff"], t)["calendar"]["share_status"] == "invited"
+
+
+def test_auto_provision_share_failure_marks_calendar_only(client, auth, people, fake, db):
+    t = people["me"]
+    fake.fail["insert_acl"] = CalendarApiError(500, "backendError")
+    r = _put_email(client, auth, people["staff"], t, "me@gmail.com")
+    assert r.status_code == 200 and r.json()["share_email"] == "me@gmail.com"
+    assert r.json()["calendar"]["share_status"] == "error"
+    assert cal_row(db, t) is not None  # 日曆 id 沒有遺失
+
+
+def test_auto_provision_skipped_when_not_connected_or_cleared(client, auth, people, db, monkeypatch):
+    t = people["me"]
+    r = _put_email(client, auth, people["admin"], t, "me@gmail.com")  # 沒連結 Google
+    assert r.status_code == 200 and r.json()["calendar"] is None
+
+
+def test_clearing_email_does_not_provision(client, auth, people, fake):
+    r = _put_email(client, auth, people["admin"], people["me"], "")
+    assert r.status_code == 200 and not fake.ops("create_calendar")
+
+
+def test_auto_provision_skips_offboarded_and_frozen(client, auth, people, fake, db):
+    t = people["me"]
+    t.is_active = False
+    db.commit()
+    assert _put_email(client, auth, people["admin"], t, "me@gmail.com").status_code == 200
+    assert not fake.ops("create_calendar")
+    # 取消分享（凍結）的日曆：改信箱不會自動恢復分享
+    a = people["a"]
+    provision(client, auth, people["admin"], a)
+    client.post(f"/settings/google/therapists/{a.id}/unshare", headers=auth(people["admin"]))
+    fake.clear_calls()
+    r = _put_email(client, auth, people["admin"], a, "new@gmail.com")
+    assert r.json()["calendar"]["is_active"] is False and not fake.ops("create_calendar")
+    assert "new@gmail.com" not in fake.shared(list(fake.calendars)[0])
+
+
+def test_auto_provision_recreates_missing_calendar(client, auth, people, fake, db):
+    a = people["a"]
+    provision(client, auth, people["admin"], a)
+    fake.deleted.add(list(fake.calendars)[0])
+    cal = cal_row(db, a)
+    cal.is_missing = True
+    db.commit()
+    fake.clear_calls()
+    r = _put_email(client, auth, people["admin"], a, "new@gmail.com")
+    assert len(fake.ops("create_calendar")) == 1 and r.json()["calendar"]["is_missing"] is False
+
+
+def test_roster_create_with_email_auto_provisions(client, auth, people, fake, db):
+    r = client.post("/auth/roster-therapists", headers=auth(people["staff"]), json={"name": "新人", "gcal_share_email": "New@Gmail.com"})
+    assert r.status_code == 201, r.text
+    row = db.query(User).filter(User.id == r.json()["id"]).first()
+    assert row.gcal_share_email == "new@gmail.com"
+    cal = cal_row(db, row)
+    assert cal is not None and cal.shared_emails == ["new@gmail.com"] and len(fake.ops("create_calendar")) == 1
+
+
+def test_roster_create_without_email_or_google_still_works(client, auth, people, fake, db):
+    r = client.post("/auth/roster-therapists", headers=auth(people["staff"]), json={"name": "無信箱"})
+    assert r.status_code == 201 and not fake.ops("create_calendar")
+    r = client.post("/auth/roster-therapists", headers=auth(people["staff"]), json={"name": "壞信箱", "gcal_share_email": "nope"})
+    assert r.status_code == 400
+    r = client.post("/auth/roster-therapists", headers=auth(people["staff"]), json={"name": "重複", "gcal_share_email": "a@gmail.com"})
+    assert r.status_code == 409
+
+
+def test_roster_create_succeeds_when_google_fails(client, auth, people, fake, db):
+    fake.fail["create_calendar"] = CalendarApiError(500, "backendError")
+    r = client.post("/auth/roster-therapists", headers=auth(people["staff"]), json={"name": "新人", "gcal_share_email": "n@gmail.com"})
+    assert r.status_code == 201 and r.json()["name"] == "新人"
 
 
 # ---------------------------------------------------------------------------

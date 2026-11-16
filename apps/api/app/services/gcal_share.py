@@ -229,6 +229,44 @@ def sync_all(db: Session, client: CalendarClient) -> tuple[int, int]:
     return ok, failed
 
 
+def auto_provision_best_effort(db: Session, therapist: User) -> GoogleCalendar | None:
+    """心理師填了（或改了）分享信箱後，自動建立日曆並分享。回傳新佈建／重建的日曆列；沒動作或失敗回 None。
+
+    只在「在職、有信箱、尚無可用日曆（沒有或已被刪）」時動作；已凍結（取消分享）的日曆不會被自動恢復。
+    永遠不丟例外、不回滾呼叫端已 commit 的存檔：Google 未連結就什麼都不做（手動「建立並分享」補救），
+    分享階段失敗則記在日曆列上。呼叫端須在存檔 commit 之後才呼叫。"""
+    try:
+        if therapist.role != "therapist" or not therapist.is_active or not normalize_email(therapist.gcal_share_email):
+            return None
+        # 鎖心理師列，避免與手動「建立並分享」併發建出兩本日曆
+        locked = db.query(User).filter(User.id == therapist.id).with_for_update().first()
+        if locked is None:
+            return None
+        row = db.query(GoogleCalendar).filter(GoogleCalendar.therapist_id == locked.id).first()
+        if row is not None and not row.is_missing:
+            db.rollback()  # 放掉鎖
+            return None
+        try:
+            client = gcal_client.get_calendar_client(db)
+        except GcalNotConnected:
+            db.rollback()
+            return None
+        try:
+            cal = provision(db, client, locked)
+        except (GcalThrottled, CalendarApiError) as e:
+            db.rollback()
+            logger.warning("gcal auto-provision skipped (therapist_id=%s): %s", therapist.id, type(e).__name__)
+            return None
+        return cal
+    except Exception:  # noqa: BLE001 — 存檔已完成，這裡不能讓請求失敗
+        logger.exception("gcal auto-provision failed")
+        try:
+            db.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        return None
+
+
 def sync_for_user_best_effort(db: Session, user: User) -> None:
     """心理師在名冊被停用（離職）或恢復時，讓日曆的凍結狀態與分享跟上。
 

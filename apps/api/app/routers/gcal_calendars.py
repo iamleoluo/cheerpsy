@@ -150,7 +150,25 @@ def set_share_email(
     write_audit(db, "users", t.id, "UPDATE", user.id, before,
                 {"gcal_share_email": t.gcal_share_email, "calendar": _snapshot(cal)})
     db.commit()
+    if body.email:
+        auto_provision_and_audit(db, t, user)
+        cal = _calendar_of(db, t.id)
     return _row_out(t, cal)
+
+
+def auto_provision_and_audit(db: Session, t: User, actor: User) -> None:
+    """存檔（已 commit）之後自動建立日曆並分享；失敗只標在日曆上，不影響呼叫端。"""
+    tid = t.id
+    before = _snapshot(_calendar_of(db, tid))
+    cal = gcal_share.auto_provision_best_effort(db, t)
+    if cal is None:
+        return
+    try:
+        write_audit(db, "google_calendars", cal.id, "PROVISION", actor.id, before, _snapshot(cal))
+        db.commit()
+    except Exception:  # noqa: BLE001
+        logger.exception("gcal auto-provision audit failed")
+        db.rollback()
 
 
 @router.post("/therapists/{therapist_id}/provision", response_model=TherapistRow)
