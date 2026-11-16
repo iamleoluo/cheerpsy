@@ -3,7 +3,7 @@
 日期：2026-11-16（定位更新：2026-11-17）  
 範圍：只做調查與計畫。本文件不改應用程式碼、不開 pull request。  
 對象程式庫：`/workspace`（CheerPsy v2，FastAPI + Next.js 14）。  
-Alembic HEAD：`zg7c1d2e3f4c`（`apps/api/alembic/versions/zg7c1d2e3f4c_phase9_claim_rules.py`）。
+Alembic HEAD：~~`zg7c1d2e3f4c`（`apps/api/alembic/versions/zg7c1d2e3f4c_phase9_claim_rules.py`）~~ **（2026-11-17 取代：目前為 `zt0d4e5f6a7b`）**。
 
 這份計畫對準現在這份程式，不是一份通用診所系統草圖。帳務不是旁邊一顆模組：報到當下就會寫流水帳，預約 API 的回應裡直接算出心理師分潤與診所分潤，診間日曆的「收款」打的是財務 API。媒合、診間、單向 iCal 已經有骨架，但屬性媒合、心理師時段衝突、活動與預約的雙向佔用、以及真正的 Google 日曆同步都還沒有。
 
@@ -205,6 +205,9 @@ flowchart LR
     Case[cases]
     User[users]
     Event[events]
+    Quota[case_institution_quotas]
+    Plan[institution_plans]
+    %% 2026-11-17：Quota、Plan 為金流資訊，保留（不在刪除組）
   end
   subgraph cut [刪除]
     SR[session_records]
@@ -212,8 +215,6 @@ flowchart LR
     DC[daily_closings]
     CB[claim_batches]
     PO[payout_details]
-    Quota[case_institution_quotas]
-    Plan[institution_plans]
   end
   Referral -->|referral_id / is_intake| Appt
   Appt -->|appointment_id UNIQUE| SR
@@ -330,7 +331,7 @@ flowchart LR
 - `appointments`、`cases`、`rooms`、`referral_*`、`events`、`holidays`、`reminder_log`、`invitations`、`notifications`、`audit_log`、`users`。
 - 報到／未到端點留下，但 `mark_arrived` 不准再呼叫 `materialize_appointment`，也不再動額度。未到只記 `no_show_type`，**不再寫 `no_show_fee` 金額**（$200/$500 是帳務規則）。
 - `events` 的講師費欄位（`has_lecture_fee` 等）刪除或停止寫入。空間佔用留下。
-- `users.commission_rate`、`users.base_price` 停止使用。`base_price` 目前是預約金額預設值（規格 D1）。金額欄拿掉後，這兩個欄位在上線 B 一併 drop。`user_code` 留著，預約編號還在用。
+- ~~`users.commission_rate`、`users.base_price` 停止使用。`base_price` 目前是預約金額預設值（規格 D1）。金額欄拿掉後，這兩個欄位在上線 B 一併 drop。`user_code` 留著，預約編號還在用。~~ **（2026-11-17 取代：`appointments.amount` 保留；`users.commission_rate` 上線 B 仍 drop；`users.base_price` 待議（是否仍當預約金額預設值）。）**
 - `appointments.amount` 保留（自費必填；機構由方案帶出）。**上線 B 不 drop** `amount`、`funding_source`、`plan_id`、`rate_item_id`、`quota_id`、`transport_fee`、`transport_fee_option_id`、`self_pay_amount`、`no_show_fee`（金流資訊保留）。上線 B 只 drop：`hourly_rate`（若確認不再使用）、`fee_item`，以及回應裡的 `therapist_share`、`clinic_share`。
 - `institutions`：**完整保留**，連同 `institution_contracts`、`institution_plans`、`plan_rate_items`、`plan_transport_fees`、`case_institution_quotas`、`quota_templates`（金流資訊）。`cases.institution_id`、`funding_source` 保留。上線 B 不 drop 這些表。
 - 儀表板改查 `appointments` 與 `referral_requests`，不准再 import `SessionRecord`。
@@ -356,12 +357,17 @@ flowchart LR
 - 金額必須大於 0（借場地方案 `allows_zero_amount` 例外）；機構預約顯示總額、自付額、機構補助（算出來不存）。`self_pay_amount` 為 NULL＝未設定，不猜。
 - Google 事件標題：自費「$全額」；機構「$總額（自付 $X）」、全額補助「$總額（機構全額）」、自付未設定「$總額（自付未設定）」。
 - 計價維度：`consult_type`（individual／couple／family／parenting）與 `service_type` 存在預約上並帶入價目挑選；「第幾次」依預約日期；改時長重新計價（手動調整過的不覆蓋，回 `warnings`）。
+- `self_pay_amount`：0＝全額補助，NULL＝未設定（不猜）。
+- 回填（zt0d）時，`session_records` 的自付額與機構請款額都是 0 視為無資訊，改走價目項目；同一預約有多筆有效紀錄取最新一筆。
+- 價目項目有設 `consult_type`／`service_type`、但預約沒帶時不命中，必須明確選。
+- `GET /cases/{id}/pricing-preview` 提供預覽（與建立同一套計價）；改時長時手動調整過、或手動指定價目的金額不覆蓋，只回 `warnings`。
+- `scripts/check_amounts.py`（唯讀）列出金額 0／NULL、自付額 NULL、多筆有效紀錄的預約；`--strict` 有項目時結束碼為 1。
 
 **維持移除（核銷、對帳、流水）**
 - 核銷批次（`claim_batches`、`claims_extra`、`/claims`、`/docs`）、對帳、流水帳冊與 `session_records` 對帳流程、月結、日結、酬勞、零用金、商品銷售、收據編號。
 - 不修改 `settlement.py`、`quota_flow.py`；額度不足的處理包在 `services/appt_billing.py`。
 
-**權限**：隔離單位仍是心理師；心理師只看得到自己個案的方案、額度與收款狀態（別人的一律 404），收款只有 admin／staff 能記。
+**權限**：隔離單位仍是心理師；心理師只看得到自己個案的~~方案、額度與收款狀態（別人的一律 404），收款只有 admin／staff 能記~~ **（2026-11-17 取代：方案、額度、金額、自付額、機構補助（別人的一律 404））**。
 
 ### 3.3 剪耦合的順序（上線 A）
 
@@ -369,10 +375,10 @@ flowchart LR
 
 1. **凍結寫入。** `mark_arrived` 刪掉 `materialize_appointment`。`ledger.py` 所有讀取拿掉 `materialize_due_appointments`。`POST /ledger/settle` 改成 410，或直接刪路由。確認沒有第二個 import（目前就是這兩處加 dashboard 的讀取）。
 2. **報到與日曆脫鉤收款。** `calendar/page.tsx` 拿掉 `PayModal`、`/finance/daily`、已收統計。格子只留：待報到／已到／未到、初診黃框、線上／外展欄。`cases/page.tsx` 拿掉帳冊分頁與 `AppointmentPaymentModal`。
-3. **建立預約不再要求金額。** `booking/page.tsx`、個案頁快速預約、心理師預約：移除金額與繳費方式。後端在欄位還是 NOT NULL 時，伺服器自己寫 `amount=0`，不要讓前端再傳。`_to_response` 拿掉 `therapist_share`、`clinic_share`、額度「最後一次」。
-4. **停用額度。** `create_appointment`、取消、未到、結案不再呼叫 `quota_flow`。機構方案不足時的擋下邏輯一併拿掉，否則沒有價目資料時會無法預約。
+3. ~~**建立預約不再要求金額。** `booking/page.tsx`、個案頁快速預約、心理師預約：移除金額與繳費方式。後端在欄位還是 NOT NULL 時，伺服器自己寫 `amount=0`，不要讓前端再傳。`_to_response` 拿掉 `therapist_share`、`clinic_share`、額度「最後一次」。~~ **（2026-11-17 取代：金額必填且 > 0（`allows_zero_amount` 方案如借場地例外），自費由人填、機構由價目帶出並存快照；不再由伺服器填 0。）**
+4. ~~**停用額度。** `create_appointment`、取消、未到、結案不再呼叫 `quota_flow`。機構方案不足時的擋下邏輯一併拿掉，否則沒有價目資料時會無法預約。~~ **（2026-11-17 取代：額度保留，只顯示總堂數／已用／剩餘，**不擋預約**；額度不足照常建立、回 `warnings`。`quota_flow` 不動，由 `appt_billing` 包一層。）**
 5. **拆儀表板。** `dashboard.py` 改為：本月新媒合數、媒合中、本週預約、今日應到／已到／未到、進行中個案、超過 45 天沒有未來預約的個案數（沿用現有 churn 演算法，但資料源改成 `appointments`，角色開放給 staff 與主管，不要只限 accountant）。
-6. **刪頁與路由。** 從 `main.py` 拿掉 ledger、invoices、petty_cash、payouts、claim_batches、claims_extra、finance_daily、product_sales、receipts、institution_contracts、institution_plans、quota_templates、case_quotas。`nav.ts` 拿掉對應項目。心理師拿掉「核銷」「我的酬勞」。
+6. ~~**刪頁與路由。** 從 `main.py` 拿掉 ledger、invoices、petty_cash、payouts、claim_batches、claims_extra、finance_daily、product_sales、receipts、institution_contracts、institution_plans、quota_templates、case_quotas。`nav.ts` 拿掉對應項目。心理師拿掉「核銷」「我的酬勞」。~~ **（2026-11-17 取代：其餘路由照刪；`institution_contracts`、`institution_plans`、`quota_templates`、`case_quotas` 的路由**恢復**（機構路由保留），`nav.ts` 對應項目也留下。）**
 7. **角色名單。** 所有 `RequireRole([..., "accountant"])` 改成實際要的角色（見 §7）。停用既有 `accountant` 使用者（`is_active=false`），不要把他們改成 staff（權限集合不一樣，而且他們本來不能建預約）。
 8. **死程式。** 刪除 §3.2 的檔案後，全庫搜尋 `SessionRecord`、`quota_flow`、`settlement`、`PettyCash`、`ClaimBatch`、`commission_rate`、`OUTPATIENT_MIN_FEE`，必須只剩 migration 與歸檔腳本。`models/__init__.py` 同步拿掉 export。`import_excel.py` 與 `data_import.py` 若會寫流水，帳務工作表的匯入路徑刪除；個案／預約匯入若診所還要用，改成不碰流水。
 9. **指南。** 改 `guide-content.ts`，刪掉帳冊、收據、核銷、酬勞章節。
@@ -398,12 +404,14 @@ Drop 順序（先解循環 FK，再由子表到父表）：
 4. `invoices`、`product_sales`。
 5. `therapist_payouts`、`daily_closings`、`monthly_reports`、`petty_cash`。
 6. `claim_documents`、`claim_batch_plans`、`claim_batches`。
-7. 清預約與媒合上的 FK 欄：`appointments.plan_id / rate_item_id / quota_id / transport_fee_option_id`，`referral_requests.plan_id`，然後 `plan_transport_fees`、`plan_rate_items`、`case_institution_quotas`、`quota_templates`、`institution_plans`、`institution_contracts`。
-8. 若決定不留機構名冊：`cases.institution_id` 後 drop `institutions`。若留下名冊：只 drop 合約以下的表，`institutions` 保留。
-9. `appointments` drop 金額欄；`users` drop `commission_rate`、`base_price`；`events` drop 講師費欄；`cases` drop `billing_cycle`、`funding_source`（`institution_id` 視上一步）。
+7. ~~清預約與媒合上的 FK 欄：`appointments.plan_id / rate_item_id / quota_id / transport_fee_option_id`，`referral_requests.plan_id`，然後 `plan_transport_fees`、`plan_rate_items`、`case_institution_quotas`、`quota_templates`、`institution_plans`、`institution_contracts`。~~ **（2026-11-17 取代：方案、價目、交通費、額度相關欄位與表**不 drop**。）**
+8. ~~若決定不留機構名冊：`cases.institution_id` 後 drop `institutions`。若留下名冊：只 drop 合約以下的表，`institutions` 保留。~~ **（2026-11-17 取代：`institutions` 與 `cases.institution_id` 保留。）**
+9. ~~`appointments` drop 金額欄；`users` drop `commission_rate`、`base_price`；`events` drop 講師費欄；`cases` drop `billing_cycle`、`funding_source`（`institution_id` 視上一步）。~~ **（2026-11-17 取代：`appointments` 的金額、方案、額度欄與 `cases.funding_source` 不 drop。仍 drop：`users.commission_rate`（`base_price` 待議）、`events` 講師費欄、`cases.billing_cycle`。）**
 10. `downgrade()` 不要試圖把 CSV 灌回去。降版只在「還沒有 drop、上線 A 的程式」可行。上線 B 的回頭方式是還原資料庫備份，不是 Alembic downgrade。
 
-新 migration 的 `down_revision` 必須是 `zg7c1d2e3f4c`。中間若已經有別的 migration，接在實際 HEAD 後面，不要平行分叉（現有鏈是線性的）。
+**上線前提（2026-11-17）：** zt0d 回填依賴 `session_records`，必須在上線 B 之前部署；drop 前先跑 `scripts/check_amounts.py --strict` 與 `list_overlaps.py`。
+
+~~新 migration 的 `down_revision` 必須是 `zg7c1d2e3f4c`。中間若已經有別的 migration，接在實際 HEAD 後面，不要平行分叉（現有鏈是線性的）。~~ **（2026-11-17 取代：新 migration 接在實際 head 後面，不要平行分叉；現有鏈是線性的。）**
 
 ### 3.5 依賴與設定清理
 
@@ -418,7 +426,7 @@ Drop 順序（先解循環 FK，再由子表到父表）：
 
 現在沒有自動測試。上線 A 之前至少補一支 pytest（對 PostgreSQL，因為要用 `tstzrange`），覆蓋下面項目。手動清單給櫃檯走一輪：
 
-- 建立到所預約，未填金額，成功，`session_records` 筆數不變。
+- ~~建立到所預約，未填金額，成功，`session_records` 筆數不變。~~ **（2026-11-17 取代：金額必填且 > 0（借場地方案例外），`session_records` 筆數不變。）**
 - 同一診間重疊時段 409，訊息不洩漏另一位個案姓名。
 - 線上、外展不填診間可以建立。
 - 心理師不能約別人的個案；心理師查週曆時別人的格子沒有個案姓名（現有 `_to_response` 規則）。
@@ -469,7 +477,7 @@ Drop 順序（先解循環 FK，再由子表到父表）：
 
 已有、保留：`name`、`age`、`gender`、`phone`、`referral_source`、`chief_complaint`、`complaint_note`、`consultation_mode`（`individual` / `couple` / `family_group`，個案上還有 `visitation` 等）、`partner_name`、`dispatch_code`。
 
-拿掉：`funding_source`、`plan_id`（帳務）。轉介單位改成可空的 `institution_id` 或一段 `referral_org` 文字，視 §3.2 決定。
+~~拿掉：`funding_source`、`plan_id`（帳務）。~~ **（2026-11-17 取代：保留，呈現經費來源。）** 轉介單位改成可空的 `institution_id` 或一段 `referral_org` 文字，視 §3.2 決定。
 
 新增在 `referral_requests`（行政填、心理師在邀請卡上唯讀）：
 
@@ -525,7 +533,7 @@ Drop 順序（先解循環 FK，再由子表到父表）：
 
 | 角色 | 畫面 | 行為 |
 |---|---|---|
-| 行政 | `/match` | 現有列表、子列表、派案、轉預約、初診有到。加人選建議側欄。拿掉方案／繳費欄 |
+| 行政 | `/match` | 現有列表、子列表、派案、轉預約、初診有到。加人選建議側欄。~~拿掉方案／繳費欄~~ **（2026-11-17 取代：保留，呈現經費來源）** |
 | 心理師 | `/pool` | 現有接受／婉拒。卡片多顯示語言、型態、時段偏好。不顯示電話 |
 | 心理師 | 設定 | 維護 profile 與每週時段。暫停接新案 |
 | 主管 | `/match` 與一個「逾期」篩選 | 看全部、可改派與結案。看誰逾時未回。不經手每一筆 |
@@ -616,7 +624,7 @@ ALTER TABLE appointments
 | 頁 | 改動 |
 |---|---|
 | `/calendar` | 保留 08:00–22:00、30 分格。格子顯示診間佔用、初診、線上／外展獨立欄。拿掉收款。加上 `events` 色塊。未到格釋出後顯示可再約 |
-| `/booking` | 選到所才展開診間。送出前呼叫衝突檢查。心理師看別人的格子只顯示「使用中＋心理師姓名」 |
+| `/booking` | 選到所才展開診間。送出前呼叫衝突檢查。~~心理師看別人的格子只顯示「使用中＋心理師姓名」~~ **（2026-11-17 取代：他人格子只顯示「已佔用」，不含心理師；b47db69、03857f0 已實作）** |
 | `/appts` | 改期（現有 `PUT /appointments/{id}` 僅 admin、staff）必須重跑 `assert_slot_free` |
 | `/admin` 或 `/settings` 的診間分頁 | 系統管理員維護名稱、樓層、類型、停用 |
 | 心理師 `/sched` | 顯示自己的診間或「線上」。提供「這段不接案」寫入 `therapist_time_off` |
@@ -669,14 +677,14 @@ v7 心理師班表定案④寫「與個人 Google 日曆雙向同步為既定需
 | 方向 | Cheerpsy → Google。建立、改期、改診間、取消、未到都 `insert` / `patch`。事件帶 `extendedProperties.private.cheerpsyAppointmentId` |
 | 標題 | 與 iCal 相同，無個案身份 |
 | 失敗 | 預約交易先 commit。同步失敗寫 `calendar_sync_outbox`，不讓 Google 掛掉而 500，否則櫃檯無法約診 |
-| 重試 | FastAPI lifespan 裡每 60 秒掃 outbox，指數退避，最多 8 次。不新增 Redis、不新增 Celery。這個迴圈同時跑 `sweep_expired` |
+| 重試 | ~~FastAPI lifespan 裡每 60 秒掃 outbox，指數退避，最多 8 次。不新增 Redis、不新增 Celery。這個迴圈同時跑 `sweep_expired`~~ **（2026-11-17 取代：獨立工作者 `python -m app.gcal_worker`（`FOR UPDATE SKIP LOCKED`、指數退避、最多 10 次）；`sweep_expired` 仍被動觸發，改成定時跑列入待辦。）** |
 | Webhook | 不做。Google watch channel 約 7 天要續約，還要公開 HTTPS callback。Windows 自建那條部署不一定有穩定對外位址。推送加 outbox 已夠 |
 | 心理師在 Google 刪事件 | 下次重試再建立。以 Cheerpsy 為準 |
 | 雙向 | 不做。若以後要避開心理師私人行程，只讀 FreeBusy（不讀標題）在派案畫面上顯示「Google 顯示忙碌」，由行政決定還派不派。那是第三階，本次路線圖列為選配 |
 | 診間日曆 | **不做。沒有 master 日曆**：每位心理師一本日曆（診所 Gmail 擁有、分享給心理師與行政），診間佔用只在 Cheerpsy 介面以「已佔用」顯示，不推到 Google。權威規格見 `gcal-sync-plan.md` §1、§8。 |
-| Token | 表 `google_calendar_connections`：`user_id` unique、`refresh_token_encrypted`、`calendar_id`、`scopes`、`revoked_at`。加密沿用 `app/utils/encryption.py` 的 AES-GCM（現在用來加密身分證，金鑰來自 `ID_ENCRYPTION_KEY`）。不要新造一套加密。log 不准印 refresh token 或 iCal token |
-| 授權範圍 | `https://www.googleapis.com/auth/calendar.events`，不要 `calendar` 全權 |
-| 設定 | 新增 `GOOGLE_OAUTH_CLIENT_ID`、`GOOGLE_OAUTH_CLIENT_SECRET`、`GOOGLE_OAUTH_REDIRECT_URI`。Redirect 必須是 API 或 Web 上一個已登入後才換 code 的位址，並加入 Google Cloud 主控台與 `CORS_ORIGINS` |
+| Token | ~~表 `google_calendar_connections`：`user_id` unique、`refresh_token_encrypted`、`calendar_id`、`scopes`、`revoked_at`。加密沿用 `app/utils/encryption.py` 的 AES-GCM（現在用來加密身分證，金鑰來自 `ID_ENCRYPTION_KEY`）。不要新造一套加密。log 不准印 refresh token 或 iCal token~~ **（2026-11-17 取代：沿用 Fernet（`GCAL_TOKEN_FERNET_KEY`）加密 refresh token，表為 `google_oauth_connections`；log 仍不准印 token。）** |
+| 授權範圍 | ~~`https://www.googleapis.com/auth/calendar.events`，不要 `calendar` 全權~~ **（2026-11-17 取代：scope 為 `calendar.app.created` + `calendar.acls`。）** |
+| 設定 | ~~新增 `GOOGLE_OAUTH_CLIENT_ID`、`GOOGLE_OAUTH_CLIENT_SECRET`、`GOOGLE_OAUTH_REDIRECT_URI`。Redirect 必須是 API 或 Web 上一個已登入後才換 code 的位址，並加入 Google Cloud 主控台與 `CORS_ORIGINS`~~ **（2026-11-17 取代：`GOOGLE_OAUTH_CLIENT_ID`／`_SECRET`／`_REDIRECT_URI` 沿用，另加 `GCAL_TOKEN_FERNET_KEY`；api 與 worker 都要設。）** |
 | 依賴 | 第二階才加 `google-api-python-client` 與 `google-auth`。第一階不加 |
 | 解除 | 心理師或管理員可停用。停用後 outbox 對該使用者標 cancelled，不再推。本地預約不受影響 |
 
@@ -702,7 +710,7 @@ OAuth 流程放在現有 JWT 後面：心理師已登入 → 導去 Google → c
 | 心理師 | `therapist` | 已有。含 `has_account=false` 的名單制（可被派、不可登入） |
 | 主管 | **新增 `manager`** | 現在這些權限在 `admin`。拆出來，避免診所主管拿到重設密碼與匯入權 |
 | 系統管理員 | `admin` | 留下，收斂成帳號、診間主檔、選項、稽核、OAuth 用戶端設定 |
-| 會計 | `accountant` | 停用。不遷移成 staff |
+| 會計 | `accountant` | ~~停用。不遷移成 staff~~ **（2026-11-17 取代：待業主決定（停用或維持唯讀）；與 `gcal-sync-plan.md` §8.0 矛盾，兩邊都未定。）** |
 
 `manager` 的權限集合＝現在 staff 的全部營運能力，加上：看所有心理師班表與負荷、改派與結案、看稽核裡的營運操作、停用某心理師的日曆連結。**沒有**：建立使用者、重設密碼、改 `issue_tags` 主檔、跑資料匯入、drop 等級的匯出。
 
@@ -757,7 +765,7 @@ flowchart TD
   room --> sync2[同一套日曆同步]
 ```
 
-改期：行政在 `/appts` 或日曆改時間或診間 → `assert_slot_free` → 更新 `time_range` / `room_id` → outbox `patch`。取消：狀態 `cancelled` → Google `STATUS:CANCELLED` 或刪除事件。未到：狀態 `no_show`，診間釋出，日曆標取消，不產生費用。
+改期：行政在 `/appts` 或日曆改時間或診間 → `assert_slot_free` → 更新 `time_range` / `room_id` → outbox `patch`。~~取消：狀態 `cancelled` → Google `STATUS:CANCELLED` 或刪除事件。未到：狀態 `no_show`，診間釋出，日曆標取消，不產生費用。~~ **（2026-11-17 取代：取消與未到一律刪除 Google 事件，診間釋出，不產生費用；只有 iCal 才用 `STATUS:CANCELLED`。）**
 
 心理師自行預約後續場次：維持 v7「不需行政核准」。行政從診間日曆看到即可。不要加通知炸彈；可選在 `/dashboard` 今日新增預約列出「非行政建立」的筆數。
 
@@ -778,12 +786,12 @@ flowchart TD
 | 頁 | 改什麼 |
 |---|---|
 | `/calendar` | 拿掉收款與金額。補活動色塊、空白格開約、初診按鈕維持 |
-| `/booking` | 拿掉金額與繳費。診間改為「該時段空房」。心理師匿名規則維持 |
-| `/appts` | 拿掉金額、額度、失約費金額。留下改期、已到、未到、初診標記 |
+| `/booking` | ~~拿掉金額與繳費。診間改為「該時段空房」。心理師匿名規則維持~~ **（2026-11-17 取代：顯示經費來源、機構名、方案、價目、總額、自付額（NULL＝未設定）、機構補助、交通費、剩餘堂數；不顯示收款、失約費。）** |
+| `/appts` | ~~拿掉金額、額度、失約費金額。留下改期、已到、未到、初診標記~~ **（2026-11-17 取代：顯示經費來源、機構名、方案、價目、總額、自付額（NULL＝未設定）、機構補助、交通費、剩餘堂數；不顯示收款、失約費。留下改期、已到、未到、初診標記。）** |
 | `/cases` | 三分頁：最新動態、預約歷程、個人資料。刪帳冊。詳情不要再打 `/ledger` |
-| `/match` | 拿掉方案。加建議人選、時段與語言 |
+| `/match` | ~~拿掉方案。~~ **（2026-11-17 取代：保留，呈現經費來源。）**加建議人選、時段與語言 |
 | `/pool` | 卡片加屬性，不加聯絡電話 |
-| `/today` `/sched` | 拿掉繳費與額度。班表加「連結 Google」狀態（未連結／已連結／同步失敗） |
+| `/today` `/sched` | ~~拿掉繳費與額度。班表加「連結 Google」狀態（未連結／已連結／同步失敗）~~ **（2026-11-17 取代：顯示經費來源、機構名、方案、價目、總額、自付額（NULL＝未設定）、機構補助、交通費、剩餘堂數；不顯示收款、失約費。班表加「連結 Google」狀態（未連結／已連結／同步失敗）。）** |
 | `/dashboard` | KPI 改媒合與今日預約。快速連結不要再指向財務 |
 | `/reports` `/stats` | 只留媒合成功率、到案、診間使用率、負荷。刪損益 |
 | `/admin` | 使用者加上 `manager`。診間 CRUD。媒合選項。歸檔狀態不放這裡 |
@@ -811,7 +819,7 @@ flowchart TD
 | 階段 | 內容 | 規模 | 結束條件 |
 |---|---|---|---|
 | 0. 診所拍板 | §10 的七題，尤其是機構名冊、診間名單、Google 帳號種類、主管是否獨立角色 | 小，但不做完不要開始 drop | 書面答案記在這份計畫後面 |
-| 1. 剪寫入 | §3.3 步驟 1–5：報到不再入帳、日曆不再收款、儀表板改資料源、金額改由伺服器填 0 | 中。核心檔是 `appointments.py`、`settlement.py` 的呼叫點、`calendar/page.tsx`、`dashboard.py` | 新報到不增加 `session_records`；建立到所預約仍會擋診間重疊 |
+| 1. 剪寫入 | §3.3 步驟 1–5：報到不再入帳、日曆不再收款、儀表板改資料源、~~金額改由伺服器填 0~~ **（已取代 2026-11-17：金額必填且 > 0）** | 中。核心檔是 `appointments.py`、`settlement.py` 的呼叫點、`calendar/page.tsx`、`dashboard.py` | 新報到不增加 `session_records`；建立到所預約仍會擋診間重疊 |
 | 2. 刪帳務介面 | §3.3 步驟 6–9：路由、頁面、導覽、指南、會計角色停用、死碼搜尋 | 大。檔案多但行為直觀 | `/ledger` 等 URL 不存在；四種角色登入後只看到自己的導覽 |
 | 3. 歸檔與 drop | §3.4。獨立上線 | 中，風險高 | 複本上演練；正式 CSV 行數核對；`appointments` 筆數不變 |
 | 4. 衝突與診間 | `assert_slot_free`、exclusion、未到釋出、活動雙向、診間 CRUD、空房建議 | 中。要先清歷史重疊 | 心理師雙重預約 409；活動時段約不進去；未到後可再約 |
@@ -832,7 +840,7 @@ flowchart TD
 | 循環 FK | `session_records` ↔ `invoices` | drop 前先把兩邊 FK 設 NULL |
 | iCal 網址即權限 | token 在 URL，無登入 | 不放姓名；日誌脫敏；可重置 |
 | 規格回潮 | v7 與心智圖仍把收款當主流程 | 以本次業主決定為準，指南改掉，避免櫃檯照舊文件操作 |
-| 機構額度拆掉後行政不知道「還有幾次」 | 額度三態是排程限制也是帳務 | 階段 0 問清楚。若只是次數，用個案上一個整數 `session_cap`，不要把方案價目留下 |
+| 機構額度拆掉後行政不知道「還有幾次」 | 額度三態是排程限制也是帳務 | ~~階段 0 問清楚。若只是次數，用個案上一個整數 `session_cap`，不要把方案價目留下~~ **（2026-11-17 取代：額度保留只顯示剩餘堂數、不擋預約，不需要 `session_cap`。）** |
 | 沒有測試 | repo 內 0 個測試檔 | 階段 1 起用 pytest + Postgres 服務鎖住衝突與「報到不寫流水」 |
 | 會計帳號的操作習慣 | 會計現在能報到、建媒合，但不能建預約 | 停用前把仍需做櫃檯的人改成 `staff` 或 `manager`，不要批量改 role |
 
@@ -851,13 +859,13 @@ flowchart TD
 
 這些答案會改變表結構，請在階段 0 寫下來。
 
-1. **機構轉介還要不要出現在預約上？** ~~已拍板（2026-11-16）：**要**。機構方案屬金流資訊，整套保留（機構、合約、方案、價目、交通費、個案額度）；預約帶方案、應收與自付額快照。只移除核銷對帳。~~ **2026-11-17 補充**：只呈現金額與經費來源，不處理收款對帳；折扣、轉帳後五碼、月結、額度池、伴侶付費方不做。
+1. **機構轉介還要不要出現在預約上？** 已拍板（2026-11-16）：**要**。機構方案屬金流資訊，整套保留（機構、合約、方案、價目、交通費、個案額度）；預約帶方案、應收與自付額快照。只移除核銷對帳。 **2026-11-17 補充**：只呈現金額與經費來源，不處理收款對帳；折扣、轉帳後五碼、月結、額度池、伴侶付費方不做。
 2. **診間名單以種子 13 間（含遊戲、團體、藝術、沙遊）還是規格 12 間（僅 2C、2E 遊戲室）為準？** 5F 雲燈教室要不要建進 `rooms`？
-3. **主管是不是獨立的人？** 是的話新增 `manager`。若永遠與系統管理員同一人，就不加角色，只把 `admin` 的導覽分成「營運／系統」兩組。
-4. **Google 帳號是 Workspace 還是個人 Gmail？** 不影響建議（仍是心理師自己 OAuth 到次要日曆），但影響用戶端申請要掛在哪個網域，以及名單制心理師有沒有診所信箱。
+3. **主管是不是獨立的人？** **（2026-11-17：延後）** 是的話新增 `manager`。若永遠與系統管理員同一人，就不加角色，只把 `admin` 的導覽分成「營運／系統」兩組。
+4. ~~**Google 帳號是 Workspace 還是個人 Gmail？** 不影響建議（仍是心理師自己 OAuth 到次要日曆），但影響用戶端申請要掛在哪個網域，以及名單制心理師有沒有診所信箱。~~ **（2026-11-17 取代：已定——診所個人 Gmail 擁有每位心理師一本日曆，唯讀分享。）**
 5. **線上／外展沒人按報到時，狀態要停在 `booked`，還是隔日由行政補？** 現在會自動變已執行並入帳。拿掉自動入帳後，若不另做規則，這些場次會一直停在待報到。建議：不自動改狀態，儀表板列出「昨日仍待報到」。
 6. **媒合要不要主管核准才派得出去？** 建議不要。若要，是設定開關，預設關。
-7. **個案姓名以外，診間日曆上的心理師姓名可否被其他心理師看見？** 現況與 v7 定案是可以。若改成連心理師姓名都隱藏，空房判斷會變差。建議維持現況。
+7. **個案姓名以外，診間日曆上的心理師姓名可否被其他心理師看見？** ~~現況與 v7 定案是可以。若改成連心理師姓名都隱藏，空房判斷會變差。建議維持現況。~~ **（2026-11-17 取代：他人格子只顯示「已佔用」，不含心理師；b47db69、03857f0 已實作。）**
 
 ---
 
@@ -895,3 +903,21 @@ flowchart TD
 - `document_reference/cheerpsy_v7_spec_extracted.md`
 - `document_reference/gap_analysis.md`
 - `document_reference/open_questions.md`
+
+
+
+## 待辦（2026-11-17 稽核）
+
+- **上線 B**：歸檔加 drop migration（只 drop 帳務表、`hourly_rate`／`fee_item`、`therapist_share`／`clinic_share`；先在正式資料複本跑 `check_amounts.py`、`list_overlaps.py`）。
+- **§3.5 清理**：`reportlab`、Redis、`OUTPATIENT_MIN_FEE`、`CLAIM_DOC_ROOT`／`claimdocs`、seed 的 accountant、`RAILWAY_DEPLOY.md`／`WORK_REPORT.md` 的「每日匯出流水到 Google Drive」；帳務 router 和 `settlement.py` 在上線 B 後刪。
+- **會計角色決策**：23 個 router 檔還有 `"accountant"`；待業主決定停用或維持唯讀（見 §7.1）。
+- `events` 講師費停止寫入。
+- `sweep_expired` 改成定時跑（`gcal_worker` 或排程）。
+- **媒合加強**：需求表新欄位、`therapist_profiles`、suggestions、`matching_vocab`、可當診時段畫面。
+- **衝突**：心理師與個案重疊檢查、`ex_appointments_therapist`（先清歷史重疊）、`therapist_time_off`、`/sched`「這段不接案」。
+- `/match` 轉初診接上 `/rooms/availability`。
+- 心理師 `/settings`：iCal 複製與重新產生、Google 連結狀態。
+- **角色收尾（延後）**：`manager`、依角色落地頁、login 寫死 `/dashboard`、`(therapist)/layout` 放行 admin。
+- 儀表板「昨日仍待報到」。
+- **操作指南更新**：日曆分享、機構與自付額、金額必填；拿掉「匯出含帳冊、核銷案」。
+- 延後：Slack。
