@@ -53,7 +53,7 @@ def w(make_user, make_case, room, db):
 
 
 def _create(client, auth, who, case, room, start, end, **extra):
-    body = {"case_id": case.id, "room_id": room.id if room else None, "session_type": "in_person",
+    body = {"case_id": case.id, "room_id": room.id if room else None, "session_type": "in_person", "amount": 1000,
             "start_time": start.isoformat(), "end_time": end.isoformat(), **extra}
     return client.post("/appointments", json=body, headers=auth(who))
 
@@ -108,6 +108,7 @@ def test_db_released_statuses_do_not_occupy(db, w, released):
 
 
 # ---- 並行：兩條真的獨立連線 ---------------------------------------------------
+@pytest.mark.real_commit
 def test_two_connections_race_second_waits_then_fails(w):
     s, e = _slot()
     ins_args = lambda n, t: (n, t, w["room"].id, s, e)  # noqa: E731
@@ -140,6 +141,7 @@ def test_two_connections_race_second_waits_then_fails(w):
                          {"r": w["room"].id}).scalar() == 1
 
 
+@pytest.mark.real_commit
 def test_two_connections_first_rolls_back_second_succeeds(w):
     s, e = _slot()
     c1 = engine.connect()
@@ -166,6 +168,7 @@ def test_two_connections_first_rolls_back_second_succeeds(w):
     assert result == {"ok": True}
 
 
+@pytest.mark.real_commit
 def test_api_race_many_clients_exactly_one_wins(client, auth, w, db):
     """同一時段同時送出 6 個建立預約：恰好 1 個 201，其餘 409，資料庫只有 1 筆。"""
     from fastapi.testclient import TestClient
@@ -175,7 +178,7 @@ def test_api_race_many_clients_exactly_one_wins(client, auth, w, db):
     n = 6
     barrier = threading.Barrier(n, timeout=30)
     headers = auth(w["staff"])
-    body = {"case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person",
+    body = {"case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person", "amount": 1000,
             "start_time": s.isoformat(), "end_time": e.isoformat()}
 
     def go(_):
@@ -257,7 +260,7 @@ def test_batch_conflict_rolls_back_whole_batch(client, auth, w):
     slots = [{"start_time": (s + timedelta(days=7 * i)).isoformat(), "end_time": (e + timedelta(days=7 * i)).isoformat()}
              for i in range(4)]
     r = client.post("/appointments/batch", headers=auth(w["staff"]),
-                    json={"case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person", "slots": slots})
+                    json={"case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person", "amount": 1000, "slots": slots})
     assert r.status_code == 409
     assert "2B" in r.json()["detail"] and "王小明" not in r.text
     listed = client.get("/appointments", headers=auth(w["admin"])).json()
@@ -471,6 +474,7 @@ def _run_script(*args):
                           capture_output=True, text=True, env=env, cwd=str(API_DIR))
 
 
+@pytest.mark.real_commit
 def test_list_overlaps_reports_room_and_therapist_overlaps(db, w, no_constraint):
     _make_overlaps(db, w)
     before = db.execute(text("SELECT count(*) FROM appointments")).scalar()
@@ -486,6 +490,7 @@ def test_list_overlaps_reports_room_and_therapist_overlaps(db, w, no_constraint)
     assert db.execute(text("SELECT count(*) FROM appointments")).scalar() == before  # 唯讀
 
 
+@pytest.mark.real_commit
 def test_list_overlaps_clean_db_exits_zero(db, w, make_appt):
     s, e = _slot()
     _sql_insert(db, "OK-1", w["t"].id, w["room"].id, s, e)
@@ -495,6 +500,7 @@ def test_list_overlaps_clean_db_exits_zero(db, w, make_appt):
     assert "沒有重疊" in p.stdout
 
 
+@pytest.mark.real_commit
 def test_list_overlaps_requires_database_url():
     env = {k: v for k, v in os.environ.items() if k != "DATABASE_URL"}
     p = subprocess.run([sys.executable, "-I", str(API_DIR / "scripts" / "list_overlaps.py")],
@@ -509,6 +515,8 @@ def test_list_overlaps_script_is_read_only_by_construction():
         assert word not in src.upper().replace("UPDATE_", "")
 
 
+@pytest.mark.real_commit
+@pytest.mark.slow
 def test_migration_refuses_when_overlaps_exist_and_lists_them(db, w, no_constraint):
     _make_overlaps(db, w)
     db.rollback()
@@ -521,6 +529,8 @@ def test_migration_refuses_when_overlaps_exist_and_lists_them(db, w, no_constrai
     assert not _has_constraint(db)  # 沒有建出一半的約束
 
 
+@pytest.mark.real_commit
+@pytest.mark.slow
 def test_migration_upgrade_and_downgrade_roundtrip(db, w, no_constraint):
     s, e = _slot()
     _sql_insert(db, "M-1", w["t"].id, w["room"].id, s, e)
@@ -542,6 +552,8 @@ def test_migration_upgrade_and_downgrade_roundtrip(db, w, no_constraint):
     assert _has_constraint(db)
 
 
+@pytest.mark.real_commit
+@pytest.mark.slow
 def test_migration_chain_is_linear_after_zg7():
     import re
 

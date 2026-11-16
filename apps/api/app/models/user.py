@@ -11,7 +11,7 @@ class User(Base):
     email = Column(String(255), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
     name = Column(String(100), nullable=False)
-    role = Column(String(20), nullable=False)  # admin, accountant, therapist, staff
+    role = Column(String(20), nullable=False)  # admin, therapist, staff（accountant 已刪除，既有帳號由 migration 停用）
     user_code = Column(String(10), unique=True, nullable=True)
     commission_rate = Column(Numeric(4, 2), nullable=True)
     base_price = Column(Numeric(10, 2), nullable=True)  # therapist default appointment fee

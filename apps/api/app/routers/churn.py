@@ -16,7 +16,7 @@ router = APIRouter(prefix="/churn", tags=["churn"])
 @router.get("")
 def churn_warning_list(
     inactive_days: int = Query(default=30, ge=7, le=180),
-    user: User = Depends(RequireRole(["admin", "accountant"])),
+    user: User = Depends(RequireRole(["admin"])),
     db: Session = Depends(get_db),
 ):
     now = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)

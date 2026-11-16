@@ -3,7 +3,10 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch, exportCsv } from "@/lib/client-api";
+import { BillingDetailModal, BillingLine } from "@/components/billing-summary";
 import { AmountField, parseAmount, useCanEditAmount } from "@/components/amount-field";
+import { CaseQuotaSection, QuotasOverview } from "@/components/quotas-panel";
+import { BillingFields, EMPTY_BILLING, billingBody, billingError, useIsStaff, warningsText, type BillingValue } from "@/components/billing-fields";
 import RoomMiniCalendar from "@/components/room-mini-calendar";
 import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
 
@@ -114,6 +117,23 @@ interface Appointment {
   status: string;
   batch_id: string | null;
   created_at: string | null;
+  amount?: number;
+  funding_source?: string | null;
+  quota_id?: number | null;
+  quota_used?: number | null;
+  quota_total?: number | null;
+  quota_remaining?: number | null;
+  quota_is_last_session?: boolean;
+  plan_id?: number | null;
+  plan_name?: string | null;
+  rate_item_id?: number | null;
+  transport_fee_option_id?: number | null;
+  self_pay_amount?: number | null;
+  institution_name?: string | null;
+  institution_subsidy?: number | null;
+  transport_fee?: number;
+  transport_fee_label?: string | null;
+  rate_item_label?: string | null;
 }
 
 interface Therapist { id: number; name: string; email: string; role: string; }
@@ -161,7 +181,7 @@ export default function CasesPage() {
   const token = (session?.user as any)?.accessToken;
   const userRole = (session?.user as any)?.role;
 
-  const [mainTab, setMainTab] = useState<"cases">("cases");
+  const [mainTab, setMainTab] = useState<"cases" | "quotas">("cases");
   const [helpOpen, setHelpOpen] = useState(false);
 
   if (!token) return <p className="p-6 text-gray-400">載入中...</p>;
@@ -185,9 +205,18 @@ export default function CasesPage() {
         >
           個案列表
         </button>
+        <button
+          onClick={() => setMainTab("quotas")}
+          className={`px-4 py-2.5 text-sm font-medium transition-colors ${
+            mainTab === "quotas" ? "border-b-2 border-primary-600 text-primary-700" : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          機構額度
+        </button>
       </div>
 
       {mainTab === "cases" && <CasesTab token={token} userRole={userRole} />}
+      {mainTab === "quotas" && <QuotasOverview token={token} />}
     </div>
   );
 }
@@ -699,6 +728,7 @@ function CaseDetailPanel({
   };
 
   const [editApptPanel, setEditApptPanel] = useState<Appointment | null>(null);
+  const [billingDetail, setBillingDetail] = useState<Appointment | null>(null);
 
   const c = caseItem;
   const displayId = caseDisplayId(c);
@@ -722,6 +752,14 @@ function CaseDetailPanel({
         </div>
         <button onClick={onClose} className="rounded px-2 py-1 text-sm text-gray-400 hover:bg-gray-100 hover:text-gray-600">✕ 收合</button>
       </div>
+
+      <CaseQuotaSection
+        token={token}
+        caseId={caseItem.id}
+        funding={caseItem.funding_source}
+        institutionName={caseItem.institution_name ?? null}
+        canManage={userRole === "admin" || userRole === "staff"}
+      />
 
       <div className="mb-4 flex gap-1 border-b border-gray-200">
         <span className="border-b-2 border-primary-600 px-3 py-2 text-sm font-medium text-primary-700">
@@ -766,6 +804,9 @@ function CaseDetailPanel({
                         <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${apptStatusColors[a.status] ?? "bg-gray-100"}`}>
                           {apptStatusLabels[a.status] ?? a.status}
                         </span>
+                        <button type="button" onClick={() => setBillingDetail(a)} className="mt-0.5 block text-left text-[11px] hover:underline" title="金額與經費來源">
+                          <BillingLine a={a} />
+                        </button>
                       </td>
                       <td className="px-3 py-2">
                         {a.status === "booked" && (
@@ -781,6 +822,7 @@ function CaseDetailPanel({
               </table>
             </div>
           )}
+          {billingDetail && <BillingDetailModal appt={billingDetail} onClose={() => setBillingDetail(null)} />}
           {editApptPanel && (
             <AppointmentEditModal
               token={token}
@@ -1168,8 +1210,8 @@ function AppointmentForm({
     start_date: "",
     start_time: "10:00",
     end_time: "11:00",
-    amount: "",
   });
+  const [billing, setBilling] = useState<BillingValue>(EMPTY_BILLING);
   const canAmount = useCanEditAmount();
 
   const selectedCase = cases.find((c) => String(c.id) === form.case_id);
@@ -1189,10 +1231,12 @@ function AppointmentForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const billErr = billingError(billing);
+    if (billErr) { setError(billErr); return; }
     setSaving(true);
     setError("");
     try {
-      await clientFetch("/appointments", token, {
+      const res = await clientFetch("/appointments", token, {
         method: "POST",
         body: JSON.stringify({
           case_id: parseInt(form.case_id),
@@ -1201,9 +1245,11 @@ function AppointmentForm({
           session_type: form.session_type,
           start_time: `${form.start_date}T${form.start_time}:00+08:00`,
           end_time: `${form.start_date}T${form.end_time}:00+08:00`,
-          ...(canAmount && parseAmount(form.amount) !== undefined ? { amount: parseAmount(form.amount) } : {}),
+          ...billingBody(billing, canAmount),
         }),
       });
+      const w = warningsText(res);
+      if (w) window.alert(`預約已建立。提醒：${w}`);
       onSaved();
     } catch (e: any) {
       setError(e.message);
@@ -1262,7 +1308,15 @@ function AppointmentForm({
                 <input required type="time" value={form.end_time} onChange={(e) => sf("end_time", e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
               </label>
             </div>
-            <AmountField value={form.amount} onChange={(v) => sf("amount", v)} className="col-span-2" />
+            <BillingFields
+              token={token}
+              caseId={form.case_id ? parseInt(form.case_id) : 0}
+              caseFunding={(cases.find((c) => String(c.id) === form.case_id) as { funding_source?: string } | undefined)?.funding_source}
+              date={form.start_date || isoDate(new Date())}
+              sessionType={form.session_type}
+              value={billing}
+              onChange={setBilling}
+            />
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">取消</button>
               <button type="submit" disabled={saving} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50">{saving ? "儲存中..." : "儲存"}</button>
@@ -1386,6 +1440,8 @@ function BatchForm({
     room_id: "",
     session_type: "in_person",
   });
+  const [billing, setBilling] = useState<BillingValue>(EMPTY_BILLING);
+  const canAmount = useCanEditAmount();
 
   const selectedCase = cases.find((c) => String(c.id) === form.case_id);
   const isCouple = selectedCase?.case_type === "couple";
@@ -1437,22 +1493,27 @@ function BatchForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!slots || slots.length === 0) { setError("請先產生時段預覽"); return; }
+    const billErr = billingError(billing);
+    if (billErr) { setError(billErr); return; }
     setSaving(true);
     setError("");
     try {
-      await clientFetch("/appointments/batch", token, {
+      const res = await clientFetch("/appointments/batch", token, {
         method: "POST",
         body: JSON.stringify({
           case_id: parseInt(form.case_id),
           couple_case_id: isCouple && selectedCase ? selectedCase.id : null,
           room_id: form.room_id ? parseInt(form.room_id) : null,
           session_type: form.session_type,
+          ...billingBody(billing, canAmount),
           slots: slots.map((s) => ({
             start_time: `${s.date}T${s.start}:00+08:00`,
             end_time: `${s.date}T${s.end}:00+08:00`,
           })),
         }),
       });
+      const w = warningsText(res);
+      if (w) window.alert(`預約已建立。提醒：${w}`);
       onSaved();
     } catch (e: any) {
       setError(e.message);
@@ -1598,6 +1659,16 @@ function BatchForm({
                   </div>
                 </div>
 
+                <BillingFields
+                  token={token}
+                  caseId={form.case_id ? parseInt(form.case_id) : 0}
+                  caseFunding={(cases.find((c) => String(c.id) === form.case_id) as { funding_source?: string } | undefined)?.funding_source}
+                  date={startDate}
+                  sessionType={form.session_type}
+                  value={billing}
+                  onChange={setBilling}
+                />
+
                 {/* generate button */}
                 <button
                   type="button"
@@ -1692,7 +1763,18 @@ function AppointmentEditModal({
   const [startTime, setStartTime] = useState(appt.start_time?.slice(11, 16) ?? "");
   const [endTime, setEndTime] = useState(appt.end_time?.slice(11, 16) ?? "");
   const canAmount = useCanEditAmount();
-  const [amount, setAmount] = useState((appt as { amount?: number }).amount ? String((appt as { amount?: number }).amount) : "");
+  const isStaff = useIsStaff(); // 改付款方式、額度限行政
+  const [billing, setBilling] = useState<BillingValue>({
+    funding: appt.funding_source === "institution" ? "institution" : "self_pay",
+    quotaId: appt.quota_id ? String(appt.quota_id) : "",
+    planId: appt.plan_id ? String(appt.plan_id) : "",
+    rateItemId: appt.rate_item_id ? String(appt.rate_item_id) : "",
+    transportId: appt.transport_fee_option_id ? String(appt.transport_fee_option_id) : "",
+    consultType: "",
+    serviceType: "",
+    // 自費：全額；機構：空白＝依價目（要手動調整應收才填）
+    amount: appt.funding_source === "institution" ? "" : appt.amount ? String(appt.amount) : "0",
+  });
 
   useEffect(() => {
     clientFetch("/rooms", token).then(setRooms).catch(() => {});
@@ -1713,11 +1795,41 @@ function AppointmentEditModal({
       if (startDate && endTime) {
         body.end_time = `${startDate}T${endTime}:00+08:00`;
       }
-      if (canAmount) body.amount = parseAmount(amount) ?? 0; // 清空＝沒有金額
+      const wasInstitution = appt.funding_source === "institution";
+      const fundingChanged =
+        billing.funding !== (wasInstitution ? "institution" : "self_pay") ||
+        billing.quotaId !== (appt.quota_id ? String(appt.quota_id) : "");
+      const billErr = fundingChanged ? billingError(billing) : "";
+      if (billErr) { setError(billErr); setSaving(false); return; }
+      // 沒換付款方式時：自費的金額一定送；機構案只有手動調整應收（有填）才送
+      const amt = parseAmount(billing.amount);
+      if (canAmount && !fundingChanged && (billing.funding === "self_pay" ? true : amt !== undefined)) body.amount = amt ?? 0;
+      if (isStaff && !fundingChanged && billing.funding === "institution") {
+        if (billing.planId !== (appt.plan_id ? String(appt.plan_id) : "")) body.plan_id = Number(billing.planId);
+        if (billing.rateItemId !== (appt.rate_item_id ? String(appt.rate_item_id) : "")) body.rate_item_id = Number(billing.rateItemId);
+        if (billing.transportId !== (appt.transport_fee_option_id ? String(appt.transport_fee_option_id) : "")) body.transport_fee_option_id = Number(billing.transportId);
+        if (billing.consultType) body.consult_type = billing.consultType;
+        if (billing.serviceType) body.service_type = billing.serviceType;
+      }
       await clientFetch(`/appointments/${appt.id}`, token, {
         method: "PUT",
         body: JSON.stringify(body),
       });
+      if (isStaff && fundingChanged) {
+        const res = await clientFetch(`/appointments/${appt.id}/payment`, token, {
+          method: "PUT",
+          body: JSON.stringify({
+            funding_source: billing.funding,
+            quota_id: billing.quotaId ? Number(billing.quotaId) : null,
+            ...(billing.planId ? { plan_id: Number(billing.planId) } : {}),
+            ...(billing.rateItemId ? { rate_item_id: Number(billing.rateItemId) } : {}),
+            ...(billing.transportId ? { transport_fee_option_id: Number(billing.transportId) } : {}),
+            ...(amt !== undefined ? { amount: amt } : {}),
+          }),
+        });
+        const w = warningsText(res);
+        if (w) window.alert(`已儲存。提醒：${w}`);
+      }
       onDone();
     } catch (e: any) {
       setError(e.message);
@@ -1767,7 +1879,11 @@ function AppointmentEditModal({
               <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
             </label>
           </div>
-          <AmountField value={amount} onChange={setAmount} />
+          {isStaff ? (
+            <BillingFields token={token} caseId={appt.case_id} date={startDate || isoDate(new Date())} sessionType={sessionType} value={billing} onChange={setBilling} />
+          ) : (
+            <AmountField required={billing.funding === "self_pay"} value={billing.amount} onChange={(v) => setBilling({ ...billing, amount: v })} />
+          )}
           {error && <p className="text-xs text-red-600">{error}</p>}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">取消</button>

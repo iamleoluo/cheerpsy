@@ -4,7 +4,7 @@ import { useSession } from "next-auth/react";
 
 /**
  * 誰能建立／編輯預約，誰就能填金額：心理師填自己的、行政與管理員填任何人的。
- * 隔離的單位是心理師，不是欄位；後端另外保證心理師碰不到別人的預約。會計不能建立預約，所以不顯示。
+ * 隔離的單位是心理師，不是欄位；後端另外保證心理師碰不到別人的預約。
  */
 export function useCanEditAmount(): boolean {
   const { data } = useSession();
@@ -13,35 +13,39 @@ export function useCanEditAmount(): boolean {
 }
 
 /**
- * 預約金額（選填）。只是預約上的一個數字，會顯示在 Google 日曆事件的標題結尾；
- * 不是記帳，不會產生收款、結算或任何帳務紀錄。空白＝沒有金額。
+ * 預約金額。必須大於 0（借場地等方案可在方案設定允許 0）；機構預約的金額由方案帶出，不必填。
+ * 只是預約上的數字：會顯示在 Google 日曆事件標題結尾，
+ * 不會產生核銷、流水或對帳。
  */
 export function AmountField({
   value,
   onChange,
   className = "",
+  required = false,
 }: {
   value: string;
   onChange: (v: string) => void;
   className?: string;
+  required?: boolean;
 }) {
   const can = useCanEditAmount();
   if (!can) return null;
   return (
     <label className={`block text-sm ${className}`}>
-      <span className="mb-1 block text-xs font-medium text-gray-700">金額（選填）</span>
+      <span className="mb-1 block text-xs font-medium text-gray-700">{required ? "金額（必填，須大於 0）" : "金額"}</span>
       <input
         type="number"
         inputMode="decimal"
-        min={0}
+        min={1}
         max={9999999}
         step="any"
+        required={required}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder="例如 1500"
         className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
       />
-      <span className="mt-1 block text-xs text-gray-400">會顯示在 Google 日曆事件標題結尾；不填就不顯示。</span>
+      <span className="mt-1 block text-xs text-gray-400">會顯示在 Google 日曆事件標題結尾；標題格式：自費「$全額」；機構「$總額（自付 $X）」。</span>
     </label>
   );
 }

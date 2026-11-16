@@ -5,6 +5,7 @@ refresh token 只存密文（見 app/services/secret_box.py），絕不寫入 lo
 """
 
 from sqlalchemy import (
+    Numeric,
     Boolean, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -38,6 +39,10 @@ class ClinicSettings(Base):
     ical_follow_title_format = Column(Boolean, nullable=False, default=False, server_default="false")
     resync_lookback_days = Column(Integer, nullable=False, default=30, server_default="30")
     resync_lookahead_days = Column(Integer, nullable=False, default=180, server_default="180")
+    # 失約費建議金額（應收提示，不產生流水）
+    no_show_fee_advance_notice = Column(Numeric(10, 2), nullable=False, default=0, server_default="0")
+    no_show_fee_late_cancel = Column(Numeric(10, 2), nullable=False, default=200, server_default="200")
+    no_show_fee_no_notice = Column(Numeric(10, 2), nullable=False, default=500, server_default="500")
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     updated_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 

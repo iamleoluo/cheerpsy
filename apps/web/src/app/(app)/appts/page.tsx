@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
+import { BillingDetailModal, BillingLine } from "@/components/billing-summary";
 import { AmountField, parseAmount, useCanEditAmount } from "@/components/amount-field";
 import { NO_SHOW_TYPES, SESSION_TYPE, hhmm, shiftDate, todayISO } from "@/lib/format";
 
@@ -19,7 +20,19 @@ interface Appt {
   status: string;
   checkin_status: string;
   is_intake: boolean;
-  amount?: number; // 只有管理員與行政看得到（0＝沒有金額）
+  amount?: number;
+  self_pay_amount?: number | null;
+  plan_name?: string | null;
+  rate_item_label?: string | null;
+  institution_name?: string | null;
+  institution_subsidy?: number | null;
+  transport_fee?: number;
+  transport_fee_label?: string | null;
+  funding_source?: string | null;
+  quota_used?: number | null;
+  quota_total?: number | null;
+  quota_remaining?: number | null;
+  quota_is_last_session?: boolean;
 }
 
 const STATUS: Record<string, { label: string; cls: string }> = {
@@ -44,6 +57,7 @@ export default function ApptsPage() {
   const [fType, setFType] = useState("");
   const [absentFor, setAbsentFor] = useState<Appt | null>(null);
   const [adjustFor, setAdjustFor] = useState<Appt | null>(null);
+  const [detail, setDetail] = useState<Appt | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -177,6 +191,9 @@ export default function ApptsPage() {
                   <td className="px-3 py-2.5 font-medium">
                     {r.is_intake && <span className="mr-1 text-amber-600" title="媒合初診">⭐</span>}
                     {r.case_name}
+                    <button type="button" onClick={() => setDetail(r)} className="mt-0.5 block text-left text-[11px] font-normal hover:underline" title="金額與經費來源">
+                      <BillingLine a={r} />
+                    </button>
                   </td>
                   <td className="px-3 py-2.5">{r.therapist_name}</td>
                   <td className="px-3 py-2.5 tabular-nums">{hhmm(r.start_time)}–{hhmm(r.end_time)}</td>
@@ -218,6 +235,8 @@ export default function ApptsPage() {
           </tbody>
         </table>
       </div>
+
+      {detail && <BillingDetailModal appt={detail} onClose={() => setDetail(null)} />}
 
       {adjustFor && (
         <AdjustModal
@@ -294,7 +313,8 @@ function AdjustModal({
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const canAmount = useCanEditAmount();
-  const [amount, setAmount] = useState(appt.amount ? String(appt.amount) : "");
+  const selfPay = (appt.funding_source ?? "self_pay") !== "institution";
+  const [amount, setAmount] = useState(String(appt.amount ?? 0));
 
   useEffect(() => {
     if (!inPerson || !date || !st || !et || st >= et) {
@@ -324,7 +344,12 @@ function AdjustModal({
         end_time: `${date}T${et}:00+08:00`,
       };
       if (inPerson) body.room_id = Number(roomId);
-      if (canAmount) body.amount = parseAmount(amount) ?? 0; // 清空＝沒有金額
+      // 改期不動機構案的金額（由方案帶出）；自費案只在金額有改時才送，且不可清空
+      if (canAmount && selfPay && amount !== String(appt.amount ?? "")) {
+        const amt = parseAmount(amount);
+        if (amt === undefined || amt <= 0) { setErr("自費預約請填金額（須大於 0）"); setSaving(false); return; }
+        body.amount = amt;
+      }
       await clientFetch(`/appointments/${appt.id}`, token, { method: "PUT", body: JSON.stringify(body) });
       onDone();
     } catch (e: any) {
@@ -370,7 +395,7 @@ function AdjustModal({
             </label>
           )}
         </div>
-        <AmountField value={amount} onChange={setAmount} className="mt-3" />
+        {selfPay && <AmountField required value={amount} onChange={setAmount} className="mt-3" />}
         <div className="mt-6 flex justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm">取消</button>
           <button type="submit" disabled={saving || (inPerson && !roomId)} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">

@@ -39,7 +39,7 @@ from app.models.user import User
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
-ADMIN_VIEW = ["admin", "accountant"]
+ADMIN_VIEW = ["admin"]
 
 # 營業時段 08:00–22:00，全年無休假設（Q19 待定）
 BUSINESS_HOURS_PER_DAY = 14

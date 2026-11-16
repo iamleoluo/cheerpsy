@@ -16,7 +16,6 @@ interface Me {
 
 const roleLabels: Record<string, string> = {
   admin: "管理員",
-  accountant: "會計",
   therapist: "心理師",
   staff: "行政人員",
 };

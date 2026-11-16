@@ -26,8 +26,8 @@ from app.services.audit import write_audit
 
 router = APIRouter(prefix="/finance", tags=["finance-daily"])
 
-FINANCE_ROLES = ["admin", "accountant", "staff"]
-SUPERVISOR_ROLES = ["admin", "accountant"]
+FINANCE_ROLES = ["admin", "staff"]
+SUPERVISOR_ROLES = ["admin"]
 
 
 def _now():

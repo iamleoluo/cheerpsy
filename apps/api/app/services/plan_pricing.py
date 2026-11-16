@@ -26,18 +26,22 @@ def pick_rate_item(
     plan: InstitutionPlan,
     *,
     service_type: str | None = None,
+    consult_type: str | None = None,
     duration_minutes: int | None = None,
     session_seq: int | None = None,
 ) -> PlanRateItem | None:
-    """依服務型態／時長／第幾次挑出適用的價目。
+    """依服務型態／諮商型態／時長／第幾次挑出適用的價目。
 
-    比對規則：條件有填的欄位才比對，NULL 視為「不限」。
+    價目項目的條件欄位填了才比對，NULL＝不限。預約端沒帶那個維度（None）時，
+    有填該條件的價目不命中（要明確指定才會用到，避免悄悄套到不相干的價目）。
     多筆符合時取最精確的（有指定條件的優先），再取 sort_order。
     """
     candidates = [r for r in plan.rate_items if not r.is_no_show_fee]
 
     def matches(r: PlanRateItem) -> bool:
-        if r.service_type and service_type and r.service_type != service_type:
+        if r.service_type and r.service_type != service_type:
+            return False
+        if getattr(r, "consult_type", None) and r.consult_type != consult_type:
             return False
         if r.duration_minutes and duration_minutes and r.duration_minutes != duration_minutes:
             return False
@@ -52,6 +56,7 @@ def pick_rate_item(
         # 條件越具體排越前面
         return (
             -(r.service_type is not None),
+            -(getattr(r, "consult_type", None) is not None),
             -(r.duration_minutes is not None),
             -(r.session_seq_from is not None or r.session_seq_to is not None),
             r.sort_order,

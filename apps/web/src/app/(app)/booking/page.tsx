@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
-import { AmountField, parseAmount, useCanEditAmount } from "@/components/amount-field";
+import { useCanEditAmount } from "@/components/amount-field";
+import { BillingFields, EMPTY_BILLING, billingBody, billingError, warningsText, type BillingValue } from "@/components/billing-fields";
 import { EventsTab } from "@/components/events-tab";
 import { SESSION_TYPE, hhmm, shiftDate, todayISO } from "@/lib/format";
 
@@ -12,6 +13,7 @@ interface Case {
   name: string;
   case_number: string | null;
   therapist_id: number;
+  funding_source?: string;
 }
 interface Room {
   id: number;
@@ -71,7 +73,7 @@ export default function BookingPage() {
   const [startTime, setStartTime] = useState("14:00");
   const [endTime, setEndTime] = useState("15:00");
   const [videoLink, setVideoLink] = useState("");
-  const [amount, setAmount] = useState("");
+  const [billing, setBilling] = useState<BillingValue>(EMPTY_BILLING);
   const canAmount = useCanEditAmount();
   const [notifyAdmin, setNotifyAdmin] = useState(false);
   const [outreach, setOutreach] = useState("");
@@ -186,6 +188,8 @@ export default function BookingPage() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    const billErr = billingError(billing);
+    if (billErr) { setError(billErr); return; }
     setSaving(true);
     setError(null);
     setOk(null);
@@ -197,8 +201,7 @@ export default function BookingPage() {
       start_time: `${date}T${startTime}:00+08:00`,
       end_time: `${date}T${endTime}:00+08:00`,
     };
-    const amt = canAmount ? parseAmount(amount) : undefined;
-    if (amt !== undefined) body.amount = amt; // 批次時整批每一場同一個金額
+    Object.assign(body, billingBody(billing, canAmount)); // 付款方式、額度、金額（批次時整批共用）
     try {
       if (tab === "batch") {
         const slots: any[] = [];
@@ -210,14 +213,16 @@ export default function BookingPage() {
             end_time: `${d}T${endTime}:00+08:00`,
           });
         }
-        await clientFetch("/appointments/batch", token, {
+        const res = await clientFetch("/appointments/batch", token, {
           method: "POST",
           body: JSON.stringify({ ...body, slots }),
         });
-        setOk(`已建立 ${slots.length} 筆預約`);
+        const warn = warningsText(res);
+        setOk(`已建立 ${slots.length} 筆預約` + (warn ? `　⚠ ${warn}` : ""));
       } else {
-        await clientFetch("/appointments", token, { method: "POST", body: JSON.stringify(body) });
-        setOk("預約已建立");
+        const res = await clientFetch("/appointments", token, { method: "POST", body: JSON.stringify(body) });
+        const warn = warningsText(res);
+        setOk("預約已建立" + (warn ? `　⚠ ${warn}` : ""));
       }
       loadWeek();
     } catch (e: any) {
@@ -325,7 +330,16 @@ export default function BookingPage() {
                 </label>
               )}
 
-              <AmountField value={amount} onChange={setAmount} className="col-span-2" />
+              <BillingFields
+                token={token}
+                caseId={caseId}
+                caseFunding={cases.find((x) => x.id === caseId)?.funding_source}
+                date={date}
+                sessionType={sessionType}
+                value={billing}
+                onChange={setBilling}
+                className="col-span-2"
+              />
 
               {sessionType === "online" && (
                 <>

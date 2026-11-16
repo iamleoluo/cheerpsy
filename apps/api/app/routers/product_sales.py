@@ -18,7 +18,7 @@ from app.services.audit import write_audit
 
 router = APIRouter(prefix="/product-sales", tags=["product-sales"])
 
-ROLES = ["admin", "accountant", "staff"]
+ROLES = ["admin", "staff"]
 
 
 def _next_receipt_no(db: Session, d: date) -> str:

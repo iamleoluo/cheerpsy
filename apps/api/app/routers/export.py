@@ -51,7 +51,7 @@ def _csv_response(rows: list[dict], filename: str) -> StreamingResponse:
 
 @router.get("/cases")
 def export_cases(
-    user: User = Depends(RequireRole(["admin", "accountant"])),
+    user: User = Depends(RequireRole(["admin"])),
     db: Session = Depends(get_db),
 ):
     cases = db.query(Case).order_by(Case.id).all()
@@ -88,7 +88,7 @@ def export_cases(
 
 @router.get("/appointments")
 def export_appointments(
-    user: User = Depends(RequireRole(["admin", "accountant"])),
+    user: User = Depends(RequireRole(["admin"])),
     db: Session = Depends(get_db),
 ):
     appts = db.query(Appointment).order_by(Appointment.id).all()
@@ -120,7 +120,7 @@ def export_appointments(
 def export_ledger(
     year: int | None = Query(None),
     month: int | None = Query(None),
-    user: User = Depends(RequireRole(["admin", "accountant"])),
+    user: User = Depends(RequireRole(["admin"])),
     db: Session = Depends(get_db),
 ):
     q = db.query(SessionRecord)
@@ -173,7 +173,7 @@ def export_ledger(
 
 @router.get("/petty-cash")
 def export_petty_cash(
-    user: User = Depends(RequireRole(["admin", "accountant"])),
+    user: User = Depends(RequireRole(["admin"])),
     db: Session = Depends(get_db),
 ):
     records = db.query(PettyCash).order_by(PettyCash.date, PettyCash.id).all()
@@ -193,7 +193,7 @@ def export_petty_cash(
 
 @router.get("/invoices")
 def export_invoices(
-    user: User = Depends(RequireRole(["admin", "accountant"])),
+    user: User = Depends(RequireRole(["admin"])),
     db: Session = Depends(get_db),
 ):
     invoices = db.query(Invoice).order_by(Invoice.id).all()
@@ -234,7 +234,7 @@ def export_users(
 
 @router.get("/rooms")
 def export_rooms(
-    user: User = Depends(RequireRole(["admin", "accountant"])),
+    user: User = Depends(RequireRole(["admin"])),
     db: Session = Depends(get_db),
 ):
     rooms = db.query(Room).order_by(Room.floor, Room.room_code).all()
@@ -301,7 +301,7 @@ def export_claim_batches(
 
 @router.get("/product-sales")
 def export_product_sales(
-    user: User = Depends(RequireRole(["admin", "accountant"])),
+    user: User = Depends(RequireRole(["admin"])),
     db: Session = Depends(get_db),
 ):
     items = db.query(ProductSale).order_by(ProductSale.sale_date, ProductSale.id).all()

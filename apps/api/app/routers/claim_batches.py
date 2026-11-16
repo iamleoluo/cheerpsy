@@ -38,7 +38,7 @@ from app.services.pdf import generate_pdf, render_multi
 router = APIRouter(prefix="/claim-batches", tags=["claim-batches"])
 
 # 核銷批次與紀錄含他人個案姓名；心理師只走 /my/* 與有範圍限制的 documents 端點
-READ_ROLES = ["admin", "accountant", "staff"]
+READ_ROLES = ["admin", "staff"]
 
 
 def _to_response(db: Session, b: ClaimBatch) -> ClaimBatchResponse:
@@ -305,7 +305,7 @@ def get_batch_records(
 @router.post("", response_model=ClaimBatchResponse, dependencies=[Depends(accounting_gone)])
 def create_claim_batch(
     body: ClaimBatchCreate,
-    user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
+    user: User = Depends(RequireRole(["admin", "staff"])),
     db: Session = Depends(get_db),
 ):
     if body.type not in ("self_pay", "institution"):
@@ -365,7 +365,7 @@ def create_claim_batch(
 def update_claim_batch(
     batch_id: int,
     body: ClaimBatchUpdate,
-    user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
+    user: User = Depends(RequireRole(["admin", "staff"])),
     db: Session = Depends(get_db),
 ):
     batch = db.query(ClaimBatch).filter(ClaimBatch.id == batch_id).first()
@@ -404,7 +404,7 @@ def update_claim_batch(
 def add_records_to_batch(
     batch_id: int,
     record_ids: list[int],
-    user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
+    user: User = Depends(RequireRole(["admin", "staff"])),
     db: Session = Depends(get_db),
 ):
     batch = db.query(ClaimBatch).filter(ClaimBatch.id == batch_id).first()
@@ -439,7 +439,7 @@ def add_records_to_batch(
 def remove_record_from_batch(
     batch_id: int,
     record_id: int,
-    user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
+    user: User = Depends(RequireRole(["admin", "staff"])),
     db: Session = Depends(get_db),
 ):
     batch = db.query(ClaimBatch).filter(ClaimBatch.id == batch_id).first()
@@ -465,7 +465,7 @@ def remove_record_from_batch(
 @router.put("/{batch_id}/submit", dependencies=[Depends(accounting_gone)])
 def submit_batch(
     batch_id: int,
-    user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
+    user: User = Depends(RequireRole(["admin", "staff"])),
     db: Session = Depends(get_db),
 ):
     batch = db.query(ClaimBatch).filter(ClaimBatch.id == batch_id).first()
@@ -494,7 +494,7 @@ def submit_batch(
 @router.put("/{batch_id}/receive", dependencies=[Depends(accounting_gone)])
 def receive_batch(
     batch_id: int,
-    user: User = Depends(RequireRole(["admin", "accountant"])),
+    user: User = Depends(RequireRole(["admin"])),
     db: Session = Depends(get_db),
 ):
     batch = db.query(ClaimBatch).filter(ClaimBatch.id == batch_id).first()

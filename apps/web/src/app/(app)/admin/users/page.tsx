@@ -26,7 +26,6 @@ const helpContent: HelpContent = {
       type: "text",
       items: [
         "管理員（A）：A001、A002… 完整操作權限",
-        "會計（C）：C001、C002… 可查看財務報表，不能新增個案",
         "行政人員（S）：S001、S002… 可建立個案、預約、核銷案",
         "心理師（T）：T001、T002… 代號用於預約編號（如 R-20260516-T018-001）",
       ],
@@ -79,21 +78,18 @@ interface InvitationItem {
 
 const roleLabels: Record<string, string> = {
   admin: "管理員",
-  accountant: "會計",
   therapist: "心理師",
   staff: "行政人員",
 };
 
 const roleCodePrefix: Record<string, string> = {
   admin: "A",
-  accountant: "C",
   staff: "S",
   therapist: "T",
 };
 
 const roleBadgeClass: Record<string, string> = {
   admin: "bg-green-100 text-green-700",
-  accountant: "bg-amber-100 text-amber-700",
   staff: "bg-purple-100 text-purple-700",
   therapist: "bg-blue-100 text-blue-700",
 };
@@ -401,7 +397,6 @@ export default function AdminUsersPage() {
                 <label className="mb-1 block text-xs font-medium text-gray-500">角色 *</label>
                 <select value={invRole} onChange={(e) => setInvRole(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
                   <option value="therapist">心理師（T）</option>
-                  <option value="accountant">會計（C）</option>
                   <option value="staff">行政人員（S）</option>
                   <option value="admin">管理員（A）</option>
                 </select>
@@ -460,7 +455,6 @@ export default function AdminUsersPage() {
                 <label className="mb-1 block text-xs font-medium text-gray-500">角色 *</label>
                 <select value={editRole} onChange={(e) => setEditRole(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
                   <option value="therapist">心理師（T）</option>
-                  <option value="accountant">會計（C）</option>
                   <option value="staff">行政人員（S）</option>
                   <option value="admin">管理員（A）</option>
                 </select>

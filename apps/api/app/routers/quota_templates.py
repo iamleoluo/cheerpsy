@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import RequireRole, get_current_user, accounting_gone
+from app.auth.dependencies import RequireRole, get_current_user
 from app.database import get_db
 from app.models.case import Case
 from app.models.case_institution_quota import CaseInstitutionQuota
@@ -38,14 +38,14 @@ def _to_response(t: QuotaTemplate) -> QuotaTemplateResponse:
 
 @router.get("/", response_model=list[QuotaTemplateResponse])
 def list_templates(
-    user: User = Depends(get_current_user),
+    user: User = Depends(RequireRole(WRITE_ROLES)),
     db: Session = Depends(get_db),
 ):
     rows = db.query(QuotaTemplate).order_by(QuotaTemplate.institution_id, QuotaTemplate.name).all()
     return [_to_response(t) for t in rows]
 
 
-@router.post("/", response_model=QuotaTemplateResponse, dependencies=[Depends(accounting_gone)])
+@router.post("/", response_model=QuotaTemplateResponse)
 def create_template(
     body: QuotaTemplateCreate,
     user: User = Depends(RequireRole(WRITE_ROLES)),
@@ -70,7 +70,7 @@ def create_template(
     return _to_response(t)
 
 
-@router.put("/{template_id}", response_model=QuotaTemplateResponse, dependencies=[Depends(accounting_gone)])
+@router.put("/{template_id}", response_model=QuotaTemplateResponse)
 def update_template(
     template_id: int,
     body: QuotaTemplateUpdate,
@@ -116,7 +116,7 @@ def update_template(
     return _to_response(t)
 
 
-@router.delete("/{template_id}", status_code=204, dependencies=[Depends(accounting_gone)])
+@router.delete("/{template_id}", status_code=204)
 def delete_template(
     template_id: int,
     user: User = Depends(RequireRole(WRITE_ROLES)),
@@ -130,7 +130,7 @@ def delete_template(
     db.commit()
 
 
-@router.post("/{template_id}/apply", response_model=list[QuotaResponse], dependencies=[Depends(accounting_gone)])
+@router.post("/{template_id}/apply", response_model=list[QuotaResponse])
 def apply_template(
     template_id: int,
     body: QuotaTemplateApply,

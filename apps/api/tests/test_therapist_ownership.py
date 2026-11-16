@@ -28,20 +28,20 @@ def _slot(days=3, hour=10, hours=1):
 def world(make_user, make_case, room, db):
     a = make_user("therapist", name="甲心理師")
     b = make_user("therapist", name="乙心理師")
-    staff, admin, acct = make_user("staff"), make_user("admin"), make_user("accountant")
+    staff, admin = make_user("staff"), make_user("admin")
     case_a = make_case(a, "甲的個案")
     case_b = make_case(b, B_NAME, phone="0988-111-222")
     couple_b = make_case(b, "乙的伴侶案", case_type="couple")
     room2 = Room(name="晤談室 3C", floor=3, room_code="3C")
     db.add(room2)
     db.commit()
-    return dict(a=a, b=b, staff=staff, admin=admin, acct=acct, case_a=case_a, case_b=case_b,
+    return dict(a=a, b=b, staff=staff, admin=admin, case_a=case_a, case_b=case_b,
                 couple_b=couple_b, room=room, room2=room2)
 
 
 def post(client, auth, who, case, room, day=3, hour=10, **extra):
     s, e = _slot(day, hour)
-    body = {"case_id": case.id, "room_id": room.id, "session_type": "in_person",
+    body = {"case_id": case.id, "room_id": room.id, "session_type": "in_person", "amount": 1000,
             "start_time": s.isoformat(), "end_time": e.isoformat(), **extra}
     return client.post("/appointments", json=body, headers=auth(who))
 
@@ -76,7 +76,7 @@ def test_owner_creates_edits_amount_and_api_returns_real_amount(client, auth, wo
     assert client.get(f"/appointments/{appt['id']}", headers=auth(w["a"])).json()["amount"] == 1800
     assert [x["amount"] for x in client.get("/appointments", headers=auth(w["a"])).json()] == [1800]
     # 清除與驗證
-    assert client.put(f"/appointments/{appt['id']}", headers=auth(w["a"]), json={"amount": 0}).json()["amount"] == 0
+    assert client.put(f"/appointments/{appt['id']}", headers=auth(w["a"]), json={"amount": 0}).status_code == 422
     assert client.put(f"/appointments/{appt['id']}", headers=auth(w["a"]), json={"amount": -1}).status_code == 422
     assert post(client, auth, w["a"], w["case_a"], w["room"], day=9, amount=10_000_000).status_code == 422
 
@@ -155,6 +155,7 @@ def test_cannot_read_edit_cancel_or_delete_others_appointment(client, auth, worl
     assert row.status == "booked" and float(row.amount) == B_AMOUNT and row.therapist_id == w["b"].id
 
 
+@pytest.mark.real_commit  # 用猜 id 1..N 的方式測 404，需要序號從 1 開始（TRUNCATE ... RESTART IDENTITY）
 def test_guessing_ids_only_ever_finds_own_appointments(client, auth, world):
     w = world
     own = post(client, auth, w["a"], w["case_a"], w["room"], day=3).json()["id"]
@@ -168,7 +169,7 @@ def test_cannot_delete_others_batch(client, auth, world, db):
     w = world
     s1, e1 = _slot(10)
     r = client.post("/appointments/batch", headers=auth(w["b"]), json={
-        "case_id": w["case_b"].id, "room_id": w["room"].id, "session_type": "in_person",
+        "case_id": w["case_b"].id, "room_id": w["room"].id, "session_type": "in_person", "amount": 1000,
         "slots": [{"start_time": s1.isoformat(), "end_time": e1.isoformat()}]})
     batch_id = r.json()[0]["batch_id"]
     gone = client.request("DELETE", f"/appointments/batch?batch_id={batch_id}", headers=auth(w["a"]))
@@ -177,6 +178,7 @@ def test_cannot_delete_others_batch(client, auth, world, db):
     assert db.query(Appointment).filter(Appointment.batch_id == batch_id).count() == 1
 
 
+@pytest.mark.real_commit  # 用猜 id 1..N 的方式測 404，需要序號從 1 開始（TRUNCATE ... RESTART IDENTITY）
 def test_cannot_read_or_edit_others_case_including_guessing_ids(client, auth, world, db):
     w = world
     h = auth(w["a"])
@@ -198,7 +200,7 @@ def test_cannot_create_with_others_case_or_couple_case(client, auth, world, db):
     w = world
     r = post(client, auth, w["a"], w["case_b"], w["room"])
     miss = client.post("/appointments", headers=auth(w["a"]), json={
-        "case_id": 999999, "room_id": w["room"].id, "session_type": "in_person",
+        "case_id": 999999, "room_id": w["room"].id, "session_type": "in_person", "amount": 1000,
         "start_time": _slot()[0].isoformat(), "end_time": _slot()[1].isoformat()})
     assert r.status_code == 404 and r.json() == miss.json()
     # 用自己的個案、但掛上乙的伴侶案
@@ -207,7 +209,7 @@ def test_cannot_create_with_others_case_or_couple_case(client, auth, world, db):
     # 批次也一樣
     s, e = _slot(5)
     r = client.post("/appointments/batch", headers=auth(w["a"]), json={
-        "case_id": w["case_b"].id, "room_id": w["room"].id, "session_type": "in_person",
+        "case_id": w["case_b"].id, "room_id": w["room"].id, "session_type": "in_person", "amount": 1000,
         "slots": [{"start_time": s.isoformat(), "end_time": e.isoformat()}]})
     assert r.status_code == 404
     assert db.query(Appointment).count() == 0
@@ -276,14 +278,6 @@ def test_staff_and_admin_see_and_edit_everything(client, auth, world, db, who):
     assert client.put(f"/appointments/{ma}/cancel", headers=auth(w[who])).status_code == 200
 
 
-def test_accountant_unchanged(client, auth, world):
-    w = world
-    mine = post(client, auth, w["a"], w["case_a"], w["room"], amount=100).json()["id"]
-    assert post(client, auth, w["acct"], w["case_a"], w["room"], day=8).status_code == 403  # 不能建立預約
-    assert client.put(f"/appointments/{mine}", headers=auth(w["acct"]), json={"amount": 1}).status_code == 403
-    assert client.get(f"/appointments/{mine}", headers=auth(w["acct"])).json()["amount"] == 0  # 記帳已移除，維持現狀
-
-
 def test_therapist_cannot_delete_even_own_but_can_cancel(client, auth, world, db):
     w = world
     h = auth(w["a"])
@@ -292,7 +286,7 @@ def test_therapist_cannot_delete_even_own_but_can_cancel(client, auth, world, db
     assert client.request("DELETE", "/appointments", headers=h, json={"ids": [own["id"]]}).status_code == 403
     s8, e8 = _slot(8)
     bt = client.post("/appointments/batch", headers=h, json={
-        "case_id": w["case_a"].id, "room_id": w["room"].id, "session_type": "in_person",
+        "case_id": w["case_a"].id, "room_id": w["room"].id, "session_type": "in_person", "amount": 1000,
         "slots": [{"start_time": s8.isoformat(), "end_time": e8.isoformat()}]}).json()[0]["batch_id"]
     assert client.request("DELETE", f"/appointments/batch?batch_id={bt}", headers=h).status_code == 403
     assert db_row(db, own["id"]) is not None
@@ -301,7 +295,7 @@ def test_therapist_cannot_delete_even_own_but_can_cancel(client, auth, world, db
     assert client.request("DELETE", "/appointments", headers=h, json={"ids": [bid["id"]]}).status_code == 404
     s9, e9 = _slot(9)
     bb = client.post("/appointments/batch", headers=auth(w["b"]), json={
-        "case_id": w["case_b"].id, "room_id": w["room"].id, "session_type": "in_person",
+        "case_id": w["case_b"].id, "room_id": w["room"].id, "session_type": "in_person", "amount": 1000,
         "slots": [{"start_time": s9.isoformat(), "end_time": e9.isoformat()}]}).json()[0]["batch_id"]
     assert client.request("DELETE", f"/appointments/batch?batch_id={bb}", headers=h).status_code == 404
     # 取消自己的可以

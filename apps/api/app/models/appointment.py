@@ -17,7 +17,18 @@ class Appointment(Base):
     room_id = Column(Integer, ForeignKey("rooms.id"), nullable=True)
     session_type = Column(String(20), nullable=False)  # in_person, online, outdoor
     time_range = Column(TSTZRANGE, nullable=False)
-    amount = Column(Numeric(10, 2), nullable=False)
+    amount = Column(Numeric(10, 2), nullable=False)  # 應收金額（自費＝全額；機構＝方案價目的總額，行政可手動調整）
+    # 個案這次要付的錢（快照）：自費＝全額；機構＝方案價目的自付額。改價目主檔不影響既有預約
+    # 不設 Python／ORM 預設：None 要真的存成 NULL（機構預約自付額未設定）；資料庫端 server default 仍是 0，只影響繞過 ORM 的寫入
+    self_pay_amount = Column(Numeric(10, 2), nullable=True)
+    # 計價維度（真的帶入價目挑選）：諮商型態 individual/couple/family/parenting；服務型態沿用價目項目代碼
+    consult_type = Column(String(20), nullable=True)
+    service_type = Column(String(30), nullable=True)
+    # 收款記錄（已停用，欄位保留不刪）：只記狀態、方式、時間、經手人
+    payment_status = Column(String(10), nullable=False, default="unpaid", server_default="unpaid")  # unpaid|paid|waived
+    payment_method = Column(String(20), nullable=True)  # cash|transfer|card|other
+    paid_at = Column(DateTime(timezone=True), nullable=True)
+    paid_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     # booked / executed / cancelled / no_show（Phase 1b 新增 no_show）
     status = Column(String(20), nullable=False, default="booked")
     # advance_notice 24h前請假 $0 / late_cancel 臨時取消 / no_notice 無故未到

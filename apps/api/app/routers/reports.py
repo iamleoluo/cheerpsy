@@ -22,7 +22,7 @@ from app.models.user import User
 router = APIRouter(prefix="/reports", tags=["reports"])
 
 # 含個案名單或心理師個別數字的報表，心理師角色不可讀
-REPORT_ROLES = ["admin", "accountant", "staff"]
+REPORT_ROLES = ["admin", "staff"]
 
 DEFAULT_COMMISSION_RATE = Decimal("0.70")
 
@@ -42,7 +42,7 @@ def _eff(r: SessionRecord) -> float:
 def monthly_report(
     year: int = Query(...),
     month: int = Query(...),
-    user: User = Depends(RequireRole(["admin", "accountant"])),
+    user: User = Depends(RequireRole(["admin"])),
     db: Session = Depends(get_db),
 ):
     records = (
@@ -226,7 +226,7 @@ def monthly_report(
 def reconciliation_report(
     year: int = Query(...),
     month: int = Query(...),
-    user: User = Depends(RequireRole(["admin", "accountant"])),
+    user: User = Depends(RequireRole(["admin"])),
     db: Session = Depends(get_db),
 ):
     records = (

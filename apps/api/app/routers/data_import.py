@@ -233,8 +233,8 @@ def _validate_users(rows: list[dict], db: Session) -> tuple[list[dict], list[dic
         role = _str(row.get("role") or row.get("角色"))
         if not role:
             errors.append({"row": rnum, "field": "role/角色", "value": "", "message": "role 為必填"})
-        elif role not in ("admin", "accountant", "staff", "therapist"):
-            errors.append({"row": rnum, "field": "role/角色", "value": role, "message": "role 須為 admin/accountant/staff/therapist"})
+        elif role not in ("admin", "staff", "therapist"):
+            errors.append({"row": rnum, "field": "role/角色", "value": role, "message": "role 須為 admin/staff/therapist"})
         code = _str(row.get("user_code") or row.get("代碼"))
         if code:
             if code in csv_codes:

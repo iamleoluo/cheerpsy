@@ -5,8 +5,9 @@ from pydantic import BaseModel, model_validator
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import RequireRole, get_current_user, accounting_gone
+from app.auth.dependencies import RequireRole, get_current_user
 from app.database import get_db
+from app.models.appointment import Appointment
 from app.models.case_institution_quota import CaseInstitutionQuota
 from app.models.institution_contract import InstitutionContract
 from app.models.institution_plan import InstitutionPlan, PlanRateItem, PlanTransportFee
@@ -16,7 +17,7 @@ from app.services.audit import write_audit
 router = APIRouter(prefix="/institution-plans", tags=["institution-plans"])
 
 PLAN_STATUS = {"active", "exhausted", "expired"}
-STAFF = ["admin", "accountant", "staff"]
+STAFF = ["admin", "staff"]
 
 
 class TransportFeeIn(BaseModel):
@@ -34,6 +35,7 @@ class TransportFeeOut(TransportFeeIn):
 class RateItemIn(BaseModel):
     label: str
     service_type: str | None = None
+    consult_type: str | None = None  # individual/couple/family/parenting；空＝不限
     duration_minutes: int | None = None
     session_seq_from: int | None = None
     session_seq_to: int | None = None
@@ -77,6 +79,7 @@ class PlanBase(BaseModel):
     extension_sessions: int | None = None
     claim_threshold_sessions: int | None = None
     pricing_mode: str = "contract_fixed"
+    allows_zero_amount: bool = False  # 借場地等：預約金額允許 0
     rate_items: list[RateItemIn] = []
     valid_from: date | None = None
     valid_until: date | None = None
@@ -133,6 +136,7 @@ class PlanResponse(BaseModel):
     extension_sessions: int | None = None
     claim_threshold_sessions: int | None = None
     pricing_mode: str = "contract_fixed"
+    allows_zero_amount: bool = False
     rate_items: list[RateItemOut] = []
     settlement_direction: str = "to_clinic"
     rebate_rate: float | None = None
@@ -213,9 +217,10 @@ def _to_response(p: InstitutionPlan, agg: dict | None = None) -> PlanResponse:
         extension_sessions=p.extension_sessions,
         claim_threshold_sessions=p.claim_threshold_sessions,
         pricing_mode=p.pricing_mode,
+        allows_zero_amount=bool(p.allows_zero_amount),
         rate_items=[
             RateItemOut(
-                id=r.id, label=r.label, service_type=r.service_type,
+                id=r.id, label=r.label, service_type=r.service_type, consult_type=r.consult_type,
                 duration_minutes=r.duration_minutes,
                 session_seq_from=r.session_seq_from, session_seq_to=r.session_seq_to,
                 total_amount=float(r.total_amount),
@@ -246,12 +251,18 @@ def _to_response(p: InstitutionPlan, agg: dict | None = None) -> PlanResponse:
 
 
 def _sync_rate_items(db: Session, plan: InstitutionPlan, items) -> None:
+    # 預約存的是價格快照（應收、自付額），改價目主檔不影響它；但價目列會被重建，
+    # 所以先把既有預約對舊價目列的參照放掉（只清參照，不動金額）
+    old_ids = [r.id for r in plan.rate_items]
+    if old_ids:
+        db.query(Appointment).filter(Appointment.rate_item_id.in_(old_ids)).update(
+            {Appointment.rate_item_id: None}, synchronize_session=False)
     for existing in list(plan.rate_items):
         db.delete(existing)
     db.flush()
     for i, r in enumerate(items):
         db.add(PlanRateItem(
-            plan_id=plan.id, label=r.label.strip(), service_type=r.service_type,
+            plan_id=plan.id, label=r.label.strip(), service_type=r.service_type, consult_type=r.consult_type,
             duration_minutes=r.duration_minutes,
             session_seq_from=r.session_seq_from, session_seq_to=r.session_seq_to,
             total_amount=r.total_amount, self_pay_amount=r.self_pay_amount,
@@ -279,7 +290,7 @@ def list_plans(
     contract_id: int | None = Query(None),
     institution_id: int | None = Query(None),
     status_filter: str | None = Query(None, alias="status"),
-    user: User = Depends(get_current_user),
+    user: User = Depends(RequireRole(STAFF)),
     db: Session = Depends(get_db),
 ):
     q = db.query(InstitutionPlan).join(InstitutionContract)
@@ -298,7 +309,7 @@ def list_plans(
 def list_plan_quotas(
     plan_id: int,
     include_archived: bool = Query(False),
-    user: User = Depends(get_current_user),
+    user: User = Depends(RequireRole(STAFF)),
     db: Session = Depends(get_db),
 ):
     """方案子列表（個案清冊）：每個個案的額度三態。"""
@@ -333,7 +344,7 @@ def list_plan_quotas(
     return out
 
 
-@router.post("", response_model=PlanResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(accounting_gone)])
+@router.post("", response_model=PlanResponse, status_code=status.HTTP_201_CREATED)
 def create_plan(
     body: PlanCreate,
     user: User = Depends(RequireRole(STAFF)),
@@ -358,6 +369,7 @@ def create_plan(
         extension_sessions=body.extension_sessions,
         claim_threshold_sessions=body.claim_threshold_sessions,
         pricing_mode=body.pricing_mode,
+        allows_zero_amount=body.allows_zero_amount,
         valid_from=body.valid_from or contract.valid_from,
         valid_until=body.valid_until or contract.valid_until,
         notes=body.notes,
@@ -374,7 +386,7 @@ def create_plan(
     return _to_response(p)
 
 
-@router.put("/{plan_id}", response_model=PlanResponse, dependencies=[Depends(accounting_gone)])
+@router.put("/{plan_id}", response_model=PlanResponse)
 def update_plan(
     plan_id: int,
     body: PlanUpdate,
@@ -400,6 +412,7 @@ def update_plan(
     p.extension_sessions = body.extension_sessions
     p.claim_threshold_sessions = body.claim_threshold_sessions
     p.pricing_mode = body.pricing_mode
+    p.allows_zero_amount = body.allows_zero_amount
     p.valid_from = body.valid_from
     p.valid_until = body.valid_until
     p.notes = body.notes
@@ -414,7 +427,7 @@ def update_plan(
     return _to_response(p, agg.get(p.id))
 
 
-@router.put("/{plan_id}/status", response_model=PlanResponse, dependencies=[Depends(accounting_gone)])
+@router.put("/{plan_id}/status", response_model=PlanResponse)
 def set_plan_status(
     plan_id: int,
     new_status: str = Query(..., alias="value"),

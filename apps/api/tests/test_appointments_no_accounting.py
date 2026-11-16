@@ -29,35 +29,20 @@ def _slot(days=3, hour=10, hours=1):
 
 
 def _create(client, auth, who, case, room, start, end, **extra):
-    body = {"case_id": case.id, "room_id": room.id, "session_type": "in_person",
+    body = {"case_id": case.id, "room_id": room.id, "session_type": "in_person", "amount": 1000,
             "start_time": start.isoformat(), "end_time": end.isoformat(), **extra}
     return client.post("/appointments", json=body, headers=auth(who))
 
 
 # ---- 建立：金額只是一個選填的數字（admin／staff 才存），沒有任何記帳 --------------
-def test_create_without_amount_ok_and_server_writes_zero(client, auth, db, w):
+def test_create_self_pay_defaults_and_no_accounting_fields(client, auth, db, w):
     s, e = _slot()
     r = _create(client, auth, w["staff"], w["case"], w["room"], s, e)
     assert r.status_code == 201, r.text
     body = r.json()
-    assert body["amount"] == 0 and body["funding_source"] is None
-    assert body["quota_id"] is None and body["therapist_share"] is None
-    row = db.execute(text("SELECT amount, quota_id FROM appointments WHERE id=:i"),
-                     {"i": body["id"]}).one()
-    assert float(row.amount) == 0 and row.quota_id is None
-
-
-def test_create_ignores_legacy_money_fields_but_stores_amount_for_staff(client, auth, db, w):
-    """舊前端仍送 institution／quota_id：不報錯，也不寫入。amount 是新的選填數字：staff 送的會存。"""
-    s, e = _slot()
-    r = _create(client, auth, w["staff"], w["case"], w["room"], s, e,
-                amount=2500, funding_source="institution", quota_id=999)
-    assert r.status_code == 201, r.text
-    row = db.execute(text("SELECT amount, quota_id FROM appointments WHERE id=:i"),
-                     {"i": r.json()["id"]}).one()
-    assert float(row.amount) == 2500 and row.quota_id is None
-    assert r.json()["funding_source"] is None and r.json()["amount"] == 2500
-    assert r.json()["therapist_share"] is None and r.json()["quota_id"] is None  # 沒有任何額度、分潤
+    assert body["funding_source"] == "self_pay" and body["quota_id"] is None
+    assert body["therapist_share"] is None and body["clinic_share"] is None  # 分潤屬已移除的記帳
+    assert db.execute(text("SELECT count(*) FROM session_records")).scalar() == 0
 
 
 def test_amount_stored_for_whoever_creates_and_validated(client, auth, db, w):
@@ -78,7 +63,7 @@ def test_edit_amount_visible_to_admin_staff_and_owner_and_audited(client, auth, 
     r = client.put(f"/appointments/{a['id']}", headers=auth(w["staff"]), json={"amount": 2200})
     assert r.status_code == 200 and r.json()["amount"] == 2200
     assert client.put(f"/appointments/{a['id']}", headers=auth(w["staff"]), json={"room_id": w["room"].id}).json()["amount"] == 2200  # 沒送就不改
-    assert client.put(f"/appointments/{a['id']}", headers=auth(w["staff"]), json={"amount": 0}).json()["amount"] == 0  # 0＝清除
+    assert client.put(f"/appointments/{a['id']}", headers=auth(w["staff"]), json={"amount": 0}).status_code == 422  # 金額必須大於 0
     assert client.put(f"/appointments/{a['id']}", headers=auth(w["staff"]), json={"amount": -5}).status_code == 422
     client.put(f"/appointments/{a['id']}", headers=auth(w["admin"]), json={"amount": 3000})
     assert client.get(f"/appointments/{a['id']}", headers=auth(w["admin"])).json()["amount"] == 3000
@@ -96,7 +81,7 @@ def test_batch_create_amount_applies_to_all_slots_and_conflict(client, auth, db,
     slots = [{"start_time": s.isoformat(), "end_time": e.isoformat(), "amount": 3000},
              {"start_time": (s + timedelta(days=7)).isoformat(),
               "end_time": (e + timedelta(days=7)).isoformat()}]
-    body = {"case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person",
+    body = {"case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person", "amount": 1000,
             "amount": 2000, "funding_source": "institution", "slots": slots}
     r = client.post("/appointments/batch", json=body, headers=auth(w["staff"]))
     assert r.status_code == 201, r.text
@@ -135,7 +120,7 @@ def test_room_overlap_409_on_reschedule(client, auth, w):
 def test_online_session_does_not_need_room(client, auth, w):
     s, e = _slot()
     r = client.post("/appointments", headers=auth(w["staff"]),
-                    json={"case_id": w["case"].id, "session_type": "online",
+                    json={"case_id": w["case"].id, "session_type": "online", "amount": 1000,
                           "start_time": s.isoformat(), "end_time": e.isoformat()})
     assert r.status_code == 201
 
@@ -143,7 +128,7 @@ def test_online_session_does_not_need_room(client, auth, w):
 def test_in_person_requires_room(client, auth, w):
     s, e = _slot()
     r = client.post("/appointments", headers=auth(w["staff"]),
-                    json={"case_id": w["case"].id, "session_type": "in_person",
+                    json={"case_id": w["case"].id, "session_type": "in_person", "amount": 1000,
                           "start_time": s.isoformat(), "end_time": e.isoformat()})
     assert r.status_code == 400
 
@@ -168,7 +153,7 @@ def test_absent_marks_no_show_without_fee_or_record(client, auth, db, w):
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["status"] == "no_show" and body["no_show_type"] == "no_notice"
-    assert body["no_show_fee"] == 0
+    assert "no_show_fee" not in body  # 失約費功能已停用（欄位保留，一律 0）
     assert db.execute(text("SELECT no_show_fee FROM appointments WHERE id=:i"), {"i": a["id"]}).scalar() == 0
     assert _sr_count(db) == 0
 
@@ -204,15 +189,18 @@ def test_ledger_settle_is_gone(client, auth, w):
 
 
 # ---- 410：金額與付款方式 ----------------------------------------------------
-def test_amount_and_payment_endpoints_are_gone(client, auth, db, w):
+def test_amount_endpoint_gone_payment_endpoint_restored(client, auth, db, w):
     s, e = _slot()
-    a = _create(client, auth, w["staff"], w["case"], w["room"], s, e).json()
+    a = _create(client, auth, w["staff"], w["case"], w["room"], s, e, amount=900).json()
     assert client.put(f"/appointments/{a['id']}/amount", headers=auth(w["admin"]),
-                      json={"amount": 999}).status_code == 410
-    assert client.put(f"/appointments/{a['id']}/payment", headers=auth(w["staff"]),
-                      json={"funding_source": "institution"}).status_code == 410
-    assert float(db.execute(text("SELECT amount FROM appointments WHERE id=:i"), {"i": a["id"]}).scalar()) == 0
-    # 金額只是預約上的一個數字：沒有專屬的收款／結算端點，也不產生任何帳務紀錄
+                      json={"amount": 999}).status_code == 410  # 專屬金額端點仍停用（金額走預約編輯）
+    # 付款方式（自費／機構、額度）屬金流資訊，已恢復；機構案沒有額度只警告
+    r = client.put(f"/appointments/{a['id']}/payment", headers=auth(w["staff"]),
+                   json={"funding_source": "institution", "amount": 900})
+    assert r.status_code == 200 and r.json()["funding_source"] == "institution" and r.json()["warnings"]
+    assert client.put(f"/appointments/{a['id']}/payment", headers=auth(w["t"]),
+                      json={"funding_source": "self_pay"}).status_code == 403  # 改付款方式限行政
+    # 不產生任何帳務紀錄
     assert db.execute(text("SELECT count(*) FROM session_records")).scalar() == 0
 
 
@@ -311,8 +299,8 @@ def test_dashboard_today_counts(client, auth, w, make_appt):
     assert (r["today_expected"], r["today_arrived"], r["today_absent"]) == (2, 1, 1)
 
 
-# ---- 媒合轉初診仍擋診間衝突，且不再需要金額 ---------------------------------
-def test_referral_convert_without_amount_and_room_conflict(client, auth, db, w):
+# ---- 媒合轉初診仍擋診間衝突；自費要填金額 ---------------------------------
+def test_referral_convert_self_pay_needs_amount_and_room_conflict(client, auth, db, w):
     from datetime import date as _d
     from app.models.referral import (ReferralDispatch, ReferralDispatchTarget,
                                      ReferralRequest, ReferralSlotOffer)
@@ -339,10 +327,13 @@ def test_referral_convert_without_amount_and_room_conflict(client, auth, db, w):
                      json={"slot_id": slot.id, "room_id": w["room"].id})
     assert r1.status_code == 409
 
-    # 換成線上場次：不需金額即可成立，伺服器寫 0
+    # 換成線上場次：自費初診必填金額（機構案由方案帶出）
     r2 = client.post(f"/referrals/{r.id}/convert", headers=auth(w["staff"]),
                      json={"slot_id": slot.id, "session_type": "online"})
-    assert r2.status_code == 201, r2.text
-    amt = db.execute(text("SELECT amount FROM appointments WHERE id=:i"),
-                     {"i": r2.json()["appointment_id"]}).scalar()
-    assert float(amt) == 0
+    assert r2.status_code == 422, r2.text
+    r3 = client.post(f"/referrals/{r.id}/convert", headers=auth(w["staff"]),
+                     json={"slot_id": slot.id, "session_type": "online", "amount": 1200})
+    assert r3.status_code == 201, r3.text
+    row = db.execute(text("SELECT amount, self_pay_amount FROM appointments WHERE id=:i"),
+                     {"i": r3.json()["appointment_id"]}).one()
+    assert float(row.amount) == 1200 and float(row.self_pay_amount) == 1200

@@ -71,8 +71,7 @@ def env(monkeypatch):
 
 @pytest.fixture()
 def users(make_user):
-    return dict(admin=make_user("admin"), staff=make_user("staff"), therapist=make_user("therapist"),
-                accountant=make_user("accountant"))
+    return dict(admin=make_user("admin"), staff=make_user("staff"), therapist=make_user("therapist"))
 
 
 def _connect(client, auth, users, code=CODE):
@@ -106,13 +105,13 @@ def test_defaults_and_readers(client, auth, users, env):
     assert d["can_edit"] is True
     s = client.get("/settings/clinic", headers=auth(users["staff"])).json()
     assert s["can_edit"] is False
-    for who in ("therapist", "accountant"):
+    for who in ("therapist",):
         assert client.get("/settings/clinic", headers=auth(users[who])).status_code == 403
     assert client.get("/settings/clinic").status_code in (401, 403)
 
 
 def test_only_admin_can_change_settings_and_connection(client, auth, users, env):
-    for who in ("staff", "therapist", "accountant"):
+    for who in ("staff", "therapist"):
         h = auth(users[who])
         assert client.patch("/settings/clinic", headers=h, json={"event_title_format": "type_room_code"}).status_code == 403
         assert client.post("/settings/google/connect", headers=h).status_code == 403
@@ -470,8 +469,16 @@ def _restore_head_title_constraint():
     spec.loader.exec_module(mod)
     with engine.begin() as conn, Operations.context(MigrationContext.configure(conn)):
         mod.upgrade()
+    # zj 重建的 clinic_settings 也沒有後續 migration 加的欄位（失約費設定），一併補上
+    spec = importlib.util.spec_from_file_location("zp6f0a1b2c3d", API_DIR / "alembic" / "versions" / "zp6f0a1b2c3d_no_show_fee_settings.py")
+    mod2 = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod2)
+    with engine.begin() as conn, Operations.context(MigrationContext.configure(conn)):
+        mod2.upgrade()
 
 
+@pytest.mark.real_commit
+@pytest.mark.slow
 def test_migration_roundtrip_touches_only_its_own_tables(db, make_user):
     make_user("admin")  # 既有資料不能被動到
     mine = {"clinic_settings", "google_oauth_connections"}
@@ -493,6 +500,8 @@ def test_migration_roundtrip_touches_only_its_own_tables(db, make_user):
         _restore_head_title_constraint()  # zj 重建的表帶的是舊的三選一 constraint，補上後續 migration（標題格式 d）
 
 
+@pytest.mark.real_commit
+@pytest.mark.slow
 def test_migration_chain_and_only_adds():
     txt = (API_DIR / "alembic" / "versions" / "zj0f4a5b6c7d_gcal_and_settings.py").read_text(encoding="utf-8")
     assert 'down_revision = "zi9e3f4a5b6e"' in txt

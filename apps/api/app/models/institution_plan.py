@@ -46,6 +46,8 @@ class InstitutionPlan(Base):
     #                    調價時由心理師自行決定舊案用舊價或新價）
     # therapist_defined  心理師自己設定金額（聊心茶室、遠距抱抱）
     pricing_mode = Column(String(20), nullable=False, default="contract_fixed", server_default="contract_fixed")
+    # 借場地等不收諮商費的方案：預約金額允許 0（其餘預約金額必須大於 0）
+    allows_zero_amount = Column(Boolean, nullable=False, default=False, server_default="false")
 
     valid_from = Column(Date, nullable=True)
     valid_until = Column(Date, nullable=True)
@@ -103,6 +105,7 @@ class PlanRateItem(Base):
     plan_id = Column(Integer, ForeignKey("institution_plans.id", ondelete="CASCADE"), nullable=False, index=True)
     label = Column(String(100), nullable=False)
     service_type = Column(String(30), nullable=True)     # NULL = 不限
+    consult_type = Column(String(20), nullable=True)     # individual/couple/family/parenting；NULL = 不限
     duration_minutes = Column(Integer, nullable=True)
     # 適用第幾次；NULL = 不限。用於「第1次免費、第3次起漲價」這種階梯
     session_seq_from = Column(Integer, nullable=True)

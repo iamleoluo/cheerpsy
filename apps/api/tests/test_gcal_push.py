@@ -124,7 +124,7 @@ def run(fake, now=None, client_factory=None):
 
 def create(client, auth, w, day=2, hour=10, **extra):
     s, e = _slot(day, hour)
-    body = {"case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person",
+    body = {"case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person", "amount": 1000,
             "start_time": s.isoformat(), "end_time": e.isoformat(), **extra}
     r = client.post("/appointments", json=body, headers=auth(w["staff"]))
     assert r.status_code == 201, r.text
@@ -272,7 +272,7 @@ def test_create_enqueues_one_upsert_and_worker_pushes_event(client, auth, w, fak
     assert (j.job_type, j.status, j.attempts, j.dedupe_key) == ("upsert_event", "pending", 0, f"appt:{a['id']}")
     assert run(fake) == 1
     body = ev(fake, a["id"])
-    assert body["summary"] == "諮商 · 2B · 王小明" and body["extendedProperties"]["private"]["cheerpsyAppointmentId"] == str(a["id"])
+    assert body["summary"] == "諮商 · 2B · 王小明 · $1,000" and body["extendedProperties"]["private"]["cheerpsyAppointmentId"] == str(a["id"])
     assert job(db, a["id"]).status == "done"
     m = db.get(AppointmentGoogleEvent, a["id"])
     assert m.google_calendar_id == CAL and m.google_event_id == gcal_titles.event_id(a["id"]) and m.last_status == "pushed"
@@ -283,7 +283,7 @@ def test_batch_create_enqueues_each(client, auth, w, fake, db):
     s1, e1 = _slot(3)
     s2, e2 = _slot(4)
     r = client.post("/appointments/batch", headers=auth(w["staff"]), json={
-        "case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person",
+        "case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person", "amount": 1000,
         "slots": [{"start_time": s1.isoformat(), "end_time": e1.isoformat()},
                   {"start_time": s2.isoformat(), "end_time": e2.isoformat()}]})
     assert r.status_code == 201, r.text
@@ -309,7 +309,7 @@ def test_room_change_updates_title(client, auth, w, fake, db):
     run(fake)
     client.put(f"/appointments/{a['id']}", headers=auth(w["staff"]), json={"room_id": w["room2"].id})
     run(fake)
-    assert ev(fake, a["id"])["summary"] == "諮商 · 3C · 王小明"
+    assert ev(fake, a["id"])["summary"] == "諮商 · 3C · 王小明 · $1,000"
 
 
 def test_two_reschedules_before_worker_runs_keep_one_job(client, auth, w, fake, db):
@@ -494,7 +494,7 @@ def test_no_calendar_blocks_then_provision_unblocks_and_pushes(client, auth, w, 
     db.commit()
     s, e = _slot(3)
     r = client.post("/appointments", headers=auth(w["staff"]), json={
-        "case_id": c3.id, "room_id": w["room"].id, "session_type": "in_person",
+        "case_id": c3.id, "room_id": w["room"].id, "session_type": "in_person", "amount": 1000,
         "start_time": s.isoformat(), "end_time": e.isoformat()})
     assert r.status_code == 201, r.text
     aid = r.json()["id"]
@@ -565,7 +565,7 @@ def test_each_calendar_only_contains_its_own_therapists_sessions(client, auth, w
     create(client, auth, w)
     s, e = _slot(3)
     client.post("/appointments", headers=auth(w["staff"]), json={
-        "case_id": c2.id, "room_id": w["room2"].id, "session_type": "in_person", "start_time": s.isoformat(), "end_time": e.isoformat()})
+        "case_id": c2.id, "room_id": w["room2"].id, "session_type": "in_person", "amount": 1000, "start_time": s.isoformat(), "end_time": e.isoformat()})
     run(fake)
     cals = {}
     for (cal, _id), body in fake.events.items():
@@ -589,7 +589,7 @@ def test_default_format_is_d_with_full_name_and_amount(client, auth, w, fake, db
     run(fake)
     e = ev(fake, a["id"])
     blob = json.dumps(e, ensure_ascii=False)
-    assert e["summary"] == "諮商 · 2B · 王小明" and "0912" not in blob and "憂鬱" not in blob
+    assert e["summary"] == "諮商 · 2B · 王小明 · $1,000" and "0912" not in blob and "憂鬱" not in blob
 
 
 def test_amount_change_triggers_resync_and_zero_amount_hides_line(client, auth, w, fake, db):
@@ -612,6 +612,7 @@ def test_amount_change_triggers_resync_and_zero_amount_hides_line(client, auth, 
     assert "$" not in e["summary"]
 
 
+@pytest.mark.real_commit
 def test_note_change_changes_hash_and_note_sections_reach_description(client, auth, w, fake, db, monkeypatch):
     a = create(client, auth, w)
     run(fake)
@@ -636,6 +637,7 @@ def test_event_deleted_on_google_is_recreated_on_next_change(client, auth, w, fa
     assert ev(fake, a["id"]) is not None  # update 回 404 → 改走 insert
 
 
+@pytest.mark.real_commit
 def test_reinsert_after_delete_resurrects_via_update(client, auth, w, fake, db):
     a = create(client, auth, w)
     run(fake)
@@ -654,6 +656,7 @@ def test_reinsert_after_delete_resurrects_via_update(client, auth, w, fake, db):
 # ---------------------------------------------------------------------------
 # 冪等與重試
 # ---------------------------------------------------------------------------
+@pytest.mark.real_commit
 def test_same_payload_hash_skips_network(client, auth, w, fake, db):
     a = create(client, auth, w)
     run(fake)
@@ -744,6 +747,7 @@ def test_run_once_never_raises(fake):
     assert gcal_push.run_once(SessionLocal, factory) == 0
 
 
+@pytest.mark.real_commit
 def test_skip_locked_two_workers_do_not_take_the_same_job(client, auth, w, fake, db):
     a = create(client, auth, w)
     with engine.connect() as c, c.begin():
@@ -752,6 +756,7 @@ def test_skip_locked_two_workers_do_not_take_the_same_job(client, auth, w, fake,
     assert run(fake) == 1
 
 
+@pytest.mark.real_commit
 def test_change_during_processing_keeps_job_pending(client, auth, w, fake, db, monkeypatch):
     a = create(client, auth, w)
     orig = gcal_push.process
@@ -823,7 +828,7 @@ def test_resync_overwrites_google_side_edits_and_removes_cancelled(client, auth,
     db.commit()
     client.post("/settings/google/sync/resync", headers=auth(w["admin"]))
     run(fake, now=now_() + timedelta(minutes=5))
-    assert ev(fake, a["id"])["summary"] == "諮商 · 2B · 王小明"  # 以 Cheerpsy 為準覆寫
+    assert ev(fake, a["id"])["summary"] == "諮商 · 2B · 王小明 · $1,000"  # 以 Cheerpsy 為準覆寫
     assert ev(fake, b["id"]) is None
 
 
@@ -841,7 +846,7 @@ def test_sync_status_permissions_and_no_case_data(client, auth, w, fake, db, mak
     a = create(client, auth, w)
     db.execute(text("UPDATE gcal_outbox SET status = 'failed', last_error = '壞了', attempts = 10 WHERE appointment_id = :a"), {"a": a["id"]})
     db.commit()
-    for who, code in ((w["admin"], 200), (w["staff"], 200), (w["t"], 403), (make_user("accountant"), 403)):
+    for who, code in ((w["admin"], 200), (w["staff"], 200), (w["t"], 403)):
         assert client.get("/settings/google/sync", headers=auth(who)).status_code == code
         assert client.post("/settings/google/sync/retry", headers=auth(who)).status_code in ((200, 409) if code == 200 else (403,))
     assert client.get("/settings/google/sync").status_code in (401, 403)
@@ -863,6 +868,8 @@ def test_oldest_due_reports_a_stuck_worker(client, auth, w, fake, db):
 # ---------------------------------------------------------------------------
 # 結構：migration、worker、compose
 # ---------------------------------------------------------------------------
+@pytest.mark.real_commit
+@pytest.mark.slow
 def test_migration_adds_only_its_tables_and_chain_is_linear():
     p = API_DIR / "alembic" / "versions" / "zl2b6c7d8e9f_gcal_outbox.py"
     txt = p.read_text(encoding="utf-8")
@@ -872,6 +879,8 @@ def test_migration_adds_only_its_tables_and_chain_is_linear():
     assert others == ["zm3c7d8e9f0a_gcal_title_name.py"]  # 後面只接標題格式 (d) 的 migration（鏈不分叉）
 
 
+@pytest.mark.real_commit
+@pytest.mark.slow
 def test_migration_roundtrip(db):
     import importlib.util
     from alembic.migration import MigrationContext
@@ -933,6 +942,8 @@ def _go(mod, fn):
         getattr(mod, fn)()
 
 
+@pytest.mark.real_commit
+@pytest.mark.slow
 def test_title_migration_only_changes_untouched_default_and_is_reversible(db, make_user):
     mod = _load_zm()
     admin = make_user("admin")
@@ -972,9 +983,9 @@ def test_editing_amount_in_the_form_resyncs_the_event_title(client, auth, w, fak
     run(fake)
     assert [c[0] for c in fake.event_calls()] == ["update_event"]
     assert ev(fake, a["id"])["summary"].endswith("$1,800") and "金額" not in ev(fake, a["id"])["description"]
-    client.put(f"/appointments/{a['id']}", headers=auth(w["staff"]), json={"amount": 0})
+    assert client.put(f"/appointments/{a['id']}", headers=auth(w["staff"]), json={"amount": 0}).status_code == 422  # 金額必須大於 0
     run(fake)
-    assert "$" not in ev(fake, a["id"])["summary"]  # 沒有金額就不顯示
+    assert ev(fake, a["id"])["summary"].endswith("$1,800")  # 沒改成，標題不變
 
 
 def test_therapist_editing_own_amount_resyncs_only_to_own_calendar(client, auth, w, fake, db, make_case):
@@ -982,12 +993,12 @@ def test_therapist_editing_own_amount_resyncs_only_to_own_calendar(client, auth,
     case2 = make_case(w["t2"], "李小華")
     s, e = _slot(3, 10)
     mine = client.post("/appointments", headers=auth(w["t"]), json={
-        "case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person",
+        "case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person", "amount": 1000,
         "start_time": s.isoformat(), "end_time": e.isoformat(), "amount": 1200})
     assert mine.status_code == 201 and mine.json()["amount"] == 1200
     s2, e2 = _slot(3, 14)
     theirs = client.post("/appointments", headers=auth(w["t2"]), json={
-        "case_id": case2.id, "room_id": w["room"].id, "session_type": "in_person",
+        "case_id": case2.id, "room_id": w["room"].id, "session_type": "in_person", "amount": 1000,
         "start_time": s2.isoformat(), "end_time": e2.isoformat(), "amount": 900}).json()
     run(fake)
     mid, tid = mine.json()["id"], theirs["id"]

@@ -7,7 +7,6 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const roleLabels: Record<string, string> = {
   admin: "管理員",
-  accountant: "會計",
   therapist: "心理師",
 };
 

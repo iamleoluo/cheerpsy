@@ -21,7 +21,7 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 TZ = timezone(timedelta(hours=8))  # 診所在台灣
 CHURN_DAYS = 45
-OVERVIEW_ROLES = ("admin", "accountant", "staff")  # 看得到全所媒合與流失統計
+OVERVIEW_ROLES = ("admin", "staff")  # 看得到全所媒合與流失統計
 
 
 @router.get("")

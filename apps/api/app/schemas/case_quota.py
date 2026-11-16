@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 class QuotaCreate(BaseModel):
     institution_id: int
+    plan_id: int | None = None       # 此額度屬於哪個方案（預約會依方案帶出價目、自付額）
     total_count: int
     valid_from: date | None = None   # None = 無起日下限
     valid_until: date | None = None  # None = 無迄日上限
@@ -26,6 +27,8 @@ class QuotaResponse(BaseModel):
     case_name: str | None = None
     institution_id: int
     institution_name: str | None = None
+    plan_id: int | None = None
+    plan_name: str | None = None
     total_count: int
     used_count: int
     # 額度三態（Phase 3 起以 DB 欄位為唯一真相）

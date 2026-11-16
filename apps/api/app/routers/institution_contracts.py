@@ -5,7 +5,7 @@ from sqlalchemy import func
 from pydantic import BaseModel, model_validator
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import RequireRole, get_current_user, accounting_gone
+from app.auth.dependencies import RequireRole, get_current_user
 from app.database import get_db
 from app.models.institution import Institution
 from app.models.institution_contract import InstitutionContract
@@ -16,7 +16,7 @@ from app.services.audit import write_audit
 router = APIRouter(prefix="/institution-contracts", tags=["institution-contracts"])
 
 CAP_TYPES = {"amount", "count", "unlimited"}
-STAFF = ["admin", "accountant", "staff"]
+STAFF = ["admin", "staff"]
 
 
 class ContractBase(BaseModel):
@@ -119,7 +119,7 @@ def _to_response(c: InstitutionContract, plan_count: int = 0) -> ContractRespons
 def list_contracts(
     institution_id: int | None = Query(None),
     include_inactive: bool = Query(False),
-    user: User = Depends(get_current_user),
+    user: User = Depends(RequireRole(STAFF)),
     db: Session = Depends(get_db),
 ):
     q = db.query(InstitutionContract)
@@ -137,7 +137,7 @@ def list_contracts(
     return [_to_response(c, counts.get(c.id, 0)) for c in contracts]
 
 
-@router.post("", response_model=ContractResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(accounting_gone)])
+@router.post("", response_model=ContractResponse, status_code=status.HTTP_201_CREATED)
 def create_contract(
     body: ContractCreate,
     user: User = Depends(RequireRole(STAFF)),
@@ -173,7 +173,7 @@ def create_contract(
     return _to_response(c)
 
 
-@router.put("/{contract_id}", response_model=ContractResponse, dependencies=[Depends(accounting_gone)])
+@router.put("/{contract_id}", response_model=ContractResponse)
 def update_contract(
     contract_id: int,
     body: ContractUpdate,
@@ -220,7 +220,7 @@ def update_contract(
     return _to_response(c)
 
 
-@router.delete("/{contract_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(accounting_gone)])
+@router.delete("/{contract_id}", status_code=status.HTTP_204_NO_CONTENT)
 def deactivate_contract(
     contract_id: int,
     user: User = Depends(RequireRole(STAFF)),

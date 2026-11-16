@@ -17,6 +17,7 @@ from app.auth.dependencies import RequireRole
 from app.database import get_db
 from app.models.appointment import Appointment
 from app.models.gcal_hooks import enqueue_appointments
+from app.services import appt_billing
 from app.models.availability import PERIODS, TherapistAvailability
 from app.models.finance import DailyClosing
 from app.models.referral import ReferralDispatch, ReferralDispatchTarget
@@ -62,9 +63,9 @@ def my_today(
             "checkin_status": a.checkin_status,
             # 現場個案由櫃檯報到，心理師端不提供操作
             "action": "front_desk" if a.room_id else "self",
-            # 上線 A 佔位欄位（前端不得讀取），上線 B 移除
-            "funding_source": None,
-            "quota": None,
+            # 金流資訊（只含自己的預約）：付款方式、額度、方案、應收與自付額
+            "funding_source": a.funding_source or "self_pay",
+            "quota": appt_billing.quota_summary(db, a.quota_id),
         })
 
     # 待辦：目前只剩派案邀請（核銷文件確認已隨帳務拆除）
@@ -79,6 +80,8 @@ def my_today(
     todos = []
     if pending_invites:
         todos.append({"type": "invite", "label": "派案邀請待回覆", "count": pending_invites, "link": "/pool"})
+    for name in [s["case_name"] for s in schedule if s["quota"] and s["quota"]["is_last"]]:
+        todos.append({"type": "quota", "label": f"{name} 機構額度最後一次，下次轉自費", "count": 1, "link": "/sched"})
 
     return {
         "date": d,

@@ -195,16 +195,4 @@ def _compute_live_alerts(user: User, db: Session) -> list[dict]:
                 "severity": "info",
             })
 
-    elif user.role == "accountant":
-        # Claim batches ready for review
-        from app.models.claim_batch import ClaimBatch
-        ready = db.query(ClaimBatch).filter(ClaimBatch.status.in_(["ready", "submitted"])).count()
-        if ready > 0:
-            alerts.append({
-                "type": "claim_ready",
-                "title": f"{ready} 個核銷案待審核/確認收款",
-                "link": "/claims?status=ready",
-                "severity": "info",
-            })
-
     return alerts
