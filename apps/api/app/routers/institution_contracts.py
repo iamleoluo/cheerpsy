@@ -5,7 +5,7 @@ from sqlalchemy import func
 from pydantic import BaseModel, model_validator
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import RequireRole, get_current_user
+from app.auth.dependencies import RequireRole, get_current_user, accounting_gone
 from app.database import get_db
 from app.models.institution import Institution
 from app.models.institution_contract import InstitutionContract
@@ -137,7 +137,7 @@ def list_contracts(
     return [_to_response(c, counts.get(c.id, 0)) for c in contracts]
 
 
-@router.post("", response_model=ContractResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ContractResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(accounting_gone)])
 def create_contract(
     body: ContractCreate,
     user: User = Depends(RequireRole(STAFF)),
@@ -173,7 +173,7 @@ def create_contract(
     return _to_response(c)
 
 
-@router.put("/{contract_id}", response_model=ContractResponse)
+@router.put("/{contract_id}", response_model=ContractResponse, dependencies=[Depends(accounting_gone)])
 def update_contract(
     contract_id: int,
     body: ContractUpdate,
@@ -220,7 +220,7 @@ def update_contract(
     return _to_response(c)
 
 
-@router.delete("/{contract_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{contract_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(accounting_gone)])
 def deactivate_contract(
     contract_id: int,
     user: User = Depends(RequireRole(STAFF)),

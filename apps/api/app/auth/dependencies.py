@@ -30,3 +30,11 @@ class RequireRole:
         if user.role not in self.allowed_roles:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
         return user
+
+
+def accounting_gone(user: User = Depends(get_current_user)) -> None:
+    """帳務拆除上線 A：帳務寫入端點一律回 410（先驗證登入，未登入仍回 401）。
+
+    讀取端點保留到上線 B；這裡只擋寫入。不依賴請求內容，所以不會因 body 驗證先回 422。
+    """
+    raise HTTPException(status_code=status.HTTP_410_GONE, detail="帳務功能已停用")

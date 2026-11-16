@@ -14,7 +14,7 @@ from pydantic import BaseModel, model_validator
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import RequireRole, get_current_user
+from app.auth.dependencies import RequireRole, get_current_user, accounting_gone
 from app.database import get_db
 from app.models.case import Case
 from app.models.claim_batch import ClaimBatch
@@ -78,7 +78,7 @@ def list_batch_plans(
     ]
 
 
-@router.put("/{batch_id}/plans")
+@router.put("/{batch_id}/plans", dependencies=[Depends(accounting_gone)])
 def set_batch_plans(
     batch_id: int,
     body: PlansBody,
@@ -180,7 +180,7 @@ class RejectBody(BaseModel):
         return self
 
 
-@router.post("/{batch_id}/records/{record_id}/reject")
+@router.post("/{batch_id}/records/{record_id}/reject", dependencies=[Depends(accounting_gone)])
 def reject_record(
     batch_id: int,
     record_id: int,
@@ -236,7 +236,7 @@ class VoidBody(BaseModel):
         return self
 
 
-@router.post("/{batch_id}/void")
+@router.post("/{batch_id}/void", dependencies=[Depends(accounting_gone)])
 def void_batch(
     batch_id: int,
     body: VoidBody,
@@ -382,7 +382,7 @@ def list_documents(
     ]
 
 
-@router.post("/{batch_id}/documents", status_code=http.HTTP_201_CREATED)
+@router.post("/{batch_id}/documents", status_code=http.HTTP_201_CREATED, dependencies=[Depends(accounting_gone)])
 def add_document(
     batch_id: int,
     body: DocBody,
@@ -407,7 +407,7 @@ def add_document(
     return {"id": d.id, "doc_type": d.doc_type, "file_name": d.file_name}
 
 
-@router.delete("/{batch_id}/documents/{doc_id}", status_code=http.HTTP_204_NO_CONTENT)
+@router.delete("/{batch_id}/documents/{doc_id}", status_code=http.HTTP_204_NO_CONTENT, dependencies=[Depends(accounting_gone)])
 def delete_document(
     batch_id: int,
     doc_id: int,
@@ -468,7 +468,7 @@ class ConfirmBody(BaseModel):
     record_ids: list[int]
 
 
-@router.post("/my/confirm-docs")
+@router.post("/my/confirm-docs", dependencies=[Depends(accounting_gone)])
 def confirm_docs(
     body: ConfirmBody,
     user: User = Depends(RequireRole(["therapist"])),
@@ -495,7 +495,7 @@ def confirm_docs(
     return {"confirmed": done}
 
 
-@router.post("/my/withdraw-docs")
+@router.post("/my/withdraw-docs", dependencies=[Depends(accounting_gone)])
 def withdraw_docs(
     body: ConfirmBody,
     user: User = Depends(RequireRole(["therapist"])),
@@ -526,7 +526,7 @@ ALLOWED = {
 }
 
 
-@router.post("/{batch_id}/documents/upload", status_code=http.HTTP_201_CREATED)
+@router.post("/{batch_id}/documents/upload", status_code=http.HTTP_201_CREATED, dependencies=[Depends(accounting_gone)])
 def upload_document(
     batch_id: int,
     doc_type: str = Form(...),
@@ -689,7 +689,7 @@ class SubmitBody(BaseModel):
     acknowledged_missing: bool = False
 
 
-@router.post("/{batch_id}/submit-claim")
+@router.post("/{batch_id}/submit-claim", dependencies=[Depends(accounting_gone)])
 def submit_claim(
     batch_id: int,
     body: SubmitBody,
@@ -746,7 +746,7 @@ class ReceiveBody(BaseModel):
     transfer_fee: float = 0
 
 
-@router.post("/{batch_id}/confirm-receipt")
+@router.post("/{batch_id}/confirm-receipt", dependencies=[Depends(accounting_gone)])
 def confirm_receipt(
     batch_id: int,
     body: ReceiveBody,
@@ -800,7 +800,7 @@ class UnlockClaimBody(BaseModel):
     reason: str
 
 
-@router.post("/{batch_id}/unlock")
+@router.post("/{batch_id}/unlock", dependencies=[Depends(accounting_gone)])
 def unlock_batch(
     batch_id: int,
     body: UnlockClaimBody,

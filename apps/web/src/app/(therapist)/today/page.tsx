@@ -22,10 +22,10 @@ interface Data {
   date: string;
   schedule: Slot[];
   todos: Todo[];
-  stats: { today_sessions: number; pending_invites: number; pending_docs: number };
+  stats: { today_sessions: number; pending_invites: number };
 }
 
-const TODO_ICON: Record<string, string> = { invite: "🤝", doc: "📄", quota: "⚠️" };
+const TODO_ICON: Record<string, string> = { invite: "🤝" };
 
 export default function TodayPage() {
   const { data: session } = useSession();
@@ -57,11 +57,10 @@ export default function TodayPage() {
 
       {error && <div className="my-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
 
-      <div className="mb-5 mt-4 grid grid-cols-3 gap-3">
+      <div className="mb-5 mt-4 grid grid-cols-2 gap-3">
         {[
           ["今日場次", data.stats.today_sessions, "/sched"],
           ["派案邀請", data.stats.pending_invites, "/pool"],
-          ["待確認文件", data.stats.pending_docs, "/docs"],
         ].map(([label, n, href]) => (
           <Link key={label as string} href={href as string} className="rounded-xl border border-gray-200 bg-white px-4 py-3 hover:border-primary-300">
             <div className="text-xs text-gray-500">{label}</div>

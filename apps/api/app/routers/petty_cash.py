@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import RequireRole, get_current_user
+from app.auth.dependencies import RequireRole, get_current_user, accounting_gone
 from app.database import get_db
 from app.models.petty_cash import PettyCash
 from app.models.user import User
@@ -21,7 +21,7 @@ def list_petty_cash(
     return records
 
 
-@router.post("", response_model=PettyCashResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=PettyCashResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(accounting_gone)])
 def create_petty_cash(
     body: PettyCashCreate,
     user: User = Depends(RequireRole(["admin", "accountant", "staff"])),

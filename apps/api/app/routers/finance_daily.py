@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import RequireRole, get_current_user
+from app.auth.dependencies import RequireRole, get_current_user, accounting_gone
 from app.database import get_db
 from app.models.case import Case
 from app.models.finance import DailyClosing, MonthlyReport, SupervisorReview
@@ -120,7 +120,7 @@ class CloseBody(BaseModel):
     note: str | None = None
 
 
-@router.post("/daily/{day}/close", response_model=DailySummary)
+@router.post("/daily/{day}/close", response_model=DailySummary, dependencies=[Depends(accounting_gone)])
 def close_day(
     day: date,
     body: CloseBody,
@@ -158,7 +158,7 @@ class UnlockBody(BaseModel):
     session_record_id: int | None = None
 
 
-@router.post("/daily/{day}/unlock", status_code=http.HTTP_201_CREATED)
+@router.post("/daily/{day}/unlock", status_code=http.HTTP_201_CREATED, dependencies=[Depends(accounting_gone)])
 def unlock_day(
     day: date,
     body: UnlockBody,
@@ -233,7 +233,7 @@ class PayBody(BaseModel):
     issue_receipt: bool = True
 
 
-@router.post("/ar/{record_id}/pay", response_model=DailyRow)
+@router.post("/ar/{record_id}/pay", response_model=DailyRow, dependencies=[Depends(accounting_gone)])
 def collect_payment(
     record_id: int,
     body: PayBody,

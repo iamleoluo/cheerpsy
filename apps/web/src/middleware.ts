@@ -5,14 +5,6 @@ import { auth } from "@/lib/auth";
 const STAFF_ONLY_PREFIXES = [
   "/match",
   "/reports",
-  "/ledger",
-  "/ar",
-  "/monthly",
-  "/finance",
-  "/products",
-  "/claims",
-  "/contracts",
-  "/plans",
   "/admin",
 ];
 

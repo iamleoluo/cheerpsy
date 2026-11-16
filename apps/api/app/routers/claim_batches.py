@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import RequireRole, get_current_user
+from app.auth.dependencies import RequireRole, get_current_user, accounting_gone
 from app.database import get_db
 from app.models.appointment import Appointment
 from app.models.case import Case
@@ -302,7 +302,7 @@ def get_batch_records(
     return result
 
 
-@router.post("", response_model=ClaimBatchResponse)
+@router.post("", response_model=ClaimBatchResponse, dependencies=[Depends(accounting_gone)])
 def create_claim_batch(
     body: ClaimBatchCreate,
     user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
@@ -361,7 +361,7 @@ def create_claim_batch(
     return _to_response(db, batch)
 
 
-@router.put("/{batch_id}", response_model=ClaimBatchResponse)
+@router.put("/{batch_id}", response_model=ClaimBatchResponse, dependencies=[Depends(accounting_gone)])
 def update_claim_batch(
     batch_id: int,
     body: ClaimBatchUpdate,
@@ -400,7 +400,7 @@ def update_claim_batch(
     return _to_response(db, batch)
 
 
-@router.post("/{batch_id}/records")
+@router.post("/{batch_id}/records", dependencies=[Depends(accounting_gone)])
 def add_records_to_batch(
     batch_id: int,
     record_ids: list[int],
@@ -435,7 +435,7 @@ def add_records_to_batch(
     return {"added": added}
 
 
-@router.delete("/{batch_id}/records/{record_id}")
+@router.delete("/{batch_id}/records/{record_id}", dependencies=[Depends(accounting_gone)])
 def remove_record_from_batch(
     batch_id: int,
     record_id: int,
@@ -462,7 +462,7 @@ def remove_record_from_batch(
 
 # ── State transitions ──
 
-@router.put("/{batch_id}/submit")
+@router.put("/{batch_id}/submit", dependencies=[Depends(accounting_gone)])
 def submit_batch(
     batch_id: int,
     user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
@@ -491,7 +491,7 @@ def submit_batch(
     return {"status": "submitted"}
 
 
-@router.put("/{batch_id}/receive")
+@router.put("/{batch_id}/receive", dependencies=[Depends(accounting_gone)])
 def receive_batch(
     batch_id: int,
     user: User = Depends(RequireRole(["admin", "accountant"])),
@@ -518,7 +518,7 @@ def receive_batch(
     return {"status": "received"}
 
 
-@router.put("/{batch_id}/waive-docs", response_model=ClaimBatchResponse)
+@router.put("/{batch_id}/waive-docs", response_model=ClaimBatchResponse, dependencies=[Depends(accounting_gone)])
 def waive_docs(
     batch_id: int,
     user: User = Depends(RequireRole(["admin", "staff"])),
@@ -546,7 +546,7 @@ def waive_docs(
     return _to_response(db, batch)
 
 
-@router.post("/{batch_id}/admin-verify-all", response_model=ClaimBatchResponse)
+@router.post("/{batch_id}/admin-verify-all", response_model=ClaimBatchResponse, dependencies=[Depends(accounting_gone)])
 def admin_verify_all(
     batch_id: int,
     user: User = Depends(RequireRole(["admin", "staff"])),
@@ -581,7 +581,7 @@ def admin_verify_all(
     return _to_response(db, batch)
 
 
-@router.put("/{batch_id}/unwaive-docs", response_model=ClaimBatchResponse)
+@router.put("/{batch_id}/unwaive-docs", response_model=ClaimBatchResponse, dependencies=[Depends(accounting_gone)])
 def unwaive_docs(
     batch_id: int,
     user: User = Depends(RequireRole(["admin", "staff"])),

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import RequireRole, get_current_user
+from app.auth.dependencies import RequireRole, get_current_user, accounting_gone
 from app.database import get_db
 from app.models.appointment import Appointment
 from app.models.case import Case
@@ -122,7 +122,7 @@ def list_all_quotas(
     return [_to_response(r, db) for r in rows]
 
 
-@router.post("/cases/{case_id}/quotas", response_model=QuotaResponse, status_code=201)
+@router.post("/cases/{case_id}/quotas", response_model=QuotaResponse, status_code=201, dependencies=[Depends(accounting_gone)])
 def create_quota(
     case_id: int,
     body: QuotaCreate,
@@ -170,7 +170,7 @@ def create_quota(
     return _to_response(q, db)
 
 
-@router.put("/quotas/{quota_id}", response_model=QuotaResponse)
+@router.put("/quotas/{quota_id}", response_model=QuotaResponse, dependencies=[Depends(accounting_gone)])
 def update_quota(
     quota_id: int,
     body: QuotaUpdate,
@@ -226,7 +226,7 @@ def update_quota(
     return _to_response(q, db)
 
 
-@router.delete("/quotas/{quota_id}", status_code=204)
+@router.delete("/quotas/{quota_id}", status_code=204, dependencies=[Depends(accounting_gone)])
 def delete_quota(
     quota_id: int,
     user: User = Depends(RequireRole(WRITE_ROLES)),
