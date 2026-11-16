@@ -15,7 +15,7 @@ from app.models.room import Room
 from app.models.user import User
 from app.schemas.appointment import RoomResponse
 from app.services.audit import write_audit
-from app.services.slot_check import find_room_conflict
+from app.services.slot_check import find_room_conflict, therapist_is_busy
 
 router = APIRouter(prefix="/rooms", tags=["rooms"])
 
@@ -46,6 +46,7 @@ def available_rooms(
     end: datetime,
     prefer: str | None = Query(None, pattern="^(talk|play)$"),
     exclude_appointment_id: int | None = None,
+    therapist_id: int | None = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -54,9 +55,19 @@ def available_rooms(
     只回診間本身，不含任何佔用者資訊，所以所有登入角色都可以用。
     prefer 指定的類型排前面（遊戲治療用 play，一般晤談用 talk）；不自動配房，由行政點選。
     改期時帶 exclude_appointment_id，避免把自己原本的時段算成衝突。
+    帶 therapist_id 時，該心理師在這段有預約或不接案就回空清單（與預約寫入同一組檢查；
+    不說明原因，也不帶任何姓名）。心理師身分只能查自己，查別人回 404。
     """
     if end <= start:
         raise HTTPException(status_code=400, detail="結束時間必須晚於開始時間")
+    if therapist_id is not None:
+        if user.role == "therapist" and user.id != therapist_id:
+            raise HTTPException(status_code=404, detail="Not found")
+        t = db.query(User).filter(User.id == therapist_id, User.role == "therapist").first()
+        if not t:
+            raise HTTPException(status_code=404, detail="Not found")
+        if therapist_is_busy(db, therapist_id, start, end, exclude_appointment_id=exclude_appointment_id):
+            return []
     rooms = db.query(Room).filter(Room.is_active.is_(True)).order_by(*ROOM_ORDER).all()
     free = [
         r for r in rooms

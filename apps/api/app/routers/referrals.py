@@ -259,6 +259,7 @@ class ReferralOut(BaseModel):
     case_id: int | None
     case_number: str | None
     created_at: datetime
+    intake_appointment_id: int | None = None  # 已轉初診就不再顯示「轉初診」
     # 親友介紹需提示雙重關係（原型 pool 倫理提示）
     dual_relationship_warning: bool
 
@@ -293,7 +294,7 @@ def _referral_out(r: ReferralRequest) -> ReferralOut:
         designated_therapists=[d.therapist.name for d in r.designations if d.therapist],
         dispatch_count=len(r.dispatches),
         case_id=r.case_id, case_number=r.case.case_number if r.case else None,
-        created_at=r.created_at,
+        created_at=r.created_at, intake_appointment_id=r.intake_appointment_id,
         dual_relationship_warning=("親友" in src or "介紹" in src),
     )
 
