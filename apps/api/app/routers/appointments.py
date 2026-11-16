@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from psycopg2.extras import DateTimeTZRange
-from sqlalchemy import and_, func, or_, text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth.dependencies import RequireRole, get_current_user
@@ -15,7 +15,7 @@ from app.models.room import Room
 from app.models.session_record import SessionRecord
 from app.models.user import User
 from app.services.audit import write_audit
-from app.services.slot_check import assert_room_free, flush_or_409
+from app.services.slot_check import assert_room_active, assert_room_free, flush_or_409
 from app.schemas.appointment import (
     AppointmentBatchCreate,
     AppointmentCreate,
@@ -106,26 +106,6 @@ def _to_response(
     )
 
 
-def _to_occupied_response(a: Appointment) -> AppointmentResponse:
-    """別的心理師的場次：只露出「已佔用」所需資訊，不含任何個案或金額資料。"""
-    start = a.time_range.lower if a.time_range else None
-    end = a.time_range.upper if a.time_range else None
-    return AppointmentResponse(
-        id=a.id,
-        appointment_number="",
-        case_id=0,
-        therapist_id=0,  # 診所尚未決定可否顯示心理師姓名：一律只顯示「已佔用」
-        therapist_name=None,
-        room_id=a.room_id,
-        room_name=a.room.name if a.room else None,
-        session_type="in_person",
-        start_time=start,
-        end_time=end,
-        status=a.status,
-        occupied_only=True,
-    )
-
-
 def _validate_couple(db: Session, couple_case_id: int | None, payer_case_id: int) -> Case | None:
     """合療驗證：couple_case_id 必為伴侶案，付款方(payer_case_id)必為伴侶案本身或其成員。
 
@@ -158,22 +138,9 @@ def list_appointments(
         joinedload(Appointment.room),
     )
     if user.role == "therapist":
-        # 心理師：自己的場次完整可見；帶 room_id 時另外看到該診間「別人的有效場次」，
-        # 但那些只會以 _to_occupied_response 遮罩回傳。case_id 只能查自己的個案。
-        if room_id:
-            query = query.filter(
-                or_(
-                    Appointment.therapist_id == user.id,
-                    and_(
-                        Appointment.room_id == room_id,
-                        Appointment.status.in_(["booked", "executed"]),
-                    ),
-                )
-            )
-        else:
-            query = query.filter(Appointment.therapist_id == user.id)
-        if case_id:
-            query = query.filter(Appointment.therapist_id == user.id)
+        # 心理師只能看到自己的場次（沒有任何例外）。
+        # 他人的診間佔用請用 GET /rooms/occupancy：只回時段，不含個人資料。
+        query = query.filter(Appointment.therapist_id == user.id)
     if status_filter:
         query = query.filter(Appointment.status == status_filter)
     if case_id:
@@ -194,9 +161,7 @@ def list_appointments(
         therapists = {u.id: u for u in users}
 
     return [
-        _to_occupied_response(a)
-        if user.role == "therapist" and a.therapist_id != user.id
-        else _to_response(a, therapists.get(a.therapist_id), db, viewer=user)
+        _to_response(a, therapists.get(a.therapist_id), db, viewer=user)
         for a in appointments
     ]
 
@@ -248,6 +213,7 @@ def create_appointment(
     if body.session_type == "in_person" and not body.room_id:
         raise HTTPException(status_code=400, detail="Room required for in-person sessions")
 
+    assert_room_active(db, body.room_id)
     assert_room_free(db, body.room_id, body.start_time, body.end_time)
 
     seq = _next_seq(db, therapist.user_code, body.start_time)
@@ -301,6 +267,7 @@ def create_batch(
     if not therapist or not therapist.user_code:
         raise HTTPException(status_code=400, detail="Therapist not found or has no code")
 
+    assert_room_active(db, body.room_id)
     batch_id = str(uuid.uuid4())[:8]
     next_vs = _next_visit_seq(db, body.case_id)
     results = []
@@ -359,6 +326,8 @@ def update_appointment(
     new_start = body.start_time or a.time_range.lower
     new_end = body.end_time or a.time_range.upper
     new_room = body.room_id if body.room_id is not None else a.room_id
+    if body.room_id is not None and body.room_id != a.room_id:
+        assert_room_active(db, body.room_id)  # 換到停用的診間不行；原本就在停用診間的場次維持原樣
     changed = (
         body.start_time is not None or body.end_time is not None or body.room_id is not None
     )

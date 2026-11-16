@@ -72,7 +72,7 @@ export default function AdminPage() {
   const token = (session?.user as any)?.accessToken;
   const userRole = (session?.user as any)?.role;
 
-  const [tab, setTab] = useState<"users" | "roster" | "institutions" | "data">("users");
+  const [tab, setTab] = useState<"users" | "roster" | "institutions" | "rooms" | "data">("users");
 
   if (userRole !== "admin") {
     return (
@@ -121,6 +121,16 @@ export default function AdminPage() {
           機構管理
         </button>
         <button
+          onClick={() => setTab("rooms")}
+          className={`px-4 py-2.5 text-sm font-medium transition-colors ${
+            tab === "rooms"
+              ? "border-b-2 border-primary-600 text-primary-700"
+              : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          診間管理
+        </button>
+        <button
           onClick={() => setTab("data")}
           className={`px-4 py-2.5 text-sm font-medium transition-colors ${
             tab === "data"
@@ -132,7 +142,7 @@ export default function AdminPage() {
         </button>
       </div>
 
-      {tab === "users" ? <UsersTab token={token} /> : tab === "institutions" ? <InstitutionsTab token={token} /> : <DataTab token={token} />}
+      {tab === "users" ? <UsersTab token={token} /> : tab === "rooms" ? <RoomsTab token={token} /> : tab === "institutions" ? <InstitutionsTab token={token} /> : <DataTab token={token} />}
     </div>
   );
 }
@@ -1515,5 +1525,173 @@ function RosterTab({ token }: { token: string }) {
         </table>
       </div>
     </div>
+  );
+}
+
+
+/* ------------------------------------------------------------------ */
+/*  診間管理：新增、修改、停用（不提供刪除；歷史預約照常保留）          */
+/* ------------------------------------------------------------------ */
+
+interface RoomItem {
+  id: number;
+  name: string;
+  floor: number;
+  room_code: string;
+  room_type: string;
+  has_special_equipment: boolean;
+  notes: string | null;
+  is_active: boolean;
+  sort_order: number;
+}
+
+const EMPTY_ROOM = { name: "", floor: 1, room_code: "", room_type: "talk", sort_order: 0, notes: "" };
+
+function RoomsTab({ token }: { token: string }) {
+  const [rooms, setRooms] = useState<RoomItem[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [form, setForm] = useState({ ...EMPTY_ROOM });
+  const [editing, setEditing] = useState<RoomItem | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      setRooms(await clientFetch("/rooms?include_inactive=true", token));
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function create(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      await clientFetch("/rooms", token, {
+        method: "POST",
+        body: JSON.stringify({ ...form, notes: form.notes || null }),
+      });
+      setForm({ ...EMPTY_ROOM });
+      await load();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function update(r: RoomItem, patch: Record<string, unknown>) {
+    setError(null);
+    try {
+      await clientFetch(`/rooms/${r.id}`, token, { method: "PUT", body: JSON.stringify(patch) });
+      setEditing(null);
+      await load();
+    } catch (err: any) {
+      setError(err.message); // 例如：還有 N 筆已預約的場次，不能停用
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <p className="text-sm text-gray-500">
+        診間不提供刪除。停用後不會出現在預約選單、也不能再預約；歷史預約與日曆紀錄照常保留。還有已預約場次的診間要先改期或取消才能停用。
+      </p>
+      {error && <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+
+      <form onSubmit={create} className="flex flex-wrap items-end gap-3 rounded-xl border border-gray-200 bg-white p-4">
+        <label className="text-xs text-gray-600">
+          代號
+          <input required maxLength={20} value={form.room_code} onChange={(e) => setForm({ ...form, room_code: e.target.value })} className="mt-1 block w-24 rounded-lg border border-gray-300 px-2 py-1.5 text-sm" />
+        </label>
+        <label className="text-xs text-gray-600">
+          名稱
+          <input required maxLength={100} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="mt-1 block w-40 rounded-lg border border-gray-300 px-2 py-1.5 text-sm" />
+        </label>
+        <label className="text-xs text-gray-600">
+          樓層
+          <input type="number" value={form.floor} onChange={(e) => setForm({ ...form, floor: Number(e.target.value) })} className="mt-1 block w-20 rounded-lg border border-gray-300 px-2 py-1.5 text-sm" />
+        </label>
+        <label className="text-xs text-gray-600">
+          類型
+          <select value={form.room_type} onChange={(e) => setForm({ ...form, room_type: e.target.value })} className="mt-1 block rounded-lg border border-gray-300 px-2 py-1.5 text-sm">
+            <option value="talk">晤談室</option>
+            <option value="play">兒童遊戲室</option>
+          </select>
+        </label>
+        <label className="text-xs text-gray-600">
+          排序
+          <input type="number" value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: Number(e.target.value) })} className="mt-1 block w-20 rounded-lg border border-gray-300 px-2 py-1.5 text-sm" />
+        </label>
+        <button type="submit" disabled={saving} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+          新增診間
+        </button>
+      </form>
+
+      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-gray-50 text-xs text-gray-500">
+            <tr>
+              <th className="px-3 py-2">代號</th>
+              <th className="px-3 py-2">名稱</th>
+              <th className="px-3 py-2">樓層</th>
+              <th className="px-3 py-2">類型</th>
+              <th className="px-3 py-2">排序</th>
+              <th className="px-3 py-2">狀態</th>
+              <th className="px-3 py-2">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rooms.map((r) =>
+              editing?.id === r.id ? (
+                <RoomEditRow key={r.id} room={editing} onCancel={() => setEditing(null)} onSave={(patch) => update(r, patch)} />
+              ) : (
+                <tr key={r.id} className={`border-t border-gray-100 ${r.is_active ? "" : "text-gray-400"}`}>
+                  <td className="px-3 py-2 font-medium">{r.room_code}</td>
+                  <td className="px-3 py-2">{r.name}</td>
+                  <td className="px-3 py-2">{r.floor}</td>
+                  <td className="px-3 py-2">{r.room_type === "play" ? "兒童遊戲室" : "晤談室"}</td>
+                  <td className="px-3 py-2">{r.sort_order}</td>
+                  <td className="px-3 py-2">{r.is_active ? "啟用中" : "已停用"}</td>
+                  <td className="space-x-3 px-3 py-2">
+                    <button onClick={() => setEditing(r)} className="text-primary-600 hover:underline">編輯</button>
+                    <button onClick={() => update(r, { is_active: !r.is_active })} className={r.is_active ? "text-red-600 hover:underline" : "text-green-700 hover:underline"}>
+                      {r.is_active ? "停用" : "重新啟用"}
+                    </button>
+                  </td>
+                </tr>
+              )
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function RoomEditRow({ room, onCancel, onSave }: { room: RoomItem; onCancel: () => void; onSave: (patch: Record<string, unknown>) => void }) {
+  const [v, setV] = useState({ room_code: room.room_code, name: room.name, floor: room.floor, room_type: room.room_type, sort_order: room.sort_order });
+  const cls = "w-full rounded border border-gray-300 px-1.5 py-1 text-sm";
+  return (
+    <tr className="border-t border-gray-100 bg-primary-50">
+      <td className="px-3 py-2"><input className={cls} value={v.room_code} onChange={(e) => setV({ ...v, room_code: e.target.value })} /></td>
+      <td className="px-3 py-2"><input className={cls} value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} /></td>
+      <td className="px-3 py-2"><input type="number" className={cls} value={v.floor} onChange={(e) => setV({ ...v, floor: Number(e.target.value) })} /></td>
+      <td className="px-3 py-2">
+        <select className={cls} value={v.room_type} onChange={(e) => setV({ ...v, room_type: e.target.value })}>
+          <option value="talk">晤談室</option>
+          <option value="play">兒童遊戲室</option>
+        </select>
+      </td>
+      <td className="px-3 py-2"><input type="number" className={cls} value={v.sort_order} onChange={(e) => setV({ ...v, sort_order: Number(e.target.value) })} /></td>
+      <td className="px-3 py-2">{room.is_active ? "啟用中" : "已停用"}</td>
+      <td className="space-x-3 px-3 py-2">
+        <button onClick={() => onSave(v)} className="text-primary-600 hover:underline">儲存</button>
+        <button onClick={onCancel} className="text-gray-500 hover:underline">取消</button>
+      </td>
+    </tr>
   );
 }

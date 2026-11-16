@@ -96,9 +96,6 @@ class AppointmentResponse(BaseModel):
     quota_is_last_session: bool = False
     quota_used: int | None = None
     quota_total: int | None = None
-    # True＝心理師查診間時看到的「別人的場次」：只有時間、診間、心理師姓名，
-    # 其餘欄位一律是佔位值（case_id=0），不含任何個案資訊。
-    occupied_only: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -111,5 +108,7 @@ class RoomResponse(BaseModel):
     room_type: str = "talk"  # talk 晤談室／play 兒童遊戲室
     has_special_equipment: bool
     notes: str | None = None
+    is_active: bool = True
+    sort_order: int = 0
 
     model_config = {"from_attributes": True}

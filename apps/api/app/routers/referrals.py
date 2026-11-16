@@ -19,7 +19,7 @@ from app.models.referral import (
 )
 from app.models.user import User
 from app.services.audit import write_audit
-from app.services.slot_check import assert_room_free, flush_or_409
+from app.services.slot_check import assert_room_active, assert_room_free, flush_or_409
 
 router = APIRouter(prefix="/referrals", tags=["referrals"])
 
@@ -773,6 +773,7 @@ def convert_to_appointment(
     end = _dt.fromisoformat(f"{slot.slot_date}T{slot.end_time}:00+08:00")
 
     # 診間衝突檢查（與預約作業同一支：booked／executed 與活動佔用空間）
+    assert_room_active(db, body.room_id)
     assert_room_free(db, body.room_id, start, end)
 
     seq = (db.query(func.count(Appointment.id)).scalar() or 0) + 1

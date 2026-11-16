@@ -389,7 +389,7 @@ def test_availability_needs_login_and_leaks_nothing(client, auth, w):
     assert r.status_code == 200
     for banned in ("王小明", "林心理師", "R-TEST", "appointment"):
         assert banned not in r.text
-    assert all(set(x) <= {"id", "name", "floor", "room_code", "room_type", "has_special_equipment", "notes"} for x in r.json())
+    assert all(set(x) <= {"id", "name", "floor", "room_code", "room_type", "has_special_equipment", "notes", "is_active", "sort_order"} for x in r.json())
 
 
 # ---- 心理師只看到「已佔用」，不顯示姓名 ---------------------------------------
@@ -397,9 +397,10 @@ def test_occupied_view_shows_no_therapist_name(client, auth, w):
     s, e = _slot()
     _create(client, auth, w["staff"], w["case"], w["room"], s, e)
     r = client.get(f"/appointments?room_id={w['room'].id}", headers=auth(w["t2"]))
-    rows = r.json()
-    assert len(rows) == 1 and rows[0]["occupied_only"] is True
-    assert rows[0]["therapist_name"] is None and rows[0]["therapist_id"] == 0
+    assert r.json() == []  # 他人的場次一律不在 /appointments；佔用走 /rooms/occupancy
+    r = client.get("/rooms/occupancy", params={"start": (s - timedelta(days=1)).isoformat(),
+                                               "end": (e + timedelta(days=1)).isoformat()}, headers=auth(w["t2"]))
+    assert len(r.json()) == 1
     assert "林心理師" not in r.text and "王小明" not in r.text
 
 
@@ -545,7 +546,7 @@ def test_migration_chain_is_linear_after_zg7():
 
     txt = (API_DIR / "alembic" / "versions" / "zh8d2e3f4a5d_room_exclusion.py").read_text(encoding="utf-8")
     assert re.search(r'^down_revision = "zg7c1d2e3f4c"', txt, re.M)
-    heads = [p for p in (API_DIR / "alembic" / "versions").glob("*.py")
-             if 'down_revision = "zh8d2e3f4a5d"' in p.read_text(encoding="utf-8")]
-    assert heads == []  # zh8d… 是目前的 head
+    children = [p.name for p in (API_DIR / "alembic" / "versions").glob("*.py")
+                if 'down_revision = "zh8d2e3f4a5d"' in p.read_text(encoding="utf-8")]
+    assert children == ["zi9e3f4a5b6e_rooms_active_sort.py"]  # 線性：之後只有 F 的 migration 接在後面
     assert "DROP TABLE" not in txt.upper() and "drop_table" not in txt  # 只新增，不刪表

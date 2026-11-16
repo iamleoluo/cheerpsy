@@ -22,6 +22,14 @@ interface Room {
   name: string;
   room_code: string;
   room_type: string;
+  is_active?: boolean;
+}
+
+interface OccSlot {
+  room_id: number;
+  start: string;
+  end: string;
+  occupied: true;
 }
 
 interface Appt {
@@ -52,6 +60,7 @@ export default function CalendarPage() {
   const [day, setDay] = useState(todayISO());
   const [rooms, setRooms] = useState<Room[]>([]);
   const [appts, setAppts] = useState<Appt[]>([]);
+  const [occ, setOcc] = useState<OccSlot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [absentFor, setAbsentFor] = useState<Appt | null>(null);
@@ -60,15 +69,16 @@ export default function CalendarPage() {
     if (!token) return;
     setLoading(true);
     try {
-      const [rs, as] = await Promise.all([
-        clientFetch("/rooms", token),
-        clientFetch(
-          `/appointments?start=${day}T00:00:00%2B08:00&end=${shiftDate(day, 1)}T00:00:00%2B08:00`,
-          token
-        ),
+      const range = `start=${day}T00:00:00%2B08:00&end=${shiftDate(day, 1)}T00:00:00%2B08:00`;
+      const [rs, as, oc] = await Promise.all([
+        clientFetch("/rooms?include_inactive=true", token),
+        clientFetch(`/appointments?${range}`, token),
+        // 所有角色都用這支畫「已佔用」：只有時段，沒有個人資料
+        clientFetch(`/rooms/occupancy?${range}`, token),
       ]);
       setRooms(rs);
       setAppts(as);
+      setOcc(oc);
       setError(null);
     } catch (e: any) {
       setError(e.message);
@@ -87,6 +97,14 @@ export default function CalendarPage() {
   const released = useMemo(() => appts.filter((a) => a.room_id && !occupying(a)), [appts]);
   const offsite = useMemo(() => appts.filter((a) => !a.room_id), [appts]);
   const labels = slotLabels();
+  // 停用的診間：當天沒有任何預約或佔用就不畫欄位；有歷史資料才照常顯示
+  const shownRooms = useMemo(
+    () =>
+      rooms.filter(
+        (r) => r.is_active !== false || appts.some((a) => a.room_id === r.id) || occ.some((o) => o.room_id === r.id)
+      ),
+    [rooms, appts, occ]
+  );
 
   const stats = useMemo(() => {
     const active = appts.filter((a) => a.status !== "cancelled");
@@ -158,9 +176,9 @@ export default function CalendarPage() {
           <thead className="sticky top-0 bg-gray-50">
             <tr>
               <th className="w-14 border-b border-r border-gray-200 px-1 py-2 text-gray-500">時間</th>
-              {rooms.map((r) => (
+              {shownRooms.map((r) => (
                 <th key={r.id} className="border-b border-r border-gray-200 px-1 py-2 last:border-r-0">
-                  <div className="font-medium">{r.room_code}</div>
+                  <div className="font-medium">{r.room_code}{r.is_active === false ? "（停用）" : ""}</div>
                   <div className="text-[10px] font-normal text-gray-400">
                     {r.room_type === "play" ? "兒童遊戲室" : "晤談"}
                   </div>
@@ -176,7 +194,7 @@ export default function CalendarPage() {
                   <td className="border-b border-r border-gray-100 px-1 py-1 text-right align-top text-[10px] text-gray-400">
                     {slotStart % 60 === 0 ? label : ""}
                   </td>
-                  {rooms.map((room) => {
+                  {shownRooms.map((room) => {
                     const a = inRoom.find(
                       (x) =>
                         x.room_id === room.id &&
@@ -185,6 +203,24 @@ export default function CalendarPage() {
                         (x.end_time ? minutesOfDay(x.end_time) : slotStart + SLOT_MIN) > slotStart
                     );
                     if (!a) {
+                      // 別人的場次／活動：只顯示「已佔用」，不可點擊、不進詳情
+                      const o = occ.find(
+                        (x) =>
+                          x.room_id === room.id &&
+                          minutesOfDay(x.start) <= slotStart &&
+                          minutesOfDay(x.end) > slotStart
+                      );
+                      if (o) {
+                        return (
+                          <td
+                            key={room.id}
+                            aria-disabled="true"
+                            className="cursor-default select-none border-b border-r border-gray-100 bg-gray-100 px-1 text-center align-top text-[10px] text-gray-400 last:border-r-0"
+                          >
+                            {minutesOfDay(o.start) === slotStart ? "已佔用" : ""}
+                          </td>
+                        );
+                      }
                       const hh = `${String(Math.floor(slotStart / 60)).padStart(2, "0")}:${String(slotStart % 60).padStart(2, "0")}`;
                       return (
                         <td
