@@ -89,3 +89,10 @@ def test_intake_appointment_shows_referral_name(client, auth, world, db):
 
 def test_requires_login(client):
     assert client.get("/dashboard/pending-checkin").status_code in (401, 403)
+
+
+def test_times_are_serialised_in_taipei_time(client, auth, world):
+    w = world
+    w["make_appt"](w["ca"], w["a"], w["room"], start=today0() - timedelta(minutes=30))
+    i = get(client, auth, w["staff"])["items"][0]
+    assert i["start_time"].endswith("+08:00") and i["start_time"][11:16] == "23:30"

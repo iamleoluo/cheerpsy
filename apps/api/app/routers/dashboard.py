@@ -151,8 +151,8 @@ def pending_checkin(
         ref = db.query(ReferralRequest).filter(ReferralRequest.id == a.referral_id).first() if a.referral_id else None
         items.append(PendingCheckinItem(
             appointment_id=a.id,
-            start_time=a.time_range.lower,
-            end_time=a.time_range.upper,
+            start_time=a.time_range.lower.astimezone(TZ),  # 台北時間，前端取日期不會差一天
+            end_time=a.time_range.upper.astimezone(TZ),
             therapist_name=a.therapist.name if a.therapist else None,
             subject_name=(a.case.name if a.case else (ref.name if ref else None)),
             is_intake=bool(a.is_intake),
