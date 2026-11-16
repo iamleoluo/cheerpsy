@@ -322,11 +322,14 @@ def test_referral_convert_self_pay_needs_amount_and_room_conflict(client, auth, 
 
     # 先在同診間同時段放一筆預約
     start = datetime.fromisoformat(f"{day}T10:00:00+08:00")
-    assert _create(client, auth, w["staff"], w["case"], w["room"], start, start + timedelta(hours=1)).status_code == 201
+    first = _create(client, auth, w["staff"], w["case"], w["room"], start, start + timedelta(hours=1))
+    assert first.status_code == 201
     r1 = client.post(f"/referrals/{r.id}/convert", headers=auth(w["staff"]),
                      json={"slot_id": slot.id, "room_id": w["room"].id})
     assert r1.status_code == 409
 
+    # 同一位心理師同時段也不能再有第二筆（心理師衝突）：先取消原預約，再測線上場次
+    assert client.put(f"/appointments/{first.json()['id']}/cancel", headers=auth(w["staff"])).status_code == 200
     # 換成線上場次：自費初診必填金額（機構案由方案帶出）
     r2 = client.post(f"/referrals/{r.id}/convert", headers=auth(w["staff"]),
                      json={"slot_id": slot.id, "session_type": "online"})

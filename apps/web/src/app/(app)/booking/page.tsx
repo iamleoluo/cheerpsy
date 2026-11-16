@@ -61,6 +61,8 @@ export default function BookingPage() {
   const [weekStart, setWeekStart] = useState(todayISO());
   const [weekAppts, setWeekAppts] = useState<Appt[]>([]);
   const [weekOcc, setWeekOcc] = useState<OccSlot[]>([]);
+  // 該心理師「這段不接案」的時段（只有時間，永遠不含原因）
+  const [blocked, setBlocked] = useState<{ start_time: string; end_time: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
 
@@ -161,6 +163,25 @@ export default function BookingPage() {
   const weekDays = useMemo(
     () => Array.from({ length: 7 }, (_, i) => shiftDate(weekStart, i)),
     [weekStart]
+  );
+
+  useEffect(() => {
+    if (!token || !therapistId) {
+      setBlocked([]);
+      return;
+    }
+    let stale = false;
+    const q = `therapist_id=${therapistId}&start=${encodeURIComponent(`${weekStart}T00:00:00+08:00`)}&end=${encodeURIComponent(`${shiftDate(weekStart, 7)}T00:00:00+08:00`)}`;
+    clientFetch(`/therapist-time-off/blocked?${q}`, token)
+      .then((r) => { if (!stale) setBlocked(r); })
+      .catch(() => { if (!stale) setBlocked([]); });
+    return () => { stale = true; };
+  }, [token, therapistId, weekStart]);
+
+  // 選的日期時段落在該心理師不接案的時段 → 提示並擋下送出（伺服器也會擋）
+  const blockedHit = useMemo(
+    () => blocked.some((b) => b.start_time.slice(0, 10) === date && hhmm(b.start_time) < endTime && hhmm(b.end_time) > startTime),
+    [blocked, date, startTime, endTime]
   );
 
   const conflicts = useMemo(() => {
@@ -401,9 +422,14 @@ export default function BookingPage() {
                 ⚠️ 該診間此時段已被使用（已佔用）
               </div>
             )}
+            {blockedHit && (
+              <div className="mt-3 rounded-lg bg-gray-100 px-3 py-2 text-sm text-gray-700">
+                ⚠️ 該心理師此時段不接案，無法預約
+              </div>
+            )}
 
             <div className="mt-4 flex justify-end">
-              <button type="submit" disabled={saving || conflicts.length > 0} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+              <button type="submit" disabled={saving || conflicts.length > 0 || (tab !== "batch" && blockedHit)} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
                 {saving ? "建立中..." : tab === "batch" ? "建立批次預約" : "建立預約"}
               </button>
             </div>
@@ -422,18 +448,35 @@ export default function BookingPage() {
             </div>
           </div>
           {offsite ? (
-            <p className="py-8 text-center text-sm text-gray-400">線上／外展不佔用診間，不需檢查空間衝突。</p>
+            <>
+              <p className="py-8 text-center text-sm text-gray-400">線上／外展不佔用診間，不需檢查空間衝突。</p>
+              {blocked.length > 0 && (
+                <div className="space-y-1">
+                  {blocked.map((b, i) => (
+                    <div key={i} className="rounded bg-gray-100 px-3 py-1.5 text-xs text-gray-500">
+                      {b.start_time.slice(0, 10)} {hhmm(b.start_time)}–{hhmm(b.end_time)} 該心理師不接案
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           ) : (
             <div className="space-y-2">
               {weekDays.map((d) => {
                 const list = weekItems.filter(
                   (a) => a.start?.slice(0, 10) === d && a.room_id && (!roomId || a.room_id === roomId)
                 );
+                const off = blocked.filter((b) => b.start_time.slice(0, 10) === d);
                 return (
                   <div key={d} className={`rounded-lg border px-3 py-2 ${d === date ? "border-primary-400 bg-primary-50" : "border-gray-200"}`}>
                     <div className="mb-1 text-xs font-medium text-gray-600">{d}</div>
+                    {off.map((b, i) => (
+                      <div key={`off${i}`} className="mb-0.5 rounded bg-gray-200 px-2 py-0.5 text-xs text-gray-500" title="該心理師不接案">
+                        {hhmm(b.start_time)}–{hhmm(b.end_time)} 不可約
+                      </div>
+                    ))}
                     {list.length === 0 ? (
-                      <div className="text-xs text-gray-400">空</div>
+                      off.length === 0 && <div className="text-xs text-gray-400">空</div>
                     ) : (
                       list.map((it) => (
                         <div key={it.key} className={`text-xs text-gray-700 ${it.appt ? "" : "cursor-default select-none"}`} aria-disabled={it.appt ? undefined : true}>

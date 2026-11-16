@@ -192,7 +192,8 @@ def test_api_race_many_clients_exactly_one_wins(client, auth, w, db):
     assert codes == [201] + [409] * (n - 1), [(r.status_code, r.text[:120]) for r in responses]
     for r in responses:
         if r.status_code == 409:
-            assert "2B" in r.json()["detail"]
+            # 診間約束擋下講 2B；若對方已 commit 而被心理師／個案檢查先擋下，則只講時段。兩者都不帶姓名
+            assert "2B" in r.json()["detail"] or "已有其他預約" in r.json()["detail"]
             assert "王小明" not in r.text and "林心理師" not in r.text
     db.expire_all()
     assert db.execute(text("SELECT count(*) FROM appointments WHERE room_id = :r"),

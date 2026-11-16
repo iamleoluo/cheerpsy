@@ -17,6 +17,14 @@ interface Appt {
   checkin_status: string;
 }
 
+interface TimeOff {
+  id: number;
+  start_time: string;
+  end_time: string;
+  reason: string | null;
+  overlapping_appointments?: number;
+}
+
 const WEEKDAYS = ["週一", "週二", "週三", "週四", "週五", "週六", "週日"];
 
 function mondayOf(iso: string): string {
@@ -33,6 +41,16 @@ export default function SchedPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [cancelFor, setCancelFor] = useState<Appt | null>(null);
+  // 「這段不接案」：只有我自己和行政看得到原因
+  const [timeOff, setTimeOff] = useState<TimeOff[]>([]);
+  const [offOpen, setOffOpen] = useState(false);
+  const [offDate, setOffDate] = useState(todayISO());
+  const [offStart, setOffStart] = useState("09:00");
+  const [offEnd, setOffEnd] = useState("12:00");
+  const [offReason, setOffReason] = useState("");
+  const [offSaving, setOffSaving] = useState(false);
+  const [offError, setOffError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -44,6 +62,12 @@ export default function SchedPage() {
           token
         )
       );
+      setTimeOff(
+        await clientFetch(
+          `/therapist-time-off?start=${weekStart}T00:00:00%2B08:00&end=${shiftDate(weekStart, 7)}T00:00:00%2B08:00`,
+          token
+        )
+      );
       setError(null);
     } catch (e: any) {
       setError(e.message);
@@ -51,6 +75,40 @@ export default function SchedPage() {
       setLoading(false);
     }
   }, [token, weekStart]);
+
+  async function addTimeOff(e: React.FormEvent) {
+    e.preventDefault();
+    if (offStart >= offEnd) { setOffError("結束時間必須晚於開始時間"); return; }
+    setOffSaving(true);
+    setOffError(null);
+    try {
+      const r: TimeOff = await clientFetch("/therapist-time-off", token, {
+        method: "POST",
+        body: JSON.stringify({
+          start_time: `${offDate}T${offStart}:00+08:00`,
+          end_time: `${offDate}T${offEnd}:00+08:00`,
+          reason: offReason.trim() || null,
+        }),
+      });
+      setOffOpen(false);
+      setOffReason("");
+      setNotice(r.overlapping_appointments ? `已設定不接案；這段時間內仍有 ${r.overlapping_appointments} 筆已預約的場次，請自行與行政處理。` : "已設定不接案。");
+      load();
+    } catch (err: any) {
+      setOffError(err.message);
+    } finally {
+      setOffSaving(false);
+    }
+  }
+
+  async function removeTimeOff(id: number) {
+    try {
+      await clientFetch(`/therapist-time-off/${id}`, token, { method: "DELETE" });
+      load();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
 
   useEffect(() => {
     load();
@@ -90,6 +148,7 @@ export default function SchedPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={() => { setOffDate(todayISO()); setOffError(null); setOffOpen(true); }} className="rounded-lg bg-gray-700 px-3 py-1.5 text-sm font-medium text-white">這段不接案</button>
           <button onClick={() => setWeekStart(shiftDate(weekStart, -7))} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm">◀ 上週</button>
           <button onClick={() => setWeekStart(mondayOf(todayISO()))} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm">本週</button>
           <button onClick={() => setWeekStart(shiftDate(weekStart, 7))} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm">下週 ▶</button>
@@ -108,6 +167,7 @@ export default function SchedPage() {
       )}
 
       {error && <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+      {notice && <div className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">{notice}</div>}
 
       <div className="grid gap-2 md:grid-cols-7">
         {days.map((d, i) => {
@@ -123,7 +183,14 @@ export default function SchedPage() {
                   {d.slice(5)}
                 </div>
               </div>
-              {list.length === 0 && <div className="py-4 text-center text-[11px] text-gray-300">—</div>}
+              {timeOff.filter((t) => t.start_time.slice(0, 10) === d).map((t) => (
+                <div key={`off${t.id}`} className="mb-1.5 rounded-lg bg-gray-200 p-1.5 text-[11px] text-gray-700">
+                  <div className="font-medium">{hhmm(t.start_time)}–{hhmm(t.end_time)} 不接案</div>
+                  {t.reason && <div className="truncate text-gray-500">{t.reason}</div>}
+                  <button onClick={() => removeTimeOff(t.id)} className="mt-1 w-full rounded border border-gray-300 bg-white px-1 py-0.5 text-[10px] hover:bg-gray-50">取消不接案</button>
+                </div>
+              ))}
+              {list.length === 0 && timeOff.every((t) => t.start_time.slice(0, 10) !== d) && <div className="py-4 text-center text-[11px] text-gray-300">—</div>}
               <div className="space-y-1.5">
                 {list.map((a) => {
                   const offsite = !a.room_id;
@@ -172,6 +239,40 @@ export default function SchedPage() {
         視訊／外展的個案不會到櫃檯報到，狀態不會自動變更，由行政事後標記；個案沒來時才需要按「請假」。
         現場個案由櫃檯報到，此處不顯示操作按鈕。
       </p>
+
+      {offOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <form onSubmit={addTimeOff} className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <h2 className="mb-2 text-lg font-bold">這段不接案</h2>
+            <p className="mb-4 text-sm text-gray-500">這段時間不會有人能幫你預約（含行政）。原因只有你和行政看得到，其他心理師看不到。</p>
+            <div className="grid grid-cols-3 gap-3">
+              <label className="col-span-3 text-sm">
+                <span className="mb-1 block text-gray-600">日期</span>
+                <input type="date" required value={offDate} onChange={(e) => setOffDate(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2" />
+              </label>
+              <label className="col-span-3 grid grid-cols-2 gap-3 text-sm">
+                <span>
+                  <span className="mb-1 block text-gray-600">開始</span>
+                  <input type="time" required value={offStart} onChange={(e) => setOffStart(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2" />
+                </span>
+                <span>
+                  <span className="mb-1 block text-gray-600">結束</span>
+                  <input type="time" required value={offEnd} onChange={(e) => setOffEnd(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2" />
+                </span>
+              </label>
+              <label className="col-span-3 text-sm">
+                <span className="mb-1 block text-gray-600">原因（選填，僅自己與行政可見）</span>
+                <input value={offReason} onChange={(e) => setOffReason(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2" />
+              </label>
+            </div>
+            {offError && <div className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{offError}</div>}
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" onClick={() => setOffOpen(false)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm">返回</button>
+              <button type="submit" disabled={offSaving} className="rounded-lg bg-gray-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{offSaving ? "儲存中..." : "設定不接案"}</button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {cancelFor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
