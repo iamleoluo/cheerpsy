@@ -155,6 +155,7 @@ def test_cannot_read_edit_cancel_or_delete_others_appointment(client, auth, worl
     assert row.status == "booked" and float(row.amount) == B_AMOUNT and row.therapist_id == w["b"].id
 
 
+@pytest.mark.real_commit  # 用猜 id 1..N 的方式測 404，需要序號從 1 開始（TRUNCATE ... RESTART IDENTITY）
 def test_guessing_ids_only_ever_finds_own_appointments(client, auth, world):
     w = world
     own = post(client, auth, w["a"], w["case_a"], w["room"], day=3).json()["id"]
@@ -177,6 +178,7 @@ def test_cannot_delete_others_batch(client, auth, world, db):
     assert db.query(Appointment).filter(Appointment.batch_id == batch_id).count() == 1
 
 
+@pytest.mark.real_commit  # 用猜 id 1..N 的方式測 404，需要序號從 1 開始（TRUNCATE ... RESTART IDENTITY）
 def test_cannot_read_or_edit_others_case_including_guessing_ids(client, auth, world, db):
     w = world
     h = auth(w["a"])

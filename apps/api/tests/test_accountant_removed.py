@@ -40,6 +40,8 @@ def test_changing_a_user_to_accountant_is_rejected_with_422(client, auth, make_u
     assert staff.role == "staff"
 
 
+@pytest.mark.real_commit
+@pytest.mark.slow
 def test_existing_accountant_is_disabled_by_migration_and_cannot_log_in(client, auth, make_user, db):
     admin, therapist = make_user("admin"), make_user("therapist")
     acct = User(email="old-acct@test.local", password_hash=hash_password("pw12345678"), name="舊會計",

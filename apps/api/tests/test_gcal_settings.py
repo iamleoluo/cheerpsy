@@ -477,6 +477,8 @@ def _restore_head_title_constraint():
         mod2.upgrade()
 
 
+@pytest.mark.real_commit
+@pytest.mark.slow
 def test_migration_roundtrip_touches_only_its_own_tables(db, make_user):
     make_user("admin")  # 既有資料不能被動到
     mine = {"clinic_settings", "google_oauth_connections"}
@@ -498,6 +500,8 @@ def test_migration_roundtrip_touches_only_its_own_tables(db, make_user):
         _restore_head_title_constraint()  # zj 重建的表帶的是舊的三選一 constraint，補上後續 migration（標題格式 d）
 
 
+@pytest.mark.real_commit
+@pytest.mark.slow
 def test_migration_chain_and_only_adds():
     txt = (API_DIR / "alembic" / "versions" / "zj0f4a5b6c7d_gcal_and_settings.py").read_text(encoding="utf-8")
     assert 'down_revision = "zi9e3f4a5b6e"' in txt

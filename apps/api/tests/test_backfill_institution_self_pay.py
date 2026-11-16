@@ -37,6 +37,8 @@ def world(make_user, make_case, room, db):
     return dict(a=a, admin=admin, staff=staff, c1=c1, c2=c2, c3=c3, room=room, inst=inst)
 
 
+@pytest.mark.real_commit
+@pytest.mark.slow
 def test_backfill_computes_what_it_can_and_leaves_null_otherwise(client, auth, world, db):
     w = world
     p = make_plan(client, auth, w, rate_items=[{"label": "個別", "total_amount": 1600, "self_pay_amount": 200}])
@@ -104,6 +106,8 @@ def _run_zt0d():
         mod.upgrade()
 
 
+@pytest.mark.real_commit
+@pytest.mark.slow
 def test_backfill_prefers_session_records_then_rate_item_then_null(client, auth, world, db):
     """zt0d：session_records（is_void=false）優先；claim>0 且自付 0＝全額補助存 0；其次價目項目；都沒有 NULL。"""
     w = world
@@ -145,6 +149,7 @@ def test_backfill_prefers_session_records_then_rate_item_then_null(client, auth,
     db.rollback()
 
 
+@pytest.mark.real_commit
 def test_check_amounts_script_lists_problem_rows_read_only(client, auth, world, db, tmp_path):
     import os, subprocess, sys
 
@@ -169,6 +174,8 @@ def test_check_amounts_script_lists_problem_rows_read_only(client, auth, world, 
     assert db.execute(text("SELECT id, amount, self_pay_amount FROM appointments ORDER BY id")).all() == snapshot  # 唯讀
 
 
+@pytest.mark.real_commit
+@pytest.mark.slow
 def test_duplicate_valid_session_records_use_latest_and_are_listed_by_check_script(client, auth, world, db):
     import os, subprocess, sys
 

@@ -969,6 +969,8 @@ def _cols(table):
     return {c["name"] for c in inspect(engine).get_columns(table)}
 
 
+@pytest.mark.real_commit
+@pytest.mark.slow
 def test_migration_roundtrip_touches_only_its_own_objects(db, make_user):
     make_user("admin", gcal_share_email=None)
     before_tables = set(inspect(engine).get_table_names()) - {"google_calendars"}
@@ -990,6 +992,8 @@ def test_migration_roundtrip_touches_only_its_own_objects(db, make_user):
             _run("upgrade")
 
 
+@pytest.mark.real_commit
+@pytest.mark.slow
 def test_migration_chain_and_only_adds():
     txt = (API_DIR / "alembic" / "versions" / "zk1a5b6c7d8e_gcal_calendars.py").read_text(encoding="utf-8")
     assert 'down_revision = "zj0f4a5b6c7d"' in txt

@@ -209,6 +209,8 @@ def _cols():
     return {c["name"] for c in inspect(engine).get_columns("rooms")}
 
 
+@pytest.mark.real_commit
+@pytest.mark.slow
 def test_migration_downgrade_then_upgrade_keeps_data(db, w):
     assert {"is_active", "sort_order"} <= _cols()
     db.rollback()
@@ -227,6 +229,8 @@ def test_migration_downgrade_then_upgrade_keeps_data(db, w):
             _run("upgrade")
 
 
+@pytest.mark.real_commit
+@pytest.mark.slow
 def test_migration_only_adds_columns_no_drop_table():
     txt = (API_DIR / "alembic" / "versions" / "zi9e3f4a5b6e_rooms_active_sort.py").read_text(encoding="utf-8")
     assert 'down_revision = "zh8d2e3f4a5d"' in txt

@@ -612,6 +612,7 @@ def test_amount_change_triggers_resync_and_zero_amount_hides_line(client, auth, 
     assert "$" not in e["summary"]
 
 
+@pytest.mark.real_commit
 def test_note_change_changes_hash_and_note_sections_reach_description(client, auth, w, fake, db, monkeypatch):
     a = create(client, auth, w)
     run(fake)
@@ -636,6 +637,7 @@ def test_event_deleted_on_google_is_recreated_on_next_change(client, auth, w, fa
     assert ev(fake, a["id"]) is not None  # update 回 404 → 改走 insert
 
 
+@pytest.mark.real_commit
 def test_reinsert_after_delete_resurrects_via_update(client, auth, w, fake, db):
     a = create(client, auth, w)
     run(fake)
@@ -654,6 +656,7 @@ def test_reinsert_after_delete_resurrects_via_update(client, auth, w, fake, db):
 # ---------------------------------------------------------------------------
 # 冪等與重試
 # ---------------------------------------------------------------------------
+@pytest.mark.real_commit
 def test_same_payload_hash_skips_network(client, auth, w, fake, db):
     a = create(client, auth, w)
     run(fake)
@@ -744,6 +747,7 @@ def test_run_once_never_raises(fake):
     assert gcal_push.run_once(SessionLocal, factory) == 0
 
 
+@pytest.mark.real_commit
 def test_skip_locked_two_workers_do_not_take_the_same_job(client, auth, w, fake, db):
     a = create(client, auth, w)
     with engine.connect() as c, c.begin():
@@ -752,6 +756,7 @@ def test_skip_locked_two_workers_do_not_take_the_same_job(client, auth, w, fake,
     assert run(fake) == 1
 
 
+@pytest.mark.real_commit
 def test_change_during_processing_keeps_job_pending(client, auth, w, fake, db, monkeypatch):
     a = create(client, auth, w)
     orig = gcal_push.process
@@ -863,6 +868,8 @@ def test_oldest_due_reports_a_stuck_worker(client, auth, w, fake, db):
 # ---------------------------------------------------------------------------
 # 結構：migration、worker、compose
 # ---------------------------------------------------------------------------
+@pytest.mark.real_commit
+@pytest.mark.slow
 def test_migration_adds_only_its_tables_and_chain_is_linear():
     p = API_DIR / "alembic" / "versions" / "zl2b6c7d8e9f_gcal_outbox.py"
     txt = p.read_text(encoding="utf-8")
@@ -872,6 +879,8 @@ def test_migration_adds_only_its_tables_and_chain_is_linear():
     assert others == ["zm3c7d8e9f0a_gcal_title_name.py"]  # 後面只接標題格式 (d) 的 migration（鏈不分叉）
 
 
+@pytest.mark.real_commit
+@pytest.mark.slow
 def test_migration_roundtrip(db):
     import importlib.util
     from alembic.migration import MigrationContext
@@ -933,6 +942,8 @@ def _go(mod, fn):
         getattr(mod, fn)()
 
 
+@pytest.mark.real_commit
+@pytest.mark.slow
 def test_title_migration_only_changes_untouched_default_and_is_reversible(db, make_user):
     mod = _load_zm()
     admin = make_user("admin")
