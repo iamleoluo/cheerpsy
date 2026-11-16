@@ -3,7 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import RequireRole, get_current_user
+from app.auth.dependencies import RequireRole, get_current_user, accounting_gone
 from app.database import get_db
 from app.models.appointment import Appointment
 from app.models.invoice import Invoice
@@ -57,7 +57,7 @@ def list_invoices(
     return [_to_response(i) for i in invoices]
 
 
-@router.post("", response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(accounting_gone)])
 def create_invoice(
     body: InvoiceCreate,
     user: User = Depends(RequireRole(["admin", "accountant"])),
@@ -92,7 +92,7 @@ def create_invoice(
     return _to_response(inv)
 
 
-@router.put("/{invoice_id}/void", response_model=InvoiceResponse)
+@router.put("/{invoice_id}/void", response_model=InvoiceResponse, dependencies=[Depends(accounting_gone)])
 def void_invoice(
     invoice_id: int,
     body: InvoiceVoid,

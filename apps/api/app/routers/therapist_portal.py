@@ -66,7 +66,7 @@ def my_today(
             "quota": None,
         })
 
-    # 待辦依急迫度排序：派案邀請 → 文件確認
+    # 待辦：目前只剩派案邀請（核銷文件確認已隨帳務拆除）
     pending_invites = (
         db.query(func.count(ReferralDispatchTarget.id))
         .filter(
@@ -75,22 +75,9 @@ def my_today(
         )
         .scalar() or 0
     )
-    pending_docs = (
-        db.query(func.count(SessionRecord.id))
-        .filter(
-            SessionRecord.therapist_id == user.id,
-            SessionRecord.funding_source == "institution",
-            SessionRecord.claim_batch_id.isnot(None),
-            SessionRecord.therapist_doc_submitted_at.is_(None),
-            SessionRecord.is_void.is_(False),
-        )
-        .scalar() or 0
-    )
     todos = []
     if pending_invites:
         todos.append({"type": "invite", "label": "派案邀請待回覆", "count": pending_invites, "link": "/pool"})
-    if pending_docs:
-        todos.append({"type": "doc", "label": "核銷文件待確認", "count": pending_docs, "link": "/docs"})
 
     return {
         "date": d,
@@ -99,7 +86,6 @@ def my_today(
         "stats": {
             "today_sessions": len([s for s in schedule if s["status"] != "cancelled"]),
             "pending_invites": pending_invites,
-            "pending_docs": pending_docs,
         },
     }
 

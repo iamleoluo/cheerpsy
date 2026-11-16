@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import extract
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import RequireRole, get_current_user
+from app.auth.dependencies import RequireRole, get_current_user, accounting_gone
 from app.database import get_db
 from app.models.session_record import SessionRecord
 from app.models.therapist_payout import PayoutDetail, TherapistPayout
@@ -105,7 +105,7 @@ class GeneratePayoutRequest(BaseModel):
     payout_month: str  # YYYY-MM
 
 
-@router.post("/generate")
+@router.post("/generate", dependencies=[Depends(accounting_gone)])
 def generate_payouts(
     body: GeneratePayoutRequest,
     user: User = Depends(RequireRole(["admin"])),
@@ -169,7 +169,7 @@ def generate_payouts(
     return {"month": body.payout_month, "payouts_created": created, "payouts_updated": updated}
 
 
-@router.put("/{payout_id}/pay")
+@router.put("/{payout_id}/pay", dependencies=[Depends(accounting_gone)])
 def mark_paid(
     payout_id: int,
     user: User = Depends(RequireRole(["admin"])),

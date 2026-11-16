@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import RequireRole, get_current_user
+from app.auth.dependencies import RequireRole, get_current_user, accounting_gone
 from app.database import get_db
 from app.models.claim_batch import ClaimBatch
 from app.models.case import Case
@@ -88,7 +88,7 @@ def preview_single_session(
     return _preview_from_data(data, show_tax_id=False)
 
 
-@router.post("/single-session/{record_id}")
+@router.post("/single-session/{record_id}", dependencies=[Depends(accounting_gone)])
 def issue_single_session(
     record_id: int,
     body: ReceiptRequest,
@@ -136,7 +136,7 @@ def preview_batch(
         return _preview_from_data(data, show_tax_id=True)
 
 
-@router.post("/batch/{batch_id}")
+@router.post("/batch/{batch_id}", dependencies=[Depends(accounting_gone)])
 def issue_batch(
     batch_id: int,
     body: ReceiptRequest,
@@ -171,7 +171,7 @@ def preview_product(
     return _preview_from_data(data, show_tax_id=False)
 
 
-@router.post("/product/{sale_id}")
+@router.post("/product/{sale_id}", dependencies=[Depends(accounting_gone)])
 def issue_product(
     sale_id: int,
     body: ReceiptRequest,
@@ -223,7 +223,7 @@ def preview_self_pay_batch(
     )
 
 
-@router.post("/self-pay-batch/{batch_id}")
+@router.post("/self-pay-batch/{batch_id}", dependencies=[Depends(accounting_gone)])
 def issue_self_pay_batch(
     batch_id: int,
     body: MultiItemReceiptRequest,

@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
-from app.auth.dependencies import RequireRole, get_current_user
+from app.auth.dependencies import RequireRole, get_current_user, accounting_gone
 from app.database import get_db
 from app.models.appointment import Appointment
 from app.models.audit_log import AuditLog
@@ -379,7 +379,7 @@ def get_record(
     return _to_response(r, db)
 
 
-@router.put("/{record_id}/payment", response_model=SessionRecordResponse)
+@router.put("/{record_id}/payment", response_model=SessionRecordResponse, dependencies=[Depends(accounting_gone)])
 def update_payment_status(
     record_id: int,
     body: SessionRecordUpdatePayment,
@@ -440,7 +440,7 @@ def update_payment_status(
     return _to_response(r, db)
 
 
-@router.put("/{record_id}/lock", response_model=SessionRecordResponse)
+@router.put("/{record_id}/lock", response_model=SessionRecordResponse, dependencies=[Depends(accounting_gone)])
 def lock_record(
     record_id: int,
     user: User = Depends(RequireRole(["admin", "accountant"])),
@@ -462,7 +462,7 @@ class UnlockRequest(BaseModel):
     reason: str
 
 
-@router.put("/{record_id}/unlock", response_model=SessionRecordResponse)
+@router.put("/{record_id}/unlock", response_model=SessionRecordResponse, dependencies=[Depends(accounting_gone)])
 def unlock_record(
     record_id: int,
     body: UnlockRequest,
@@ -482,7 +482,7 @@ def unlock_record(
     return _to_response(r, db)
 
 
-@router.put("/{record_id}/edit", response_model=SessionRecordResponse)
+@router.put("/{record_id}/edit", response_model=SessionRecordResponse, dependencies=[Depends(accounting_gone)])
 def direct_edit_record(
     record_id: int,
     body: SessionRecordDirectEdit,
@@ -522,7 +522,7 @@ def direct_edit_record(
     return _to_response(r, db)
 
 
-@router.put("/{record_id}/confirm-doc", response_model=SessionRecordResponse)
+@router.put("/{record_id}/confirm-doc", response_model=SessionRecordResponse, dependencies=[Depends(accounting_gone)])
 def confirm_doc_submission(
     record_id: int,
     user: User = Depends(get_current_user),
@@ -565,7 +565,7 @@ def confirm_doc_submission(
 # Waived 機構自動同時跳過心理師與行政（既有 UX 不破壞）。
 
 
-@router.put("/{record_id}/admin-verify", response_model=SessionRecordResponse)
+@router.put("/{record_id}/admin-verify", response_model=SessionRecordResponse, dependencies=[Depends(accounting_gone)])
 def admin_verify_record(
     record_id: int,
     user: User = Depends(RequireRole(["admin", "staff"])),
@@ -594,7 +594,7 @@ def admin_verify_record(
     return _to_response(r, db)
 
 
-@router.put("/{record_id}/admin-unverify", response_model=SessionRecordResponse)
+@router.put("/{record_id}/admin-unverify", response_model=SessionRecordResponse, dependencies=[Depends(accounting_gone)])
 def admin_unverify_record(
     record_id: int,
     user: User = Depends(RequireRole(["admin"])),
@@ -627,7 +627,7 @@ def admin_unverify_record(
     return _to_response(r, db)
 
 
-@router.put("/{record_id}/cancel-doc", response_model=SessionRecordResponse)
+@router.put("/{record_id}/cancel-doc", response_model=SessionRecordResponse, dependencies=[Depends(accounting_gone)])
 def cancel_doc_submission(
     record_id: int,
     user: User = Depends(RequireRole(["admin", "staff"])),
@@ -667,7 +667,7 @@ def cancel_doc_submission(
     return _to_response(r, db)
 
 
-@router.put("/{record_id}/discount", response_model=SessionRecordResponse)
+@router.put("/{record_id}/discount", response_model=SessionRecordResponse, dependencies=[Depends(accounting_gone)])
 def set_discount(
     record_id: int,
     body: DiscountRequest,
@@ -713,7 +713,7 @@ def set_discount(
     return _to_response(r, db)
 
 
-@router.put("/{record_id}/void", response_model=SessionRecordResponse)
+@router.put("/{record_id}/void", response_model=SessionRecordResponse, dependencies=[Depends(accounting_gone)])
 def void_record(
     record_id: int,
     body: VoidRequest = VoidRequest(),
@@ -750,7 +750,7 @@ def void_record(
     return _to_response(r, db)
 
 
-@router.post("/{record_id}/split", response_model=list[SessionRecordResponse])
+@router.post("/{record_id}/split", response_model=list[SessionRecordResponse], dependencies=[Depends(accounting_gone)])
 def split_record(
     record_id: int,
     body: SplitRequest,
@@ -834,7 +834,7 @@ def split_record(
     return [_to_response(r, db), _to_response(child, db)]
 
 
-@router.put("/{record_id}/outcall-bonus", response_model=SessionRecordResponse)
+@router.put("/{record_id}/outcall-bonus", response_model=SessionRecordResponse, dependencies=[Depends(accounting_gone)])
 def set_outcall_bonus(
     record_id: int,
     body: OutcallBonusRequest,
@@ -869,7 +869,7 @@ def set_outcall_bonus(
     return _to_response(r, db)
 
 
-@router.put("/{record_id}/pay", response_model=SessionRecordResponse)
+@router.put("/{record_id}/pay", response_model=SessionRecordResponse, dependencies=[Depends(accounting_gone)])
 def pay_self_pay_record(
     record_id: int,
     body: PayRequest,
@@ -896,7 +896,7 @@ def pay_self_pay_record(
     return _to_response(r, db)
 
 
-@router.post("/pay-batch")
+@router.post("/pay-batch", dependencies=[Depends(accounting_gone)])
 def pay_batch(
     body: PayBatchRequest,
     user: User = Depends(RequireRole(["admin", "staff"])),

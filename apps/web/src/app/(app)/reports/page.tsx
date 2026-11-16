@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
-import { clientFetch, exportCsv } from "@/lib/client-api";
+import { clientFetch } from "@/lib/client-api";
 import { AnalyticsView } from "@/components/analytics-view";
 import HelpDrawer, { type HelpContent } from "@/components/HelpDrawer";
 import {
@@ -22,19 +22,8 @@ ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, Tooltip, Le
 const helpContent: HelpContent = {
   title: "營運報表",
   guideId: "reports",
-  overview: "整合所有模組數據，自動產出月度損益摘要。管理層可即時掌握診所營收、心理師酬勞、零用金支出、淨收益與機構墊付狀況。",
+  overview: "整合預約、媒合與個案資料，呈現關鍵指標、進案統計、診間使用率、心理師負荷與流失預警。系統不提供收入、酬勞或損益報表。",
   sections: [
-    {
-      heading: "查看月報表",
-      type: "steps",
-      items: [
-        "進入「財務報表 → 月報表」",
-        "選擇要查看的年月（預設當月）",
-        "查看：諮商總收入、心理師酬勞支出、診所毛利（30%）、零用金支出、淨收益",
-        "確認目前機構墊付金額（機構未到款、診所已支付酬勞的部分）",
-        "可匯出 CSV 供外部財務系統使用",
-      ],
-    },
     {
       heading: "進案統計",
       type: "steps",
@@ -49,21 +38,9 @@ const helpContent: HelpContent = {
       heading: "主要指標說明",
       type: "text",
       items: [
-        "諮商總收入：當月所有已執行諮商的費用總和",
-        "心理師酬勞：依各人抽成比例（commission_rate_used）計算的應付總額",
-        "診所毛利：診所應得的場地與行政費用（總收入 × 診所比例加總）",
-        "零用金支出：當月記錄的所有雜項支出",
-        "淨收益：診所毛利 − 零用金支出",
         "新進案定義：已轉正式（有正式案號）且完成第一次諮商的個案，以第一次諮商月份計算",
         "兒青定義：第一次諮商時未滿 18 歲",
-      ],
-    },
-    {
-      heading: "流失預警",
-      type: "text",
-      items: [
-        "「流失預警」頁籤顯示超過指定天數未回診的進行中個案",
-        "可依天數篩選，追蹤哪些個案需要主動聯繫",
+        "流失預警：進行中個案超過指定天數沒有預約",
       ],
     },
   ],
@@ -74,7 +51,7 @@ const helpContent: HelpContent = {
 export default function ReportsPage() {
   const { data: session } = useSession();
   const token = (session?.user as any)?.accessToken;
-  const [outerTab, setOuterTab] = useState<"analytics" | "operations" | "finance" | "charts">("analytics");
+  const [outerTab, setOuterTab] = useState<"analytics" | "operations" | "charts">("analytics");
   const [helpOpen, setHelpOpen] = useState(false);
 
   if (!token) return <p>Loading...</p>;
@@ -95,7 +72,6 @@ export default function ReportsPage() {
           [
             ["analytics", "🎯 關鍵指標"],
             ["operations", "📊 營運報表"],
-            ["finance", "💰 財務報表"],
             ["charts", "📈 圖表"],
           ] as const
         ).map(([key, label]) => (
@@ -115,7 +91,6 @@ export default function ReportsPage() {
 
       {outerTab === "analytics" && <AnalyticsView token={token} />}
       {outerTab === "operations" && <OperationsSection token={token} />}
-      {outerTab === "finance" && <FinanceSection token={token} />}
       {outerTab === "charts" && <ChartsView token={token} />}
     </div>
   );
@@ -132,9 +107,6 @@ const CHART_OPTIONS = [
   { id: "room_usage",       label: "診間使用率",     source: "room"      },
   { id: "hourly",           label: "預約時段分布",   source: "room"      },
   { id: "therapist_cases",  label: "心理師接案量",   source: "therapist" },
-  { id: "therapist_rev",    label: "心理師當月營收", source: "therapist" },
-  { id: "session_type",     label: "諮商類型分布",   source: "monthly"   },
-  { id: "monthly_pnl",      label: "月度損益",       source: "monthly"   },
 ] as const;
 
 type ChartId = typeof CHART_OPTIONS[number]["id"];
@@ -158,7 +130,6 @@ function ChartsView({ token }: { token: string }) {
   const [intakeData, setIntakeData] = useState<IntakeData | null>(null);
   const [roomData, setRoomData] = useState<RoomUtilizationData | null>(null);
   const [therapistData, setTherapistData] = useState<TherapistLoadData | null>(null);
-  const [monthlyData, setMonthlyData] = useState<ReportData | null>(null);
 
   const chartRef = useRef<ChartJS<"bar"> | ChartJS<"doughnut"> | any>(null);
 
@@ -170,7 +141,6 @@ function ChartsView({ token }: { token: string }) {
       intake:    `/reports/intake${qs}`,
       room:      `/reports/room-utilization${qs}`,
       therapist: `/reports/therapist-load${qs}`,
-      monthly:   `/reports/monthly${qs}`,
     };
     setLoading(true);
     setError("");
@@ -179,7 +149,6 @@ function ChartsView({ token }: { token: string }) {
       if (src === "intake")    setIntakeData(d);
       if (src === "room")      setRoomData(d);
       if (src === "therapist") setTherapistData(d);
-      if (src === "monthly")   setMonthlyData(d);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -301,56 +270,6 @@ function ChartsView({ token }: { token: string }) {
       };
     }
 
-    if (chartId === "therapist_rev" && therapistData) {
-      const rows = therapistData.therapists.filter((t) => t.sessions_this_month > 0);
-      return {
-        type: "bar",
-        data: {
-          labels: rows.map((t) => t.therapist_name),
-          datasets: [{ label: "當月營收（元）", data: rows.map((t) => t.revenue_this_month), backgroundColor: "#f59e0b", borderRadius: 4 }],
-        },
-        options: {
-          ...baseBar,
-          scales: { y: { beginAtZero: true, ticks: { callback: (v: number) => `$${v.toLocaleString()}` } } },
-          plugins: { ...baseBar.plugins, tooltip: { callbacks: { label: (ctx: any) => `$${Number(ctx.raw).toLocaleString()}` } } },
-        },
-      };
-    }
-
-    if (chartId === "session_type" && monthlyData) {
-      const bd = monthlyData.session_type_breakdown;
-      const labels = Object.keys(bd).map((k) => ({ in_person: "現場", online: "線上", outdoor: "外出" }[k] ?? k));
-      return {
-        type: "doughnut",
-        data: {
-          labels,
-          datasets: [{ data: Object.values(bd).map((v) => v.count), backgroundColor: ["#6366f1","#22c55e","#f59e0b"], borderWidth: 2 }],
-        },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom" } } },
-      };
-    }
-
-    if (chartId === "monthly_pnl" && monthlyData) {
-      const p = monthlyData.pnl;
-      return {
-        type: "bar",
-        data: {
-          labels: ["總營收", "心理師成本", "診所毛利", "零用金支出", "淨收入"],
-          datasets: [{
-            label: "金額（元）",
-            data: [p.gross_revenue, p.therapist_cost, p.clinic_gross, p.petty_cash_expense, p.net_income],
-            backgroundColor: ["#6366f1","#ef4444","#22c55e","#f59e0b","#14b8a6"],
-            borderRadius: 4,
-          }],
-        },
-        options: {
-          ...baseBar,
-          scales: { y: { beginAtZero: true, ticks: { callback: (v: number) => `$${v.toLocaleString()}` } } },
-          plugins: { ...baseBar.plugins, legend: { display: false }, tooltip: { callbacks: { label: (ctx: any) => `$${Number(ctx.raw).toLocaleString()}` } } },
-        },
-      };
-    }
-
     return null;
   })();
 
@@ -424,7 +343,7 @@ function ChartsView({ token }: { token: string }) {
    ═══════════════════════════════════════════════ */
 
 function OperationsSection({ token }: { token: string }) {
-  const [tab, setTab] = useState<"intake" | "space" | "therapist_load">("intake");
+  const [tab, setTab] = useState<"intake" | "space" | "therapist_load" | "churn">("intake");
 
   return (
     <div>
@@ -434,6 +353,7 @@ function OperationsSection({ token }: { token: string }) {
             ["intake", "進案統計"],
             ["space", "空間利用率"],
             ["therapist_load", "心理師接案量"],
+            ["churn", "流失預警"],
           ] as const
         ).map(([key, label]) => (
           <button
@@ -453,41 +373,6 @@ function OperationsSection({ token }: { token: string }) {
       {tab === "intake" && <IntakeStatsTab token={token} />}
       {tab === "space" && <RoomUtilizationTab token={token} />}
       {tab === "therapist_load" && <TherapistLoadTab token={token} />}
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════
-   財務報表 section
-   ═══════════════════════════════════════════════ */
-
-function FinanceSection({ token }: { token: string }) {
-  const [tab, setTab] = useState<"monthly" | "churn">("monthly");
-
-  return (
-    <div>
-      <div className="mb-4 flex gap-1 border-b border-gray-100">
-        {(
-          [
-            ["monthly", "月報表"],
-            ["churn", "流失預警"],
-          ] as const
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            className={`px-4 py-2 text-sm font-medium transition-colors ${
-              tab === key
-                ? "border-b-2 border-primary-500 text-primary-600"
-                : "text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {tab === "monthly" && <MonthlyReportTab token={token} />}
       {tab === "churn" && <ChurnTab token={token} />}
     </div>
   );
@@ -1028,10 +913,8 @@ interface TherapistLoadRow {
   therapist_id: number;
   therapist_name: string;
   user_code: string;
-  commission_rate: number;
   active_cases: number;
   sessions_this_month: number;
-  revenue_this_month: number;
   upcoming_appointments: number;
 }
 
@@ -1123,9 +1006,7 @@ function TherapistLoadTab({ token }: { token: string }) {
                     <th className="px-4 py-2.5 text-right font-semibold">進行中個案</th>
                     <th className="px-4 py-2.5 font-semibold">接案量</th>
                     <th className="px-4 py-2.5 text-right font-semibold">{data.month} 月諮商</th>
-                    <th className="px-4 py-2.5 text-right font-semibold">{data.month} 月營收</th>
                     <th className="px-4 py-2.5 text-right font-semibold">待執行預約</th>
-                    <th className="px-4 py-2.5 text-right font-semibold">抽成</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -1149,7 +1030,6 @@ function TherapistLoadTab({ token }: { token: string }) {
                         </div>
                       </td>
                       <td className="px-4 py-2.5 text-right">{t.sessions_this_month}</td>
-                      <td className="px-4 py-2.5 text-right">${t.revenue_this_month.toLocaleString()}</td>
                       <td className="px-4 py-2.5 text-right">
                         {t.upcoming_appointments > 0 ? (
                           <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
@@ -1159,9 +1039,6 @@ function TherapistLoadTab({ token }: { token: string }) {
                           <span className="text-gray-300">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-2.5 text-right text-xs text-gray-500">
-                        {Math.round(t.commission_rate * 100)}%
-                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1175,306 +1052,7 @@ function TherapistLoadTab({ token }: { token: string }) {
 }
 
 /* ═══════════════════════════════════════════════
-   財務 — 月報表
-   ═══════════════════════════════════════════════ */
-
-interface ReportData {
-  year: number;
-  month: number;
-  summary: {
-    total_revenue: number;
-    total_therapist_share: number;
-    total_clinic_share: number;
-    session_count: number;
-    paid_count: number;
-    unpaid_count: number;
-    petty_cash_total: number;
-    net_clinic_income: number;
-  };
-  product_sales?: {
-    total: number;
-    count: number;
-    by_payment_method: Record<string, number>;
-  };
-  session_type_breakdown: Record<string, { count: number; revenue: number }>;
-  funding_breakdown: {
-    self_pay_revenue: number;
-    institution_revenue: number;
-    institution_unpaid: number;
-  };
-  pnl: {
-    gross_revenue: number;
-    therapist_cost: number;
-    clinic_gross: number;
-    petty_cash_expense: number;
-    net_income: number;
-    cancelled_loss: number;
-  };
-  kpi: {
-    cancel_rate: number;
-    continuation_rate: number;
-    active_therapists: number;
-    unique_cases: number;
-  };
-  therapist_summary: {
-    therapist_id: number;
-    therapist_name: string;
-    sessions: number;
-    revenue: number;
-    therapist_share: number;
-    clinic_share: number;
-  }[];
-  petty_cash_by_category: Record<string, number>;
-  appointment_stats: { booked: number; cancelled: number; executed: number };
-}
-
-const categoryLabels: Record<string, string> = {
-  cleaning: "清潔費",
-  supplies: "文具耗材",
-  electricity: "電費",
-  water: "水費",
-  other: "其他",
-};
-
-const sessionTypeLabels: Record<string, string> = {
-  in_person: "現場諮商",
-  online: "線上諮商",
-  outdoor: "外出服務",
-};
-
-function MonthlyReportTab({ token }: { token: string }) {
-  const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
-  const [report, setReport] = useState<ReportData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  const fetchReport = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const data = await clientFetch(`/reports/monthly?year=${year}&month=${month}`, token);
-      setReport(data);
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [token, year, month]);
-
-  useEffect(() => { fetchReport(); }, [fetchReport]);
-
-  return (
-    <div>
-      <div className="mb-4 flex items-center gap-2">
-        <select
-          value={year}
-          onChange={(e) => setYear(parseInt(e.target.value))}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-        >
-          {[2025, 2026, 2027].map((y) => (
-            <option key={y} value={y}>
-              {y}
-            </option>
-          ))}
-        </select>
-        <select
-          value={month}
-          onChange={(e) => setMonth(parseInt(e.target.value))}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-        >
-          {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-            <option key={m} value={m}>
-              {m} 月
-            </option>
-          ))}
-        </select>
-        <button
-          onClick={fetchReport}
-          disabled={loading}
-          className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
-        >
-          {loading ? "載入中..." : "重新查詢"}
-        </button>
-        <button
-          onClick={() =>
-            exportCsv(`/export/ledger?year=${year}&month=${month}`, token, `ledger_${year}_${month}.csv`)
-          }
-          className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
-        >
-          匯出 CSV
-        </button>
-      </div>
-
-      {error && <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</div>}
-
-      {loading ? (
-        <div className="rounded-lg border border-dashed border-gray-300 p-16 text-center text-gray-400">
-          載入中...
-        </div>
-      ) : !report ? (
-        <div className="rounded-lg border border-dashed border-gray-300 p-16 text-center text-gray-400">
-          無資料
-        </div>
-      ) : (
-        <div className="space-y-6">
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-            <StatCard label="總營收" value={`$${report.summary.total_revenue.toLocaleString()}`} />
-            <StatCard label="諮商次數" value={report.summary.session_count.toString()} />
-            <StatCard label="心理師分潤" value={`$${report.summary.total_therapist_share.toLocaleString()}`} />
-            <StatCard label="診所收入" value={`$${report.summary.total_clinic_share.toLocaleString()}`} />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-            <StatCard label="已收/請款" value={report.summary.paid_count.toString()} color="green" />
-            <StatCard label="未收/請款" value={report.summary.unpaid_count.toString()} color="red" />
-            <StatCard label="零用金支出" value={`$${report.summary.petty_cash_total.toLocaleString()}`} />
-            <StatCard label="取消預約" value={report.appointment_stats.cancelled.toString()} color="gray" />
-          </div>
-
-          <div>
-            <h2 className="mb-3 text-lg font-semibold">損益摘要</h2>
-            <div className="rounded-lg border border-gray-200 bg-white p-4">
-              <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-                <PnlRow label="總營收" value={report.pnl.gross_revenue} />
-                <PnlRow label="心理師成本" value={-report.pnl.therapist_cost} negative />
-                <PnlRow label="診所毛利" value={report.pnl.clinic_gross} />
-                <PnlRow
-                  label="零用金支出"
-                  value={report.pnl.petty_cash_expense}
-                  negative={report.pnl.petty_cash_expense < 0}
-                />
-                <PnlRow label="淨收入" value={report.pnl.net_income} bold />
-                <PnlRow label="取消損失" value={-report.pnl.cancelled_loss} negative />
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <div>
-              <h2 className="mb-3 text-lg font-semibold">KPI 指標</h2>
-              <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-4">
-                <KpiRow label="取消率" value={`${report.kpi.cancel_rate}%`} warn={report.kpi.cancel_rate > 15} />
-                <KpiRow label="續診率" value={`${report.kpi.continuation_rate}%`} />
-                <KpiRow label="活躍心理師" value={`${report.kpi.active_therapists} 位`} />
-                <KpiRow label="本月個案數" value={`${report.kpi.unique_cases} 位`} />
-              </div>
-            </div>
-
-            <div>
-              <h2 className="mb-3 text-lg font-semibold">諮商類型分布</h2>
-              <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-4">
-                {Object.entries(report.session_type_breakdown).map(([type, data]) => (
-                  <div key={type} className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">{sessionTypeLabels[type] ?? type}</span>
-                    <span className="text-sm font-medium">
-                      {data.count} 次 · ${data.revenue.toLocaleString()}
-                    </span>
-                  </div>
-                ))}
-                {Object.keys(report.session_type_breakdown).length === 0 && (
-                  <p className="text-sm text-gray-400">無資料</p>
-                )}
-              </div>
-            </div>
-
-            <div>
-              <h2 className="mb-3 text-lg font-semibold">金流來源分析</h2>
-              <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">自費收入</span>
-                  <span className="text-sm font-medium">
-                    ${report.funding_breakdown.self_pay_revenue.toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">機構收入</span>
-                  <span className="text-sm font-medium">
-                    ${report.funding_breakdown.institution_revenue.toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-red-600">機構待請款</span>
-                  <span className="text-sm font-medium text-red-600">
-                    ${report.funding_breakdown.institution_unpaid.toLocaleString()}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <h2 className="mb-3 text-lg font-semibold">其他商品販售</h2>
-              <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">銷售總額</span>
-                  <span className="text-sm font-medium">
-                    ${(report.product_sales?.total ?? 0).toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">筆數</span>
-                  <span className="text-sm font-medium">{report.product_sales?.count ?? 0}</span>
-                </div>
-                {Object.entries(report.product_sales?.by_payment_method ?? {}).map(([m, v]) => (
-                  <div key={m} className="flex items-center justify-between">
-                    <span className="text-sm text-gray-500">{m === "cash" ? "現金" : m === "transfer" ? "匯款" : m}</span>
-                    <span className="text-sm text-gray-500">${v.toLocaleString()}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <h2 className="mb-3 text-lg font-semibold">心理師績效</h2>
-            <div className="overflow-x-auto rounded-lg border border-gray-200">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-gray-50 text-xs uppercase text-gray-500">
-                  <tr>
-                    <th className="px-4 py-3">心理師</th>
-                    <th className="px-4 py-3 text-right">次數</th>
-                    <th className="px-4 py-3 text-right">營收</th>
-                    <th className="px-4 py-3 text-right">師酬</th>
-                    <th className="px-4 py-3 text-right">所得</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {report.therapist_summary.map((t) => (
-                    <tr key={t.therapist_id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 font-medium">{t.therapist_name}</td>
-                      <td className="px-4 py-3 text-right">{t.sessions}</td>
-                      <td className="px-4 py-3 text-right">${t.revenue.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right">${t.therapist_share.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-right">${t.clinic_share.toLocaleString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {Object.keys(report.petty_cash_by_category).length > 0 && (
-            <div>
-              <h2 className="mb-3 text-lg font-semibold">零用金分類</h2>
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                {Object.entries(report.petty_cash_by_category).map(([cat, amt]) => (
-                  <div key={cat} className="rounded-lg border border-gray-200 p-3">
-                    <div className="text-xs text-gray-500">{categoryLabels[cat] ?? cat}</div>
-                    <div className="text-lg font-bold">${amt.toLocaleString()}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════
-   財務 — 流失預警
+   流失預警
    ═══════════════════════════════════════════════ */
 
 interface ChurnCase {
@@ -1585,49 +1163,3 @@ function ChurnTab({ token }: { token: string }) {
 
 /* ───── helper components ───── */
 
-function StatCard({ label, value, color }: { label: string; value: string; color?: string }) {
-  const colorClass =
-    color === "green"
-      ? "text-green-600"
-      : color === "red"
-        ? "text-red-600"
-        : color === "gray"
-          ? "text-gray-500"
-          : "text-gray-900";
-  return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4">
-      <div className="text-xs text-gray-500">{label}</div>
-      <div className={`mt-1 text-xl font-bold ${colorClass}`}>{value}</div>
-    </div>
-  );
-}
-
-function PnlRow({
-  label,
-  value,
-  negative,
-  bold,
-}: {
-  label: string;
-  value: number;
-  negative?: boolean;
-  bold?: boolean;
-}) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className={`text-sm ${bold ? "font-semibold" : "text-gray-600"}`}>{label}</span>
-      <span className={`text-sm ${bold ? "font-bold text-gray-900" : ""} ${negative ? "text-red-600" : ""}`}>
-        {value < 0 ? "-" : ""}${Math.abs(value).toLocaleString()}
-      </span>
-    </div>
-  );
-}
-
-function KpiRow({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-sm text-gray-600">{label}</span>
-      <span className={`text-sm font-medium ${warn ? "text-red-600" : "text-gray-900"}`}>{value}</span>
-    </div>
-  );
-}

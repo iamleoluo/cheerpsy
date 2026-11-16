@@ -4,7 +4,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import RequireRole
+from app.auth.dependencies import RequireRole, accounting_gone
 from app.database import get_db
 from app.models.product_sales import ProductSale
 from app.models.user import User
@@ -65,7 +65,7 @@ def list_product_sales(
     return [_to_response(p) for p in q.order_by(ProductSale.sale_date.desc(), ProductSale.id.desc()).all()]
 
 
-@router.post("", response_model=ProductSaleResponse)
+@router.post("", response_model=ProductSaleResponse, dependencies=[Depends(accounting_gone)])
 def create_product_sale(
     body: ProductSaleCreate,
     user: User = Depends(RequireRole(ROLES)),
@@ -121,7 +121,7 @@ def update_product_sale(
     return _to_response(p)
 
 
-@router.put("/{sale_id}/void", response_model=ProductSaleResponse)
+@router.put("/{sale_id}/void", response_model=ProductSaleResponse, dependencies=[Depends(accounting_gone)])
 def void_product_sale(
     sale_id: int,
     body: ProductSaleVoid = ProductSaleVoid(),

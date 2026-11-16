@@ -160,7 +160,7 @@ export default function CasesPage() {
   const token = (session?.user as any)?.accessToken;
   const userRole = (session?.user as any)?.role;
 
-  const [mainTab, setMainTab] = useState<"cases" | "appointments" | "quotas">("cases");
+  const [mainTab, setMainTab] = useState<"cases">("cases");
   const [helpOpen, setHelpOpen] = useState(false);
 
   if (!token) return <p className="p-6 text-gray-400">載入中...</p>;
@@ -1770,33 +1770,4 @@ function AppointmentEditModal({
       </div>
     </div>
   );
-}
-
-
-interface QuotaRow {
-  id: number;
-  case_id: number;
-  case_name: string | null;
-  institution_id: number;
-  institution_name: string | null;
-  total_count: number;
-  used_count: number;
-  reserved_count: number;
-  remaining: number;
-  valid_from: string | null;
-  valid_until: string | null;
-  note: string | null;
-}
-
-interface QuotaTemplate {
-  id: number;
-  institution_id: number;
-  institution_name: string | null;
-  name: string;
-  total_count: number;
-  notes: string | null;
-  default_valid_from: string | null;
-  default_valid_until: string | null;
-  created_by: number | null;
-  created_at: string;
 }

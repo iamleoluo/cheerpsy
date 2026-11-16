@@ -5,7 +5,7 @@ from pydantic import BaseModel, model_validator
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import RequireRole, get_current_user
+from app.auth.dependencies import RequireRole, get_current_user, accounting_gone
 from app.database import get_db
 from app.models.case_institution_quota import CaseInstitutionQuota
 from app.models.institution_contract import InstitutionContract
@@ -333,7 +333,7 @@ def list_plan_quotas(
     return out
 
 
-@router.post("", response_model=PlanResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=PlanResponse, status_code=status.HTTP_201_CREATED, dependencies=[Depends(accounting_gone)])
 def create_plan(
     body: PlanCreate,
     user: User = Depends(RequireRole(STAFF)),
@@ -374,7 +374,7 @@ def create_plan(
     return _to_response(p)
 
 
-@router.put("/{plan_id}", response_model=PlanResponse)
+@router.put("/{plan_id}", response_model=PlanResponse, dependencies=[Depends(accounting_gone)])
 def update_plan(
     plan_id: int,
     body: PlanUpdate,
@@ -414,7 +414,7 @@ def update_plan(
     return _to_response(p, agg.get(p.id))
 
 
-@router.put("/{plan_id}/status", response_model=PlanResponse)
+@router.put("/{plan_id}/status", response_model=PlanResponse, dependencies=[Depends(accounting_gone)])
 def set_plan_status(
     plan_id: int,
     new_status: str = Query(..., alias="value"),

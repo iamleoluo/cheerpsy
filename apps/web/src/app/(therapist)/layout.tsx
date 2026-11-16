@@ -6,7 +6,7 @@ import { isTherapist, landingForRole } from "@/lib/nav";
 /**
  * 心理師端 route group。
  *
- * 這裡只放「只有心理師會看到」的頁面（today / sched / pool / docs / pay / stats）。
+ * 這裡只放「只有心理師會看到」的頁面（today / sched / pool / stats）。
  * `/cases` 與 `/booking` 兩頁行政與心理師共用，仍留在 (app)，
  * 依 gap_analysis.md Phase 3／6 再做角色分化。
  */
