@@ -5,7 +5,7 @@ refresh token 只存密文（見 app/services/secret_box.py），絕不寫入 lo
 """
 
 from sqlalchemy import (
-    Boolean, CheckConstraint, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func, text,
+    Boolean, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -91,3 +91,52 @@ class GoogleCalendar(Base):
     is_missing = Column(Boolean, nullable=False, default=False, server_default="false")  # Google 上找不到（被手動刪除）
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+# 工作狀態：pending 待處理／running 處理中（工作者已領取）／retry 失敗等待重試／
+# blocked 條件不足（未連結、沒有日曆…），補齊後可重排隊／done 完成／failed 重試用盡，需人工處理
+OUTBOX_STATUSES = ("pending", "running", "retry", "blocked", "done", "failed")
+OUTBOX_JOB_TYPES = ("upsert_event", "delete_event")
+
+
+class AppointmentGoogleEvent(Base):
+    """預約 ↔ Google 事件對應（一對一）。payload_hash 相同就不必再打 API（冪等）。"""
+
+    __tablename__ = "appointment_google_events"
+
+    # 刻意不設外鍵：預約可以被刪除（booked 狀態），刪除後仍要靠這裡的對應去 Google 刪掉事件
+    appointment_id = Column(Integer, primary_key=True, autoincrement=False)
+    google_calendar_id = Column(Text, nullable=False)
+    google_event_id = Column(Text, nullable=False)
+    payload_hash = Column(String(64), nullable=False)
+    last_pushed_at = Column(DateTime(timezone=True), nullable=True)
+    last_status = Column(String(20), nullable=False, default="pushed", server_default="pushed")  # pushed / deleted
+
+
+class GcalOutbox(Base):
+    """待推送到 Google 的工作。每個預約至多一列（dedupe_key = appt:{id}），重複 enqueue 只會把同一列重設為待處理。"""
+
+    __tablename__ = "gcal_outbox"
+    __table_args__ = (
+        UniqueConstraint("dedupe_key", name="uq_gcal_outbox_dedupe"),
+        CheckConstraint(
+            "status IN ('pending', 'running', 'retry', 'blocked', 'done', 'failed')", name="ck_gcal_outbox_status"),
+        CheckConstraint("job_type IN ('upsert_event', 'delete_event')", name="ck_gcal_outbox_job_type"),
+        Index("ix_gcal_outbox_status_next", "status", "next_attempt_at"),
+        Index("ix_gcal_outbox_appointment", "appointment_id"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    job_type = Column(String(20), nullable=False)  # 入列時依預約狀態決定；實際動作以工作者執行時重讀的預約為準
+    appointment_id = Column(Integer, nullable=False)  # 不設外鍵，理由同 AppointmentGoogleEvent
+    dedupe_key = Column(String(60), nullable=False)
+    status = Column(String(10), nullable=False, default="pending", server_default="pending")
+    attempts = Column(Integer, nullable=False, default=0, server_default="0")
+    next_attempt_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    last_error = Column(Text, nullable=True)  # 給畫面看的摘要，不含 token 或個案資料
+    # 每次 enqueue 加一。工作者處理完只有在版本沒變時才標 done，處理期間又有異動就維持待處理
+    version = Column(Integer, nullable=False, default=1, server_default="1")
+    claimed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now())
+    finished_at = Column(DateTime(timezone=True), nullable=True)

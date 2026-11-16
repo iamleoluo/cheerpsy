@@ -29,10 +29,11 @@ HTTP_TIMEOUT_SECONDS = 20
 class GcalNotConnected(Exception):
     """還沒連結 Google、授權已失效，或伺服器缺設定。訊息可直接顯示給使用者。"""
 
-    def __init__(self, message: str, token_invalid: bool = False):
+    def __init__(self, message: str, token_invalid: bool = False, transient: bool = False):
         super().__init__(message)
         self.message = message
         self.token_invalid = token_invalid
+        self.transient = transient  # 暫時性問題（例如 Google 一時連不上）：不要把工作標成 blocked，稍後再試
 
 
 class CalendarApiError(Exception):
@@ -65,6 +66,9 @@ class CalendarClient(Protocol):
     def insert_acl(self, calendar_id: str, email: str, role: str, send_notifications: bool) -> AclRule: ...
     def patch_acl_role(self, calendar_id: str, rule_id: str, role: str) -> None: ...
     def delete_acl(self, calendar_id: str, rule_id: str) -> None: ...
+    def insert_event(self, calendar_id: str, body: dict) -> None: ...  # body 含自訂 id
+    def update_event(self, calendar_id: str, event_id: str, body: dict) -> None: ...
+    def delete_event(self, calendar_id: str, event_id: str) -> None: ...
 
 
 def _q(part: str) -> str:
@@ -142,6 +146,17 @@ class GoogleCalendarClient:
     def delete_acl(self, calendar_id: str, rule_id: str) -> None:
         self._request("DELETE", f"/calendars/{_q(calendar_id)}/acl/{_q(rule_id)}")
 
+    # 事件：不寄任何通知（sendUpdates=none）；事件沒有邀請對象
+    def insert_event(self, calendar_id: str, body: dict) -> None:
+        self._request("POST", f"/calendars/{_q(calendar_id)}/events", params={"sendUpdates": "none"}, body=body)
+
+    def update_event(self, calendar_id: str, event_id: str, body: dict) -> None:
+        self._request("PUT", f"/calendars/{_q(calendar_id)}/events/{_q(event_id)}",
+                      params={"sendUpdates": "none"}, body=body)
+
+    def delete_event(self, calendar_id: str, event_id: str) -> None:
+        self._request("DELETE", f"/calendars/{_q(calendar_id)}/events/{_q(event_id)}", params={"sendUpdates": "none"})
+
 
 def get_calendar_client(db: Session) -> CalendarClient:
     """回傳可用的 Calendar 用戶端；沒連結／授權失效／缺設定都丟 GcalNotConnected（訊息可直接給使用者看）。"""
@@ -163,7 +178,7 @@ def get_calendar_client(db: Session) -> CalendarClient:
         if e.code == "invalid_grant":
             mark_token_invalid(db, "invalid_grant", "Google 授權已被撤銷或過期，請重新連結")
             raise GcalNotConnected("Google 授權已失效，請管理員重新連結", token_invalid=True) from None
-        raise GcalNotConnected("暫時無法向 Google 取得授權，請稍後再試") from None
+        raise GcalNotConnected("暫時無法向 Google 取得授權，請稍後再試", transient=True) from None
     return GoogleCalendarClient(access_token)
 
 

@@ -181,7 +181,19 @@ def provision(db: Session, client: CalendarClient, therapist: User) -> GoogleCal
     row.is_active = True
     sync_calendar(db, client, row, therapist)
     db.commit()
+    _enqueue_events_best_effort(db, therapist.id)
     return row
+
+
+def _enqueue_events_best_effort(db: Session, therapist_id: int) -> None:
+    """日曆建好（或重新啟用）後，把這位心理師同步區間內的預約排入推送，也讓先前因「沒有日曆」被擋的工作解封。"""
+    try:
+        from app.services import gcal_sync
+        gcal_sync.enqueue_therapist_window(db, therapist_id)
+        db.commit()
+    except Exception:  # noqa: BLE001 — 分享流程不能因入列失敗
+        logger.exception("gcal enqueue after provision failed")
+        db.rollback()
 
 
 def unshare(db: Session, client: CalendarClient, row: GoogleCalendar, therapist: User) -> GoogleCalendar:

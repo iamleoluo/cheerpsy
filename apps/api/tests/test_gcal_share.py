@@ -995,6 +995,6 @@ def test_migration_chain_and_only_adds():
     assert 'down_revision = "zj0f4a5b6c7d"' in txt
     children = [p.name for p in (API_DIR / "alembic" / "versions").glob("*.py")
                 if 'down_revision = "zk1a5b6c7d8e"' in p.read_text(encoding="utf-8")]
-    assert children == []  # 目前的 head
+    assert children == ["zl2b6c7d8e9f_gcal_outbox.py"]  # 後面只接 PR C 的 migration（鏈不分叉）
     assert txt.count("drop_table") == 1 and txt.count("drop_column") == 1 and "DELETE" not in txt.upper().replace("DELETE_", "")
     assert "alter_column" not in txt

@@ -9,6 +9,7 @@ from app.auth.password import verify_password
 from app.database import get_db
 from app.models.appointment import Appointment
 from app.models.case import Case
+from app.models.gcal_hooks import enqueue_appointments
 from app.models.couple_member import CoupleMember
 from app.models.user import User
 from app.schemas.case import (
@@ -310,15 +311,18 @@ def close_case(
     prev_status = c.status
 
     # 4-1) 取消未來 booked 預約
-    cancelled = (
+    to_cancel = (
         db.query(Appointment)
         .filter(
             Appointment.case_id == case_id,
             Appointment.status == "booked",
             text("lower(time_range) > now()"),
         )
-        .update({Appointment.status: "cancelled"}, synchronize_session=False)
     )
+    cancel_ids = [i for (i,) in to_cancel.with_entities(Appointment.id).all()]
+    cancelled = to_cancel.update({Appointment.status: "cancelled"}, synchronize_session=False)
+    # 批次 UPDATE 不經過 ORM 事件，Google 日曆同步要明確入列（同一交易）
+    enqueue_appointments(db.connection(), cancel_ids)
 
     c.status = "closed"
     c.closed_at = now
