@@ -193,7 +193,6 @@ export default function ApptsPage() {
             )}
             {filtered.map((r) => {
               const st = STATUS[r.status] ?? { label: r.status, cls: "bg-gray-100" };
-              const offsite = !r.room_id;
               return (
                 <tr key={r.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
                   <td className="px-3 py-2.5">{r.start_time?.slice(0, 10)}</td>
@@ -212,9 +211,7 @@ export default function ApptsPage() {
                     <span className={`rounded px-1.5 py-0.5 text-xs ${st.cls}`}>{st.label}</span>
                   </td>
                   <td className="px-3 py-2.5">
-                    {offsite && !canAdjust ? (
-                      <span className="text-xs text-gray-400">心理師端確認</span>
-                    ) : r.checkin_status === "pending" && r.status === "booked" ? (
+                    {r.checkin_status === "pending" && r.status === "booked" ? (
                       <div className="flex gap-2 text-xs">
                         <button onClick={() => arrive(r)} className="text-primary-600 hover:underline">
                           {r.is_intake ? "初診有到" : "已到"}
