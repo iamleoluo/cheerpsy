@@ -5,7 +5,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from psycopg2.extras import DateTimeTZRange
-from sqlalchemy import func, text
+from sqlalchemy import and_, func, or_, text
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth.dependencies import RequireRole, get_current_user
@@ -141,6 +141,27 @@ def _to_response(
     )
 
 
+def _to_occupied_response(a: Appointment) -> AppointmentResponse:
+    """別的心理師的場次：只露出「已佔用」所需資訊，不含任何個案或金額資料。"""
+    start = a.time_range.lower if a.time_range else None
+    end = a.time_range.upper if a.time_range else None
+    return AppointmentResponse(
+        id=a.id,
+        appointment_number="",
+        case_id=0,
+        therapist_id=a.therapist_id,
+        therapist_name=a.therapist.name if a.therapist else None,
+        room_id=a.room_id,
+        room_name=a.room.name if a.room else None,
+        session_type="in_person",
+        start_time=start,
+        end_time=end,
+        amount=0,
+        status=a.status,
+        occupied_only=True,
+    )
+
+
 def _validate_couple(db: Session, couple_case_id: int | None, payer_case_id: int) -> Case | None:
     """合療驗證：couple_case_id 必為伴侶案，付款方(payer_case_id)必為伴侶案本身或其成員。
 
@@ -227,8 +248,23 @@ def list_appointments(
         joinedload(Appointment.therapist),
         joinedload(Appointment.room),
     )
-    if user.role == "therapist" and not room_id:
-        query = query.filter(Appointment.therapist_id == user.id)
+    if user.role == "therapist":
+        # 心理師：自己的場次完整可見；帶 room_id 時另外看到該診間「別人的有效場次」，
+        # 但那些只會以 _to_occupied_response 遮罩回傳。case_id 只能查自己的個案。
+        if room_id:
+            query = query.filter(
+                or_(
+                    Appointment.therapist_id == user.id,
+                    and_(
+                        Appointment.room_id == room_id,
+                        Appointment.status.in_(["booked", "executed"]),
+                    ),
+                )
+            )
+        else:
+            query = query.filter(Appointment.therapist_id == user.id)
+        if case_id:
+            query = query.filter(Appointment.therapist_id == user.id)
     if status_filter:
         query = query.filter(Appointment.status == status_filter)
     if case_id:
@@ -248,7 +284,12 @@ def list_appointments(
         users = db.query(User).filter(User.id.in_(therapist_ids)).all()
         therapists = {u.id: u for u in users}
 
-    return [_to_response(a, therapists.get(a.therapist_id), db, viewer=user) for a in appointments]
+    return [
+        _to_occupied_response(a)
+        if user.role == "therapist" and a.therapist_id != user.id
+        else _to_response(a, therapists.get(a.therapist_id), db, viewer=user)
+        for a in appointments
+    ]
 
 
 @router.get("/{appointment_id}", response_model=AppointmentResponse)

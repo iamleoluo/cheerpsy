@@ -31,6 +31,14 @@ class ReminderResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+def _require_appointment_access(db: Session, appointment_id: int, user: User) -> Appointment:
+    """心理師只能碰自己的預約；別人的一律回 404（不洩漏是否存在）。"""
+    appt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if not appt or (user.role == "therapist" and appt.therapist_id != user.id):
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    return appt
+
+
 @router.get("/upcoming")
 def upcoming_appointments(
     days: int = Query(default=3, ge=1, le=14),
@@ -82,6 +90,7 @@ def get_reminder_logs(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    _require_appointment_access(db, appointment_id, user)
     logs = (
         db.query(ReminderLog)
         .filter(ReminderLog.appointment_id == appointment_id)
@@ -111,9 +120,7 @@ def create_reminder(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    appt = db.query(Appointment).filter(Appointment.id == body.appointment_id).first()
-    if not appt:
-        raise HTTPException(status_code=404, detail="Appointment not found")
+    _require_appointment_access(db, body.appointment_id, user)
 
     log = ReminderLog(
         appointment_id=body.appointment_id,

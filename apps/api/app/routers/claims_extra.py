@@ -59,7 +59,7 @@ class PlansBody(BaseModel):
 @router.get("/{batch_id}/plans")
 def list_batch_plans(
     batch_id: int,
-    user: User = Depends(get_current_user),
+    user: User = Depends(RequireRole(STAFF)),
     db: Session = Depends(get_db),
 ):
     rows = db.query(ClaimBatchPlan).filter(ClaimBatchPlan.claim_batch_id == batch_id).all()

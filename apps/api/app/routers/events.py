@@ -6,11 +6,11 @@
 """
 
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, model_validator
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import RequireRole, get_current_user
@@ -231,6 +231,22 @@ def _ics_escape(s: str) -> str:
     return (s or "").replace("\\", "\\\\").replace(";", r"\;").replace(",", r"\,").replace("\n", r"\n")
 
 
+ICAL_CANCELLED_KEEP_DAYS = 90
+
+
+def _ics_summary(a: Appointment, room_code: str) -> str:
+    """只寫類型加診間代碼，例如「諮商 · 2B」。絕不放個案姓名。"""
+    if a.session_type == "online":
+        kind = "線上諮商"
+    elif a.session_type == "outdoor":
+        kind = "外展"
+    elif a.is_intake:
+        kind = "初診"
+    else:
+        kind = "諮商"
+    return f"{kind} · {room_code}" if room_code else kind
+
+
 def _ics_dt(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
@@ -254,18 +270,27 @@ def issue_ical_token(
 def ical_feed(token: str, db: Session = Depends(get_db)):
     """公開端點：以不可猜測的 token 授權，不需登入。
 
-    只輸出該心理師自己的預約，且**不含個案姓名以外的敏感資訊**
-    （不含金額、方案、聯絡方式）。
+    隱私：feed 網址即權限，因此不含任何個案資訊。SUMMARY 只有類型加診間代碼，
+    DESCRIPTION 固定為 Cheerpsy，不放姓名、電話、主訴、金額、機構。
+    取消與未到的場次以 STATUS:CANCELLED 輸出（保留 90 天），讓 Google 能刪掉舊事件。
     """
     u = db.query(User).filter(User.ical_token == token).first()
     if not u:
         raise HTTPException(status_code=404, detail="Not found")
 
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=ICAL_CANCELLED_KEEP_DAYS)
     appts = (
         db.query(Appointment)
         .filter(
             Appointment.therapist_id == u.id,
-            Appointment.status.in_(["booked", "executed"]),
+            or_(
+                Appointment.status.in_(["booked", "executed"]),
+                and_(
+                    Appointment.status.in_(["cancelled", "no_show"]),
+                    func.upper(Appointment.time_range) >= cutoff,
+                ),
+            ),
         )
         .order_by(Appointment.id)
         .all()
@@ -281,16 +306,23 @@ def ical_feed(token: str, db: Session = Depends(get_db)):
     for a in appts:
         if not a.time_range:
             continue
-        case_name = a.case.name if a.case else "（初診）"
         room = a.room.room_code if a.room else ""
+        if a.session_type == "online":
+            location = "線上"
+        elif a.session_type == "outdoor":
+            location = "外展"
+        else:
+            location = room
         lines += [
             "BEGIN:VEVENT",
             f"UID:cheerpsy-appt-{a.id}@cheerpsy",
-            f"DTSTAMP:{_ics_dt(datetime.now(timezone.utc))}",
+            f"DTSTAMP:{_ics_dt(now)}",
             f"DTSTART:{_ics_dt(a.time_range.lower)}",
             f"DTEND:{_ics_dt(a.time_range.upper)}",
-            f"SUMMARY:{_ics_escape(case_name)}",
-            f"LOCATION:{_ics_escape(room)}",
+            f"SUMMARY:{_ics_escape(_ics_summary(a, room))}",
+            "DESCRIPTION:Cheerpsy",
+            f"LOCATION:{_ics_escape(location)}",
+            f"STATUS:{'CANCELLED' if a.status in ('cancelled', 'no_show') else 'CONFIRMED'}",
             "END:VEVENT",
         ]
     lines.append("END:VCALENDAR")
