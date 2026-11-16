@@ -55,7 +55,9 @@ def test_room_view_masks_other_therapist(client, auth, world):
 
     other = rows[world["appt_b"].id]
     assert other["occupied_only"] is True
-    assert other["therapist_name"] == "乙心理師"
+    # 診所尚未決定可否顯示心理師姓名：只顯示「已佔用」，姓名與 id 都不給
+    assert other["therapist_name"] is None and other["therapist_id"] == 0
+    assert "乙心理師" not in r.text
     assert other["case_id"] == 0
     assert other["case_name"] is None and other["couple_case_id"] is None
     assert other["amount"] == 0 and other["appointment_number"] == ""

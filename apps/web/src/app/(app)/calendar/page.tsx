@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
 import {
@@ -45,7 +46,9 @@ const BADGE: Record<string, { label: string; cls: string }> = {
 
 export default function CalendarPage() {
   const { data: session } = useSession();
+  const router = useRouter();
   const token = (session?.user as any)?.accessToken;
+  const canBook = (session?.user as any)?.role !== "therapist";
   const [day, setDay] = useState(todayISO());
   const [rooms, setRooms] = useState<Room[]>([]);
   const [appts, setAppts] = useState<Appt[]>([]);
@@ -78,7 +81,10 @@ export default function CalendarPage() {
     load();
   }, [load]);
 
-  const inRoom = useMemo(() => appts.filter((a) => a.room_id), [appts]);
+  // 只有 booked／executed 佔用診間；取消與未到已釋出，格子可再約
+  const occupying = (a: Appt) => a.status === "booked" || a.status === "executed";
+  const inRoom = useMemo(() => appts.filter((a) => a.room_id && occupying(a)), [appts]);
+  const released = useMemo(() => appts.filter((a) => a.room_id && !occupying(a)), [appts]);
   const offsite = useMemo(() => appts.filter((a) => !a.room_id), [appts]);
   const labels = slotLabels();
 
@@ -179,8 +185,20 @@ export default function CalendarPage() {
                         (x.end_time ? minutesOfDay(x.end_time) : slotStart + SLOT_MIN) > slotStart
                     );
                     if (!a) {
+                      const hh = `${String(Math.floor(slotStart / 60)).padStart(2, "0")}:${String(slotStart % 60).padStart(2, "0")}`;
                       return (
-                        <td key={room.id} className="h-8 border-b border-r border-gray-100 last:border-r-0" />
+                        <td
+                          key={room.id}
+                          title={canBook ? `預約 ${room.room_code} ${hh}` : undefined}
+                          onClick={
+                            canBook
+                              ? () => router.push(`/booking?room=${room.id}&date=${day}&start=${hh}`)
+                              : undefined
+                          }
+                          className={`h-8 border-b border-r border-gray-100 last:border-r-0 ${
+                            canBook ? "cursor-pointer hover:bg-primary-50" : ""
+                          }`}
+                        />
                       );
                     }
                     const isStart = a.start_time && minutesOfDay(a.start_time) === slotStart;
@@ -211,6 +229,20 @@ export default function CalendarPage() {
           </tbody>
         </table>
       </div>
+
+      {released.length > 0 && (
+        <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4">
+          <h2 className="mb-2 text-sm font-medium">已釋出的場次（取消／未到）</h2>
+          <ul className="space-y-1 text-xs text-gray-500">
+            {released.map((a) => (
+              <li key={a.id}>
+                {hhmm(a.start_time)}–{hhmm(a.end_time)} · {rooms.find((r) => r.id === a.room_id)?.room_code} · {a.case_name} ·{" "}
+                {a.status === "cancelled" ? "已取消" : "未到"}，該時段可再約
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {offsite.length > 0 && (
         <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4">
@@ -326,7 +358,7 @@ function AbsentModal({
       <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
         <h2 className="mb-1 text-lg font-bold">未到原因 — {appt.case_name}</h2>
         <p className="mb-4 text-sm text-gray-500">
-          只記錄未到類型，不產生任何費用。
+          只記錄未到類型，不產生任何費用；該診間時段會立即釋出，可再預約。
         </p>
         {err && <div className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>}
         <div className="space-y-2">

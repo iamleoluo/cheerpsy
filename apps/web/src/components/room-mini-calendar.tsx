@@ -53,9 +53,10 @@ export default function RoomMiniCalendar({
           token,
         );
         setEvents(
-          data.map((a) => ({
+          // 取消與未到的場次已釋出診間，不畫在佔用週檢視裡
+          data.filter((a) => a.status === "booked" || a.status === "executed").map((a) => ({
             id: String(a.id),
-            title: `${a.occupied_only ? "已佔用" : (a.case_name ?? "未知")} — ${a.therapist_name ?? ""}`,
+            title: a.occupied_only ? "已佔用" : `${a.case_name ?? "未知"} — ${a.therapist_name ?? ""}`,
             start: a.start_time ?? undefined,
             end: a.end_time ?? undefined,
             backgroundColor: statusColors[a.status] ?? "#6b7280",
@@ -147,9 +148,11 @@ export default function RoomMiniCalendar({
               <div className="truncate font-medium">
                 {props.occupied_only ? "已佔用" : (props.case_name ?? "未知")}
               </div>
-              <div className="truncate opacity-80">
-                {props.therapist_name ?? ""}
-              </div>
+              {!props.occupied_only && (
+                <div className="truncate opacity-80">
+                  {props.therapist_name ?? ""}
+                </div>
+              )}
             </div>
           );
         }}

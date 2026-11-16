@@ -19,6 +19,7 @@ from app.models.referral import (
 )
 from app.models.user import User
 from app.services.audit import write_audit
+from app.services.slot_check import assert_room_free, flush_or_409
 
 router = APIRouter(prefix="/referrals", tags=["referrals"])
 
@@ -771,19 +772,8 @@ def convert_to_appointment(
     start = _dt.fromisoformat(f"{slot.slot_date}T{slot.start_time}:00+08:00")
     end = _dt.fromisoformat(f"{slot.slot_date}T{slot.end_time}:00+08:00")
 
-    # 診間衝突檢查（與預約作業同一套規則：僅已預約/已執行佔用空間）
-    if body.room_id:
-        clash = (
-            db.query(Appointment)
-            .filter(
-                Appointment.room_id == body.room_id,
-                Appointment.status.in_(["booked", "executed"]),
-                Appointment.time_range.op("&&")(func.tstzrange(start, end)),
-            )
-            .first()
-        )
-        if clash:
-            raise HTTPException(status_code=409, detail="該診間此時段已被使用")
+    # 診間衝突檢查（與預約作業同一支：booked／executed 與活動佔用空間）
+    assert_room_free(db, body.room_id, start, end)
 
     seq = (db.query(func.count(Appointment.id)).scalar() or 0) + 1
     appt = Appointment(
@@ -800,7 +790,7 @@ def convert_to_appointment(
     )
     # 初診時個案尚未建立（病歷號要等初診有到才產生），case_id 留空、綁 referral_id
     db.add(appt)
-    db.flush()
+    flush_or_409(db, body.room_id, start, end)
 
     for s in target.slots:
         s.is_selected = 1 if s.id == slot.id else 0

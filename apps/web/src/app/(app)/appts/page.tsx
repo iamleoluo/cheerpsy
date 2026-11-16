@@ -30,6 +30,8 @@ const STATUS: Record<string, { label: string; cls: string }> = {
 export default function ApptsPage() {
   const { data: session } = useSession();
   const token = (session?.user as any)?.accessToken;
+  const role = (session?.user as any)?.role;
+  const canAdjust = role === "admin" || role === "staff";
   const [start, setStart] = useState(todayISO());
   const [end, setEnd] = useState(shiftDate(todayISO(), 3));
   const [rows, setRows] = useState<Appt[]>([]);
@@ -39,6 +41,7 @@ export default function ApptsPage() {
   const [fStatus, setFStatus] = useState("");
   const [fType, setFType] = useState("");
   const [absentFor, setAbsentFor] = useState<Appt | null>(null);
+  const [adjustFor, setAdjustFor] = useState<Appt | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -156,11 +159,12 @@ export default function ApptsPage() {
               <th className="px-3 py-3">診間</th>
               <th className="px-3 py-3">狀態</th>
               <th className="px-3 py-3">行政確認</th>
+              {canAdjust && <th className="px-3 py-3">調整</th>}
             </tr>
           </thead>
           <tbody>
             {!loading && filtered.length === 0 && (
-              <tr><td colSpan={8} className="px-4 py-10 text-center text-gray-400">此區間沒有符合的預約</td></tr>
+              <tr><td colSpan={canAdjust ? 9 : 8} className="px-4 py-10 text-center text-gray-400">此區間沒有符合的預約</td></tr>
             )}
             {filtered.map((r) => {
               const st = STATUS[r.status] ?? { label: r.status, cls: "bg-gray-100" };
@@ -195,12 +199,35 @@ export default function ApptsPage() {
                       </span>
                     )}
                   </td>
+                  {canAdjust && (
+                    <td className="px-3 py-2.5">
+                      {r.status === "booked" ? (
+                        <button onClick={() => setAdjustFor(r)} className="text-xs text-primary-600 hover:underline">
+                          改期／改房
+                        </button>
+                      ) : (
+                        <span className="text-xs text-gray-300">—</span>
+                      )}
+                    </td>
+                  )}
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
+
+      {adjustFor && (
+        <AdjustModal
+          token={token}
+          appt={adjustFor}
+          onClose={() => setAdjustFor(null)}
+          onDone={() => {
+            setAdjustFor(null);
+            load();
+          }}
+        />
+      )}
 
       {absentFor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
@@ -234,6 +261,117 @@ export default function ApptsPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+interface FreeRoom {
+  id: number;
+  room_code: string;
+  room_type: string;
+}
+
+/** 行政調整已預約場次的日期、時段與診間。診間只列「該時段空著」的（伺服器算，排除自己）。 */
+function AdjustModal({
+  token,
+  appt,
+  onClose,
+  onDone,
+}: {
+  token: string;
+  appt: Appt;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const inPerson = appt.session_type === "in_person";
+  const [date, setDate] = useState(appt.start_time?.slice(0, 10) ?? "");
+  const [st, setSt] = useState(hhmm(appt.start_time));
+  const [et, setEt] = useState(hhmm(appt.end_time));
+  const [roomId, setRoomId] = useState(appt.room_id ? String(appt.room_id) : "");
+  const [free, setFree] = useState<FreeRoom[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!inPerson || !date || !st || !et || st >= et) {
+      setFree(null);
+      return;
+    }
+    let stale = false;
+    const q = `start=${encodeURIComponent(`${date}T${st}:00+08:00`)}&end=${encodeURIComponent(`${date}T${et}:00+08:00`)}&exclude_appointment_id=${appt.id}`;
+    clientFetch(`/rooms/availability?${q}`, token)
+      .then((r: FreeRoom[]) => {
+        if (stale) return;
+        setFree(r);
+        // 目前選的診間不在空房清單裡就清掉，避免送出一定衝突的組合
+        setRoomId((cur) => (cur && !r.some((x) => String(x.id) === cur) ? "" : cur));
+      })
+      .catch(() => { if (!stale) setFree(null); });
+    return () => { stale = true; };
+  }, [token, inPerson, date, st, et, appt.id]);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setErr(null);
+    try {
+      const body: Record<string, unknown> = {
+        start_time: `${date}T${st}:00+08:00`,
+        end_time: `${date}T${et}:00+08:00`,
+      };
+      if (inPerson) body.room_id = Number(roomId);
+      await clientFetch(`/appointments/${appt.id}`, token, { method: "PUT", body: JSON.stringify(body) });
+      onDone();
+    } catch (e: any) {
+      setErr(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+      <form onSubmit={save} className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+        <h2 className="mb-1 text-lg font-bold">改期／改房 — {appt.case_name}</h2>
+        <p className="mb-4 text-xs text-gray-500">
+          原本：{appt.start_time?.slice(0, 10)} {hhmm(appt.start_time)}–{hhmm(appt.end_time)} · {appt.room_name ?? "—"}
+        </p>
+        {err && <div className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>}
+        <div className="grid grid-cols-3 gap-2 text-sm">
+          <label className="col-span-3 block">
+            <span className="mb-1 block text-xs text-gray-500">日期</span>
+            <input required type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-gray-300 px-2 py-1.5" />
+          </label>
+          <label className="col-span-1 block">
+            <span className="mb-1 block text-xs text-gray-500">開始</span>
+            <input required type="time" step={900} value={st} onChange={(e) => setSt(e.target.value)} className="w-full rounded-lg border border-gray-300 px-2 py-1.5" />
+          </label>
+          <label className="col-span-1 block">
+            <span className="mb-1 block text-xs text-gray-500">結束</span>
+            <input required type="time" step={900} value={et} onChange={(e) => setEt(e.target.value)} className="w-full rounded-lg border border-gray-300 px-2 py-1.5" />
+          </label>
+          {inPerson && (
+            <label className="col-span-3 block">
+              <span className="mb-1 block text-xs text-gray-500">診間（只列此時段空著的）</span>
+              <select required value={roomId} onChange={(e) => setRoomId(e.target.value)} className="w-full rounded-lg border border-gray-300 px-2 py-1.5">
+                <option value="">請選擇</option>
+                {(free ?? []).map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.room_code}{r.room_type === "play" ? "（遊戲室）" : ""}
+                  </option>
+                ))}
+              </select>
+              {free && free.length === 0 && <span className="mt-1 block text-xs text-red-600">此時段沒有空房</span>}
+            </label>
+          )}
+        </div>
+        <div className="mt-6 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm">取消</button>
+          <button type="submit" disabled={saving || (inPerson && !roomId)} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+            {saving ? "儲存中..." : "儲存"}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
