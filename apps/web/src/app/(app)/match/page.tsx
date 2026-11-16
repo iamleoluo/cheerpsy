@@ -26,6 +26,7 @@ interface Referral {
   case_id: number | null;
   case_number: string | null;
   created_at: string;
+  intake_appointment_id: number | null;
   dual_relationship_warning: boolean;
 }
 
@@ -107,7 +108,7 @@ export default function MatchPage() {
   const [expanded, setExpanded] = useState<number | null>(null);
   const [dispatches, setDispatches] = useState<Record<number, Dispatch[]>>({});
   const [modal, setModal] = useState<
-    | { kind: "dispatch" | "cancel" | "intake"; referral: Referral }
+    | { kind: "dispatch" | "cancel" | "intake" | "convert"; referral: Referral }
     | { kind: "edit"; referral: Referral | null }
     | null
   >(null);
@@ -325,6 +326,14 @@ export default function MatchPage() {
                             </button>
                           </>
                         )}
+                        {r.status === "converted" && !r.intake_appointment_id && (
+                          <button
+                            onClick={() => setModal({ kind: "convert", referral: r })}
+                            className="font-medium text-primary-600 hover:underline"
+                          >
+                            轉初診
+                          </button>
+                        )}
                         {r.status === "converted" && (
                           <button
                             onClick={() => setModal({ kind: "intake", referral: r })}
@@ -427,6 +436,14 @@ export default function MatchPage() {
       )}
       {modal?.kind === "cancel" && (
         <CancelModal
+          token={token}
+          referral={modal.referral}
+          onClose={() => setModal(null)}
+          onSaved={refresh}
+        />
+      )}
+      {modal?.kind === "convert" && (
+        <ConvertModal
           token={token}
           referral={modal.referral}
           onClose={() => setModal(null)}
@@ -940,6 +957,205 @@ function IntakeModal({
             className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
             {saving ? "處理中..." : "確認初診有到"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+interface FreeRoom {
+  id: number;
+  room_code: string;
+  room_type: string;
+}
+
+/** 轉初診：先列出「時段 × 診間」可選清單（已排除該心理師的預約與不接案），選了才能送出。 */
+function ConvertModal({
+  token,
+  referral,
+  onClose,
+  onSaved,
+}: {
+  token: string;
+  referral: Referral;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [targets, setTargets] = useState<Target[] | null>(null);
+  const [targetId, setTargetId] = useState(0);
+  const [date, setDate] = useState("");
+  const [sessionType, setSessionType] = useState("in_person");
+  const [amount, setAmount] = useState("");
+  const [free, setFree] = useState<Record<number, FreeRoom[]> | null>(null);
+  const [pick, setPick] = useState<{ slotId: number; roomId: number | null } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    clientFetch(`/referrals/${referral.id}/dispatches`, token)
+      .then((ds: Dispatch[]) => {
+        const acc = ds.flatMap((d) => d.targets).filter((t) => t.status === "accepted" && t.slots.length > 0);
+        setTargets(acc);
+        if (acc[0]) {
+          setTargetId(acc[0].id);
+          setDate(acc[0].slots[0].slot_date);
+        }
+      })
+      .catch((e) => setError(e.message));
+  }, [token, referral.id]);
+
+  const target = targets?.find((t) => t.id === targetId);
+  const dates = Array.from(new Set(target?.slots.map((s) => s.slot_date) ?? [])).sort();
+  const daySlots = (target?.slots ?? []).filter((s) => s.slot_date === date);
+
+  const loadFree = useCallback(async () => {
+    if (!target) return;
+    setFree(null);
+    setPick(null);
+    try {
+      const entries = await Promise.all(
+        daySlots.map(async (s) => {
+          const q = new URLSearchParams({
+            start: `${s.slot_date}T${s.start_time}:00+08:00`,
+            end: `${s.slot_date}T${s.end_time}:00+08:00`,
+            therapist_id: String(target.therapist_id),
+          });
+          const rooms: FreeRoom[] = await clientFetch(`/rooms/availability?${q}`, token);
+          return [s.id, rooms] as const;
+        })
+      );
+      setFree(Object.fromEntries(entries));
+    } catch (e: any) {
+      setError(e.message);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, target, date]);
+
+  useEffect(() => {
+    loadFree();
+  }, [loadFree]);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!pick) return;
+    if (referral.funding_source === "self_pay" && !(Number(amount) > 0)) {
+      setError("自費需填金額（大於 0）");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await clientFetch(`/referrals/${referral.id}/convert`, token, {
+        method: "POST",
+        body: JSON.stringify({
+          slot_id: pick.slotId,
+          room_id: sessionType === "in_person" ? pick.roomId : null,
+          session_type: sessionType,
+          amount: amount ? Number(amount) : null,
+        }),
+      });
+      onSaved();
+      onClose();
+    } catch (err: any) {
+      // 並行情況：該時段剛被別人訂走。顯示後端訊息並重新載入可選清單
+      setError(err.message);
+      await loadFree();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const online = sessionType !== "in_person";
+
+  return (
+    <Modal title={`轉初診：${referral.name}`}>
+      <form onSubmit={submit} className="space-y-3 text-sm">
+        {!targets ? (
+          <p className="text-gray-400">載入中...</p>
+        ) : targets.length === 0 ? (
+          <p className="text-gray-500">尚無已承接且提供時段的心理師。</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <label>
+                <span className="mb-1 block text-gray-600">心理師</span>
+                <select
+                  value={targetId}
+                  onChange={(e) => {
+                    const t = targets.find((x) => x.id === Number(e.target.value))!;
+                    setTargetId(t.id);
+                    setDate(t.slots[0].slot_date);
+                  }}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                >
+                  {targets.map((t) => (
+                    <option key={t.id} value={t.id}>{t.therapist_name}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="mb-1 block text-gray-600">日期</span>
+                <select value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2">
+                  {dates.map((d) => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </label>
+              <label>
+                <span className="mb-1 block text-gray-600">類型</span>
+                <select value={sessionType} onChange={(e) => { setSessionType(e.target.value); setPick(null); }} className="w-full rounded-lg border border-gray-300 px-3 py-2">
+                  <option value="in_person">現場</option>
+                  <option value="online">線上</option>
+                </select>
+              </label>
+              <label>
+                <span className="mb-1 block text-gray-600">
+                  金額{referral.funding_source === "self_pay" ? " *" : "（機構案由方案帶出）"}
+                </span>
+                <input type="number" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 tabular-nums" />
+              </label>
+            </div>
+
+            <div>
+              <div className="mb-1 text-gray-600">可約時段{online ? "" : " × 診間"}（請選一個）</div>
+              {!free ? (
+                <p className="text-gray-400">查詢中...</p>
+              ) : (
+                <div className="space-y-2">
+                  {daySlots.map((s) => {
+                    const rooms = free[s.id] ?? [];
+                    return (
+                      <div key={s.id} className="rounded-lg border border-gray-200 px-3 py-2">
+                        <div className="mb-1 text-xs font-medium text-gray-700">{s.start_time}–{s.end_time}</div>
+                        {rooms.length === 0 ? (
+                          <div className="text-xs text-gray-400">此時段不可約</div>
+                        ) : online ? (
+                          <label className="flex items-center gap-2 text-xs">
+                            <input type="radio" name="slot" checked={pick?.slotId === s.id} onChange={() => setPick({ slotId: s.id, roomId: null })} />
+                            選此時段（視訊不需診間）
+                          </label>
+                        ) : (
+                          <div className="flex flex-wrap gap-3">
+                            {rooms.map((r) => (
+                              <label key={r.id} className="flex items-center gap-1 text-xs">
+                                <input type="radio" name="slot" checked={pick?.slotId === s.id && pick.roomId === r.id} onChange={() => setPick({ slotId: s.id, roomId: r.id })} />
+                                {r.room_code}{r.room_type === "play" ? "（遊戲室）" : ""}
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+        {error && <div className="rounded-lg bg-red-50 px-3 py-2 text-red-700">{error}</div>}
+        <div className="flex justify-end gap-2 pt-1">
+          <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2">返回</button>
+          <button type="submit" disabled={saving || !pick} className="rounded-lg bg-primary-600 px-4 py-2 font-medium text-white disabled:opacity-50">
+            {saving ? "建立中..." : "確認轉初診"}
           </button>
         </div>
       </form>
