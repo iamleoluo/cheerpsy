@@ -975,3 +975,30 @@ def test_editing_amount_in_the_form_resyncs_the_event_title(client, auth, w, fak
     client.put(f"/appointments/{a['id']}", headers=auth(w["staff"]), json={"amount": 0})
     run(fake)
     assert "$" not in ev(fake, a["id"])["summary"]  # 沒有金額就不顯示
+
+
+def test_therapist_editing_own_amount_resyncs_only_to_own_calendar(client, auth, w, fake, db, make_case):
+    """心理師自己改金額 → 重新同步，且只推到該心理師的日曆；別人的日曆完全不動。"""
+    case2 = make_case(w["t2"], "李小華")
+    s, e = _slot(3, 10)
+    mine = client.post("/appointments", headers=auth(w["t"]), json={
+        "case_id": w["case"].id, "room_id": w["room"].id, "session_type": "in_person",
+        "start_time": s.isoformat(), "end_time": e.isoformat(), "amount": 1200})
+    assert mine.status_code == 201 and mine.json()["amount"] == 1200
+    s2, e2 = _slot(3, 14)
+    theirs = client.post("/appointments", headers=auth(w["t2"]), json={
+        "case_id": case2.id, "room_id": w["room"].id, "session_type": "in_person",
+        "start_time": s2.isoformat(), "end_time": e2.isoformat(), "amount": 900}).json()
+    run(fake)
+    mid, tid = mine.json()["id"], theirs["id"]
+    assert ev(fake, mid, CAL)["summary"].endswith("$1,200") and ev(fake, mid, CAL2) is None
+    assert ev(fake, tid, CAL2)["summary"].endswith("$900") and ev(fake, tid, CAL) is None
+    fake.clear_calls()
+    r = client.put(f"/appointments/{mid}", headers=auth(w["t"]), json={"amount": 1600})
+    assert r.status_code == 200 and r.json()["amount"] == 1600
+    # 甲想改乙的金額：被擋，乙的事件沒有任何變動
+    assert client.put(f"/appointments/{tid}", headers=auth(w["t"]), json={"amount": 1}).status_code == 404
+    run(fake)
+    calls = fake.event_calls()
+    assert [(c[0], c[1]) for c in calls] == [("update_event", CAL)]
+    assert ev(fake, mid, CAL)["summary"].endswith("$1,600") and ev(fake, tid, CAL2)["summary"].endswith("$900")

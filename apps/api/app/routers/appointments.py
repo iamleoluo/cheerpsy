@@ -74,8 +74,9 @@ def _to_response(
         elif a.case and a.case.case_type == "couple":
             couple_name = a.case.name
     # 回應不帶分潤、額度、失約費、方案資料（佔位空值，上線 B 才移除）。
-    # 金額只是一個數字：admin／staff 看得到，其他角色（治療師、會計）一律 0。
-    can_see_amount = viewer is not None and viewer.role in ("admin", "staff")
+    # 金額只是預約上的一個數字。隔離單位是「心理師」不是欄位：行政看全部，心理師看自己的（能走到這裡的
+    # 一定是自己的預約，別人的在查詢就被擋掉）。會計維持現狀（記帳已移除，一律 0）。
+    can_see_amount = viewer is not None and viewer.role in ("admin", "staff", "therapist")
     return AppointmentResponse(
         amount=float(a.amount or 0) if can_see_amount else 0,
         id=a.id,
@@ -109,11 +110,25 @@ def _to_response(
     )
 
 
-def _amount_for(user: User, amount: float | None) -> Decimal:
-    """新增預約的金額：只有 admin／staff 送的會存；其他角色（治療師）送的一律忽略；沒送就是 0。"""
-    if user.role in ("admin", "staff") and amount is not None:
-        return Decimal(str(amount))
-    return Decimal("0")
+def _amount_for(amount: float | None) -> Decimal:
+    """新增預約的金額（選填，沒送就是 0）。誰能建立預約就能填：心理師填自己的、行政填任何人的。"""
+    return Decimal(str(amount)) if amount is not None else Decimal("0")
+
+
+def _appointment_or_404(db: Session, user: User, appointment_id: int) -> Appointment:
+    """取預約。心理師只能碰自己的：不存在與「是別人的」回完全相同的 404，不讓人用 id 猜出存在與否。"""
+    a = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if a is None or (user.role == "therapist" and a.therapist_id != user.id):
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    return a
+
+
+def _case_or_404(db: Session, user: User, case_id: int) -> Case:
+    """取個案。心理師只能用自己的個案；別人的與不存在一樣回 404。"""
+    case = db.query(Case).filter(Case.id == case_id).first()
+    if case is None or (user.role == "therapist" and case.therapist_id != user.id):
+        raise HTTPException(status_code=404, detail="Case not found")
+    return case
 
 
 def _validate_couple(db: Session, couple_case_id: int | None, payer_case_id: int) -> Case | None:
@@ -182,11 +197,7 @@ def get_appointment(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    a = db.query(Appointment).filter(Appointment.id == appointment_id).first()
-    if not a:
-        raise HTTPException(status_code=404, detail="Appointment not found")
-    if user.role == "therapist" and a.therapist_id != user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
+    a = _appointment_or_404(db, user, appointment_id)
     therapist = db.query(User).filter(User.id == a.therapist_id).first()
     return _to_response(a, therapist, db, viewer=user)
 
@@ -201,9 +212,9 @@ def create_appointment(
     if user.role == "accountant":
         raise HTTPException(status_code=403, detail="Accountant cannot create appointments")
 
-    case = db.query(Case).filter(Case.id == body.case_id).first()
-    if not case:
-        raise HTTPException(status_code=404, detail="Case not found")
+    case = _case_or_404(db, user, body.case_id)
+    if body.couple_case_id:
+        _case_or_404(db, user, body.couple_case_id)  # 別人的伴侶案與不存在一樣回 404
 
     # 合療：付款方(case_id)可為伴侶案本身或其成員；心理師一律取伴侶案的共同心理師
     couple = _validate_couple(db, body.couple_case_id, body.case_id)
@@ -211,7 +222,7 @@ def create_appointment(
 
     # therapist can only create for their own cases
     if user.role == "therapist" and therapist_case.therapist_id != user.id:
-        raise HTTPException(status_code=403, detail="只能為自己的個案建立預約")
+        raise HTTPException(status_code=404, detail="Case not found")
 
     therapist = (
         user if user.role == "therapist"
@@ -238,7 +249,7 @@ def create_appointment(
         room_id=body.room_id,
         session_type=body.session_type,
         time_range=time_range,
-        amount=_amount_for(user, body.amount),
+        amount=_amount_for(body.amount),
         visit_seq=visit_seq,
         couple_case_id=body.couple_case_id,
         status="booked",
@@ -260,15 +271,15 @@ def create_batch(
     if user.role == "accountant":
         raise HTTPException(status_code=403, detail="Accountant cannot create appointments")
 
-    case = db.query(Case).filter(Case.id == body.case_id).first()
-    if not case:
-        raise HTTPException(status_code=404, detail="Case not found")
+    case = _case_or_404(db, user, body.case_id)
+    if body.couple_case_id:
+        _case_or_404(db, user, body.couple_case_id)  # 別人的伴侶案與不存在一樣回 404
 
     couple = _validate_couple(db, body.couple_case_id, body.case_id)
     therapist_case = couple or case
 
     if user.role == "therapist" and therapist_case.therapist_id != user.id:
-        raise HTTPException(status_code=403, detail="只能為自己的個案建立預約")
+        raise HTTPException(status_code=404, detail="Case not found")
 
     therapist = (
         user if user.role == "therapist"
@@ -296,7 +307,7 @@ def create_batch(
             room_id=body.room_id,
             session_type=body.session_type,
             time_range=time_range,
-            amount=_amount_for(user, body.amount),
+            amount=_amount_for(body.amount),
             visit_seq=next_vs + i,
             couple_case_id=body.couple_case_id,
             status="booked",
@@ -318,12 +329,10 @@ def create_batch(
 def update_appointment(
     appointment_id: int,
     body: AppointmentUpdate,
-    user: User = Depends(RequireRole(["admin", "staff"])),
+    user: User = Depends(RequireRole(["admin", "staff", "therapist"])),
     db: Session = Depends(get_db),
 ):
-    a = db.query(Appointment).filter(Appointment.id == appointment_id).first()
-    if not a:
-        raise HTTPException(status_code=404, detail="Appointment not found")
+    a = _appointment_or_404(db, user, appointment_id)  # 心理師只能改自己的；負責心理師不能經由這裡改派
     if a.status != "booked":
         raise HTTPException(status_code=400, detail=f"只能編輯 booked 狀態的預約，目前狀態：{a.status}")
 
@@ -370,11 +379,7 @@ def cancel_appointment(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    a = db.query(Appointment).filter(Appointment.id == appointment_id).first()
-    if not a:
-        raise HTTPException(status_code=404, detail="Appointment not found")
-    if user.role == "therapist" and a.therapist_id != user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
+    a = _appointment_or_404(db, user, appointment_id)
     if a.status != "booked":
         raise HTTPException(status_code=400, detail=f"Cannot cancel appointment with status '{a.status}'")
 
@@ -437,7 +442,10 @@ def batch_delete_appointments(
 ):
     if not body.ids:
         raise HTTPException(status_code=400, detail="未選擇任何預約")
-    appts = db.query(Appointment).filter(Appointment.id.in_(body.ids)).all()
+    q = db.query(Appointment).filter(Appointment.id.in_(body.ids))
+    if user.role == "therapist":
+        q = q.filter(Appointment.therapist_id == user.id)  # 別人的 id 視同不存在
+    appts = q.all()
     found_ids = {a.id for a in appts}
     missing = [i for i in body.ids if i not in found_ids]
     if missing:
@@ -462,7 +470,10 @@ def delete_by_batch_id(
     user: User = Depends(RequireRole(["admin", "staff", "therapist"])),
     db: Session = Depends(get_db),
 ):
-    appts = db.query(Appointment).filter(Appointment.batch_id == batch_id).all()
+    q = db.query(Appointment).filter(Appointment.batch_id == batch_id)
+    if user.role == "therapist":
+        q = q.filter(Appointment.therapist_id == user.id)  # 只看得到自己的；別人的批次視同不存在
+    appts = q.all()
     if not appts:
         raise HTTPException(status_code=404, detail="找不到此批次預約")
     for a in appts:
@@ -505,13 +516,11 @@ NO_SHOW_TYPES = ("advance_notice", "late_cancel", "no_notice")
 @router.put("/{appointment_id}/arrive", response_model=AppointmentResponse)
 def mark_arrived(
     appointment_id: int,
-    user: User = Depends(RequireRole(["admin", "staff", "accountant"])),
+    user: User = Depends(RequireRole(["admin", "staff", "accountant", "therapist"])),
     db: Session = Depends(get_db),
 ):
-    """初診／一般預約報到「已到」：只轉為已執行，不產生帳務紀錄。"""
-    a = db.query(Appointment).filter(Appointment.id == appointment_id).first()
-    if not a:
-        raise HTTPException(status_code=404, detail="Appointment not found")
+    """初診／一般預約報到「已到」：只轉為已執行，不產生帳務紀錄。心理師只能處理自己的預約。"""
+    a = _appointment_or_404(db, user, appointment_id)
     if a.checkin_status == "arrived":
         raise HTTPException(status_code=400, detail="此預約已報到")
     if a.status == "cancelled":
@@ -534,13 +543,11 @@ def mark_arrived(
 def mark_absent(
     appointment_id: int,
     body: CheckInBody,
-    user: User = Depends(RequireRole(["admin", "staff", "accountant"])),
+    user: User = Depends(RequireRole(["admin", "staff", "accountant", "therapist"])),
     db: Session = Depends(get_db),
 ):
-    """報到「未到」：只記錄未到類型，不產生帳務紀錄、不計失約費。"""
-    a = db.query(Appointment).filter(Appointment.id == appointment_id).first()
-    if not a:
-        raise HTTPException(status_code=404, detail="Appointment not found")
+    """報到「未到」：只記錄未到類型，不產生帳務紀錄、不計失約費。心理師只能處理自己的預約。"""
+    a = _appointment_or_404(db, user, appointment_id)
     if a.checkin_status == "arrived":
         raise HTTPException(status_code=400, detail="已報到的預約不可改為未到，請洽管理員")
     if body.no_show_type not in NO_SHOW_TYPES:

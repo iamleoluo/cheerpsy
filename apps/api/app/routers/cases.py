@@ -122,7 +122,7 @@ def get_case(
     if not c:
         raise HTTPException(status_code=404, detail="Case not found")
     if user.role == "therapist" and c.therapist_id != user.id:
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise HTTPException(status_code=404, detail="Case not found")  # 與不存在相同，不讓人猜 id
     return _to_response(c, user)
 
 
@@ -219,14 +219,19 @@ def create_couple_case(
 def update_case(
     case_id: int,
     body: CaseUpdate,
-    user: User = Depends(RequireRole(["admin", "accountant", "staff"])),
+    user: User = Depends(RequireRole(["admin", "accountant", "staff", "therapist"])),
     db: Session = Depends(get_db),
 ):
     c = db.query(Case).filter(Case.id == case_id).first()
-    if not c:
+    if not c or (user.role == "therapist" and c.therapist_id != user.id):
         raise HTTPException(status_code=404, detail="Case not found")
 
     update_data = body.model_dump(exclude_unset=True)
+    if user.role == "therapist":
+        # 心理師能改自己個案的資料，但不能把個案改派給別人，也不能自行改個案狀態（轉正式／結案走行政流程）
+        if update_data.get("therapist_id") not in (None, user.id) or "status" in update_data:
+            raise HTTPException(status_code=403, detail="不能改派個案或變更個案狀態，請洽行政人員")
+        update_data.pop("therapist_id", None)
 
     if "national_id" in update_data:
         nid = update_data.pop("national_id")

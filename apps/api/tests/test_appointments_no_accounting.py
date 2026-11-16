@@ -60,19 +60,19 @@ def test_create_ignores_legacy_money_fields_but_stores_amount_for_staff(client, 
     assert r.json()["therapist_share"] is None and r.json()["quota_id"] is None  # 沒有任何額度、分潤
 
 
-def test_amount_only_stored_for_admin_or_staff_and_validated(client, auth, db, w):
+def test_amount_stored_for_whoever_creates_and_validated(client, auth, db, w):
     s, e = _slot()
-    # 治療師自己建預約送的 amount 一律忽略
+    # 隔離的單位是心理師不是欄位：心理師建立自己的預約，金額照存、回應回真實值
     r = _create(client, auth, w["t"], w["case"], w["room"], s, e, amount=999)
-    assert r.status_code == 201 and r.json()["amount"] == 0
-    assert float(db.execute(text("SELECT amount FROM appointments WHERE id=:i"), {"i": r.json()["id"]}).scalar()) == 0
+    assert r.status_code == 201 and r.json()["amount"] == 999
+    assert float(db.execute(text("SELECT amount FROM appointments WHERE id=:i"), {"i": r.json()["id"]}).scalar()) == 999
     s2, e2 = _slot(5)
     assert _create(client, auth, w["admin"], w["case"], w["room"], s2, e2, amount=1800.5).json()["amount"] == 1800.5
     for bad in (-1, 10_000_000):
         assert _create(client, auth, w["staff"], w["case"], w["room"], *_slot(6), amount=bad).status_code == 422
 
 
-def test_edit_amount_staff_only_visible_only_to_admin_staff_and_audited(client, auth, db, w):
+def test_edit_amount_visible_to_admin_staff_and_owner_and_audited(client, auth, db, w):
     s, e = _slot()
     a = _create(client, auth, w["staff"], w["case"], w["room"], s, e).json()
     r = client.put(f"/appointments/{a['id']}", headers=auth(w["staff"]), json={"amount": 2200})
@@ -82,10 +82,10 @@ def test_edit_amount_staff_only_visible_only_to_admin_staff_and_audited(client, 
     assert client.put(f"/appointments/{a['id']}", headers=auth(w["staff"]), json={"amount": -5}).status_code == 422
     client.put(f"/appointments/{a['id']}", headers=auth(w["admin"]), json={"amount": 3000})
     assert client.get(f"/appointments/{a['id']}", headers=auth(w["admin"])).json()["amount"] == 3000
-    assert client.get(f"/appointments/{a['id']}", headers=auth(w["t"])).json()["amount"] == 0  # 治療師看不到金額
-    assert client.get("/appointments", headers=auth(w["t"])).json()[0]["amount"] == 0
+    assert client.get(f"/appointments/{a['id']}", headers=auth(w["t"])).json()["amount"] == 3000  # 自己的預約：真實金額
+    assert client.get("/appointments", headers=auth(w["t"])).json()[0]["amount"] == 3000
     assert client.get("/appointments", headers=auth(w["staff"])).json()[0]["amount"] == 3000
-    assert client.put(f"/appointments/{a['id']}", headers=auth(w["t"]), json={"amount": 1}).status_code == 403  # 治療師不能編輯
+    assert client.put(f"/appointments/{a['id']}", headers=auth(w["t"]), json={"amount": 1}).json()["amount"] == 1  # 自己的可改
     n = db.execute(text("SELECT count(*) FROM audit_log WHERE table_name='appointments' AND record_id=:i AND operation='UPDATE'"),
                    {"i": a["id"]}).scalar()
     assert n >= 3  # 金額改動有稽核
@@ -229,7 +229,7 @@ def test_therapist_can_cancel_own_but_not_others(client, auth, make_user, w):
     other = make_user("therapist")
     s, e = _slot()
     a = _create(client, auth, w["staff"], w["case"], w["room"], s, e).json()
-    assert client.put(f"/appointments/{a['id']}/cancel", headers=auth(other)).status_code == 403
+    assert client.put(f"/appointments/{a['id']}/cancel", headers=auth(other)).status_code == 404
     assert client.put(f"/appointments/{a['id']}/cancel", headers=auth(w["t"])).status_code == 200
 
 

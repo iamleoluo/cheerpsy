@@ -2,11 +2,14 @@
 
 import { useSession } from "next-auth/react";
 
-/** 只有管理員與行政能填金額；其他角色看不到這個欄位，後端也不會存他們送的值。 */
+/**
+ * 誰能建立／編輯預約，誰就能填金額：心理師填自己的、行政與管理員填任何人的。
+ * 隔離的單位是心理師，不是欄位；後端另外保證心理師碰不到別人的預約。會計不能建立預約，所以不顯示。
+ */
 export function useCanEditAmount(): boolean {
   const { data } = useSession();
   const role = (data?.user as any)?.role;
-  return role === "admin" || role === "staff";
+  return role === "admin" || role === "staff" || role === "therapist";
 }
 
 /**

@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import RequireRole
 from app.database import get_db
 from app.models.appointment import Appointment
+from app.models.gcal_hooks import enqueue_appointments
 from app.models.availability import PERIODS, TherapistAvailability
 from app.models.finance import DailyClosing
 from app.models.referral import ReferralDispatch, ReferralDispatchTarget
@@ -241,13 +242,16 @@ def update_base_price(
     updated = 0
     if body.scope == "all_ongoing":
         # 套用到所有「已排定但尚未執行」的預約
+        target = db.query(Appointment).filter(
+            Appointment.therapist_id == user.id,
+            Appointment.status == "booked",
+            Appointment.funding_source == "self_pay",
+        )
+        # 批次 UPDATE 不經過 ORM 事件：金額變了，Google 事件標題要跟著更新，所以明確入列（同一交易）
+        changed_ids = [i for (i,) in target.with_entities(Appointment.id).all()]
+        enqueue_appointments(db.connection(), changed_ids)
         updated = (
-            db.query(Appointment)
-            .filter(
-                Appointment.therapist_id == user.id,
-                Appointment.status == "booked",
-                Appointment.funding_source == "self_pay",
-            )
+            target
             .update(
                 {Appointment.amount: body.base_price, Appointment.hourly_rate: body.base_price},
                 synchronize_session=False,
