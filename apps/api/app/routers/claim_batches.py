@@ -37,6 +37,9 @@ from app.services.pdf import generate_pdf, render_multi
 
 router = APIRouter(prefix="/claim-batches", tags=["claim-batches"])
 
+# 核銷批次與紀錄含他人個案姓名；心理師只走 /my/* 與有範圍限制的 documents 端點
+READ_ROLES = ["admin", "accountant", "staff"]
+
 
 def _to_response(db: Session, b: ClaimBatch) -> ClaimBatchResponse:
     records = db.query(SessionRecord).filter(SessionRecord.claim_batch_id == b.id).all()
@@ -93,7 +96,7 @@ def list_claim_batches(
     case_id: int | None = Query(None),
     institution_id: int | None = Query(None),
     batch_type: str | None = Query(None, alias="type"),
-    user: User = Depends(get_current_user),
+    user: User = Depends(RequireRole(READ_ROLES)),
     db: Session = Depends(get_db),
 ):
     q = db.query(ClaimBatch)
@@ -112,7 +115,7 @@ def list_claim_batches(
 @router.get("/eligible-cases")
 def list_eligible_cases(
     type: str = Query("self_pay", description="self_pay or institution"),
-    user: User = Depends(get_current_user),
+    user: User = Depends(RequireRole(READ_ROLES)),
     db: Session = Depends(get_db),
 ):
     """Return cases that have unassigned session_records, filtered by record funding_source."""
@@ -153,7 +156,7 @@ def list_eligible_cases(
 
 @router.get("/eligible-institutions")
 def list_eligible_institutions(
-    user: User = Depends(get_current_user),
+    user: User = Depends(RequireRole(READ_ROLES)),
     db: Session = Depends(get_db),
 ):
     """Return institutions with unassigned institution-funded session_records.
@@ -200,7 +203,7 @@ def list_eligible_institutions(
 def list_unassigned_records(
     case_id: int | None = Query(None),
     institution_id: int | None = Query(None),
-    user: User = Depends(get_current_user),
+    user: User = Depends(RequireRole(READ_ROLES)),
     db: Session = Depends(get_db),
 ):
     q = db.query(SessionRecord).filter(
@@ -256,7 +259,7 @@ def list_unassigned_records(
 @router.get("/{batch_id}", response_model=ClaimBatchResponse)
 def get_claim_batch(
     batch_id: int,
-    user: User = Depends(get_current_user),
+    user: User = Depends(RequireRole(READ_ROLES)),
     db: Session = Depends(get_db),
 ):
     batch = db.query(ClaimBatch).filter(ClaimBatch.id == batch_id).first()
@@ -268,7 +271,7 @@ def get_claim_batch(
 @router.get("/{batch_id}/records", response_model=list[ClaimBatchRecordResponse])
 def get_batch_records(
     batch_id: int,
-    user: User = Depends(get_current_user),
+    user: User = Depends(RequireRole(READ_ROLES)),
     db: Session = Depends(get_db),
 ):
     batch = db.query(ClaimBatch).filter(ClaimBatch.id == batch_id).first()
@@ -611,7 +614,7 @@ def unwaive_docs(
 def preview_attendance_sheet(
     template: str = Query("jiafuzongxin_attendance", description="jiafuzongxin_attendance | jiafangzhongxin_attendance"),
     pages: int = Query(2, ge=1, le=5, description="How many fake case pages to generate"),
-    user: User = Depends(get_current_user),
+    user: User = Depends(RequireRole(READ_ROLES)),
 ):
     """Generate a sample attendance sheet PDF with fake data — for layout testing."""
     from datetime import date
@@ -696,7 +699,7 @@ def _build_record_dicts(db: Session, batch_id: int, item_name: str | None = None
 @router.get("/{batch_id}/claim-form")
 def download_claim_form(
     batch_id: int,
-    user: User = Depends(get_current_user),
+    user: User = Depends(RequireRole(READ_ROLES)),
     db: Session = Depends(get_db),
 ):
     batch = db.query(ClaimBatch).filter(ClaimBatch.id == batch_id).first()

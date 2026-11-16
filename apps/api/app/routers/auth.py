@@ -49,7 +49,19 @@ def get_me(user: User = Depends(get_current_user)):
 
 @router.get("/therapists", response_model=list[UserResponse])
 def list_therapists(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return db.query(User).filter(User.role == "therapist", User.is_active == True).order_by(User.name).all()
+    rows = db.query(User).filter(User.role == "therapist", User.is_active == True).order_by(User.name).all()
+    if user.role != "therapist":
+        return rows
+    # 心理師看不到同事的抽成與底價，只保留自己的
+    return [
+        UserResponse(
+            id=t.id, email=t.email, name=t.name, role=t.role, user_code=t.user_code,
+            commission_rate=float(t.commission_rate) if t.commission_rate is not None else None,
+            base_price=float(t.base_price) if t.base_price is not None else None,
+        ) if t.id == user.id else
+        UserResponse(id=t.id, email="", name=t.name, role=t.role, user_code=t.user_code)
+        for t in rows
+    ]
 
 
 # ── User management (admin) ───────────────────────────

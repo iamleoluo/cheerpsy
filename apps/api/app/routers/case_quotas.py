@@ -44,14 +44,21 @@ def _to_response(q: CaseInstitutionQuota, db: Session) -> QuotaResponse:
     )
 
 
+def _require_case_access(db: Session, case_id: int, user: User) -> Case:
+    """心理師只能看自己個案的額度；別人的個案一律 404（不洩漏是否存在）。"""
+    c = db.query(Case).filter(Case.id == case_id).first()
+    if not c or (user.role == "therapist" and c.therapist_id != user.id):
+        raise HTTPException(status_code=404, detail="個案不存在")
+    return c
+
+
 @router.get("/cases/{case_id}/quotas", response_model=list[QuotaResponse])
 def list_case_quotas(
     case_id: int,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if not db.query(Case).filter(Case.id == case_id).first():
-        raise HTTPException(status_code=404, detail="個案不存在")
+    _require_case_access(db, case_id, user)
     rows = (
         db.query(CaseInstitutionQuota)
         .filter(CaseInstitutionQuota.case_id == case_id)
@@ -73,6 +80,7 @@ def list_available_quotas(
 
     NULL 視為無時間上限：valid_from IS NULL → 無起日下限；valid_until IS NULL → 永久有效。
     """
+    _require_case_access(db, case_id, user)
     target = on_date or date.today()
     q = (
         db.query(CaseInstitutionQuota)
@@ -97,6 +105,12 @@ def list_all_quotas(
 ):
     """跨個案列表，供「機構額度」分頁使用。"""
     q = db.query(CaseInstitutionQuota)
+    if user.role == "therapist":
+        q = q.filter(
+            CaseInstitutionQuota.case_id.in_(
+                db.query(Case.id).filter(Case.therapist_id == user.id)
+            )
+        )
     if active_only:
         today = date.today()
         q = q.filter(

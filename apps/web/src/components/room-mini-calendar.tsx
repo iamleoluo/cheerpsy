@@ -14,6 +14,7 @@ interface Appointment {
   start_time: string | null;
   end_time: string | null;
   status: string;
+  occupied_only?: boolean;
 }
 
 const statusColors: Record<string, string> = {
@@ -54,7 +55,7 @@ export default function RoomMiniCalendar({
         setEvents(
           data.map((a) => ({
             id: String(a.id),
-            title: `${a.case_name ?? "未知"} — ${a.therapist_name ?? ""}`,
+            title: `${a.occupied_only ? "已佔用" : (a.case_name ?? "未知")} — ${a.therapist_name ?? ""}`,
             start: a.start_time ?? undefined,
             end: a.end_time ?? undefined,
             backgroundColor: statusColors[a.status] ?? "#6b7280",
@@ -63,6 +64,7 @@ export default function RoomMiniCalendar({
               case_name: a.case_name,
               therapist_name: a.therapist_name,
               status: a.status,
+              occupied_only: a.occupied_only ?? false,
             },
           })),
         );
@@ -136,7 +138,7 @@ export default function RoomMiniCalendar({
           return (
             <div className="overflow-hidden px-0.5 text-[10px] leading-tight">
               <div className="truncate font-medium">
-                {props.case_name ?? "未知"}
+                {props.occupied_only ? "已佔用" : (props.case_name ?? "未知")}
               </div>
               <div className="truncate opacity-80">
                 {props.therapist_name ?? ""}

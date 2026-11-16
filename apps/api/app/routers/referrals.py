@@ -302,7 +302,7 @@ def list_referrals(
     status_filter: str | None = Query(None, alias="status"),
     q: str | None = Query(None, description="姓名／電話／機構方案即時搜尋"),
     closed: bool = Query(False, description="true 則回傳媒合結案表"),
-    user: User = Depends(get_current_user),
+    user: User = Depends(RequireRole(STAFF)),
     db: Session = Depends(get_db),
 ):
     sweep_expired(db)
@@ -331,7 +331,7 @@ def list_referrals(
 @router.get("/{referral_id}/dispatches", response_model=list[DispatchOut])
 def list_dispatches(
     referral_id: int,
-    user: User = Depends(get_current_user),
+    user: User = Depends(RequireRole(STAFF)),
     db: Session = Depends(get_db),
 ):
     """媒合子列表：歷次派案批次。一列一批次。"""
@@ -599,6 +599,10 @@ class InviteOut(BaseModel):
     decline_reason: str | None
 
 
+INVITE_VISIBLE_STATUSES = ("pending", "accepted")
+MASKED_NAME = "（已結束，個案資訊已隱藏）"
+
+
 def _invite_out(t: ReferralDispatchTarget, me: int) -> InviteOut:
     d = t.dispatch
     r = d.referral
@@ -610,12 +614,18 @@ def _invite_out(t: ReferralDispatchTarget, me: int) -> InviteOut:
     else:
         designation = "none"
     src = r.referral_source or ""
+    # 心理師只該看到「還在等他回覆」或「他已承接」的案子。
+    # 已婉拒／被他人承接／逾期／釋出的邀請只留派案碼，遮蔽個案資訊。
+    visible = t.status in INVITE_VISIBLE_STATUSES
     return InviteOut(
         target_id=t.id, referral_id=r.id, dispatch_code=r.dispatch_code,
-        name=r.name, age=r.age, gender=r.gender,
-        chief_complaint=r.chief_complaint, complaint_note=r.complaint_note,
+        name=r.name if visible else MASKED_NAME,
+        age=r.age if visible else None,
+        gender=r.gender if visible else None,
+        chief_complaint=r.chief_complaint if visible else None,
+        complaint_note=r.complaint_note if visible else None,
         consultation_mode=r.consultation_mode, funding_source=r.funding_source,
-        plan_name=r.plan.name if r.plan else None,
+        plan_name=(r.plan.name if r.plan else None) if visible else None,
         status=t.status, dispatched_at=d.dispatched_at,
         designation=designation,
         others_evaluating=sum(1 for x in d.targets if x.id != t.id and x.status == "pending"),

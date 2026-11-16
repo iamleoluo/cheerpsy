@@ -32,6 +32,7 @@ interface Appt {
   start_time: string | null;
   end_time: string | null;
   status: string;
+  occupied_only?: boolean;
 }
 
 const MINUTES = ["00", "15", "30", "45"];
@@ -99,14 +100,16 @@ export default function BookingPage() {
   const loadWeek = useCallback(async () => {
     if (!token) return;
     try {
+      // 心理師帶 room_id 才看得到該診間別人的場次（伺服器只回「已佔用」遮罩資料）
+      const roomParam = isTherapist && roomId ? `&room_id=${roomId}` : "";
       setWeekAppts(
         await clientFetch(
-          `/appointments?start=${weekStart}T00:00:00%2B08:00&end=${shiftDate(weekStart, 7)}T00:00:00%2B08:00`,
+          `/appointments?start=${weekStart}T00:00:00%2B08:00&end=${shiftDate(weekStart, 7)}T00:00:00%2B08:00${roomParam}`,
           token
         )
       );
     } catch { /* 週檢視載入失敗不擋表單 */ }
-  }, [token, weekStart]);
+  }, [token, weekStart, isTherapist, roomId]);
 
   useEffect(() => {
     loadWeek();
@@ -383,7 +386,7 @@ export default function BookingPage() {
                       list.map((a) => (
                         <div key={a.id} className="text-xs text-gray-700">
                           {hhmm(a.start_time)}–{hhmm(a.end_time)}{" "}
-                          {isTherapist ? (
+                          {isTherapist || a.occupied_only ? (
                             <span className="text-gray-400">已使用 · {a.therapist_name}</span>
                           ) : (
                             <>{a.case_name} · {a.therapist_name}</>

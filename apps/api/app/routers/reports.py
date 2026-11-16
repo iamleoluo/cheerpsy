@@ -21,6 +21,9 @@ from app.models.user import User
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
+# 含個案名單或心理師個別數字的報表，心理師角色不可讀
+REPORT_ROLES = ["admin", "accountant", "staff"]
+
 DEFAULT_COMMISSION_RATE = Decimal("0.70")
 
 
@@ -532,7 +535,7 @@ def _build_intake_excel(data: dict) -> io.BytesIO:
 def get_intake_stats(
     year: int = Query(...),
     month: int = Query(...),
-    user: User = Depends(get_current_user),
+    user: User = Depends(RequireRole(REPORT_ROLES)),
     db: Session = Depends(get_db),
 ):
     return _intake_data(db, year, month)
@@ -542,7 +545,7 @@ def get_intake_stats(
 def export_intake_excel(
     year: int = Query(...),
     month: int = Query(...),
-    user: User = Depends(get_current_user),
+    user: User = Depends(RequireRole(REPORT_ROLES)),
     db: Session = Depends(get_db),
 ):
     data = _intake_data(db, year, month)
@@ -662,7 +665,7 @@ def get_room_utilization(
 def get_therapist_load(
     year: int = Query(...),
     month: int = Query(...),
-    user: User = Depends(get_current_user),
+    user: User = Depends(RequireRole(REPORT_ROLES)),
     db: Session = Depends(get_db),
 ):
     """Per-therapist caseload: active cases, sessions this month, revenue."""

@@ -28,7 +28,7 @@ from app.utils.encryption import encrypt_national_id, hmac_national_id
 router = APIRouter(prefix="/cases", tags=["cases"])
 
 
-def _to_response(c: Case) -> CaseResponse:
+def _to_response(c: Case, viewer: User | None = None) -> CaseResponse:
     return CaseResponse(
         id=c.id,
         temp_seq=c.temp_seq,
@@ -57,18 +57,20 @@ def _to_response(c: Case) -> CaseResponse:
         has_national_id=c.national_id_encrypted is not None,
         is_designated=c.is_designated,
         case_type=c.case_type,
-        members=_couple_members(c) if c.case_type == "couple" else None,
+        members=_couple_members(c, viewer) if c.case_type == "couple" else None,
         notes=c.notes,
         closed_at=c.closed_at,
         closure_reason=c.closure_reason,
     )
 
 
-def _couple_members(c: Case) -> list[CoupleMemberInfo]:
-    """組出伴侶案的成員清單。"""
+def _couple_members(c: Case, viewer: User | None = None) -> list[CoupleMemberInfo]:
+    """組出伴侶案的成員清單。心理師只看得到屬於自己的成員個案。"""
     out: list[CoupleMemberInfo] = []
     for link in c.couple_links:
         m = link.member_case
+        if m and viewer is not None and viewer.role == "therapist" and m.therapist_id != viewer.id:
+            continue
         if m:
             out.append(CoupleMemberInfo(case_id=m.id, name=m.name, role=link.role))
     return out
@@ -107,7 +109,7 @@ def list_cases(
             )
         )
     cases = query.order_by(Case.id.desc()).limit(500).all()
-    return [_to_response(c) for c in cases]
+    return [_to_response(c, user) for c in cases]
 
 
 @router.get("/{case_id}", response_model=CaseResponse)
@@ -121,7 +123,7 @@ def get_case(
         raise HTTPException(status_code=404, detail="Case not found")
     if user.role == "therapist" and c.therapist_id != user.id:
         raise HTTPException(status_code=403, detail="Access denied")
-    return _to_response(c)
+    return _to_response(c, user)
 
 
 @router.post("", response_model=CaseResponse, status_code=status.HTTP_201_CREATED)
