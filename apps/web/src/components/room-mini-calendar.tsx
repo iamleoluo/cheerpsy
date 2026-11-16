@@ -7,6 +7,13 @@ import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import type { EventInput, DatesSetArg } from "@fullcalendar/core";
 
+interface OccSlot {
+  room_id: number;
+  start: string;
+  end: string;
+  occupied: true;
+}
+
 interface Appointment {
   id: number;
   case_name: string | null;
@@ -43,32 +50,37 @@ export default function RoomMiniCalendar({
     async (start: string, end: string) => {
       setLoading(true);
       try {
-        const params = new URLSearchParams({
-          room_id: roomId.toString(),
-          start,
-          end,
-        });
-        const data: Appointment[] = await clientFetch(
-          `/appointments?${params}`,
-          token,
-        );
-        setEvents(
-          // 取消與未到的場次已釋出診間，不畫在佔用週檢視裡
-          data.filter((a) => a.status === "booked" || a.status === "executed").map((a) => ({
-            id: String(a.id),
-            title: a.occupied_only ? "已佔用" : `${a.case_name ?? "未知"} — ${a.therapist_name ?? ""}`,
-            start: a.start_time ?? undefined,
-            end: a.end_time ?? undefined,
-            backgroundColor: statusColors[a.status] ?? "#6b7280",
-            borderColor: statusColors[a.status] ?? "#6b7280",
-            extendedProps: {
-              case_name: a.case_name,
-              therapist_name: a.therapist_name,
-              status: a.status,
-              occupied_only: a.occupied_only ?? false,
-            },
-          })),
-        );
+        const params = new URLSearchParams({ room_id: roomId.toString(), start, end });
+        // 所有人的佔用只有時段（不含個人資料）；自己的場次另外取完整內容
+        const [occ, mine]: [OccSlot[], Appointment[]] = await Promise.all([
+          clientFetch(`/rooms/occupancy?${params}`, token),
+          clientFetch(`/appointments?${params}`, token),
+        ]);
+        // 取消與未到的場次已釋出診間，不畫在佔用週檢視裡
+        const own = mine.filter((a) => a.status === "booked" || a.status === "executed");
+        const key = (s: string | null, e: string | null) => `${s && new Date(s).getTime()}|${e && new Date(e).getTime()}`;
+        const covered = new Set(own.map((a) => key(a.start_time, a.end_time)));
+        const ownEvents: EventInput[] = own.map((a) => ({
+          id: String(a.id),
+          title: `${a.case_name ?? "未知"} — ${a.therapist_name ?? ""}`,
+          start: a.start_time ?? undefined,
+          end: a.end_time ?? undefined,
+          backgroundColor: statusColors[a.status] ?? "#6b7280",
+          borderColor: statusColors[a.status] ?? "#6b7280",
+          extendedProps: { case_name: a.case_name, therapist_name: a.therapist_name, status: a.status, occupied_only: false },
+        }));
+        const maskedEvents: EventInput[] = occ
+          .filter((o) => !covered.has(key(o.start, o.end)))
+          .map((o, i) => ({
+            id: `occ-${i}`,
+            title: "已佔用",
+            start: o.start,
+            end: o.end,
+            backgroundColor: "#9ca3af",
+            borderColor: "#9ca3af",
+            extendedProps: { occupied_only: true },
+          }));
+        setEvents([...ownEvents, ...maskedEvents]);
       } catch {
         setEvents([]);
       } finally {

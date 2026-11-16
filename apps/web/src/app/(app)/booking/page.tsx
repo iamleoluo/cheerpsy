@@ -30,7 +30,12 @@ interface Appt {
   start_time: string | null;
   end_time: string | null;
   status: string;
-  occupied_only?: boolean;
+}
+interface OccSlot {
+  room_id: number;
+  start: string;
+  end: string;
+  occupied: true;
 }
 
 const MINUTES = ["00", "15", "30", "45"];
@@ -52,6 +57,7 @@ export default function BookingPage() {
   const [therapists, setTherapists] = useState<Therapist[]>([]);
   const [weekStart, setWeekStart] = useState(todayISO());
   const [weekAppts, setWeekAppts] = useState<Appt[]>([]);
+  const [weekOcc, setWeekOcc] = useState<OccSlot[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
 
@@ -111,16 +117,16 @@ export default function BookingPage() {
   const loadWeek = useCallback(async () => {
     if (!token) return;
     try {
-      // 心理師帶 room_id 才看得到該診間別人的場次（伺服器只回「已佔用」遮罩資料）
-      const roomParam = isTherapist && roomId ? `&room_id=${roomId}` : "";
-      setWeekAppts(
-        await clientFetch(
-          `/appointments?start=${weekStart}T00:00:00%2B08:00&end=${shiftDate(weekStart, 7)}T00:00:00%2B08:00${roomParam}`,
-          token
-        )
-      );
+      const range = `start=${weekStart}T00:00:00%2B08:00&end=${shiftDate(weekStart, 7)}T00:00:00%2B08:00`;
+      // 自己可見的完整場次 + 所有人的「已佔用」時段（含他人與活動，只有時段，沒有個人資料）
+      const [ap, oc] = await Promise.all([
+        clientFetch(`/appointments?${range}`, token),
+        clientFetch(`/rooms/occupancy?${range}`, token),
+      ]);
+      setWeekAppts(ap);
+      setWeekOcc(oc);
     } catch { /* 週檢視載入失敗不擋表單 */ }
-  }, [token, weekStart, isTherapist, roomId]);
+  }, [token, weekStart]);
 
   useEffect(() => {
     loadWeek();
@@ -154,15 +160,26 @@ export default function BookingPage() {
 
   const conflicts = useMemo(() => {
     if (offsite || !roomId) return [];
-    return weekAppts.filter(
-      (a) =>
-        a.room_id === roomId &&
-        (a.status === "booked" || a.status === "executed") &&
-        a.start_time?.slice(0, 10) === date &&
-        hhmm(a.start_time) < endTime &&
-        hhmm(a.end_time) > startTime
+    return weekOcc.filter(
+      (o) =>
+        o.room_id === roomId &&
+        o.start.slice(0, 10) === date &&
+        hhmm(o.start) < endTime &&
+        hhmm(o.end) > startTime
     );
-  }, [weekAppts, roomId, date, startTime, endTime, offsite]);
+  }, [weekOcc, roomId, date, startTime, endTime, offsite]);
+
+  // 週檢視：自己可見的場次顯示完整內容；其餘佔用（他人、活動）只顯示「已佔用」
+  const weekItems = useMemo(() => {
+    const mine = weekAppts
+      .filter((a) => a.status === "booked" || a.status === "executed")
+      .map((a) => ({ key: `a${a.id}`, room_id: a.room_id, start: a.start_time, end: a.end_time, appt: a as Appt | null }));
+    const covered = new Set(mine.map((m) => `${m.room_id}|${m.start && new Date(m.start).getTime()}|${m.end && new Date(m.end).getTime()}`));
+    const masked = weekOcc
+      .filter((o) => !covered.has(`${o.room_id}|${new Date(o.start).getTime()}|${new Date(o.end).getTime()}`))
+      .map((o, i) => ({ key: `o${i}`, room_id: o.room_id as number | null, start: o.start as string | null, end: o.end as string | null, appt: null as Appt | null }));
+    return [...mine, ...masked].sort((x, y) => (x.start ?? "").localeCompare(y.start ?? ""));
+  }, [weekAppts, weekOcc]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -360,8 +377,7 @@ export default function BookingPage() {
 
             {conflicts.length > 0 && (
               <div className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
-                ⚠️ 該診間此時段已被使用
-                {!isTherapist && `：${conflicts.map((c) => c.case_name).join("、")}`}
+                ⚠️ 該診間此時段已被使用（已佔用）
               </div>
             )}
 
@@ -389,11 +405,8 @@ export default function BookingPage() {
           ) : (
             <div className="space-y-2">
               {weekDays.map((d) => {
-                const list = weekAppts.filter(
-                  (a) =>
-                    a.start_time?.slice(0, 10) === d &&
-                    (a.status === "booked" || a.status === "executed") &&
-                    (!roomId || a.room_id === roomId)
+                const list = weekItems.filter(
+                  (a) => a.start?.slice(0, 10) === d && a.room_id && (!roomId || a.room_id === roomId)
                 );
                 return (
                   <div key={d} className={`rounded-lg border px-3 py-2 ${d === date ? "border-primary-400 bg-primary-50" : "border-gray-200"}`}>
@@ -401,15 +414,15 @@ export default function BookingPage() {
                     {list.length === 0 ? (
                       <div className="text-xs text-gray-400">空</div>
                     ) : (
-                      list.map((a) => (
-                        <div key={a.id} className={`text-xs text-gray-700 ${a.occupied_only ? "cursor-default select-none" : ""}`} aria-disabled={a.occupied_only || undefined}>
-                          {hhmm(a.start_time)}–{hhmm(a.end_time)}{" "}
-                          {a.occupied_only ? (
+                      list.map((it) => (
+                        <div key={it.key} className={`text-xs text-gray-700 ${it.appt ? "" : "cursor-default select-none"}`} aria-disabled={it.appt ? undefined : true}>
+                          {hhmm(it.start)}–{hhmm(it.end)}{" "}
+                          {!it.appt ? (
                             <span className="text-gray-400">已佔用</span>
                           ) : isTherapist ? (
-                            <span className="text-gray-700">{a.case_name}</span>
+                            <span className="text-gray-700">{it.appt.case_name}</span>
                           ) : (
-                            <>{a.case_name} · {a.therapist_name}</>
+                            <>{it.appt.case_name} · {it.appt.therapist_name}</>
                           )}
                         </div>
                       ))

@@ -14,3 +14,6 @@ class Room(Base):
     room_type = Column(String(20), nullable=False, default="talk", server_default="talk")
     has_special_equipment = Column(Boolean, default=False)
     notes = Column(Text, nullable=True)
+    # 停用後不再出現在選擇器、不能新增預約；歷史預約仍照常顯示。不提供刪除。
+    is_active = Column(Boolean, nullable=False, default=True, server_default="true")
+    sort_order = Column(Integer, nullable=False, default=0, server_default="0")

@@ -25,8 +25,10 @@ def world(make_user, make_case, make_appt, room):
     admin = make_user("admin")
     case_a = make_case(a, "甲的個案")
     case_b = make_case(b, SECRET_NAME, phone=SECRET_PHONE, chief_complaint=SECRET_COMPLAINT)
-    appt_a = make_appt(case_a, a, room)
-    appt_b = make_appt(case_b, b, room)
+    from datetime import datetime, timedelta, timezone
+    day = datetime.now(timezone.utc).replace(hour=2, minute=0, second=0, microsecond=0) + timedelta(days=2)
+    appt_a = make_appt(case_a, a, room, start=day)  # 固定時間，不受全域計數器影響
+    appt_b = make_appt(case_b, b, room, start=day + timedelta(hours=3))
     return dict(a=a, b=b, staff=staff, admin=admin, case_a=case_a, case_b=case_b,
                 appt_a=appt_a, appt_b=appt_b, room=room)
 
@@ -44,33 +46,25 @@ def test_therapist_list_only_own(client, auth, world):
     assert ids == {world["appt_a"].id}
 
 
-def test_room_view_masks_other_therapist(client, auth, world):
+def test_room_id_param_no_longer_exposes_other_therapist(client, auth, world):
+    """/appointments 沒有任何例外：帶 room_id 也只回自己的場次。他人的佔用改走 /rooms/occupancy。"""
     r = client.get(f"/appointments?room_id={world['room'].id}", headers=auth(world["a"]))
     assert r.status_code == 200
-    rows = {x["id"]: x for x in r.json()}
-    assert set(rows) == {world["appt_a"].id, world["appt_b"].id}
-
-    mine = rows[world["appt_a"].id]
-    assert mine["case_name"] == "甲的個案" and mine["occupied_only"] is False
-
-    other = rows[world["appt_b"].id]
-    assert other["occupied_only"] is True
-    # 診所尚未決定可否顯示心理師姓名：只顯示「已佔用」，姓名與 id 都不給
-    assert other["therapist_name"] is None and other["therapist_id"] == 0
-    assert "乙心理師" not in r.text
-    assert other["case_id"] == 0
-    assert other["case_name"] is None and other["couple_case_id"] is None
-    assert other["amount"] == 0 and other["appointment_number"] == ""
-    assert other["video_link"] is None and other["outreach_location"] is None
-    assert other["quota_id"] is None and other["funding_source"] is None
-    assert not _leaks(r)
+    assert {x["id"] for x in r.json()} == {world["appt_a"].id}
+    assert r.json()[0]["case_name"] == "甲的個案"
+    assert "乙心理師" not in r.text and not _leaks(r)
 
 
-def test_room_view_hides_other_cancelled_and_no_show(client, auth, world, make_appt):
-    make_appt(world["case_b"], world["b"], world["room"], status="cancelled")
-    make_appt(world["case_b"], world["b"], world["room"], status="no_show")
-    r = client.get(f"/appointments?room_id={world['room'].id}", headers=auth(world["a"]))
-    assert {x["id"] for x in r.json()} == {world["appt_a"].id, world["appt_b"].id}
+def test_occupancy_shows_other_therapist_without_leaks(client, auth, world):
+    from datetime import datetime, timedelta, timezone
+    s = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    e = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+    r = client.get("/rooms/occupancy", params={"start": s, "end": e}, headers=auth(world["a"]))
+    assert r.status_code == 200
+    assert len(r.json()) == 2  # 甲、乙各一場，都只是時段
+    for row in r.json():
+        assert set(row) == {"room_id", "start", "end", "occupied"} and row["occupied"] is True
+    assert "乙心理師" not in r.text and not _leaks(r)
 
 
 def test_case_id_filter_cannot_reach_other_therapist(client, auth, world):
@@ -92,7 +86,6 @@ def test_staff_sees_full_room_view(client, auth, world):
     r = client.get(f"/appointments?room_id={world['room'].id}", headers=auth(world["staff"]))
     rows = {x["id"]: x for x in r.json()}
     assert rows[world["appt_b"].id]["case_name"] == SECRET_NAME
-    assert rows[world["appt_b"].id]["occupied_only"] is False
 
 
 # ---- /cases ---------------------------------------------------------------

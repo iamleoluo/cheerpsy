@@ -82,6 +82,17 @@ def _conflict_error(db: Session, room_id: int, start: datetime, end: datetime, f
     return HTTPException(status_code=409, detail=f"診間 {code} 在 {_fmt(c_start, c_end)} {what}")
 
 
+def assert_room_active(db: Session, room_id: int | None) -> None:
+    """診間存在且未停用；停用的診間不能再新增預約（歷史預約不受影響）。"""
+    if not room_id:
+        return
+    room = db.query(Room).filter(Room.id == room_id).first()
+    if room is None:
+        raise HTTPException(status_code=404, detail="診間不存在")
+    if not room.is_active:
+        raise HTTPException(status_code=400, detail=f"診間 {room.room_code} 已停用，無法預約")
+
+
 def assert_room_free(
     db: Session, room_id: int | None, start: datetime, end: datetime,
     exclude_appointment_id: int | None = None,
