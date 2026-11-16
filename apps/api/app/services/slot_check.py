@@ -121,3 +121,74 @@ def flush_or_409(db: Session, room_id: int | None, start: datetime, end: datetim
         if code == EXCLUSION_VIOLATION or found is not None:
             raise _conflict_error(db, room_id, start, end, found) from exc
         raise
+
+
+# ---- 心理師與個案的時段衝突 ------------------------------------------------
+# 規則：同一位心理師、或同一個個案（含伴侶案成員）在 booked／executed 預約的時段重疊 → 409。
+# 訊息只寫時段，不寫別人的個案姓名、心理師姓名。
+# 資料庫層暫時沒有對應的 EXCLUDE 約束（待正式資料以 scripts/list_overlaps.py 清乾淨後再加），
+# 所以並行寫入的 race 目前只靠這裡的檢查擋。
+
+
+def case_participants(db: Session, case_ids) -> set[int]:
+    """一組個案實際牽涉到的個案 id：自己、所屬的伴侶案、伴侶案的其他成員。"""
+    ids = {int(c) for c in case_ids if c}
+    if not ids:
+        return set()
+    rows = db.execute(
+        text("""
+            SELECT couple_case_id, member_case_id FROM case_members
+             WHERE couple_case_id = ANY(:ids) OR member_case_id = ANY(:ids)
+        """),
+        {"ids": list(ids)},
+    ).all()
+    out = set(ids)
+    for couple_id, member_id in rows:
+        out.add(couple_id)
+        out.add(member_id)
+    return out
+
+
+def assert_therapist_free(
+    db: Session, therapist_id: int | None, start: datetime, end: datetime,
+    exclude_appointment_id: int | None = None,
+) -> None:
+    """該心理師在時段內沒有其他 booked／executed 預約；否則 409。"""
+    if not therapist_id:
+        return
+    sql = """
+        SELECT lower(time_range) AS s, upper(time_range) AS e FROM appointments
+         WHERE therapist_id = :tid AND status IN ('booked', 'executed')
+           AND time_range && tstzrange(:start, :end)
+    """
+    params: dict = {"tid": therapist_id, "start": start, "end": end}
+    if exclude_appointment_id is not None:
+        sql += " AND id != :ex"
+        params["ex"] = exclude_appointment_id
+    row = db.execute(text(sql + " ORDER BY lower(time_range) LIMIT 1"), params).first()
+    if row:
+        raise HTTPException(status_code=409, detail=f"心理師在 {_fmt(row.s, row.e)} 已有其他預約")
+
+
+def assert_case_free(
+    db: Session, case_ids, start: datetime, end: datetime,
+    exclude_appointment_id: int | None = None,
+) -> None:
+    """該個案（含伴侶案與其成員）在時段內沒有其他 booked／executed 預約；否則 409。
+    case_ids 傳預約的 case_id（付款方）與 couple_case_id。"""
+    ids = case_participants(db, case_ids)
+    if not ids:
+        return
+    sql = """
+        SELECT lower(time_range) AS s, upper(time_range) AS e FROM appointments
+         WHERE (case_id = ANY(:ids) OR couple_case_id = ANY(:ids))
+           AND status IN ('booked', 'executed')
+           AND time_range && tstzrange(:start, :end)
+    """
+    params: dict = {"ids": list(ids), "start": start, "end": end}
+    if exclude_appointment_id is not None:
+        sql += " AND id != :ex"
+        params["ex"] = exclude_appointment_id
+    row = db.execute(text(sql + " ORDER BY lower(time_range) LIMIT 1"), params).first()
+    if row:
+        raise HTTPException(status_code=409, detail=f"個案在 {_fmt(row.s, row.e)} 已有其他預約")
