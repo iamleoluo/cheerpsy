@@ -6,6 +6,7 @@ export interface RateItem {
   id?: number;
   label: string;
   service_type: string | null;
+  consult_type?: string | null;
   duration_minutes: number | null;
   session_seq_from: number | null;
   session_seq_to: number | null;
@@ -18,6 +19,14 @@ export interface RateItem {
   is_no_show_fee: boolean;
   note: string | null;
 }
+
+export const CONSULT_TYPES: [string, string][] = [
+  ["", "不限"],
+  ["individual", "個別"],
+  ["couple", "伴侶"],
+  ["family", "家族"],
+  ["parenting", "親職"],
+];
 
 export const SERVICE_TYPES: [string, string][] = [
   ["", "不限"],
@@ -33,6 +42,7 @@ export const SERVICE_TYPES: [string, string][] = [
 export const emptyRateItem = (): RateItem => ({
   label: "",
   service_type: null,
+  consult_type: null,
   duration_minutes: null,
   session_seq_from: null,
   session_seq_to: null,
@@ -171,6 +181,19 @@ export function RateItemsEditor({
                       className="w-full rounded-lg border border-gray-300 px-2 py-1.5"
                     >
                       {SERVICE_TYPES.map(([k, v]) => (
+                        <option key={k} value={k}>{v}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-xs">
+                    <span className="mb-0.5 block text-gray-500">諮商型態</span>
+                    <select
+                      disabled={disabled}
+                      value={r.consult_type ?? ""}
+                      onChange={(e) => upd(i, { consult_type: e.target.value || null })}
+                      className="w-full rounded-lg border border-gray-300 px-2 py-1.5"
+                    >
+                      {CONSULT_TYPES.map(([k, v]) => (
                         <option key={k} value={k}>{v}</option>
                       ))}
                     </select>

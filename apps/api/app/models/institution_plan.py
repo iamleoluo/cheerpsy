@@ -105,6 +105,7 @@ class PlanRateItem(Base):
     plan_id = Column(Integer, ForeignKey("institution_plans.id", ondelete="CASCADE"), nullable=False, index=True)
     label = Column(String(100), nullable=False)
     service_type = Column(String(30), nullable=True)     # NULL = 不限
+    consult_type = Column(String(20), nullable=True)     # individual/couple/family/parenting；NULL = 不限
     duration_minutes = Column(Integer, nullable=True)
     # 適用第幾次；NULL = 不限。用於「第1次免費、第3次起漲價」這種階梯
     session_seq_from = Column(Integer, nullable=True)

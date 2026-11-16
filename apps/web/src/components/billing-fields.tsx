@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { clientFetch } from "@/lib/client-api";
 import { parseAmount, useCanEditAmount } from "@/components/amount-field";
 import { money } from "@/lib/format";
+import { CONSULT_TYPES, SERVICE_TYPES } from "@/components/rate-items-editor";
 
 /**
  * 預約的「金流資訊」欄位：付款方式、機構額度、方案／價目項目／交通費、金額。
@@ -20,6 +21,8 @@ export type BillingValue = {
   planId: string; // "" = 用額度所屬方案
   rateItemId: string; // "" = 自動挑
   transportId: string; // "" = 預設（現場無、外出用預設選項）
+  consultType: string; // "" = 依個案（伴侶案為伴侶，其餘個別）
+  serviceType: string; // "" = 不限
   amount: string; // 自費：全額（必填）；機構：手動調整應收（選填，空白＝依價目）
 };
 
@@ -29,6 +32,8 @@ export const EMPTY_BILLING: BillingValue = {
   planId: "",
   rateItemId: "",
   transportId: "",
+  consultType: "",
+  serviceType: "",
   amount: "",
 };
 
@@ -61,6 +66,8 @@ export function billingBody(v: BillingValue, canAmount: boolean): Record<string,
     if (v.planId) body.plan_id = Number(v.planId);
     if (v.rateItemId) body.rate_item_id = Number(v.rateItemId);
     if (v.transportId) body.transport_fee_option_id = Number(v.transportId);
+    if (v.consultType) body.consult_type = v.consultType;
+    if (v.serviceType) body.service_type = v.serviceType;
   }
   const amt = canAmount ? parseAmount(v.amount) : undefined;
   if (amt !== undefined) body.amount = amt;
@@ -192,6 +199,33 @@ export function BillingFields({
               </span>
             )}
           </label>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-gray-700">諮商型態（影響價目挑選）</span>
+              <select
+                value={value.consultType}
+                onChange={(e) => set({ consultType: e.target.value, rateItemId: "" })}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              >
+                {CONSULT_TYPES.map(([k, v]) => (
+                  <option key={k} value={k}>{k === "" ? "依個案（伴侶案為伴侶，其餘個別）" : v}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-gray-700">服務型態（影響價目挑選）</span>
+              <select
+                value={value.serviceType}
+                onChange={(e) => set({ serviceType: e.target.value, rateItemId: "" })}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              >
+                {SERVICE_TYPES.map(([k, v]) => (
+                  <option key={k} value={k}>{k === "" ? "不限" : v}</option>
+                ))}
+              </select>
+            </label>
+          </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <label className="block text-sm">

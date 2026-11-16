@@ -784,7 +784,7 @@ def convert_to_appointment(
         db, case_id=None, funding=r.funding_source or "self_pay", quota=None, plan_id=r.plan_id,
         rate_item_id=body.rate_item_id, transport_option_id=body.transport_fee_option_id,
         session_type=body.session_type, duration_minutes=int((end - start).total_seconds() // 60),
-        manual_amount=body.amount,
+        manual_amount=body.amount, consult_type="individual", start_time=start,
     )
     seq = (db.query(func.count(Appointment.id)).scalar() or 0) + 1
     appt = Appointment(
@@ -795,6 +795,7 @@ def convert_to_appointment(
         room_id=body.room_id,
         session_type=body.session_type,
         time_range=func.tstzrange(start, end),
+        consult_type="individual",
         amount=price.amount,
         self_pay_amount=price.self_pay,
         funding_source=r.funding_source,

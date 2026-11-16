@@ -28,6 +28,8 @@ from app.schemas.appointment import (
     AppointmentUpdate,
 )
 
+CONSULT_TYPES = ("individual", "couple", "family", "parenting")
+
 router = APIRouter(prefix="/appointments", tags=["appointments"])
 
 # 結束前這段時間內不可取消／刪除（原本借用 settlement 的常數；上線 A 起不再依賴 settlement）
@@ -99,6 +101,8 @@ def _to_response(
         quota_is_last_session=bool(quota and quota["is_last"]),
         plan_id=a.plan_id if can_see_amount else None,
         plan_name=(plan.name if plan else None) if can_see_amount else None,
+        consult_type=a.consult_type if can_see_amount else None,
+        service_type=a.service_type if can_see_amount else None,
         rate_item_id=a.rate_item_id if can_see_amount else None,
         rate_item_label=(rate.label if rate else None) if can_see_amount else None,
         # 自付額：自費＝全額；機構 NULL＝未設定（舊資料算不出來，不猜）
@@ -289,11 +293,13 @@ def create_appointment(
         db, body.case_id, funding, body.quota_id, body.start_time.date()
     )
 
+    consult_type = _consult_type(body.consult_type, case, body.couple_case_id)
     price = appt_billing.compute_pricing(
         db, case_id=body.case_id, funding=funding, quota=quota, plan_id=body.plan_id,
         rate_item_id=body.rate_item_id, transport_option_id=body.transport_fee_option_id,
         session_type=body.session_type, duration_minutes=_minutes(body.start_time, body.end_time),
-        manual_amount=body.amount,
+        manual_amount=body.amount, consult_type=consult_type, service_type=body.service_type,
+        start_time=body.start_time,
     )
     warnings = warnings + price.warnings
 
@@ -305,6 +311,8 @@ def create_appointment(
         room_id=body.room_id,
         session_type=body.session_type,
         time_range=time_range,
+        consult_type=consult_type,
+        service_type=body.service_type,
         amount=price.amount,
         self_pay_amount=price.self_pay,
         funding_source=funding,
@@ -357,6 +365,7 @@ def create_batch(
     batch_id = str(uuid.uuid4())[:8]
     next_vs = _next_visit_seq(db, body.case_id)
     funding = body.funding_source or case.funding_source or "self_pay"
+    consult_type = _consult_type(body.consult_type, case, body.couple_case_id)
     results = []
     warns: dict[int, list[str]] = {}
 
@@ -374,7 +383,8 @@ def create_batch(
             db, case_id=body.case_id, funding=funding, quota=quota, plan_id=body.plan_id,
             rate_item_id=body.rate_item_id, transport_option_id=body.transport_fee_option_id,
             session_type=body.session_type, duration_minutes=_minutes(slot.start_time, slot.end_time),
-            manual_amount=body.amount,
+            manual_amount=body.amount, consult_type=consult_type, service_type=body.service_type,
+            start_time=slot.start_time,
         )
         slot_warnings = slot_warnings + price.warnings
 
@@ -385,6 +395,8 @@ def create_batch(
             room_id=body.room_id,
             session_type=body.session_type,
             time_range=time_range,
+            consult_type=consult_type,
+            service_type=body.service_type,
             amount=price.amount,
             self_pay_amount=price.self_pay,
             funding_source=funding,
@@ -413,6 +425,45 @@ def create_batch(
     return [_to_response(a, therapist, db, viewer=user, warnings=warns.get(i)) for i, a in enumerate(results)]
 
 
+def _consult_type(given: str | None, case: Case, couple_case_id: int | None) -> str:
+    """諮商型態：有指定用指定；沒指定時伴侶案（或合療）為 couple，其餘 individual。"""
+    if given:
+        if given not in CONSULT_TYPES:
+            raise HTTPException(status_code=422, detail=f"consult_type 需為 {list(CONSULT_TYPES)}")
+        return given
+    return "couple" if (couple_case_id or case.case_type == "couple") else "individual"
+
+
+def _reprice_after_time_change(db: Session, a: Appointment, user: User, old_start, old_end, new_start, new_end) -> list[str]:
+    """改時長／日期後的重新計價。判斷「有沒有手動調整過」：用舊時間再算一次，
+    若結果與目前存的價目項目、金額、自付額都一樣，就代表是自動算出來的，可以安全重算。"""
+    quota = db.get(CaseInstitutionQuota, a.quota_id) if a.quota_id else None
+    common = dict(
+        db=db, case_id=a.case_id, funding="institution", quota=quota, plan_id=a.plan_id,
+        transport_option_id=a.transport_fee_option_id, session_type=a.session_type,
+        manual_amount=None, exclude_appointment_id=a.id,
+        consult_type=a.consult_type, service_type=a.service_type, rate_item_id=None,
+    )
+    try:
+        old = appt_billing.compute_pricing(duration_minutes=_minutes(old_start, old_end), start_time=old_start, **common)
+    except HTTPException:
+        old = None
+    untouched = (
+        old is not None and old.rate_item_id == a.rate_item_id
+        and old.amount == a.amount and old.self_pay == a.self_pay_amount
+    )
+    if not untouched:
+        return ["時間已變更，但金額曾手動調整或價目項目為手動指定，未自動重新計價，請確認金額"]
+    try:
+        new = appt_billing.compute_pricing(duration_minutes=_minutes(new_start, new_end), start_time=new_start, **common)
+    except HTTPException as e:
+        return [f"時間已變更，但無法依價目重新計價（{e.detail}），金額維持原樣，請確認"]
+    if new.amount == a.amount and new.self_pay == a.self_pay_amount and new.rate_item_id == a.rate_item_id:
+        return []
+    appt_billing.apply_pricing(a, new)
+    return [f"時間已變更，已依價目重新計價：總額 {new.amount}、自付 {new.self_pay if new.self_pay is not None else '未設定'}"]
+
+
 @router.put("/{appointment_id}", response_model=AppointmentResponse)
 def update_appointment(
     appointment_id: int,
@@ -424,6 +475,7 @@ def update_appointment(
     if a.status != "booked":
         raise HTTPException(status_code=400, detail=f"只能編輯 booked 狀態的預約，目前狀態：{a.status}")
 
+    before_range = (a.time_range.lower, a.time_range.upper)
     before = {
         "room_id": a.room_id, "session_type": a.session_type,
         "time_range": str(a.time_range), "amount": float(a.amount or 0),
@@ -450,7 +502,14 @@ def update_appointment(
     flush_or_409(db, a.room_id, new_start, new_end, exclude_appointment_id=appointment_id)
     # 金額與方案：改方案、價目項目、交通費 → 依價目重新計算（快照）；只改金額 → 手動調整
     warnings: list[str] = []
-    repriced = any(v is not None for v in (body.plan_id, body.rate_item_id, body.transport_fee_option_id))
+    if body.consult_type is not None:
+        a.consult_type = body.consult_type
+    if body.service_type is not None:
+        a.service_type = body.service_type or None
+    repriced = any(v is not None for v in (
+        body.plan_id, body.rate_item_id, body.transport_fee_option_id, body.consult_type, body.service_type))
+    old_start, old_end = before_range
+    time_changed = (new_start, new_end) != (old_start, old_end)
     if repriced or body.amount is not None:
         funding = a.funding_source or "self_pay"
         quota = db.get(CaseInstitutionQuota, a.quota_id) if a.quota_id else None
@@ -461,11 +520,12 @@ def update_appointment(
                 plan_id=body.plan_id if body.plan_id is not None else a.plan_id,
                 # 方案沒換時，沒指定的價目項目、交通費沿用原本的；換方案就重新挑
                 rate_item_id=body.rate_item_id if body.rate_item_id is not None else (
-                    a.rate_item_id if same_plan else None),
+                    a.rate_item_id if same_plan and body.consult_type is None and body.service_type is None else None),
                 transport_option_id=body.transport_fee_option_id if body.transport_fee_option_id is not None else (
                     a.transport_fee_option_id if same_plan else None),
                 session_type=a.session_type, duration_minutes=_minutes(new_start, new_end),
                 manual_amount=body.amount, exclude_appointment_id=a.id,
+                consult_type=a.consult_type, service_type=a.service_type, start_time=new_start,
             )
             appt_billing.apply_pricing(a, price)
             warnings = price.warnings
@@ -483,6 +543,9 @@ def update_appointment(
             else:
                 a.self_pay_amount = new_amount  # 自費：個案要付的就是全額
             a.amount = new_amount
+    elif time_changed and (a.funding_source or "self_pay") == "institution" and a.plan_id:
+        # 改時長／改日期（階梯第幾次可能變）：沒手動調整過的金額依價目重新計價；手動調整過的不動，只提醒
+        warnings = _reprice_after_time_change(db, a, user, old_start, old_end, new_start, new_end)
 
     after = {
         "room_id": a.room_id, "session_type": a.session_type,
@@ -556,6 +619,7 @@ def update_appointment_payment(
         session_type=a.session_type, duration_minutes=_minutes(a.time_range.lower, a.time_range.upper),
         manual_amount=body.amount,  # 自費必填；機構不送＝由價目帶出
         exclude_appointment_id=a.id,
+        consult_type=a.consult_type, service_type=a.service_type, start_time=a.time_range.lower,
     )
     warnings = warnings + price.warnings
     a.funding_source = body.funding_source

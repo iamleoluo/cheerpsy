@@ -21,6 +21,8 @@ class AppointmentCreate(BaseModel):
     plan_id: int | None = None  # 機構案的方案；沒送＝用額度所屬方案
     rate_item_id: int | None = None  # 價目項目；沒送＝依方案、時長、第幾次自動挑
     transport_fee_option_id: int | None = None  # 交通費選項；沒送＝現場無交通費、外出用預設選項
+    consult_type: str | None = None  # individual/couple/family/parenting；不送＝伴侶案為 couple、其餘 individual
+    service_type: str | None = None  # 價目項目的服務型態代碼；不送＝不限
     couple_case_id: int | None = None  # 合療：標記場次所屬伴侶案（case_id 為付款方）
 
 
@@ -42,6 +44,10 @@ class AppointmentBatchCreate(BaseModel):
     plan_id: int | None = None
     rate_item_id: int | None = None
     transport_fee_option_id: int | None = None
+    consult_type: str | None = None  # individual/couple/family/parenting；不送＝伴侶案為 couple、其餘 individual
+    service_type: str | None = None  # 價目項目的服務型態代碼；不送＝不限
+    consult_type: str | None = None
+    service_type: str | None = None
     couple_case_id: int | None = None
     slots: list[BatchSlot]
 
@@ -52,10 +58,12 @@ class AppointmentUpdate(BaseModel):
     start_time: datetime | None = None
     end_time: datetime | None = None
     amount: float | None = Amount  # 不送＝不改；送了＝手動調整應收（機構案會寫稽核）
-    # 改方案、價目項目、交通費時，會依 plan_pricing 重新計算應收與自付額（改價目主檔不影響既有預約）
+    # 改方案、價目項目、交通費、諮商／服務型態時，會依價目重新計算應收與自付額（改價目主檔不影響既有預約）
     plan_id: int | None = None
     rate_item_id: int | None = None
     transport_fee_option_id: int | None = None
+    consult_type: str | None = None
+    service_type: str | None = None
 
 
 class AppointmentPaymentUpdate(BaseModel):
@@ -103,6 +111,8 @@ class AppointmentResponse(BaseModel):
     fee_item: str | None = None
     plan_id: int | None = None
     plan_name: str | None = None
+    consult_type: str | None = None
+    service_type: str | None = None
     rate_item_id: int | None = None
     rate_item_label: str | None = None
     self_pay_amount: float | None = 0  # 個案這次要付的錢（自費＝全額；機構＝自付額；機構 NULL＝未設定）

@@ -35,6 +35,7 @@ class TransportFeeOut(TransportFeeIn):
 class RateItemIn(BaseModel):
     label: str
     service_type: str | None = None
+    consult_type: str | None = None  # individual/couple/family/parenting；空＝不限
     duration_minutes: int | None = None
     session_seq_from: int | None = None
     session_seq_to: int | None = None
@@ -219,7 +220,7 @@ def _to_response(p: InstitutionPlan, agg: dict | None = None) -> PlanResponse:
         allows_zero_amount=bool(p.allows_zero_amount),
         rate_items=[
             RateItemOut(
-                id=r.id, label=r.label, service_type=r.service_type,
+                id=r.id, label=r.label, service_type=r.service_type, consult_type=r.consult_type,
                 duration_minutes=r.duration_minutes,
                 session_seq_from=r.session_seq_from, session_seq_to=r.session_seq_to,
                 total_amount=float(r.total_amount),
@@ -261,7 +262,7 @@ def _sync_rate_items(db: Session, plan: InstitutionPlan, items) -> None:
     db.flush()
     for i, r in enumerate(items):
         db.add(PlanRateItem(
-            plan_id=plan.id, label=r.label.strip(), service_type=r.service_type,
+            plan_id=plan.id, label=r.label.strip(), service_type=r.service_type, consult_type=r.consult_type,
             duration_minutes=r.duration_minutes,
             session_seq_from=r.session_seq_from, session_seq_to=r.session_seq_to,
             total_amount=r.total_amount, self_pay_amount=r.self_pay_amount,

@@ -10,7 +10,7 @@ from datetime import date
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models.appointment import Appointment
@@ -162,8 +162,9 @@ def _plan_or_400(db: Session, plan_id: int) -> InstitutionPlan:
     return plan
 
 
-def _session_seq(db: Session, case_id: int | None, plan_id: int, exclude_id: int | None = None) -> int:
-    """該個案在此方案下的第幾次（階梯計價）：已排定與已執行的預約數 + 1（不再依賴已移除的流水帳冊）。"""
+def _session_seq(db: Session, case_id: int | None, plan_id: int, start_time=None, exclude_id: int | None = None) -> int:
+    """該個案在此方案下的第幾次（階梯計價）：依預約日期排序，數「比這筆更早開始」的已排定／已執行預約 + 1。
+    亂序建立或改期不會讓第幾次排錯；沒給開始時間才退回「已有幾筆 + 1」。"""
     if not case_id:
         return 1
     q = db.query(Appointment.id).filter(
@@ -171,6 +172,8 @@ def _session_seq(db: Session, case_id: int | None, plan_id: int, exclude_id: int
         Appointment.plan_id == plan_id,
         Appointment.status.in_(("booked", "executed")),
     )
+    if start_time is not None:
+        q = q.filter(func.lower(Appointment.time_range) < start_time)
     if exclude_id is not None:
         q = q.filter(Appointment.id != exclude_id)
     return q.count() + 1
@@ -189,6 +192,9 @@ def compute_pricing(
     duration_minutes: int | None,
     manual_amount: float | Decimal | None,
     exclude_appointment_id: int | None = None,
+    consult_type: str | None = None,
+    service_type: str | None = None,
+    start_time=None,
 ) -> Pricing:
     """算出應收與自付額。
 
@@ -223,7 +229,8 @@ def compute_pricing(
     else:
         item = pick_rate_item(
             db, plan, duration_minutes=duration_minutes,
-            session_seq=_session_seq(db, case_id, plan.id, exclude_appointment_id),
+            consult_type=consult_type, service_type=service_type,
+            session_seq=_session_seq(db, case_id, plan.id, start_time, exclude_appointment_id),
         )
     if item is not None:
         total, self_pay = _D(item.total_amount), min(_D(item.self_pay_amount or 0), _D(item.total_amount))
@@ -303,6 +310,7 @@ def billing_options(db: Session, case) -> dict:
                         "id": r.id, "label": r.label, "total_amount": float(r.total_amount),
                         "self_pay_amount": float(r.self_pay_amount or 0),
                         "duration_minutes": r.duration_minutes, "service_type": r.service_type,
+                        "consult_type": r.consult_type,
                         "session_seq_from": r.session_seq_from, "session_seq_to": r.session_seq_to,
                     }
                     for r in p.rate_items if not r.is_no_show_fee

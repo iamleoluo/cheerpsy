@@ -10,7 +10,7 @@ from app.models.appointment import Appointment
 from app.models.case import Case
 from app.models.case_institution_quota import CaseInstitutionQuota
 from app.models.institution import Institution
-from app.models.institution_plan import InstitutionPlan
+from app.models.institution_plan import InstitutionPlan, PlanRateItem
 from app.services import appt_billing
 from app.models.user import User
 from app.schemas.case_quota import QuotaCreate, QuotaResponse, QuotaUpdate
@@ -81,6 +81,52 @@ def case_billing_options(
     """預約表單用：這個個案可選的方案、價目項目、交通費。心理師只看得到自己個案的（別人的回 404）。"""
     case = _require_case_access(db, case_id, user)
     return appt_billing.billing_options(db, case)
+
+
+@router.get("/cases/{case_id}/pricing-preview")
+def pricing_preview(
+    case_id: int,
+    on_date: date = Query(..., description="預約日"),
+    duration_minutes: int | None = Query(None),
+    quota_id: int | None = Query(None),
+    plan_id: int | None = Query(None),
+    rate_item_id: int | None = Query(None),
+    transport_fee_option_id: int | None = Query(None),
+    consult_type: str | None = Query(None),
+    service_type: str | None = Query(None),
+    session_type: str = Query("in_person"),
+    amount: float | None = Query(None, description="手動調整的總額"),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """預約表單即時預覽：用與建立預約相同的計價（價目挑選、第幾次依日期、交通費），不寫入任何資料。"""
+    from datetime import datetime as _dt, time as _time, timezone as _tz
+
+    case = _require_case_access(db, case_id, user)
+    quota, warnings = appt_billing.resolve_quota(db, case.id, "institution", quota_id, on_date)
+    start = _dt.combine(on_date, _time(0, 0), tzinfo=_tz.utc)
+    try:
+        price = appt_billing.compute_pricing(
+            db, case_id=case.id, funding="institution", quota=quota, plan_id=plan_id,
+            rate_item_id=rate_item_id, transport_option_id=transport_fee_option_id,
+            session_type=session_type, duration_minutes=duration_minutes, manual_amount=amount,
+            consult_type=consult_type or ("couple" if case.case_type == "couple" else "individual"),
+            service_type=service_type, start_time=start,
+        )
+    except HTTPException as e:
+        return {"error": e.detail, "warnings": warnings}
+    item = db.get(PlanRateItem, price.rate_item_id) if price.rate_item_id else None
+    plan = db.get(InstitutionPlan, price.plan_id) if price.plan_id else None
+    return {
+        "error": None,
+        "plan_name": plan.name if plan else None,
+        "rate_item_label": item.label if item else None,
+        "amount": float(price.amount),
+        "self_pay_amount": float(price.self_pay) if price.self_pay is not None else None,
+        "institution_subsidy": (float(price.amount - price.self_pay) if price.self_pay is not None else None),
+        "transport_fee": float(price.transport_fee),
+        "warnings": warnings + price.warnings,
+    }
 
 
 @router.get("/cases/{case_id}/quotas/available", response_model=list[QuotaResponse])

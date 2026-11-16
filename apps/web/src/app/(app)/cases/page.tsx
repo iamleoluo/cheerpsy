@@ -1770,6 +1770,8 @@ function AppointmentEditModal({
     planId: appt.plan_id ? String(appt.plan_id) : "",
     rateItemId: appt.rate_item_id ? String(appt.rate_item_id) : "",
     transportId: appt.transport_fee_option_id ? String(appt.transport_fee_option_id) : "",
+    consultType: "",
+    serviceType: "",
     // 自費：全額；機構：空白＝依價目（要手動調整應收才填）
     amount: appt.funding_source === "institution" ? "" : appt.amount ? String(appt.amount) : "0",
   });
@@ -1806,6 +1808,8 @@ function AppointmentEditModal({
         if (billing.planId !== (appt.plan_id ? String(appt.plan_id) : "")) body.plan_id = Number(billing.planId);
         if (billing.rateItemId !== (appt.rate_item_id ? String(appt.rate_item_id) : "")) body.rate_item_id = Number(billing.rateItemId);
         if (billing.transportId !== (appt.transport_fee_option_id ? String(appt.transport_fee_option_id) : "")) body.transport_fee_option_id = Number(billing.transportId);
+        if (billing.consultType) body.consult_type = billing.consultType;
+        if (billing.serviceType) body.service_type = billing.serviceType;
       }
       await clientFetch(`/appointments/${appt.id}`, token, {
         method: "PUT",
