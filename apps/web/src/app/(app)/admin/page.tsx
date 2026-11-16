@@ -1752,9 +1752,9 @@ const GCAL_RESULT_MESSAGES: Record<string, { ok: boolean; text: string }> = {
 };
 
 const TITLE_FORMATS: { value: ClinicSettingsData["event_title_format"]; label: string; example: string; note: string }[] = [
-  { value: "type_room", label: "(a) 類型與診間", example: "諮商 · 2B", note: "最保守，預設。線上場次顯示「線上」。" },
+  { value: "type_room", label: "(a) 類型與診間", example: "諮商 · 2B", note: "最保守。線上場次顯示「線上」。" },
   { value: "type_room_code", label: "(b) 再加個案代號", example: "諮商 · 2B · C-1042", note: "沒有代號時退化成 (a)，不會改放姓名。" },
-  { value: "type_room_abbrev", label: "(c) 再加姓名縮寫", example: "諮商 · 2B · 陳小", note: "三字名取前兩字、複姓取三字、兩字名只顯示姓。小診所裡縮寫仍可能辨識出個案，請診所自行評估。" },
+  { value: "type_room_abbrev", label: "(c) 再加姓名縮寫", example: "諮商 · 2B · 陳小", note: "預設。三字名取前兩字、複姓取三字、兩字名只顯示姓；無法安全縮寫時退化成 (a)。小診所裡縮寫仍可能辨識出個案，請診所自行評估。" },
 ];
 
 function fmtTime(iso: string | null) {

@@ -22,7 +22,7 @@ def upgrade() -> None:
     op.create_table(
         "clinic_settings",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("event_title_format", sa.String(30), nullable=False, server_default="type_room"),
+        sa.Column("event_title_format", sa.String(30), nullable=False, server_default="type_room_abbrev"),
         sa.Column("staff_share_emails", postgresql.JSONB(), nullable=False, server_default=sa.text("'[]'::jsonb")),
         sa.Column("push_therapist_notes_to_google", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column("ical_follow_title_format", sa.Boolean(), nullable=False, server_default="false"),

@@ -26,8 +26,8 @@ class ClinicSettings(Base):
     )
 
     id = Column(Integer, primary_key=True, default=1)
-    # 預設 (a) 只顯示類型與診間，最保守；(b)(c) 要診所明確選擇
-    event_title_format = Column(String(30), nullable=False, default="type_room", server_default="type_room")
+    # 預設 (c)：類型 · 診間 · 姓名縮寫（診所已決定）。縮寫規則見計畫書 §5：不會輸出完整姓名
+    event_title_format = Column(String(30), nullable=False, default="type_room_abbrev", server_default="type_room_abbrev")
     # 行政人員 Gmail 清單：每本日曆都以 reader 分享給名單上的人（診所帳號本人除外）
     staff_share_emails = Column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
     push_therapist_notes_to_google = Column(Boolean, nullable=False, default=False, server_default="false")

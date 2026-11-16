@@ -98,7 +98,7 @@ def test_defaults_and_readers(client, auth, users, env):
     r = client.get("/settings/clinic", headers=auth(users["admin"]))
     assert r.status_code == 200
     d = r.json()
-    assert d["event_title_format"] == "type_room"  # 預設最保守：只有類型與診間
+    assert d["event_title_format"] == "type_room_abbrev"  # 預設 (c)：診所已決定
     assert d["staff_share_emails"] == [] and d["push_therapist_notes_to_google"] is False
     assert d["ical_follow_title_format"] is False
     assert (d["resync_lookback_days"], d["resync_lookahead_days"]) == (30, 180)
@@ -418,6 +418,7 @@ def test_get_client_reports_missing_settings(monkeypatch):
 def test_tables_are_single_row_and_validated(db):
     db.execute(text("INSERT INTO clinic_settings (id) VALUES (1)"))
     db.commit()
+    assert db.execute(text("SELECT event_title_format FROM clinic_settings")).scalar() == "type_room_abbrev"  # 資料庫預設也是 (c)
     with pytest.raises(IntegrityError):
         db.execute(text("INSERT INTO clinic_settings (id) VALUES (2)"))
     db.rollback()
