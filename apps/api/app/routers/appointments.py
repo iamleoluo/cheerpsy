@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from psycopg2.extras import DateTimeTZRange
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session, joinedload
@@ -12,6 +12,7 @@ from app.auth.dependencies import RequireRole, get_current_user
 from app.database import get_db
 from app.models.appointment import Appointment
 from app.models.case import Case
+from app.models.gcal import ClinicSettings
 from app.models.room import Room
 from app.models.session_record import SessionRecord
 from app.models.user import User
@@ -135,6 +136,7 @@ def _to_response(
         checkin_status=a.checkin_status,
         checked_in_at=a.checked_in_at,
         no_show_type=a.no_show_type,
+        no_show_fee=float(a.no_show_fee or 0) if can_see_amount else 0,
         video_link=a.video_link,
         notify_admin_to_forward=a.notify_admin_to_forward,
         forwarded_at=a.forwarded_at,
@@ -701,6 +703,8 @@ class CheckInBody(BaseModel):
 
     no_show_type: str | None = None
     note: str | None = None
+    # 失約費（應收提示）：不填＝用設定的建議金額；admin／staff 可改，0＝免收。心理師送了會被忽略
+    no_show_fee: float | None = Field(None, ge=0, le=99999)
 
 
 # 24 小時前請假／臨時取消／無故未到（僅分類，不再有金額）
@@ -734,6 +738,38 @@ def mark_arrived(
     return _to_response(a, therapist, db, viewer=user)
 
 
+def _suggested_no_show_fee(db: Session, no_show_type: str) -> float:
+    r = db.get(ClinicSettings, 1)
+    if r is None:
+        return {"advance_notice": 0.0, "late_cancel": 200.0, "no_notice": 500.0}[no_show_type]
+    return float({"advance_notice": r.no_show_fee_advance_notice, "late_cancel": r.no_show_fee_late_cancel,
+                  "no_notice": r.no_show_fee_no_notice}[no_show_type])
+
+
+class NoShowFeeBody(BaseModel):
+    no_show_fee: float = Field(ge=0, le=99999)  # 0＝免收
+
+
+@router.put("/{appointment_id}/no-show-fee", response_model=AppointmentResponse)
+def set_no_show_fee(
+    appointment_id: int,
+    body: NoShowFeeBody,
+    user: User = Depends(RequireRole(["admin", "staff"])),
+    db: Session = Depends(get_db),
+):
+    """行政事後調整或免收失約費（只是應收提示，不產生流水或核銷）。"""
+    a = _appointment_or_404(db, user, appointment_id)
+    if a.status != "no_show":
+        raise HTTPException(status_code=400, detail="只有未到的預約有失約費")
+    before = float(a.no_show_fee or 0)
+    a.no_show_fee = body.no_show_fee
+    write_audit(db, "appointments", a.id, "UPDATE", user.id, {"no_show_fee": before}, {"no_show_fee": body.no_show_fee})
+    db.commit()
+    db.refresh(a)
+    therapist = db.query(User).filter(User.id == a.therapist_id).first()
+    return _to_response(a, therapist, db, viewer=user)
+
+
 @router.put("/{appointment_id}/absent", response_model=AppointmentResponse)
 def mark_absent(
     appointment_id: int,
@@ -757,9 +793,12 @@ def mark_absent(
     a.status = "no_show"
     a.no_show_type = body.no_show_type
     appt_billing.release_quota(db, a.quota_id)  # 未到：已預約 → 退回已預留
+    a.no_show_fee = _suggested_no_show_fee(db, body.no_show_type)
+    if body.no_show_fee is not None and user.role in ("admin", "staff"):
+        a.no_show_fee = body.no_show_fee
     write_audit(db, "appointments", a.id, "UPDATE", user.id,
                 {"checkin_status": "pending"},
-                {"checkin_status": "absent", "no_show_type": body.no_show_type})
+                {"checkin_status": "absent", "no_show_type": body.no_show_type, "no_show_fee": float(a.no_show_fee)})
     db.commit()
     db.refresh(a)
     therapist = db.query(User).filter(User.id == a.therapist_id).first()

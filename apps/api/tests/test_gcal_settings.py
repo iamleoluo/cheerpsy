@@ -470,6 +470,12 @@ def _restore_head_title_constraint():
     spec.loader.exec_module(mod)
     with engine.begin() as conn, Operations.context(MigrationContext.configure(conn)):
         mod.upgrade()
+    # zj 重建的 clinic_settings 也沒有後續 migration 加的欄位（失約費設定），一併補上
+    spec = importlib.util.spec_from_file_location("zp6f0a1b2c3d", API_DIR / "alembic" / "versions" / "zp6f0a1b2c3d_no_show_fee_settings.py")
+    mod2 = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod2)
+    with engine.begin() as conn, Operations.context(MigrationContext.configure(conn)):
+        mod2.upgrade()
 
 
 def test_migration_roundtrip_touches_only_its_own_tables(db, make_user):

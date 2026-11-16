@@ -433,11 +433,19 @@ function AbsentModal({
 }) {
   const [type, setType] = useState("late_cancel");
   const [err, setErr] = useState<string | null>(null);
+  const [fees, setFees] = useState<Record<string, number>>({});
+  const [fee, setFee] = useState<string>(""); // 空白＝用建議金額
+  const { data: sess } = useSession();
+  const canEditFee = ["admin", "staff"].includes((sess?.user as any)?.role);
+  useEffect(() => {
+    clientFetch("/settings/no-show-fees", token).then(setFees).catch(() => setFees({}));
+  }, [token]);
+  const suggested = fees[type] ?? 0;
   async function go() {
     try {
       await clientFetch(`/appointments/${appt.id}/absent`, token, {
         method: "PUT",
-        body: JSON.stringify({ no_show_type: type }),
+        body: JSON.stringify({ no_show_type: type, ...(canEditFee && fee !== "" ? { no_show_fee: Number(fee) } : {}) }),
       });
       onDone();
     } catch (e: any) {
@@ -449,7 +457,7 @@ function AbsentModal({
       <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
         <h2 className="mb-1 text-lg font-bold">未到原因 — {appt.case_name}</h2>
         <p className="mb-4 text-sm text-gray-500">
-          只記錄未到類型，不產生任何費用；該診間時段會立即釋出，可再預約。
+          記錄未到類型並帶出建議失約費（只是應收提示，不產生流水或核銷）；該診間時段會立即釋出，可再預約。
         </p>
         {err && <div className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>}
         <div className="space-y-2">
@@ -459,6 +467,16 @@ function AbsentModal({
               {label}
             </label>
           ))}
+        </div>
+        <div className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          建議失約費 <b>{money(suggested)}</b>
+          {canEditFee && (
+            <label className="mt-2 block text-xs">
+              改金額或免收（填 0）
+              <input type="number" min={0} step="any" value={fee} onChange={(e) => setFee(e.target.value)}
+                placeholder={String(suggested)} className="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm" />
+            </label>
+          )}
         </div>
         <div className="mt-6 flex justify-end gap-2">
           <button onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm">
