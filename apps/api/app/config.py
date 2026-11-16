@@ -21,11 +21,6 @@ class Settings(BaseSettings):
     # 授權完成後把管理員導回的前端網址；留空就用 CORS_ORIGINS 的第一個
     FRONTEND_URL: str = ""
 
-    # 外出諮商（session_type="outdoor"）心理師抽成保底金額
-    # 公式：bonus = max(0, min(amount, OUTPATIENT_MIN_FEE) - amount * rate)
-    # 診所讓利上限為「補心理師抽成至此金額」，但總收入不夠時就全額給心理師、診所領 0（不墊錢）
-    OUTPATIENT_MIN_FEE: int = 1000
-
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 
