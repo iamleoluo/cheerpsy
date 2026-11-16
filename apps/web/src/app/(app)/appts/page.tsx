@@ -59,6 +59,15 @@ export default function ApptsPage() {
   const [adjustFor, setAdjustFor] = useState<Appt | null>(null);
   const [detail, setDetail] = useState<Appt | null>(null);
 
+  // 從儀表板「仍待報到」點進來：?date=YYYY-MM-DD 把查詢區間定在該日
+  useEffect(() => {
+    const d = new URLSearchParams(window.location.search).get("date");
+    if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      setStart(d);
+      setEnd(d);
+    }
+  }, []);
+
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
@@ -203,7 +212,7 @@ export default function ApptsPage() {
                     <span className={`rounded px-1.5 py-0.5 text-xs ${st.cls}`}>{st.label}</span>
                   </td>
                   <td className="px-3 py-2.5">
-                    {offsite ? (
+                    {offsite && !canAdjust ? (
                       <span className="text-xs text-gray-400">心理師端確認</span>
                     ) : r.checkin_status === "pending" && r.status === "booked" ? (
                       <div className="flex gap-2 text-xs">
