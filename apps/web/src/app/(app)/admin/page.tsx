@@ -72,7 +72,19 @@ export default function AdminPage() {
   const token = (session?.user as any)?.accessToken;
   const userRole = (session?.user as any)?.role;
 
-  const [tab, setTab] = useState<"users" | "roster" | "institutions" | "rooms" | "data">("users");
+  const [tab, setTab] = useState<"users" | "roster" | "institutions" | "rooms" | "calendar" | "data">("users");
+  const [gcalResult, setGcalResult] = useState<string | null>(null);
+
+  // Google 授權完成後後端會導回 /admin?tab=calendar&gcal=<結果代碼>
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get("tab") === "calendar") setTab("calendar");
+    const g = p.get("gcal");
+    if (g) {
+      setGcalResult(g);
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, []);
 
   if (userRole !== "admin") {
     return (
@@ -131,6 +143,16 @@ export default function AdminPage() {
           診間管理
         </button>
         <button
+          onClick={() => setTab("calendar")}
+          className={`px-4 py-2.5 text-sm font-medium transition-colors ${
+            tab === "calendar"
+              ? "border-b-2 border-primary-600 text-primary-700"
+              : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          日曆同步
+        </button>
+        <button
           onClick={() => setTab("data")}
           className={`px-4 py-2.5 text-sm font-medium transition-colors ${
             tab === "data"
@@ -142,7 +164,7 @@ export default function AdminPage() {
         </button>
       </div>
 
-      {tab === "users" ? <UsersTab token={token} /> : tab === "rooms" ? <RoomsTab token={token} /> : tab === "institutions" ? <InstitutionsTab token={token} /> : <DataTab token={token} />}
+      {tab === "users" ? <UsersTab token={token} /> : tab === "calendar" ? <CalendarTab token={token} gcalResult={gcalResult} /> : tab === "rooms" ? <RoomsTab token={token} /> : tab === "institutions" ? <InstitutionsTab token={token} /> : <DataTab token={token} />}
     </div>
   );
 }
@@ -1693,5 +1715,213 @@ function RoomEditRow({ room, onCancel, onSave }: { room: RoomItem; onCancel: () 
         <button onClick={onCancel} className="text-gray-500 hover:underline">取消</button>
       </td>
     </tr>
+  );
+}
+
+
+/* ------------------------------------------------------------------ */
+/*  日曆同步：Google 連線與事件標題格式（目前只儲存設定，尚未推送行程）   */
+/* ------------------------------------------------------------------ */
+
+interface GcalConnection {
+  status: "active" | "token_invalid" | "disconnected";
+  google_email: string | null;
+  scopes: string[];
+  connected_at: string | null;
+  last_success_at: string | null;
+  last_error_code: string | null;
+  last_error_message: string | null;
+  configured: boolean;
+  missing_settings: string[];
+}
+
+interface ClinicSettingsData {
+  event_title_format: "type_room" | "type_room_code" | "type_room_abbrev";
+  connection: GcalConnection;
+  can_edit: boolean;
+}
+
+const GCAL_RESULT_MESSAGES: Record<string, { ok: boolean; text: string }> = {
+  connected: { ok: true, text: "已連結 Google 帳號。" },
+  denied: { ok: false, text: "你取消了授權，尚未連結。" },
+  invalid_state: { ok: false, text: "授權連結已失效（逾時，或不是從這個系統發起的）。請重新按「連結 Google 帳號」。" },
+  token_exchange_failed: { ok: false, text: "Google 拒絕了這次授權，請重試。" },
+  missing_scope: { ok: false, text: "授權時少勾了權限：兩項日曆權限都要同意。請重試並全部勾選。" },
+  no_refresh_token: { ok: false, text: "Google 沒有發給長期授權。請到 Google 帳戶的「第三方存取權」移除本應用程式後再試一次。" },
+  config_error: { ok: false, text: "伺服器設定不完整（例如缺少加密金鑰），請通知系統管理者。" },
+};
+
+const TITLE_FORMATS: { value: ClinicSettingsData["event_title_format"]; label: string; example: string; note: string }[] = [
+  { value: "type_room", label: "(a) 類型與診間", example: "諮商 · 2B", note: "最保守，預設。線上場次顯示「線上」。" },
+  { value: "type_room_code", label: "(b) 再加個案代號", example: "諮商 · 2B · C-1042", note: "沒有代號時退化成 (a)，不會改放姓名。" },
+  { value: "type_room_abbrev", label: "(c) 再加姓名縮寫", example: "諮商 · 2B · 陳小", note: "三字名取前兩字、複姓取三字、兩字名只顯示姓。小診所裡縮寫仍可能辨識出個案，請診所自行評估。" },
+];
+
+function fmtTime(iso: string | null) {
+  return iso ? new Date(iso).toLocaleString("zh-TW", { hour12: false }) : "—";
+}
+
+function CalendarTab({ token, gcalResult }: { token: string; gcalResult: string | null }) {
+  const [data, setData] = useState<ClinicSettingsData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      setData(await clientFetch("/settings/clinic", token));
+      setError(null);
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function connect() {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await clientFetch("/settings/google/connect", token, { method: "POST" });
+      window.location.href = r.authorization_url; // 去 Google 授權，完成後後端會導回這一頁
+    } catch (e: any) {
+      setError(e.message); // 例如伺服器缺環境變數時的 503 說明
+      setBusy(false);
+    }
+  }
+
+  async function disconnect() {
+    setBusy(true);
+    setError(null);
+    try {
+      await clientFetch("/settings/google/disconnect", token, { method: "POST" });
+      setConfirmDisconnect(false);
+      setNotice("已解除連結。");
+      await load();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveFormat(value: ClinicSettingsData["event_title_format"]) {
+    setError(null);
+    try {
+      setData(await clientFetch("/settings/clinic", token, { method: "PATCH", body: JSON.stringify({ event_title_format: value }) }));
+      setNotice("標題格式已儲存。");
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }
+
+  const fromRedirect = gcalResult ? GCAL_RESULT_MESSAGES[gcalResult] : null;
+  const c = data?.connection;
+
+  return (
+    <div className="space-y-6">
+      {fromRedirect && (
+        <div className={`rounded-lg px-4 py-3 text-sm ${fromRedirect.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+          {fromRedirect.text}
+        </div>
+      )}
+      {notice && <div className="rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700">{notice}</div>}
+      {error && <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+      <p className="text-sm text-gray-500">
+        目前只做「連線」與「標題格式」設定，還不會把任何行程推到 Google。請勿在 Google 上修改 Cheerpsy 的行程，之後同步時會被蓋掉。
+      </p>
+
+      <section className="rounded-xl border border-gray-200 bg-white p-5">
+        <h2 className="mb-3 text-base font-semibold">Google 連線</h2>
+        {!data ? (
+          <p className="text-sm text-gray-400">載入中...</p>
+        ) : (
+          <div className="space-y-3 text-sm">
+            {c && !c.configured && (
+              <div className="rounded-lg bg-amber-50 px-3 py-2 text-amber-800">
+                伺服器尚未設定完成，無法連結。缺少：{c.missing_settings.join("、")}
+              </div>
+            )}
+            {c?.status === "token_invalid" && (
+              <div className="rounded-lg bg-red-50 px-3 py-2 font-medium text-red-700">
+                同步已暫停：Google 授權已失效，請重新連結。
+                {c.last_error_message ? `（${c.last_error_message}）` : ""}
+              </div>
+            )}
+            <dl className="grid grid-cols-[8rem_1fr] gap-y-1.5">
+              <dt className="text-gray-500">狀態</dt>
+              <dd>
+                {c?.status === "active" ? "✅ 已連結" : c?.status === "token_invalid" ? "⚠️ 授權失效" : "未連結"}
+              </dd>
+              {c?.status !== "disconnected" && (
+                <>
+                  <dt className="text-gray-500">Google 帳號</dt>
+                  <dd>{c?.google_email ?? "（未取得）"}</dd>
+                  <dt className="text-gray-500">連結時間</dt>
+                  <dd>{fmtTime(c?.connected_at ?? null)}</dd>
+                  <dt className="text-gray-500">最後成功</dt>
+                  <dd>{fmtTime(c?.last_success_at ?? null)}</dd>
+                </>
+              )}
+            </dl>
+
+            {data.can_edit ? (
+              <div className="flex flex-wrap items-center gap-3 pt-1">
+                <button
+                  onClick={connect}
+                  disabled={busy || !c?.configured}
+                  className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                >
+                  {c?.status === "disconnected" ? "連結 Google 帳號" : "重新連結"}
+                </button>
+                {c?.status !== "disconnected" &&
+                  (confirmDisconnect ? (
+                    <span className="flex items-center gap-2">
+                      <span className="text-red-700">確定解除？會向 Google 撤銷授權並停止同步。</span>
+                      <button onClick={disconnect} disabled={busy} className="rounded-lg bg-red-600 px-3 py-1.5 text-white disabled:opacity-50">確定解除</button>
+                      <button onClick={() => setConfirmDisconnect(false)} className="text-gray-500 hover:underline">取消</button>
+                    </span>
+                  ) : (
+                    <button onClick={() => setConfirmDisconnect(true)} className="text-red-600 hover:underline">解除連結</button>
+                  ))}
+              </div>
+            ) : (
+              <p className="text-gray-500">只有系統管理員可以連結或解除連結。</p>
+            )}
+
+            <div className="rounded-lg bg-gray-50 px-3 py-2 text-xs leading-relaxed text-gray-600">
+              連結時請用<strong>診所專用的 Google 帳號</strong>登入。Google 會顯示「尚未驗證這個應用程式」的警告，這是因為本系統只供診所自用、不需要送審——請點「進階」再繼續。
+              授權只允許 Cheerpsy 建立與管理<strong>它自己建立的日曆</strong>與分享設定，不會讀取你的私人行事曆；兩項日曆權限都必須勾選。
+            </div>
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-xl border border-gray-200 bg-white p-5">
+        <h2 className="mb-1 text-base font-semibold">事件標題格式</h2>
+        <p className="mb-3 text-xs text-gray-500">不論選哪一種，都不會把完整姓名、備註、電話或 Email 寫進 Google 事件。</p>
+        <div className="space-y-2">
+          {TITLE_FORMATS.map((f) => (
+            <label key={f.value} className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 ${data?.event_title_format === f.value ? "border-primary-500 bg-primary-50" : "border-gray-200"}`}>
+              <input
+                type="radio"
+                name="title-format"
+                className="mt-1"
+                checked={data?.event_title_format === f.value}
+                disabled={!data?.can_edit}
+                onChange={() => saveFormat(f.value)}
+              />
+              <span>
+                <span className="block text-sm font-medium">{f.label}　<span className="font-normal text-gray-600">範例：{f.example}</span></span>
+                <span className="block text-xs text-gray-500">{f.note}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </section>
+    </div>
   );
 }
