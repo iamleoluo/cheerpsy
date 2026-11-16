@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, text
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user
@@ -108,3 +109,53 @@ def dashboard_stats(
         "matching_count": matching_count,
         "churn_count": churn_count,
     }
+
+
+class PendingCheckinItem(BaseModel):
+    appointment_id: int
+    start_time: datetime
+    end_time: datetime
+    therapist_name: str | None
+    subject_name: str | None  # 個案姓名；初診（尚無個案）為媒合需求表的姓名
+    is_intake: bool
+    session_type: str
+
+
+class PendingCheckinOut(BaseModel):
+    count: int
+    items: list[PendingCheckinItem]
+
+
+@router.get("/pending-checkin", response_model=PendingCheckinOut)
+def pending_checkin(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """開始時間早於今天 00:00（Asia/Taipei）、狀態仍為 booked 的預約：該補按「有到」或「未到」的。
+
+    行政、管理員看全部；心理師只看自己的。只列出，不自動改任何狀態。
+    """
+    day_start = datetime.now(TZ).replace(hour=0, minute=0, second=0, microsecond=0)
+    q = db.query(Appointment).filter(
+        Appointment.status == "booked",
+        func.lower(Appointment.time_range) < day_start,
+    )
+    if user.role == "therapist":
+        q = q.filter(Appointment.therapist_id == user.id)
+    elif user.role not in OVERVIEW_ROLES:
+        return PendingCheckinOut(count=0, items=[])
+    total = q.count()
+    rows = q.order_by(func.lower(Appointment.time_range)).limit(200).all()
+    items = []
+    for a in rows:
+        ref = db.query(ReferralRequest).filter(ReferralRequest.id == a.referral_id).first() if a.referral_id else None
+        items.append(PendingCheckinItem(
+            appointment_id=a.id,
+            start_time=a.time_range.lower,
+            end_time=a.time_range.upper,
+            therapist_name=a.therapist.name if a.therapist else None,
+            subject_name=(a.case.name if a.case else (ref.name if ref else None)),
+            is_intake=bool(a.is_intake),
+            session_type=a.session_type,
+        ))
+    return PendingCheckinOut(count=total, items=items)
